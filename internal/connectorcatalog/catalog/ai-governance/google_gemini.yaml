@@ -1,0 +1,220 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: x-goog-api-key
+      categories:
+        - ai
+        - governance
+      description: Collects model catalog, tuned models, files, cached contents, and batch jobs from Google Gemini and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Google Gemini
+      id: builtin-google-gemini
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: google_gemini.model_catalog
+            required_payload_fields:
+              - name
+            schema_ref: google_gemini/model_catalog/v1
+            urn_kind: google_gemini_model_catalog
+          id: model_catalog
+          id_field: name
+          label: Model catalog
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1beta/models
+          projection:
+            fields:
+              resource_id: name
+              resource_name: displayName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.models[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - tuned_models
+              high_value: true
+              id: tuned_models
+              support: partial
+              title: Tuned models
+              type: deployment_state
+          event:
+            kind: google_gemini.tuned_models
+            required_payload_fields:
+              - name
+            schema_ref: google_gemini/tuned_models/v1
+            urn_kind: google_gemini_tuned_models
+          id: tuned_models
+          id_field: name
+          label: Tuned models
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1beta/tunedModels
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.tunedModels[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - files
+              high_value: true
+              id: files
+              support: partial
+              title: Files
+              type: entity_family
+          event:
+            kind: google_gemini.files
+            required_payload_fields:
+              - name
+            schema_ref: google_gemini/files/v1
+            urn_kind: google_gemini_files
+          id: files
+          id_field: name
+          label: Files
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1beta/files
+          projection:
+            fields:
+              resource_id: name
+              resource_name: displayName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.files[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - cached_contents
+              high_value: true
+              id: cached_contents
+              support: partial
+              title: Cached contents
+              type: entity_family
+          event:
+            kind: google_gemini.cached_contents
+            required_payload_fields:
+              - name
+            schema_ref: google_gemini/cached_contents/v1
+            urn_kind: google_gemini_cached_contents
+          id: cached_contents
+          id_field: name
+          label: Cached contents
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1beta/cachedContents
+          projection:
+            fields:
+              resource_id: name
+              resource_name: displayName
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.cachedContents[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - batch_jobs
+              high_value: true
+              id: batch_jobs
+              support: partial
+              title: Batch jobs
+              type: deployment_state
+          event:
+            kind: google_gemini.batch_jobs
+            required_payload_fields:
+              - name
+            schema_ref: google_gemini/batch_jobs/v1
+            urn_kind: google_gemini_batch_jobs
+          id: batch_jobs
+          id_field: name
+          label: Batch jobs
+          method: GET
+          name_field: displayName
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /v1beta/batches
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: name
+              deployment_name: displayName
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.batches[*]
+      schema_version: cerebro.integration/v1
+      source_id: google_gemini
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://generativelanguage.googleapis.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1beta/models

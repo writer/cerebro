@@ -12,32 +12,32 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 		entries[entry.Definition.SourceID] = entry
 	}
 	expected := map[string][]string{
-		"anthropic":         {"api_keys", "model_catalog", "organization_invites", "organization_members", "workspaces"},
-		"aws_bedrock":       {"custom_models", "foundation_models", "guardrails", "model_customization_jobs", "provisioned_model_throughputs"},
-		"azure_openai":      {"deployments", "model_catalog", "private_endpoint_connections", "rai_blocklists", "rai_policies"},
-		"cerebras":          {"api_keys", "model_deployments", "projects", "usage_reports"},
-		"cloudflare_ai":     {"ai_gateways", "gateway_evaluations", "gateway_logs", "gateway_provider_configs", "model_catalog", "vectorize_indexes"},
-		"cohere":            {"connectors", "datasets", "fine_tuned_models", "model_catalog"},
-		"databricks":        {"audit_events", "assets", "model_serving_endpoints", "vulnerabilities"},
-		"deepseek":          {"account_balances", "model_catalog"},
-		"elevenlabs":        {"auth_connections", "model_catalog", "service_account_api_keys", "service_accounts", "voices", "webhooks"},
-		"fireworks_ai":      {"audit_logs", "billing_metrics", "model_deployments", "service_accounts"},
-		"google_gemini":     {"batch_jobs", "cached_contents", "files", "model_catalog", "tuned_models"},
-		"google_vertex_ai":  {"batch_prediction_jobs", "custom_jobs", "endpoints", "indexes", "models", "reasoning_engines"},
-		"groq":              {"batch_jobs", "files", "fine_tuning_jobs", "model_catalog"},
-		"huggingface":       {"audit_logs", "organization_members", "repositories", "resource_groups"},
-		"ibm_watsonx_ai":    {"custom_models", "deployments", "foundation_model_specs", "foundation_model_tasks", "training_jobs"},
-		"microsoft_foundry": {"agents", "connections", "datasets", "evaluations", "indexes"},
-		"mistral":           {"api_keys", "audit_logs", "usage_reports", "workspaces"},
-		"openrouter":        {"api_keys", "organization_members", "provider_keys", "usage_reports"},
-		"perplexity":        {"api_groups", "api_keys", "team_members", "usage_reports"},
-		"pinecone":          {"backups", "collections", "indexes", "restore_jobs"},
-		"qdrant_cloud":      {"account_members", "accounts", "backup_restores", "backup_schedules", "backups", "clusters", "database_api_keys", "roles"},
-		"replicate":         {"collections", "deployments", "models", "predictions"},
-		"snowflake":         {"assets", "audit_events", "cortex_search_services", "vulnerabilities"},
-		"stability_ai":      {"account", "account_balance", "engines"},
-		"together_ai":       {"api_keys", "fine_tuning_jobs", "projects", "usage_reports"},
-		"xai":               {"api_keys", "audit_logs", "model_access", "usage_reports"},
+		"anthropic":             {"api_keys", "model_catalog", "organization_invites", "organization_members", "workspaces"},
+		"aws_bedrock":           {"custom_models", "foundation_models", "guardrails", "model_customization_jobs", "provisioned_model_throughputs"},
+		"azure_openai":          {"deployments", "model_catalog", "private_endpoint_connections", "rai_blocklists", "rai_policies"},
+		"cerebras":              {"api_keys", "model_deployments", "projects", "usage_reports"},
+		"cloudflare_workers_ai": {"ai_gateways", "gateway_evaluations", "gateway_logs", "gateway_provider_configs", "model_catalog", "vectorize_indexes"},
+		"cohere":                {"connectors", "datasets", "fine_tuned_models", "model_catalog"},
+		"databricks":            {"audit_events", "assets", "model_serving_endpoints", "vulnerabilities"},
+		"deepseek":              {"account_balances", "model_catalog"},
+		"elevenlabs":            {"auth_connections", "model_catalog", "service_account_api_keys", "service_accounts", "voices", "webhooks"},
+		"fireworks_ai":          {"audit_logs", "billing_metrics", "model_deployments", "service_accounts"},
+		"google_gemini":         {"batch_jobs", "cached_contents", "files", "model_catalog", "tuned_models"},
+		"google_vertex_ai":      {"batch_prediction_jobs", "custom_jobs", "endpoints", "indexes", "models", "reasoning_engines"},
+		"groq":                  {"batch_jobs", "files", "fine_tuning_jobs", "model_catalog"},
+		"huggingface":           {"audit_logs", "organization_members", "repositories", "resource_groups"},
+		"ibm_watsonx_ai":        {"custom_models", "deployments", "foundation_model_specs", "foundation_model_tasks", "training_jobs"},
+		"microsoft_foundry":     {"agents", "connections", "datasets", "evaluations", "indexes"},
+		"mistral":               {"api_keys", "audit_logs", "usage_reports", "workspaces"},
+		"openrouter":            {"api_keys", "organization_members", "provider_keys", "usage_reports"},
+		"perplexity":            {"api_groups", "api_keys", "team_members", "usage_reports"},
+		"pinecone":              {"backups", "collections", "indexes", "restore_jobs"},
+		"qdrant_cloud":          {"account_members", "accounts", "backup_restores", "backup_schedules", "backups", "clusters", "database_api_keys", "roles"},
+		"replicate":             {"collections", "deployments", "models", "predictions"},
+		"snowflake":             {"assets", "audit_events", "cortex_search_services", "vulnerabilities"},
+		"stability_ai":          {"account", "account_balance", "engines"},
+		"together_ai":           {"api_keys", "fine_tuning_jobs", "projects", "usage_reports"},
+		"xai":                   {"api_keys", "audit_logs", "model_access", "usage_reports"},
 	}
 	directProviders := map[string]struct{}{
 		"cerebras":     {},
@@ -106,23 +106,23 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 			t.Fatalf("azure_openai %s pagination = %#v, want nextLink next_url pagination", familyID, family.Pagination)
 		}
 	}
-	cloudflareAI := entries["cloudflare_ai"]
+	cloudflareAI := entries["cloudflare_workers_ai"]
 	cloudflareModels := catalogFamily(t, cloudflareAI.Definition.ResourceFamilies, "model_catalog")
 	if got := cloudflareModels.StaticQuery["format"]; got != "openrouter" {
-		t.Fatalf("cloudflare_ai model_catalog format query = %q, want openrouter", got)
+		t.Fatalf("cloudflare_workers_ai model_catalog format query = %q, want openrouter", got)
 	}
 	if cloudflareModels.RecordSelector != "$.data[*]" {
-		t.Fatalf("cloudflare_ai model_catalog selector = %q, want OpenRouter-format data selector", cloudflareModels.RecordSelector)
+		t.Fatalf("cloudflare_workers_ai model_catalog selector = %q, want OpenRouter-format data selector", cloudflareModels.RecordSelector)
 	}
 	for _, familyID := range []string{"model_catalog", "ai_gateways", "gateway_provider_configs", "gateway_evaluations", "gateway_logs"} {
 		family := catalogFamily(t, cloudflareAI.Definition.ResourceFamilies, familyID)
 		if family.Pagination == nil || family.Pagination.Type != "page" || family.Pagination.PageParam != "page" || family.Pagination.PageSizeParam != "per_page" || family.Pagination.StartPage != 1 {
-			t.Fatalf("cloudflare_ai %s pagination = %#v, want page/per_page pagination", familyID, family.Pagination)
+			t.Fatalf("cloudflare_workers_ai %s pagination = %#v, want page/per_page pagination", familyID, family.Pagination)
 		}
 	}
 	gatewayProviderConfigs := catalogFamily(t, cloudflareAI.Definition.ResourceFamilies, "gateway_provider_configs")
 	if gatewayProviderConfigs.Path != "/accounts/${config.account_id}/ai-gateway/gateways/${config.gateway_id}/provider_configs" {
-		t.Fatalf("cloudflare_ai gateway_provider_configs path = %q, want gateway-scoped provider configs path", gatewayProviderConfigs.Path)
+		t.Fatalf("cloudflare_workers_ai gateway_provider_configs path = %q, want gateway-scoped provider configs path", gatewayProviderConfigs.Path)
 	}
 	elevenLabs := entries["elevenlabs"]
 	if elevenLabs.Definition.Auth.TokenHeader != "xi-api-key" {
@@ -207,8 +207,8 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 		{sourceID: "azure_openai", field: "resource_group", required: true},
 		{sourceID: "azure_openai", field: "account_name", required: true},
 		{sourceID: "azure_openai", field: "location", required: true},
-		{sourceID: "cloudflare_ai", field: "account_id", required: true},
-		{sourceID: "cloudflare_ai", field: "gateway_id", required: true},
+		{sourceID: "cloudflare_workers_ai", field: "account_id", required: true},
+		{sourceID: "cloudflare_workers_ai", field: "gateway_id", required: true},
 		{sourceID: "databricks", field: "workspace_url", required: true},
 		{sourceID: "elevenlabs", field: "service_account_user_id", required: true},
 		{sourceID: "google_vertex_ai", field: "project_id", required: true},

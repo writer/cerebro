@@ -1,0 +1,164 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects organization members, API keys, provider keys, and usage reports from OpenRouter and projects them into the Cerebro graph as users, secrets, and assets for model access, API key, usage, and workspace governance context.
+      display_name: OpenRouter
+      id: builtin-openrouter
+      resource_families:
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - organization_members
+              high_value: true
+              id: organization_members
+              support: partial
+              title: Organization members
+              type: app_entitlement
+          event:
+            kind: openrouter.organization_members
+            required_payload_fields:
+              - id
+            schema_ref: openrouter/organization_members/v1
+            urn_kind: openrouter_organization_members
+          id: organization_members
+          id_field: id
+          label: Organization members
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/organization/members
+          projection:
+            fields:
+              display_name: name
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: app_entitlement
+          event:
+            kind: openrouter.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: openrouter/api_keys/v1
+            urn_kind: openrouter_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/auth/keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - provider_keys
+              high_value: true
+              id: provider_keys
+              support: partial
+              title: Provider keys
+              type: app_entitlement
+          event:
+            kind: openrouter.provider_keys
+            required_payload_fields:
+              - id
+            schema_ref: openrouter/provider_keys/v1
+            urn_kind: openrouter_provider_keys
+          id: provider_keys
+          id_field: id
+          label: Provider keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/provider-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - usage_reports
+              high_value: true
+              id: usage_reports
+              support: partial
+              title: Usage reports
+              type: entity_family
+          event:
+            kind: openrouter.usage_reports
+            required_payload_fields:
+              - id
+            schema_ref: openrouter/usage_reports/v1
+            urn_kind: openrouter_usage_reports
+          id: usage_reports
+          id_field: id
+          label: Usage reports
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/usage
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: openrouter
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://openrouter.ai/api
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models
