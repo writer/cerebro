@@ -277,10 +277,17 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	if recordID == "" && firstAttribute(ctx.attrs, "record_urn") != "" {
 		recordID = firstAttribute(ctx.attrs, "record_urn")
 	}
+	gapURNs := grcPolicyLifecycleGapURNs(ctx)
+	if recordID == "" && len(gapURNs) != 0 {
+		recordID = grcDerivedID(strings.Join(gapURNs, ","), firstAttribute(ctx.attrs, "action", "lifecycle_action"), ctx.event.GetId())
+	}
 	if recordID == "" {
 		recordID = ctx.event.GetId()
 	}
 	recordURN := firstAttribute(ctx.attrs, "record_urn", "gap_id")
+	if recordURN == "" && len(gapURNs) != 0 {
+		recordURN = gapURNs[0]
+	}
 	if recordURN == "" {
 		recordURN = ctx.resourceURN("policy_lifecycle_subject", recordID)
 	}
@@ -292,8 +299,26 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	addGRCPolicyRiskScenarioReferenceLinks(ctx, recordURN)
 	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
+	for _, gapURN := range gapURNs {
+		if gapURN != recordURN {
+			ctx.addEventLink(eventURN, gapURN, relationAssociatedWith)
+		}
+	}
 	entities, links := ctx.done()
 	return entities, links, nil
+}
+
+func grcPolicyLifecycleGapURNs(ctx *grcProjectionContext) []string {
+	if ctx == nil {
+		return nil
+	}
+	var gapURNs []string
+	for _, value := range grcAttributeList(firstAttribute(ctx.attrs, "gap_ids")) {
+		if strings.Contains(value, ":gap:") {
+			gapURNs = append(gapURNs, value)
+		}
+	}
+	return gapURNs
 }
 
 func grcPolicyURN(tenantID string, provider string, policyID string) string {

@@ -1647,7 +1647,11 @@ func grcPolicyApplyGapEvent(gap *grcPolicyGovernanceGap, event grcPolicyLifecycl
 	gap.LastAction = event.Action
 	gap.LastActor = event.Actor
 	gap.DueAt = firstNonEmpty(event.Attributes["due_at"], event.Attributes["expires_at"], gap.DueAt)
-	if gap.Owner == "" {
+	if event.Action == "governance_gap.assign_owner" {
+		if owner := firstNonEmpty(event.Attributes["assigned_user_ids"], event.Actor); owner != "" {
+			gap.Owner = owner
+		}
+	} else if gap.Owner == "" {
 		gap.Owner = firstNonEmpty(event.Attributes["assigned_user_ids"], event.Actor)
 	}
 	gap.Trace = append(gap.Trace, grcPolicyGovernanceGapTrace{

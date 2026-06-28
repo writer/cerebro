@@ -214,6 +214,46 @@ func TestProjectGRCPolicyLifecycleEventPreservesGovernanceGapState(t *testing.T)
 	assertProjectedLink(t, state, operatorURN, relationActedOn, lifecycleEventURN)
 }
 
+func TestProjectGRCPolicyLifecycleEventLinksBulkGovernanceGaps(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "gap-event-bulk",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_lifecycle_event",
+		Attributes: map[string]string{
+			"provider":        "policyops",
+			"source_event_id": "gap-event-bulk",
+			"record_id":       "bulk-assign-owner",
+			"record_type":     "governance.gap",
+			"gap_ids":         "urn:document:secure-development:gap:owner,urn:document:secure-development:gap:controls",
+			"action":          "governance_gap.assign_owner",
+			"status":          "in_progress",
+			"actor_user_id":   "operator-1",
+			"policy_id":       "secure-development",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	lifecycleEventURN := "urn:cerebro:writer:policy_lifecycle_event:policyops:gap-event-bulk"
+	firstGapURN := "urn:document:secure-development:gap:owner"
+	secondGapURN := "urn:document:secure-development:gap:controls"
+	syntheticURN := "urn:cerebro:writer:policy_lifecycle_subject:policyops:bulk-assign-owner"
+	eventEntity := state.entities[lifecycleEventURN]
+	if eventEntity == nil || eventEntity.Attributes["gap_ids"] == "" {
+		t.Fatalf("lifecycle event entity = %#v, want gap_ids", eventEntity)
+	}
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, firstGapURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, secondGapURN)
+	if _, ok := state.links[lifecycleEventURN+"|"+relationAssociatedWith+"|"+syntheticURN]; ok {
+		t.Fatalf("unexpected synthetic lifecycle subject link to %s", syntheticURN)
+	}
+}
+
 func TestProjectGRCPolicyLifecycleEventLinksTargetPolicy(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

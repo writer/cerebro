@@ -272,10 +272,9 @@ func policyLifecycleRecordID(request ActionRequest, definition policyLifecycleAc
 	}
 	switch definition.idAttribute {
 	case "gap_id":
-		if len(request.GapIDs) > 0 {
-			return policyLifecycleSlug(strings.Join(request.GapIDs, "-"))
+		if len(request.GapIDs) == 0 {
+			return firstNonEmpty(request.GapID, request.RecordID, request.RecordURN)
 		}
-		return firstNonEmpty(request.GapID, request.RecordID, request.RecordURN)
 	case "template_id":
 		if request.TemplateID != "" {
 			return request.TemplateID
@@ -338,7 +337,11 @@ func policyLifecycleActionAttributes(request ActionRequest, definition policyLif
 	attrs["action"] = definition.ID
 	attrs["record_type"] = definition.RecordType
 	attrs["status"] = firstNonEmpty(request.Status, definition.Status)
-	attrs[definition.idAttribute] = firstNonEmpty(recordID, attrs[definition.idAttribute])
+	if definition.idAttribute == "gap_id" && len(request.GapIDs) > 0 {
+		attrs["record_id"] = firstNonEmpty(attrs["record_id"], recordID)
+	} else {
+		attrs[definition.idAttribute] = firstNonEmpty(recordID, attrs[definition.idAttribute])
+	}
 	if request.PolicyID != "" {
 		attrs["policy_id"] = request.PolicyID
 	}
