@@ -298,6 +298,16 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 		DocumentClass: "policy",
 		Status:        "draft",
 	}
+	missingStatusDocument := grcPolicyDocumentItem{
+		ID:              "statusless-document",
+		URN:             "urn:document:statusless-document",
+		Title:           "Statusless document",
+		DocumentClass:   "record",
+		NextReviewDueAt: "2026-12-31",
+		Policies: []grcPolicyDocumentRef{
+			{ID: "secure-development", URN: "urn:policy:secure-development", Title: "Secure Development Policy"},
+		},
+	}
 	openRisk := grcPolicyRiskRegisterItem{
 		ID:           "privileged-access",
 		URN:          "urn:risk:privileged-access",
@@ -313,7 +323,7 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 		ResidualRisk: "high",
 	}
 
-	gaps := grcPolicyGovernanceGaps([]grcPolicyDocumentItem{document, draftDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk})
+	gaps := grcPolicyGovernanceGaps([]grcPolicyDocumentItem{document, draftDocument, missingStatusDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk})
 
 	if !grcPolicyGapExists(gaps, "document", "secure-development", "Missing owner") ||
 		!grcPolicyGapExists(gaps, "document", "secure-development", "Missing review date") ||
@@ -332,12 +342,15 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 	if grcPolicyGapExists(gaps, "document", "draft-policy", "Missing owner") {
 		t.Fatalf("gaps = %+v, want draft document excluded", gaps)
 	}
+	if !grcPolicyGapExists(gaps, "document", "statusless-document", "Missing owner") {
+		t.Fatalf("gaps = %+v, want missing-status document included for metadata completeness", gaps)
+	}
 	if len(gaps) == 0 || gaps[0].Subject != "risk" || gaps[0].Severity != "high" {
 		t.Fatalf("first gap = %+v, want high risk gap first", gaps)
 	}
 
-	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, []grcPolicyRiskRegisterItem{openRisk, closedRisk}, nil, gaps, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
-	if summary.GovernanceGaps != len(gaps) || summary.PolicyDocumentGaps != 4 || summary.RiskRegisterGaps != 8 {
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document, missingStatusDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk}, nil, gaps, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if summary.GovernanceGaps != len(gaps) || summary.PolicyDocumentGaps != 5 || summary.RiskRegisterGaps != 8 {
 		t.Fatalf("summary = %+v, want governance gap rollups", summary)
 	}
 }

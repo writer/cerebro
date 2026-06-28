@@ -1259,6 +1259,7 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem) []grcPolicyGovernanceGap {
 	gaps := []grcPolicyGovernanceGap{}
 	for _, document := range documents {
+		// Drafts are still authored; no-status imports stay in scope for metadata gaps.
 		if grcPolicyDraftStatus(document.Status) {
 			continue
 		}
