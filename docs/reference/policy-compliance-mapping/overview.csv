@@ -12,11 +12,15 @@ non-policy detections,86
 finding-control rows,10196
 finding-tag rows,38434
 source-coverage rows,3415
+finding compliance review rows,1586
 unique finding review tags,1569
 detections missing catalog tags,0
 detections missing control refs,0
-detections missing audit depth,86
+detections missing audit depth,0
 detections missing source coverage refs,586
+detections source-backed,17
+detections partial source-backed,983
+detections control-only,586
 
 evidence mode,rules
 cel,992
@@ -183,3 +187,42 @@ CCPA,1
 CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 NIST SP 800-177,1
+
+finding audit domain,detections
+identity,461
+github,307
+aws,142
+vulnerability,107
+cerebro,81
+gcp,59
+kubernetes,58
+ai,56
+azure,54
+endpoint,27
+api,22
+cicd,19
+compliance,19
+grc,17
+m365,15
+secrets,15
+container,13
+incident_response,12
+database,9
+org,9
+network,8
+pci,8
+backup,7
+certificate,7
+runtime,7
+cloud,6
+salesforce,6
+sentinelone,6
+collaboration,5
+hipaa,5
+dspm,4
+vendor,4
+hubspot,3
+stripe,3
+integration,2
+zendesk,2
+okta,1
