@@ -1,0 +1,598 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: username
+      label: Username
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: project_slug
+      label: Project Slug
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: analysis_slug
+      label: Analysis Slug
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: list_type
+      label: List Type
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: medium
+      label: Medium
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: source
+      label: Source
+      required: true
+    description: Botify Saas API
+    display_name: Botify API
+    id: builtin_catalog-botify_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - filter
+        id: filter
+        support: partial
+        title: Filter
+        type: entity_family
+      event:
+        kind: botify_com.filter
+        required_payload_fields:
+        - name
+        schema_ref: botify_com/filter/v1
+        urn_kind: botify_filter
+      event_kind: filter
+      id: filter
+      id_field: name
+      label: Filter
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/projects/${config.username}/${config.project_slug}/filters"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: filter
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - export
+        id: export
+        support: partial
+        title: Export
+        type: entity_family
+      event:
+        kind: botify_com.export
+        required_payload_fields:
+        - area
+        schema_ref: botify_com/export/v1
+        urn_kind: botify_export
+      event_kind: export
+      id: export
+      id_field: area
+      label: Export
+      list_key: results
+      method: GET
+      name_field: area
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/urls/export"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: area
+          name: area
+          resource_id: area
+          resource_name: area
+          resource_type: export
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - out_of_config
+        id: out_of_config
+        support: partial
+        title: Out Of Config
+        type: entity_family
+      event:
+        kind: botify_com.out_of_config
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/out_of_config/v1
+        urn_kind: botify_out_of_config
+      event_kind: out_of_config
+      id: out_of_config
+      id_field: id
+      label: Out Of Config
+      list_key: results
+      method: GET
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/sitemaps/samples/out_of_config"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: out_of_config
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - sitemap_only
+        id: sitemap_only
+        support: partial
+        title: Sitemap Only
+        type: entity_family
+      event:
+        kind: botify_com.sitemap_only
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/sitemap_only/v1
+        urn_kind: botify_sitemap_only
+      event_kind: sitemap_only
+      id: sitemap_only
+      id_field: id
+      label: Sitemap Only
+      list_key: results
+      method: GET
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/sitemaps/samples/sitemap_only"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: sitemap_only
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - report
+        high_value: true
+        id: report
+        support: partial
+        title: Report
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: botify_com.report
+        required_payload_fields:
+        - error
+        schema_ref: botify_com/report/v1
+        urn_kind: botify_report
+      event_kind: report
+      id: report
+      id_field: error
+      label: Report
+      list_key: errors
+      method: GET
+      name_field: url
+      pagination:
+        type: none
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/sitemaps/report"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: error
+          name: url
+          resource_id: error
+          resource_name: url
+          resource_type: report
+        template: asset
+      record_selector: "$.errors[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - project
+        id: project
+        support: partial
+        title: Project
+        type: entity_family
+      event:
+        kind: botify_com.project
+        required_payload_fields:
+        - slug
+        schema_ref: botify_com/project/v1
+        urn_kind: botify_project
+      event_kind: project
+      id: project
+      id_field: slug
+      label: Project
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/projects/${config.username}"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: slug
+          name: name
+          resource_id: slug
+          resource_name: name
+          resource_type: project
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - analyses
+        id: analyses
+        support: partial
+        title: Analyses
+        type: entity_family
+      event:
+        kind: botify_com.analyses
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/analyses/v1
+        urn_kind: botify_analyses
+      event_kind: analyses
+      id: analyses
+      id_field: id
+      label: Analyses
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: analyses
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - url
+        id: url
+        support: partial
+        title: Url
+        type: entity_family
+      event:
+        kind: botify_com.url
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/url/v1
+        urn_kind: botify_url
+      event_kind: url
+      id: url
+      id_field: id
+      label: Url
+      method: GET
+      pagination:
+        type: none
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/crawl_statistics/urls/${config.list_type}"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: url
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - orphan_url
+        id: orphan_url
+        support: partial
+        title: Orphan Url
+        type: entity_family
+      event:
+        kind: botify_com.orphan_url
+        required_payload_fields:
+        - url
+        schema_ref: botify_com/orphan_url/v1
+        urn_kind: botify_orphan_url
+      event_kind: orphan_url
+      id: orphan_url
+      id_field: url
+      label: Orphan Url
+      list_key: results
+      method: GET
+      name_field: url
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/ganalytics/orphan_urls/${config.medium}/${config.source}"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: url
+          name: url
+          resource_id: url
+          resource_name: url
+          resource_type: orphan_url
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - datamodel
+        id: datamodel
+        support: partial
+        title: Datamodel
+        type: entity_family
+      event:
+        kind: botify_com.datamodel
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/datamodel/v1
+        urn_kind: botify_datamodel
+      event_kind: datamodel
+      id: datamodel
+      id_field: id
+      label: Datamodel
+      list_key: fields
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/urls/datamodel"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: datamodel
+        template: asset
+      record_selector: "$.fields[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - domain
+        id: domain
+        support: partial
+        title: Domain
+        type: entity_family
+      event:
+        kind: botify_com.domain
+        required_payload_fields:
+        - domain
+        schema_ref: botify_com/domain/v1
+        urn_kind: botify_domain
+      event_kind: domain
+      id: domain
+      id_field: domain
+      label: Domain
+      list_key: results
+      method: GET
+      name_field: domain
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/top_domains/domains"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: domain
+          name: domain
+          resource_id: domain
+          resource_name: domain
+          resource_type: domain
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - percentile
+        id: percentile
+        support: partial
+        title: Percentile
+        type: entity_family
+      event:
+        kind: botify_com.percentile
+        required_payload_fields:
+        - id
+        schema_ref: botify_com/percentile/v1
+        urn_kind: botify_percentile
+      event_kind: percentile
+      id: percentile
+      id_field: id
+      label: Percentile
+      list_key: percentiles
+      method: GET
+      name_field: avg
+      pagination:
+        type: none
+      path: "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/links/percentiles"
+      permissions_needed:
+      - DjangoRestToken
+      projection:
+        fields:
+          id: id
+          name: avg
+          resource_id: id
+          resource_name: avg
+          resource_type: percentile
+        template: asset
+      record_selector: "$.percentiles[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - families:
+      - filter
+      id: filter
+      label: Filter
+    - families:
+      - export
+      id: export
+      label: Export
+    - families:
+      - out_of_config
+      id: out_of_config
+      label: Out Of Config
+    - families:
+      - sitemap_only
+      id: sitemap_only
+      label: Sitemap Only
+    - default_enabled: true
+      families:
+      - report
+      id: report
+      label: Report
+    - families:
+      - project
+      id: project
+      label: Project
+    - families:
+      - analyses
+      id: analyses
+      label: Analyses
+    - families:
+      - url
+      id: url
+      label: Url
+    - families:
+      - orphan_url
+      id: orphan_url
+      label: Orphan Url
+    - families:
+      - datamodel
+      id: datamodel
+      label: Datamodel
+    - families:
+      - domain
+      id: domain
+      label: Domain
+    - families:
+      - percentile
+      id: percentile
+      label: Percentile
+    source_id: botify_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.botify.com/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/projects/${config.username}/${config.project_slug}/filters"

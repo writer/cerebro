@@ -1,0 +1,202 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: WinSMS RESTful API
+    display_name: WinSMS
+    id: builtin_catalog-winsms
+    resource_families:
+    - coverage:
+      - families:
+        - subaccount
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: subaccount
+        support: partial
+        title: Subaccount
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: winsms.subaccount
+        required_payload_fields:
+        - accountNumber
+        schema_ref: winsms/subaccount/v1
+        urn_kind: winsms_subaccount
+      event_kind: subaccount
+      id: subaccount
+      id_field: accountNumber
+      label: Subaccount
+      list_key: subAccounts
+      method: GET
+      name_field: accountNumber
+      pagination:
+        type: none
+      path: "/subaccounts"
+      permissions_needed:
+      - APIKeyHeader
+      projection:
+        fields:
+          id: accountNumber
+          name: accountNumber
+          provider_id: accountNumber
+        template: identity_user
+      record_selector: "$.subAccounts[*]"
+    - coverage:
+      - families:
+        - incoming
+        id: incoming
+        support: partial
+        title: Incoming
+        type: entity_family
+      event:
+        kind: winsms.incoming
+        required_payload_fields:
+        - incomingApiMessageId
+        schema_ref: winsms/incoming/v1
+        urn_kind: winsms_incoming
+      event_kind: incoming
+      id: incoming
+      id_field: incomingApiMessageId
+      label: Incoming
+      list_key: shortcodeMessages
+      method: GET
+      name_field: incomingApiMessageId
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/shortcode/incoming"
+      permissions_needed:
+      - APIKeyHeader
+      projection:
+        fields:
+          id: incomingApiMessageId
+          name: incomingApiMessageId
+          resource_id: incomingApiMessageId
+          resource_name: incomingApiMessageId
+          resource_type: incoming
+        template: asset
+      record_selector: "$.shortcodeMessages[*]"
+    - coverage:
+      - families:
+        - sms_incoming
+        id: sms_incoming
+        support: partial
+        title: Sms Incoming
+        type: entity_family
+      event:
+        kind: winsms.sms_incoming
+        required_payload_fields:
+        - incomingApiMessageId
+        schema_ref: winsms/sms_incoming/v1
+        urn_kind: winsms_sms_incoming
+      event_kind: sms_incoming
+      id: sms_incoming
+      id_field: incomingApiMessageId
+      label: Sms Incoming
+      list_key: incomingMessages
+      method: GET
+      name_field: incomingApiMessageId
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/sms/incoming"
+      permissions_needed:
+      - APIKeyHeader
+      projection:
+        fields:
+          id: incomingApiMessageId
+          name: incomingApiMessageId
+          resource_id: incomingApiMessageId
+          resource_name: incomingApiMessageId
+          resource_type: incoming
+        template: asset
+      record_selector: "$.incomingMessages[*]"
+    - coverage:
+      - families:
+        - optout
+        id: optout
+        support: partial
+        title: Optout
+        type: entity_family
+      event:
+        kind: winsms.optout
+        required_payload_fields:
+        - incomingApiMessageId
+        schema_ref: winsms/optout/v1
+        urn_kind: winsms_optout
+      event_kind: optout
+      id: optout
+      id_field: incomingApiMessageId
+      label: Optout
+      list_key: incomingOptoutMessages
+      method: GET
+      name_field: incomingApiMessageId
+      pagination:
+        type: none
+      path: "/sms/incoming/optout"
+      permissions_needed:
+      - APIKeyHeader
+      projection:
+        fields:
+          id: incomingApiMessageId
+          name: incomingApiMessageId
+          resource_id: incomingApiMessageId
+          resource_name: incomingApiMessageId
+          resource_type: optout
+        template: asset
+      record_selector: "$.incomingOptoutMessages[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - subaccount
+      id: subaccount
+      label: Subaccount
+    - families:
+      - incoming
+      id: incoming
+      label: Incoming
+    - families:
+      - sms_incoming
+      id: sms_incoming
+      label: Sms Incoming
+    - families:
+      - optout
+      id: optout
+      label: Optout
+    source_id: winsms
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://www.winsms.co.za/api/rest/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/subaccounts"

@@ -1,0 +1,231 @@
+---
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-drone_cloud
+    tenant_id: builtin_catalog
+    source_id: drone_cloud
+    display_name: Drone Cloud
+    description: Drone Cloud connector definition for high-value enterprise SaaS records.
+    categories:
+    - saas
+    - devops_ci_cd
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        label: Bearer token
+        secret: true
+        reference_only: true
+        required: true
+      requires_references: true
+    config_fields:
+    - key: base_url
+      label: API base URL
+      required: true
+      help: Tenant or regional API base URL.
+    transport:
+      base_url: "${config.base_url}"
+      verification:
+        method: GET
+        path: "/v1/me"
+        expect_status:
+        - 200
+    ingest:
+      mode: pull
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: drone_cloud.users
+        schema_ref: drone_cloud/users/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: identity_user
+        fields:
+          user_id: id
+          display_name: name
+          email: email
+          status: status
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: projects
+      label: Projects
+      path: "/v1/projects"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: drone_cloud.projects
+        schema_ref: drone_cloud/projects/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: asset
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: project
+      coverage:
+      - id: projects
+        type: entity_family
+        title: Projects
+        families:
+        - projects
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: repositories
+      label: Repositories
+      path: "/v1/repositories"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: drone_cloud.repositories
+        schema_ref: drone_cloud/repositories/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: repository
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: repository
+      coverage:
+      - id: repositories
+        type: entity_family
+        title: Repositories
+        families:
+        - repositories
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: deployments
+      label: Deployments
+      path: "/v1/deployments"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: drone_cloud.deployments
+        schema_ref: drone_cloud/deployments/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: deployment
+        fields:
+          deployment_id: id
+          deployment_name: name
+          deployment_status: status
+          resource_id: resource_id
+      coverage:
+      - id: deployments
+        type: deployment_state
+        title: Deployments
+        families:
+        - deployments
+        support: partial
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - change_management
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit_events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: drone_cloud.audit_events
+        schema_ref: drone_cloud/audit_events/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: audit_event
+        fields:
+          id: id
+          event_type: event_type
+          actor_id: actor_id
+          actor_email: actor_email
+          resource_id: resource_id
+          resource_type: resource_type
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true

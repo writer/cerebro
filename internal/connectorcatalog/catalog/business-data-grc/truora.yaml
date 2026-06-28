@@ -1,0 +1,205 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "**NOTE:** This is a preview of the API and it is not considered stable since refinements are still being made."
+    display_name: Truora
+    id: builtin_catalog-truora
+    resource_families:
+    - coverage:
+      - families:
+        - hook
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: hook
+        support: partial
+        title: Hook
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: truora.hook
+        required_payload_fields:
+        - actions
+        schema_ref: truora/hook/v1
+        urn_kind: truora_hook
+      event_kind: hook
+      id: hook
+      id_field: actions
+      label: Hook
+      list_key: hooks
+      method: GET
+      name_field: actions
+      pagination:
+        type: none
+      path: "/v1/hooks"
+      permissions_needed:
+      - api-key
+      projection:
+        fields:
+          id: actions
+          name: actions
+          resource_id: actions
+          resource_name: actions
+          resource_type: hook
+        template: asset
+      record_selector: "$.hooks[*]"
+    - coverage:
+      - families:
+        - report
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: report
+        support: partial
+        title: Report
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: truora.report
+        required_payload_fields:
+        - id
+        schema_ref: truora/report/v1
+        urn_kind: truora_report
+      event_kind: report
+      id: report
+      id_field: id
+      label: Report
+      list_key: reports
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/reports"
+      permissions_needed:
+      - api-key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: report
+        template: asset
+      record_selector: "$.reports[*]"
+    - coverage:
+      - families:
+        - check
+        id: check
+        support: partial
+        title: Check
+        type: entity_family
+      event:
+        kind: truora.check
+        required_payload_fields:
+        - birth_certificate
+        schema_ref: truora/check/v1
+        urn_kind: truora_check
+      event_kind: check
+      id: check
+      id_field: birth_certificate
+      label: Check
+      list_key: checks
+      method: GET
+      name_field: summary
+      pagination:
+        type: none
+      path: "/v1/checks"
+      permissions_needed:
+      - api-key
+      projection:
+        fields:
+          id: birth_certificate
+          name: summary
+          resource_id: birth_certificate
+          resource_name: summary
+          resource_type: check
+        template: asset
+      record_selector: "$.checks[*]"
+    - coverage:
+      - families:
+        - config
+        id: config
+        support: partial
+        title: Config
+        type: entity_family
+      event:
+        kind: truora.config
+        required_payload_fields:
+        - ScoreConfigByCountry
+        schema_ref: truora/config/v1
+        urn_kind: truora_config
+      event_kind: config
+      id: config
+      id_field: ScoreConfigByCountry
+      label: Config
+      list_key: score_configs
+      method: GET
+      name_field: ScoreConfigByCountry
+      pagination:
+        type: none
+      path: "/v1/config"
+      permissions_needed:
+      - api-key
+      projection:
+        fields:
+          id: ScoreConfigByCountry
+          name: ScoreConfigByCountry
+          resource_id: ScoreConfigByCountry
+          resource_name: ScoreConfigByCountry
+          resource_type: config
+        template: asset
+      record_selector: "$.score_configs[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - hook
+      id: hook
+      label: Hook
+    - default_enabled: true
+      families:
+      - report
+      id: report
+      label: Report
+    - families:
+      - check
+      id: check
+      label: Check
+    - families:
+      - config
+      id: config
+      label: Config
+    source_id: truora
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.truora.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/hooks"

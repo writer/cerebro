@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: employerid
+      label: Employerid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: employmentid
+      label: Employmentid
+      required: true
+    description: <span style="color:green">**Is this your first time here? Please check out our [introduction to Loket (API)](./Introduction)**</span>
+    display_name: Loket
+    id: builtin_catalog-loket
+    resource_families:
+    - coverage:
+      - families:
+        - integration
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Integration
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: loket.integration
+        required_payload_fields:
+        - id
+        schema_ref: loket/integration/v1
+        urn_kind: loket_integration
+      event_kind: integration
+      id: integration
+      id_field: id
+      label: Integration
+      list_key: messages
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/users/integrations"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: audit_event
+      record_selector: "$.messages[*]"
+    - coverage:
+      - families:
+        - actualorganizationalentity
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: actualorganizationalentity
+        support: partial
+        title: Actualorganizationalentity
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: loket.actualorganizationalentity
+        required_payload_fields:
+        - id
+        schema_ref: loket/actualorganizationalentity/v1
+        urn_kind: loket_actualorganizationalentity
+      event_kind: actualorganizationalentity
+      id: actualorganizationalentity
+      id_field: id
+      label: Actualorganizationalentity
+      list_key: messages
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/providers/employers/${config.employerid}/actualorganizationalentities"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_group
+      record_selector: "$.messages[*]"
+    - coverage:
+      - families:
+        - emailidentity
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: emailidentity
+        support: partial
+        title: Emailidentity
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: loket.emailidentity
+        required_payload_fields:
+        - id
+        schema_ref: loket/emailidentity/v1
+        urn_kind: loket_emailidentity
+      event_kind: emailidentity
+      id: emailidentity
+      id_field: id
+      label: Emailidentity
+      list_key: messages
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/providers/employers/${config.employerid}/emailidentities"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_user
+      record_selector: "$.messages[*]"
+    - coverage:
+      - families:
+        - customnotification
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Customnotification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: loket.customnotification
+        required_payload_fields:
+        - id
+        schema_ref: loket/customnotification/v1
+        urn_kind: loket_customnotification
+      event_kind: customnotification
+      id: customnotification
+      id_field: id
+      label: Customnotification
+      list_key: messages
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/providers/employers/employees/employments/${config.employmentid}/customnotifications"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: description
+          alert_severity: code
+          alert_status: code
+          id: id
+          name: description
+        template: alert
+      record_selector: "$.messages[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - integration
+      id: integration
+      label: Integration
+    - default_enabled: true
+      families:
+      - actualorganizationalentity
+      id: actualorganizationalentity
+      label: Actualorganizationalentity
+    - default_enabled: true
+      families:
+      - emailidentity
+      id: emailidentity
+      label: Emailidentity
+    - default_enabled: true
+      families:
+      - customnotification
+      id: customnotification
+      label: Customnotification
+    source_id: loket
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.loket.nl/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/users/integrations"

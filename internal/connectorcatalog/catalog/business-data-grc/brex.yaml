@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-brex
+    tenant_id: builtin_catalog
+    source_id: brex
+    display_name: Brex
+    description: Brex connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - finance
+    - identity
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.brex.com
+      verification:
+        method: GET
+        path: "/v2/users"
+        expect_status:
+        - 200
+    resource_families:
+    - id: cards
+      label: Cards
+      path: "/v2/cards"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: brex.cards
+        schema_ref: brex/cards/v1
+      projection:
+        template: asset
+      coverage:
+      - id: cards
+        type: entity_family
+        title: Cards
+        families:
+        - cards
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: users
+      label: Users
+      path: "/v2/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: brex.users
+        schema_ref: brex/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: brex.audit_events
+        schema_ref: brex/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

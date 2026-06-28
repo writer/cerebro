@@ -1,0 +1,212 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: jobid
+      label: Jobid
+      required: true
+    description: AppVeyor is a hosted continuous integration service which runs on Microsoft Windows. The AppVeyor REST API provides a RESTful way to interact with the AppVeyor service. This includes managing projects, builds, deployments, and the teams that build them.
+    display_name: AppVeyor
+    id: builtin_catalog-appveyor
+    resource_families:
+    - coverage:
+      - families:
+        - role
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: role
+        support: partial
+        title: Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: appveyor.role
+        required_payload_fields:
+        - name
+        schema_ref: appveyor/role/v1
+        urn_kind: appveyor_role
+      event_kind: role
+      id: role
+      id_field: name
+      label: Role
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/roles"
+      permissions_needed:
+      - apiToken
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: appveyor.user
+        required_payload_fields:
+        - email
+        schema_ref: appveyor/user/v1
+        urn_kind: appveyor_user
+      event_kind: user
+      id: user
+      id_field: email
+      label: User
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/users"
+      permissions_needed:
+      - apiToken
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: identity_user
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - password
+    - coverage:
+      - families:
+        - artifact
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - secure_delivery
+        id: deployments
+        support: partial
+        title: Artifact
+        type: deployment_state
+      default_enabled: true
+      event:
+        kind: appveyor.artifact
+        required_payload_fields:
+        - name
+        schema_ref: appveyor/artifact/v1
+        urn_kind: appveyor_artifact
+      event_kind: artifact
+      id: artifact
+      id_field: name
+      label: Artifact
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/buildjobs/${config.jobid}/artifacts"
+      projection:
+        fields:
+          deployment_environment: created
+          deployment_id: name
+          deployment_name: name
+          deployment_status: created
+          id: name
+          name: name
+        template: deployment
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - collaborator
+        id: collaborator
+        support: partial
+        title: Collaborator
+        type: entity_family
+      event:
+        kind: appveyor.collaborator
+        required_payload_fields:
+        - email
+        schema_ref: appveyor/collaborator/v1
+        urn_kind: appveyor_collaborator
+      event_kind: collaborator
+      id: collaborator
+      id_field: email
+      label: Collaborator
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/collaborators"
+      permissions_needed:
+      - apiToken
+      projection:
+        fields:
+          id: email
+          name: email
+          resource_id: email
+          resource_name: email
+          resource_type: collaborator
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - password
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - role
+      id: role
+      label: Role
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - artifact
+      id: artifact
+      label: Artifact
+    - families:
+      - collaborator
+      id: collaborator
+      label: Collaborator
+    source_id: appveyor
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://ci.appveyor.com/api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/roles"

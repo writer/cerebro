@@ -1,0 +1,558 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: workgroup_id
+      label: Workgroup Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: client_workgroup_id
+      label: Client Workgroup Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: project_id
+      label: Project Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: user_id
+      label: User Id
+      required: true
+    description: Full description of Noosh API
+    display_name: Noosh API application
+    id: builtin_catalog-noosh_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - workgroup
+        high_value: true
+        id: workgroup
+        support: partial
+        title: Workgroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.workgroup
+        required_payload_fields:
+        - is_default
+        schema_ref: noosh_com/workgroup/v1
+        urn_kind: noosh_workgroup
+      event_kind: workgroup
+      id: workgroup
+      id_field: is_default
+      label: Workgroup
+      list_key: results
+      method: GET
+      name_field: is_default
+      pagination:
+        type: none
+      path: "/v1/workgroups"
+      projection:
+        fields:
+          id: is_default
+          name: is_default
+          provider_id: is_default
+        template: identity_group
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - projecthomeuserfield
+        high_value: true
+        id: projecthomeuserfield
+        support: partial
+        title: Projecthomeuserfield
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.projecthomeuserfield
+        required_payload_fields:
+        - is_required
+        schema_ref: noosh_com/projecthomeuserfield/v1
+        urn_kind: noosh_projecthomeuserfield
+      event_kind: projecthomeuserfield
+      id: projecthomeuserfield
+      id_field: is_required
+      label: Projecthomeuserfield
+      list_key: results
+      method: GET
+      name_field: label
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/projectHomeUserFields"
+      projection:
+        fields:
+          id: is_required
+          name: label
+          provider_id: is_required
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - automaticinvitation
+        high_value: true
+        id: automaticinvitation
+        support: partial
+        title: Automaticinvitation
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.automaticinvitation
+        required_payload_fields:
+        - automatic_invitation_type_name
+        schema_ref: noosh_com/automaticinvitation/v1
+        urn_kind: noosh_automaticinvitation
+      event_kind: automaticinvitation
+      id: automaticinvitation
+      id_field: automatic_invitation_type_name
+      label: Automaticinvitation
+      list_key: results
+      method: GET
+      name_field: automatic_invitation_type_name
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/automaticInvitations"
+      projection:
+        fields:
+          id: automatic_invitation_type_name
+          name: automatic_invitation_type_name
+          resource_id: automatic_invitation_type_name
+          resource_name: automatic_invitation_type_name
+          resource_type: automaticinvitation
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - clientworkgroup
+        high_value: true
+        id: clientworkgroup
+        support: partial
+        title: Clientworkgroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.clientworkgroup
+        required_payload_fields:
+        - client_ac_workgroup_id
+        schema_ref: noosh_com/clientworkgroup/v1
+        urn_kind: noosh_clientworkgroup
+      event_kind: clientworkgroup
+      id: clientworkgroup
+      id_field: client_ac_workgroup_id
+      label: Clientworkgroup
+      list_key: results
+      method: GET
+      name_field: client_ac_workgroup_id
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/clientWorkgroups"
+      projection:
+        fields:
+          id: client_ac_workgroup_id
+          name: client_ac_workgroup_id
+          provider_id: client_ac_workgroup_id
+        template: identity_group
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - supplierworkgroup
+        high_value: true
+        id: supplierworkgroup
+        support: partial
+        title: Supplierworkgroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.supplierworkgroup
+        required_payload_fields:
+        - bu_supplier_workgroup_id
+        schema_ref: noosh_com/supplierworkgroup/v1
+        urn_kind: noosh_supplierworkgroup
+      event_kind: supplierworkgroup
+      id: supplierworkgroup
+      id_field: bu_supplier_workgroup_id
+      label: Supplierworkgroup
+      list_key: result
+      method: GET
+      name_field: bu_supplier_workgroup_id
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/supplierWorkgroups"
+      projection:
+        fields:
+          id: bu_supplier_workgroup_id
+          name: bu_supplier_workgroup_id
+          provider_id: bu_supplier_workgroup_id
+        template: identity_group
+      record_selector: "$.result[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - teamtemplate
+        high_value: true
+        id: teamtemplate
+        support: partial
+        title: Teamtemplate
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.teamtemplate
+        required_payload_fields:
+        - team_template_id
+        schema_ref: noosh_com/teamtemplate/v1
+        urn_kind: noosh_teamtemplate
+      event_kind: teamtemplate
+      id: teamtemplate
+      id_field: team_template_id
+      label: Teamtemplate
+      list_key: results
+      method: GET
+      name_field: team_template_id
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/teamTemplates"
+      projection:
+        fields:
+          id: team_template_id
+          name: team_template_id
+          provider_id: team_template_id
+        template: identity_group
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - workgroupmember
+        high_value: true
+        id: workgroupmember
+        support: partial
+        title: Workgroupmember
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.workgroupmember
+        required_payload_fields:
+        - email
+        schema_ref: noosh_com/workgroupmember/v1
+        urn_kind: noosh_workgroupmember
+      event_kind: workgroupmember
+      id: workgroupmember
+      id_field: email
+      label: Workgroupmember
+      list_key: results
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/workgroupMembers"
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - clientworkgroups_projecthomeuserfield
+        high_value: true
+        id: clientworkgroups_projecthomeuserfield
+        support: partial
+        title: Clientworkgroups Projecthomeuserfield
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.clientworkgroups_projecthomeuserfield
+        required_payload_fields:
+        - is_required
+        schema_ref: noosh_com/clientworkgroups_projecthomeuserfield/v1
+        urn_kind: noosh_clientworkgroups_projecthomeuserfield
+      event_kind: clientworkgroups_projecthomeuserfield
+      id: clientworkgroups_projecthomeuserfield
+      id_field: is_required
+      label: Clientworkgroups Projecthomeuserfield
+      list_key: results
+      method: GET
+      name_field: label
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/clientWorkgroups/${config.client_workgroup_id}/projectHomeUserFields"
+      projection:
+        fields:
+          id: is_required
+          name: label
+          provider_id: is_required
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - teammember
+        high_value: true
+        id: teammember
+        support: partial
+        title: Teammember
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.teammember
+        required_payload_fields:
+        - name
+        schema_ref: noosh_com/teammember/v1
+        urn_kind: noosh_teammember
+      event_kind: teammember
+      id: teammember
+      id_field: name
+      label: Teammember
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/projects/${config.project_id}/teammembers"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - teammembersofclientproject
+        high_value: true
+        id: teammembersofclientproject
+        support: partial
+        title: Teammembersofclientproject
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.teammembersofclientproject
+        required_payload_fields:
+        - name
+        schema_ref: noosh_com/teammembersofclientproject/v1
+        urn_kind: noosh_teammembersofclientproject
+      event_kind: teammembersofclientproject
+      id: teammembersofclientproject
+      id_field: name
+      label: Teammembersofclientproject
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/projects/${config.project_id}/teamMembersOfClientProject"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - memberrole
+        high_value: true
+        id: memberrole
+        support: partial
+        title: Memberrole
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.memberrole
+        required_payload_fields:
+        - role_id
+        schema_ref: noosh_com/memberrole/v1
+        urn_kind: noosh_memberrole
+      event_kind: memberrole
+      id: memberrole
+      id_field: role_id
+      label: Memberrole
+      list_key: result
+      method: GET
+      name_field: role_id
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/projects/${config.project_id}/memberroles/${config.user_id}"
+      projection:
+        fields:
+          id: role_id
+          name: role_id
+          provider_id: role_id
+        template: identity_user
+      record_selector: "$.result[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - billingrecipient
+        high_value: true
+        id: billingrecipient
+        support: partial
+        title: Billingrecipient
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: noosh_com.billingrecipient
+        required_payload_fields:
+        - email
+        schema_ref: noosh_com/billingrecipient/v1
+        urn_kind: noosh_billingrecipient
+      event_kind: billingrecipient
+      id: billingrecipient
+      id_field: email
+      label: Billingrecipient
+      list_key: results
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/v1/workgroups/${config.workgroup_id}/billingRecipients"
+      projection:
+        fields:
+          id: email
+          name: email
+          resource_id: email
+          resource_name: email
+          resource_type: billingrecipient
+        template: asset
+      record_selector: "$.results[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - workgroup
+      id: workgroup
+      label: Workgroup
+    - default_enabled: true
+      families:
+      - projecthomeuserfield
+      id: projecthomeuserfield
+      label: Projecthomeuserfield
+    - default_enabled: true
+      families:
+      - automaticinvitation
+      id: automaticinvitation
+      label: Automaticinvitation
+    - default_enabled: true
+      families:
+      - clientworkgroup
+      id: clientworkgroup
+      label: Clientworkgroup
+    - default_enabled: true
+      families:
+      - supplierworkgroup
+      id: supplierworkgroup
+      label: Supplierworkgroup
+    - default_enabled: true
+      families:
+      - teamtemplate
+      id: teamtemplate
+      label: Teamtemplate
+    - default_enabled: true
+      families:
+      - workgroupmember
+      id: workgroupmember
+      label: Workgroupmember
+    - default_enabled: true
+      families:
+      - clientworkgroups_projecthomeuserfield
+      id: clientworkgroups_projecthomeuserfield
+      label: Clientworkgroups Projecthomeuserfield
+    - default_enabled: true
+      families:
+      - teammember
+      id: teammember
+      label: Teammember
+    - default_enabled: true
+      families:
+      - teammembersofclientproject
+      id: teammembersofclientproject
+      label: Teammembersofclientproject
+    - default_enabled: true
+      families:
+      - memberrole
+      id: memberrole
+      label: Memberrole
+    - default_enabled: true
+      families:
+      - billingrecipient
+      id: billingrecipient
+      label: Billingrecipient
+    source_id: noosh_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://example.com:80/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/workgroups"

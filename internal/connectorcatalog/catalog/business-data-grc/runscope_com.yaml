@@ -1,0 +1,425 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: https://www.runscope.com/signin/oauth/authorize
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      requires_references: true
+      scopes:
+      - account:email
+      - api:read
+      - bucket:auth_token
+      - bucket:write
+      - message:write
+      - team:read
+      - test:read
+      - test:write
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: https://www.runscope.com/signin/oauth/access_token
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: teamid
+      label: Teamid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: bucketkey
+      label: Bucketkey
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: testid
+      label: Testid
+      required: true
+    description: Manage Runscope programmatically.
+    display_name: Runscope API
+    id: builtin_catalog-runscope_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - people
+        high_value: true
+        id: people
+        support: partial
+        title: People
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: runscope_com.people
+        required_payload_fields:
+        - id
+        schema_ref: runscope_com/people/v1
+        urn_kind: runscope_people
+      event_kind: people
+      id: people
+      id_field: id
+      label: People
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/teams/${config.teamid}/people"
+      permissions_needed:
+      - account:email
+      - api:read
+      - team:read
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - test
+        high_value: true
+        id: test
+        support: partial
+        title: Test
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: runscope_com.test
+        required_payload_fields:
+        - id
+        schema_ref: runscope_com/test/v1
+        urn_kind: runscope_test
+      event_kind: test
+      id: test
+      id_field: id
+      label: Test
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/buckets/${config.bucketkey}/tests"
+      permissions_needed:
+      - api:read
+      - test:read
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: test
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - bucket
+        id: bucket
+        support: partial
+        title: Bucket
+        type: entity_family
+      event:
+        kind: runscope_com.bucket
+        required_payload_fields:
+        - key
+        schema_ref: runscope_com/bucket/v1
+        urn_kind: runscope_bucket
+      event_kind: bucket
+      id: bucket
+      id_field: key
+      label: Bucket
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/buckets"
+      permissions_needed:
+      - api:read
+      - bucket:auth_token
+      projection:
+        fields:
+          id: key
+          name: name
+          resource_id: key
+          resource_name: name
+          resource_type: bucket
+        template: asset
+      record_selector: "$.data[*]"
+      sensitive_payload_paths:
+      - auth_token
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - agent
+        id: agent
+        support: partial
+        title: Agent
+        type: entity_family
+      event:
+        kind: runscope_com.agent
+        required_payload_fields:
+        - name
+        schema_ref: runscope_com/agent/v1
+        urn_kind: runscope_agent
+      event_kind: agent
+      id: agent
+      id_field: name
+      label: Agent
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/teams/${config.teamid}/agents"
+      permissions_needed:
+      - api:read
+      - team:read
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: agent
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - integration
+        id: integration
+        support: partial
+        title: Integration
+        type: entity_family
+      event:
+        kind: runscope_com.integration
+        required_payload_fields:
+        - id
+        schema_ref: runscope_com/integration/v1
+        urn_kind: runscope_integration
+      event_kind: integration
+      id: integration
+      id_field: id
+      label: Integration
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/teams/${config.teamid}/integrations"
+      permissions_needed:
+      - api:read
+      - team:read
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: integration
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - environment
+        high_value: true
+        id: environment
+        support: partial
+        title: Environment
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: runscope_com.environment
+        required_payload_fields:
+        - id
+        schema_ref: runscope_com/environment/v1
+        urn_kind: runscope_environment
+      event_kind: environment
+      id: environment
+      id_field: id
+      label: Environment
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/buckets/${config.bucketkey}/tests/${config.testid}/environments"
+      permissions_needed:
+      - api:read
+      - test:read
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: environment
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - metric
+        high_value: true
+        id: metric
+        support: partial
+        title: Metric
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: runscope_com.metric
+        required_payload_fields:
+        - avg_response_time_ms
+        schema_ref: runscope_com/metric/v1
+        urn_kind: runscope_metric
+      event_kind: metric
+      id: metric
+      id_field: avg_response_time_ms
+      label: Metric
+      list_key: response_times
+      method: GET
+      name_field: avg_response_time_ms
+      pagination:
+        type: none
+      path: "/buckets/${config.bucketkey}/tests/${config.testid}/metrics"
+      permissions_needed:
+      - api:read
+      - test:read
+      projection:
+        fields:
+          id: avg_response_time_ms
+          name: avg_response_time_ms
+          resource_id: avg_response_time_ms
+          resource_name: avg_response_time_ms
+          resource_type: metric
+        template: asset
+      record_selector: "$.response_times[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - buckets_test
+        high_value: true
+        id: buckets_test
+        support: partial
+        title: Buckets Test
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: runscope_com.buckets_test
+        required_payload_fields:
+        - id
+        schema_ref: runscope_com/buckets_test/v1
+        urn_kind: runscope_buckets_test
+      event_kind: buckets_test
+      id: buckets_test
+      id_field: id
+      label: Buckets Test
+      list_key: schedules
+      method: GET
+      name_field: environment_id
+      pagination:
+        type: none
+      path: "/buckets/${config.bucketkey}/tests/${config.testid}"
+      permissions_needed:
+      - api:read
+      - test:read
+      projection:
+        fields:
+          id: id
+          name: environment_id
+          resource_id: id
+          resource_name: environment_id
+          resource_type: test
+        template: asset
+      record_selector: "$.schedules[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - people
+      id: people
+      label: People
+    - default_enabled: true
+      families:
+      - test
+      id: test
+      label: Test
+    - families:
+      - bucket
+      id: bucket
+      label: Bucket
+    - families:
+      - agent
+      id: agent
+      label: Agent
+    - families:
+      - integration
+      id: integration
+      label: Integration
+    - default_enabled: true
+      families:
+      - environment
+      id: environment
+      label: Environment
+    - default_enabled: true
+      families:
+      - metric
+      id: metric
+      label: Metric
+    - default_enabled: true
+      families:
+      - buckets_test
+      id: buckets_test
+      label: Buckets Test
+    source_id: runscope_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.runscope.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/teams/${config.teamid}/people"

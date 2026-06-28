@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: API to access NetBox
+    display_name: NetBox
+    id: builtin_catalog-netboxdemo
+    resource_families:
+    - coverage:
+      - families:
+        - cluster_group
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: cluster_group
+        support: partial
+        title: Cluster Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: netboxdemo.cluster_group
+        required_payload_fields:
+        - id
+        schema_ref: netboxdemo/cluster_group/v1
+        urn_kind: netboxdemo_cluster_group
+      event_kind: cluster_group
+      id: cluster_group
+      id_field: id
+      label: Cluster Group
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/virtualization/cluster-groups/"
+      permissions_needed:
+      - Bearer
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.results[*]"
+    - coverage:
+      - families:
+        - secret
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Secret
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: netboxdemo.secret
+        required_payload_fields:
+        - id
+        schema_ref: netboxdemo/secret/v1
+        urn_kind: netboxdemo_secret
+      event_kind: secret
+      id: secret
+      id_field: id
+      label: Secret
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/secrets/secrets/"
+      permissions_needed:
+      - Bearer
+      projection:
+        fields:
+          id: id
+          name: name
+          secret_id: id
+          secret_name: name
+          secret_type: secret
+        template: secret
+      record_selector: "$.results[*]"
+    - coverage:
+      - families:
+        - connected_device
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: connected_device
+        support: partial
+        title: Connected Device
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: netboxdemo.connected_device
+        required_payload_fields:
+        - id
+        schema_ref: netboxdemo/connected_device/v1
+        urn_kind: netboxdemo_connected_device
+      event_kind: connected_device
+      id: connected_device
+      id_field: id
+      label: Connected Device
+      list_key: tags
+      method: GET
+      pagination:
+        type: none
+      path: "/dcim/connected-device/"
+      permissions_needed:
+      - Bearer
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: connected_device
+        template: asset
+      record_selector: "$.tags[*]"
+    - coverage:
+      - families:
+        - device_role
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: device_role
+        support: partial
+        title: Device Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: netboxdemo.device_role
+        required_payload_fields:
+        - id
+        schema_ref: netboxdemo/device_role/v1
+        urn_kind: netboxdemo_device_role
+      event_kind: device_role
+      id: device_role
+      id_field: id
+      label: Device Role
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/dcim/device-roles/"
+      permissions_needed:
+      - Bearer
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.results[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - cluster_group
+      id: cluster_group
+      label: Cluster Group
+    - default_enabled: true
+      families:
+      - secret
+      id: secret
+      label: Secret
+    - default_enabled: true
+      families:
+      - connected_device
+      id: connected_device
+      label: Connected Device
+    - default_enabled: true
+      families:
+      - device_role
+      id: device_role
+      label: Device Role
+    source_id: netboxdemo
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://netboxdemo.com/api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/virtualization/cluster-groups/"

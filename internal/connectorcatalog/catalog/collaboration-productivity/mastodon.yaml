@@ -1,0 +1,221 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    description: Generated from an OpenAPI description.
+    display_name: Mastodon
+    id: builtin_catalog-mastodon
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mastodon.account
+        required_payload_fields:
+        - id
+        schema_ref: mastodon/account/v1
+        urn_kind: mastodon_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: display_name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/lists/${config.id}/accounts"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: display_name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - activity
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Activity
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: mastodon.activity
+        required_payload_fields:
+        - logins
+        schema_ref: mastodon/activity/v1
+        urn_kind: mastodon_activity
+      event_kind: activity
+      id: activity
+      id_field: logins
+      label: Activity
+      method: GET
+      name_field: logins
+      pagination:
+        type: none
+      path: "/api/v1/instance/activity"
+      projection:
+        fields:
+          id: logins
+          name: logins
+          provider_id: logins
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - verify_credential
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Verify Credential
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mastodon.verify_credential
+        required_payload_fields:
+        - category
+        schema_ref: mastodon/verify_credential/v1
+        urn_kind: mastodon_verify_credential
+      event_kind: verify_credential
+      id: verify_credential
+      id_field: category
+      label: Verify Credential
+      list_key: emojis
+      method: GET
+      name_field: url
+      pagination:
+        type: none
+      path: "/api/v1/accounts/verify_credentials"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: category
+          name: url
+          secret_id: category
+          secret_name: url
+          secret_type: verify_credential
+        template: secret
+      record_selector: "$.emojis[*]"
+    - coverage:
+      - families:
+        - notification
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Notification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: mastodon.notification
+        required_payload_fields:
+        - id
+        schema_ref: mastodon/notification/v1
+        urn_kind: mastodon_notification
+      event_kind: notification
+      id: notification
+      id_field: id
+      label: Notification
+      method: GET
+      name_field: account
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/notifications"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          alert_id: id
+          alert_name: account
+          alert_severity: account
+          alert_status: status
+          id: id
+          name: account
+        template: alert
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - activity
+      id: activity
+      label: Activity
+    - default_enabled: true
+      families:
+      - verify_credential
+      id: verify_credential
+      label: Verify Credential
+    - default_enabled: true
+      families:
+      - notification
+      id: notification
+      label: Notification
+    source_id: mastodon
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://mastodon.local
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v1/lists/${config.id}/accounts"

@@ -1,0 +1,229 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: https://connect.signl4.com/identity/connect/authorize
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      refresh_url: https://connect.signl4.com/identity/connect/token
+      requires_references: true
+      scopes:
+      - offline_access
+      - public_api_read
+      - public_api_write
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: https://connect.signl4.com/identity/connect/token
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: teamid
+      label: Teamid
+      required: true
+    description: "<p>Use our API for systems integration or to build your own use cases. Sample scenarios include but are not limited to:</p><ul><li>2-way integration: Triggering of Signls and updates in the third party systems when alert state changes occur</li><li>Retrieving alarms for logging purposes</li><li>Calendar integrations: Creation and management of on-call duties</li><li>Punch users in and out based..."
+    display_name: SIGNL4
+    id: builtin_catalog-signl4
+    resource_families:
+    - coverage:
+      - families:
+        - team
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: team
+        support: partial
+        title: Team
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: signl4.team
+        required_payload_fields:
+        - id
+        schema_ref: signl4/team/v1
+        urn_kind: signl4_team
+      event_kind: team
+      id: team
+      id_field: id
+      label: Team
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/teams"
+      permissions_needed:
+      - offline_access
+      - public_api_read
+      - public_api_write
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: signl4.user
+        required_payload_fields:
+        - id
+        schema_ref: signl4/user/v1
+        urn_kind: signl4_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/users"
+      permissions_needed:
+      - offline_access
+      - public_api_read
+      - public_api_write
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - membership
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: membership
+        support: partial
+        title: Membership
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: signl4.membership
+        required_payload_fields:
+        - id
+        schema_ref: signl4/membership/v1
+        urn_kind: signl4_membership
+      event_kind: membership
+      id: membership
+      id_field: id
+      label: Membership
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/teams/${config.teamid}/memberships"
+      permissions_needed:
+      - offline_access
+      - public_api_read
+      - public_api_write
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: group_membership
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - image
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Image
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: signl4.image
+        required_payload_fields:
+        - id
+        schema_ref: signl4/image/v1
+        urn_kind: signl4_image
+      event_kind: image
+      id: image
+      id_field: id
+      label: Image
+      method: GET
+      pagination:
+        type: none
+      path: "/categories/images"
+      permissions_needed:
+      - offline_access
+      - public_api_read
+      - public_api_write
+      projection:
+        fields:
+          alert_id: id
+          alert_name: id
+          id: id
+        template: alert
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - team
+      id: team
+      label: Team
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - membership
+      id: membership
+      label: Membership
+    - default_enabled: true
+      families:
+      - image
+      id: image
+      label: Image
+    source_id: signl4
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://connect.signl4.com/api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/teams"

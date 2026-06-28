@@ -110,7 +110,7 @@ entries:
 	}
 	for _, want := range []string{
 		"verification endpoint is required",
-		"definition must include 2-4 high-value resource families",
+		"definition must include 2-12 high-value resource families",
 		`resource family "users" must declare coverage dimensions`,
 		"at least one high-value coverage dimension is required",
 	} {
@@ -165,13 +165,14 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 199 {
-		t.Fatalf("summary total = %d, want 199", analysis.Summary.Total)
+	const wantBuiltinCatalogEntries = 570
+	if analysis.Summary.Total != wantBuiltinCatalogEntries {
+		t.Fatalf("summary total = %d, want %d", analysis.Summary.Total, wantBuiltinCatalogEntries)
 	}
-	if len(analysis.Entries) != 199 {
-		t.Fatalf("entries len = %d, want 199", len(analysis.Entries))
+	if len(analysis.Entries) != wantBuiltinCatalogEntries {
+		t.Fatalf("entries len = %d, want %d", len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.Generateable != 199 {
+	if analysis.Summary.Generateable != wantBuiltinCatalogEntries {
 		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {
@@ -198,10 +199,11 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
 	}
-	if analysis.Summary.Total != 199 || len(analysis.Entries) != 199 {
-		t.Fatalf("runtime catalog size = total %d entries %d, want 199", analysis.Summary.Total, len(analysis.Entries))
+	const wantBuiltinCatalogEntries = 570
+	if analysis.Summary.Total != wantBuiltinCatalogEntries || len(analysis.Entries) != wantBuiltinCatalogEntries {
+		t.Fatalf("runtime catalog size = total %d entries %d, want %d", analysis.Summary.Total, len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.CatalogReady != 199 || analysis.Summary.Generateable != 0 {
+	if analysis.Summary.CatalogReady != wantBuiltinCatalogEntries || analysis.Summary.Generateable != 0 {
 		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
 	}
 	for _, entry := range analysis.Entries {

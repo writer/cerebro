@@ -1,0 +1,212 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: parentid
+      label: Parentid
+      required: true
+    description: Generated from an OpenAPI description.
+    display_name: Datto Autotask PSA
+    id: builtin_catalog-autotask
+    resource_families:
+    - coverage:
+      - families:
+        - field
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Field
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: autotask.field
+        required_payload_fields:
+        - name
+        schema_ref: autotask/field/v1
+        urn_kind: autotask_field
+      event_kind: field
+      id: field
+      id_field: name
+      label: Field
+      list_key: fields
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/V1.0/DeletedTaskActivityLogs/entityInformation/fields"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$.fields[*]"
+    - coverage:
+      - families:
+        - userdefinedfield
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: userdefinedfield
+        support: partial
+        title: Userdefinedfield
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: autotask.userdefinedfield
+        required_payload_fields:
+        - name
+        schema_ref: autotask/userdefinedfield/v1
+        urn_kind: autotask_userdefinedfield
+      event_kind: userdefinedfield
+      id: userdefinedfield
+      id_field: name
+      label: Userdefinedfield
+      list_key: fields
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/V1.0/ActionTypes/entityInformation/userDefinedFields"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.fields[*]"
+    - coverage:
+      - families:
+        - excludedrole
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: excludedrole
+        support: partial
+        title: Excludedrole
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: autotask.excludedrole
+        required_payload_fields:
+        - id
+        schema_ref: autotask/excludedrole/v1
+        urn_kind: autotask_excludedrole
+      event_kind: excludedrole
+      id: excludedrole
+      id_field: id
+      label: Excludedrole
+      list_key: items
+      method: GET
+      name_field: contractExclusionSetID
+      pagination:
+        type: none
+      path: "/V1.0/ContractExclusionSets/${config.parentid}/ExcludedRoles"
+      projection:
+        fields:
+          id: id
+          name: contractExclusionSetID
+          provider_id: id
+        template: identity_group
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - entityinformation_field
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Entityinformation Field
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: autotask.entityinformation_field
+        required_payload_fields:
+        - name
+        schema_ref: autotask/entityinformation_field/v1
+        urn_kind: autotask_entityinformation_field
+      event_kind: entityinformation_field
+      id: entityinformation_field
+      id_field: name
+      label: Entityinformation Field
+      list_key: fields
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/V1.0/CompanyAlerts/entityInformation/fields"
+      projection:
+        fields:
+          alert_id: name
+          alert_name: name
+          alert_severity: dataType
+          alert_status: dataType
+          id: name
+          name: name
+        template: alert
+      record_selector: "$.fields[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - field
+      id: field
+      label: Field
+    - default_enabled: true
+      families:
+      - userdefinedfield
+      id: userdefinedfield
+      label: Userdefinedfield
+    - default_enabled: true
+      families:
+      - excludedrole
+      id: excludedrole
+      label: Excludedrole
+    - default_enabled: true
+      families:
+      - entityinformation_field
+      id: entityinformation_field
+      label: Entityinformation Field
+    source_id: autotask
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://webservices5.autotask.net/ATServicesRest
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/V1.0/DeletedTaskActivityLogs/entityInformation/fields"

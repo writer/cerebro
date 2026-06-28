@@ -1,0 +1,203 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: This page contains the documentation on how to use Discourse through API calls.
+    display_name: Discourse
+    id: builtin_catalog-discourse
+    resource_families:
+    - coverage:
+      - families:
+        - groups_json
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: groups_json
+        support: partial
+        title: Groups Json
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: discourse.groups_json
+        required_payload_fields:
+        - id
+        schema_ref: discourse/groups_json/v1
+        urn_kind: discourse_groups_json
+      event_kind: groups_json
+      id: groups_json
+      id_field: id
+      label: Groups Json
+      list_key: groups
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/groups.json"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.groups[*]"
+    - coverage:
+      - families:
+        - user_actions_json
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user_actions_json
+        support: partial
+        title: User Actions Json
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: discourse.user_actions_json
+        required_payload_fields:
+        - slug
+        schema_ref: discourse/user_actions_json/v1
+        urn_kind: discourse_user_actions_json
+      event_kind: user_actions_json
+      id: user_actions_json
+      id_field: slug
+      label: User Actions Json
+      list_key: user_actions
+      method: GET
+      name_field: name
+      pagination:
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/user_actions.json"
+      projection:
+        fields:
+          id: slug
+          name: name
+          provider_id: slug
+        template: identity_user
+      record_selector: "$.user_actions[*]"
+    - coverage:
+      - families:
+        - notifications_json
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Notifications Json
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: discourse.notifications_json
+        required_payload_fields:
+        - id
+        schema_ref: discourse/notifications_json/v1
+        urn_kind: discourse_notifications_json
+      event_kind: notifications_json
+      id: notifications_json
+      id_field: id
+      label: Notifications Json
+      list_key: notifications
+      method: GET
+      name_field: slug
+      pagination:
+        type: none
+      path: "/notifications.json"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: slug
+          alert_severity: created_at
+          alert_status: created_at
+          id: id
+          name: slug
+        template: alert
+      record_selector: "$.notifications[*]"
+    - coverage:
+      - families:
+        - backups_json
+        id: backups_json
+        support: partial
+        title: Backups Json
+        type: entity_family
+      event:
+        kind: discourse.backups_json
+        required_payload_fields:
+        - filename
+        schema_ref: discourse/backups_json/v1
+        urn_kind: discourse_backups_json
+      event_kind: backups_json
+      id: backups_json
+      id_field: filename
+      label: Backups Json
+      method: GET
+      name_field: filename
+      pagination:
+        type: none
+      path: "/admin/backups.json"
+      projection:
+        fields:
+          id: filename
+          name: filename
+          resource_id: filename
+          resource_name: filename
+          resource_type: backups_json
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - groups_json
+      id: groups_json
+      label: Groups Json
+    - default_enabled: true
+      families:
+      - user_actions_json
+      id: user_actions_json
+      label: User Actions Json
+    - default_enabled: true
+      families:
+      - notifications_json
+      id: notifications_json
+      label: Notifications Json
+    - families:
+      - backups_json
+      id: backups_json
+      label: Backups Json
+    source_id: discourse
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://discourse.local
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/groups.json"

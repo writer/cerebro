@@ -34,6 +34,9 @@ const (
 	// catalog proof gate (family count or high-value coverage) that catalog-check
 	// enforces, so they are not promotable as-is.
 	VerdictProofGate = "proof_gate"
+	// VerdictCatalogRejected marks specs that may be mechanically readable but
+	// are outside the built-in catalog's source-level enterprise SaaS scope.
+	VerdictCatalogRejected = "catalog_rejected"
 )
 
 // Target describes one provider to import.
@@ -72,8 +75,9 @@ func (o Outcome) CatalogReady() bool {
 // classifies the result against the default grammar.
 func GenerateTarget(doc *openapi3.T, target Target) Outcome {
 	outcome := Outcome{SourceID: strings.TrimSpace(target.SourceID), Domain: strings.TrimSpace(target.Domain)}
-	// The catalog proof gate accepts 2-4 resource families, so cap selection at
-	// 4 regardless of the manifest. AllFamilies is ignored for the same reason.
+	// The catalog proof gate accepts a bounded set of resource families, so cap
+	// broad imports regardless of the manifest. AllFamilies is ignored for the
+	// same reason.
 	maxFamilies := target.MaxFamilies
 	if maxFamilies <= 0 || maxFamilies > maxCatalogFamilies {
 		maxFamilies = maxCatalogFamilies
@@ -123,11 +127,12 @@ func GenerateTarget(doc *openapi3.T, target Target) Outcome {
 }
 
 // maxCatalogFamilies is the upper bound the catalog proof gate accepts.
-const maxCatalogFamilies = 4
+const maxCatalogFamilies = 12
 
-// proofGateReason mirrors connectorcatalog.proofGateIssues: a catalog entry needs
-// a verification endpoint, 2-4 resource families, and at least one high-value
-// coverage dimension. It returns an empty string when the definition passes.
+// proofGateReason mirrors connectorcatalog.proofGateIssues: a catalog entry
+// needs a verification endpoint, a bounded family set, and at least one
+// high-value coverage dimension. It returns an empty string when the definition
+// passes.
 func proofGateReason(definition connectordefinitions.Definition) string {
 	if definition.Transport == nil || definition.Transport.Verification == nil ||
 		strings.TrimSpace(definition.Transport.Verification.Path) == "" {

@@ -4,8 +4,8 @@
 // (local file, URL, or APIs.guru registry key), runs the generic engine and
 // classifier, writes catalog-ready definitions to a staging directory, and
 // emits a measured funnel report (yield + blocking reasons). With
-// -append-catalog it appends the supported entries into the built-in catalog so
-// they go live with no per-connector Go code.
+// -append-catalog it writes supported entries into the built-in catalog as one
+// file per source so they go live with no per-connector Go code.
 //
 // Examples:
 //
@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/writer/cerebro/internal/connectorimport"
@@ -33,15 +34,16 @@ const (
 
 func main() {
 	var manifestPath, outDir, reportOut, appendCatalog, defsOut, apisGuruList string
-	var limit, timeoutSeconds int
+	var limit, timeoutSeconds, parallel int
 	flag.StringVar(&manifestPath, "manifest", "", "provider manifest YAML path (required)")
 	flag.StringVar(&outDir, "out", defaultOutputDir, "staging output directory for candidate catalog files and report")
 	flag.StringVar(&reportOut, "report-out", "", "funnel report JSON path; defaults to <out>/report.json")
-	flag.StringVar(&appendCatalog, "append-catalog", "", "when set, append supported entries into <dir>/<domain>.yaml")
+	flag.StringVar(&appendCatalog, "append-catalog", "", "when set, write supported entries into <dir>/<domain>/<source_id>.yaml")
 	flag.StringVar(&defsOut, "defs-out", "", "when set, write each supported entry's connector definition as <dir>/<source_id>.json for direct Source CDK promotion")
 	flag.StringVar(&apisGuruList, "apisguru-list", "", "path to a cached APIs.guru list.json; fetched over network when empty")
 	flag.IntVar(&limit, "limit", 0, "process at most N manifest targets (0 = all)")
 	flag.IntVar(&timeoutSeconds, "timeout", 30, "per-request HTTP timeout in seconds")
+	flag.IntVar(&parallel, "parallel", 1, "number of provider specs to process concurrently")
 	flag.Parse()
 
 	if strings.TrimSpace(manifestPath) == "" {
@@ -62,10 +64,7 @@ func main() {
 		fail(err)
 	}
 
-	outcomes := make([]connectorimport.Outcome, 0, len(targets))
-	for _, entry := range targets {
-		outcomes = append(outcomes, runTarget(f, registry, entry))
-	}
+	outcomes := runTargets(f, registry, targets, parallel)
 
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		fail(err)
@@ -97,7 +96,38 @@ func main() {
 	printSummary(summary, outcomes)
 }
 
+func runTargets(f *fetcher, registry apisGuruRegistry, targets []manifestTarget, parallel int) []connectorimport.Outcome {
+	if parallel <= 1 {
+		outcomes := make([]connectorimport.Outcome, 0, len(targets))
+		for _, entry := range targets {
+			outcomes = append(outcomes, runTarget(f, registry, entry))
+		}
+		return outcomes
+	}
+	outcomes := make([]connectorimport.Outcome, len(targets))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range parallel {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				outcomes[index] = runTarget(f, registry, targets[index])
+			}
+		}()
+	}
+	for index := range targets {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+	return outcomes
+}
+
 func runTarget(f *fetcher, registry apisGuruRegistry, entry manifestTarget) connectorimport.Outcome {
+	if reason := catalogImportRejection(entry); reason != "" {
+		return rejectedCatalogOutcome(entry, reason)
+	}
 	doc, err := resolveSpec(f, registry, entry)
 	if err != nil {
 		return connectorimport.Outcome{

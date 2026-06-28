@@ -1,0 +1,226 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: scanid
+      label: Scanid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: urlid
+      label: Urlid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: docid
+      label: Docid
+      required: true
+    description: "## Introduction The VisibleThread b API provides services for analyzing/searching documents and web pages. To use the service you need an API key."
+    display_name: VisibleThread API
+    id: builtin_catalog-visiblethread_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - webscan
+        high_value: true
+        id: webscan
+        support: partial
+        title: Webscan
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: visiblethread_com.webscan
+        required_payload_fields:
+        - id
+        schema_ref: visiblethread_com/webscan/v1
+        urn_kind: visiblethread_webscan
+      event_kind: webscan
+      id: webscan
+      id_field: id
+      label: Webscan
+      method: GET
+      name_field: completed
+      pagination:
+        type: none
+      path: "/webscans"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: completed
+          resource_id: id
+          resource_name: completed
+          resource_type: webscan
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - document
+        id: document
+        support: partial
+        title: Document
+        type: entity_family
+      event:
+        kind: visiblethread_com.document
+        required_payload_fields:
+        - id
+        schema_ref: visiblethread_com/document/v1
+        urn_kind: visiblethread_document
+      event_kind: document
+      id: document
+      id_field: id
+      label: Document
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/documents"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: document
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - weburl
+        high_value: true
+        id: weburl
+        support: partial
+        title: Weburl
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: visiblethread_com.weburl
+        required_payload_fields:
+        - paragraphCounter
+        schema_ref: visiblethread_com/weburl/v1
+        urn_kind: visiblethread_weburl
+      event_kind: weburl
+      id: weburl
+      id_field: paragraphCounter
+      label: Weburl
+      list_key: paragraphs
+      method: GET
+      name_field: paragraphCounter
+      pagination:
+        type: none
+      path: "/webscans/${config.scanid}/webUrls/${config.urlid}"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: paragraphCounter
+          name: paragraphCounter
+          resource_id: paragraphCounter
+          resource_name: paragraphCounter
+          resource_type: weburl
+        template: asset
+      record_selector: "$.paragraphs[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - document_2
+        id: document_2
+        support: partial
+        title: Document 2
+        type: entity_family
+      event:
+        kind: visiblethread_com.document_2
+        required_payload_fields:
+        - paragraphCounter
+        schema_ref: visiblethread_com/document_2/v1
+        urn_kind: visiblethread_document_2
+      event_kind: document_2
+      id: document_2
+      id_field: paragraphCounter
+      label: Document 2
+      list_key: paragraphs
+      method: GET
+      name_field: paragraphCounter
+      pagination:
+        type: none
+      path: "/documents/${config.docid}"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: paragraphCounter
+          name: paragraphCounter
+          resource_id: paragraphCounter
+          resource_name: paragraphCounter
+          resource_type: document
+        template: asset
+      record_selector: "$.paragraphs[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - webscan
+      id: webscan
+      label: Webscan
+    - families:
+      - document
+      id: document
+      label: Document
+    - default_enabled: true
+      families:
+      - weburl
+      id: weburl
+      label: Weburl
+    - families:
+      - document_2
+      id: document_2
+      label: Document 2
+    source_id: visiblethread_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.visiblethread.com/api/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/webscans"

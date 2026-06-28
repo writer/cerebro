@@ -1,0 +1,499 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: address
+      label: Address
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: domain
+      label: Domain
+      required: true
+    description: Generated from an OpenAPI description.
+    display_name: Mailscript
+    id: builtin_catalog-mailscript_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - workspace
+        high_value: true
+        id: workspace
+        support: partial
+        title: Workspace
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mailscript_com.workspace
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/workspace/v1
+        urn_kind: mailscript_workspace
+      event_kind: workspace
+      id: workspace
+      id_field: id
+      label: Workspace
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/workspaces"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - workflow
+        high_value: true
+        id: workflow
+        support: partial
+        title: Workflow
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mailscript_com.workflow
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/workflow/v1
+        urn_kind: mailscript_workflow
+      event_kind: workflow
+      id: workflow
+      id_field: id
+      label: Workflow
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/workflows"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: workflow
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - key
+        high_value: true
+        id: key
+        support: partial
+        title: Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mailscript_com.key
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/key/v1
+        urn_kind: mailscript_key
+      event_kind: key
+      id: key
+      id_field: id
+      label: Key
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/addresses/${config.address}/keys"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: key
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - action
+        id: action
+        support: partial
+        title: Action
+        type: entity_family
+      event:
+        kind: mailscript_com.action
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/action/v1
+        urn_kind: mailscript_action
+      event_kind: action
+      id: action
+      id_field: id
+      label: Action
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/actions"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: action
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - addresses
+        id: addresses
+        support: partial
+        title: Addresses
+        type: entity_family
+      event:
+        kind: mailscript_com.addresses
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/addresses/v1
+        urn_kind: mailscript_addresses
+      event_kind: addresses
+      id: addresses
+      id_field: id
+      label: Addresses
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/addresses"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: addresses
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - domain
+        id: domain
+        support: partial
+        title: Domain
+        type: entity_family
+      event:
+        kind: mailscript_com.domain
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/domain/v1
+        urn_kind: mailscript_domain
+      event_kind: domain
+      id: domain
+      id_field: id
+      label: Domain
+      list_key: id
+      method: GET
+      pagination:
+        type: none
+      path: "/domains"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: domain
+        template: asset
+      record_selector: "$.id[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - input
+        id: input
+        support: partial
+        title: Input
+        type: entity_family
+      event:
+        kind: mailscript_com.input
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/input/v1
+        urn_kind: mailscript_input
+      event_kind: input
+      id: input
+      id_field: id
+      label: Input
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/inputs"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: input
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - integration
+        id: integration
+        support: partial
+        title: Integration
+        type: entity_family
+      event:
+        kind: mailscript_com.integration
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/integration/v1
+        urn_kind: mailscript_integration
+      event_kind: integration
+      id: integration
+      id_field: id
+      label: Integration
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/integrations"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: integration
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - trigger
+        id: trigger
+        support: partial
+        title: Trigger
+        type: entity_family
+      event:
+        kind: mailscript_com.trigger
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/trigger/v1
+        urn_kind: mailscript_trigger
+      event_kind: trigger
+      id: trigger
+      id_field: id
+      label: Trigger
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/triggers"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: trigger
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - verification
+        id: verification
+        support: partial
+        title: Verification
+        type: entity_family
+      event:
+        kind: mailscript_com.verification
+        required_payload_fields:
+        - id
+        schema_ref: mailscript_com/verification/v1
+        urn_kind: mailscript_verification
+      event_kind: verification
+      id: verification
+      id_field: id
+      label: Verification
+      list_key: list
+      method: GET
+      pagination:
+        type: none
+      path: "/verifications"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: verification
+        template: asset
+      record_selector: "$.list[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - verify
+        id: verify
+        support: partial
+        title: Verify
+        type: entity_family
+      event:
+        kind: mailscript_com.verify
+        required_payload_fields:
+        - name
+        schema_ref: mailscript_com/verify/v1
+        urn_kind: mailscript_verify
+      event_kind: verify
+      id: verify
+      id_field: name
+      label: Verify
+      list_key: records
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/domains/verify/${config.domain}"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: verify
+        template: asset
+      record_selector: "$.records[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - workspace
+      id: workspace
+      label: Workspace
+    - default_enabled: true
+      families:
+      - workflow
+      id: workflow
+      label: Workflow
+    - default_enabled: true
+      families:
+      - key
+      id: key
+      label: Key
+    - families:
+      - action
+      id: action
+      label: Action
+    - families:
+      - addresses
+      id: addresses
+      label: Addresses
+    - families:
+      - domain
+      id: domain
+      label: Domain
+    - families:
+      - input
+      id: input
+      label: Input
+    - families:
+      - integration
+      id: integration
+      label: Integration
+    - families:
+      - trigger
+      id: trigger
+      label: Trigger
+    - families:
+      - verification
+      id: verification
+      label: Verification
+    - families:
+      - verify
+      id: verify
+      label: Verify
+    source_id: mailscript_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.mailscript.com/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/workspaces"
