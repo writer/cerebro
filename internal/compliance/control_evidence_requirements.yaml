@@ -131,12 +131,20 @@ claim_rules:
     applies_to:
       frameworks:
         - CSA CCM v4.0
-        - NIST SP 800-177
     claim_strength: shared_responsibility_backed
     sufficiency_rule: cloud_service_scope_owner_evidence
     coverage_claim: supports_cloud_assurance_control
     overclaim_guard: Do not claim cloud control coverage without service model, tenant boundary, responsibility owner, configuration, and evidence owner.
     adjacent_control_rationale: Use the cloud control that owns the responsibility split; adjacent controls are review context until the provider or customer evidence is present.
+  - rule_id: trustworthy-email-authentication-evidence
+    applies_to:
+      frameworks:
+        - NIST SP 800-177
+    claim_strength: email_domain_authentication_evidence_backed
+    sufficiency_rule: domain_dns_authentication_record_state
+    coverage_claim: supports_trustworthy_email_domain_authentication
+    overclaim_guard: Do not claim full trustworthy email coverage from SPF, DKIM, and DMARC evidence alone; require the sending domain, mail-authentication DNS records, MX records, related mail-security DNS records, validation time, and any exception or remediation state used for the claim.
+    adjacent_control_rationale: Use the mail-domain control only for DNS-based email authentication evidence; transport TLS, message-content protection, cloud, network, and access controls need their own source-backed evidence.
   - rule_id: internal-operating-control-evidence
     applies_to:
       frameworks:
@@ -365,6 +373,31 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Network evidence shows ingress, listener, protocol, exposure path, owner, and current scan time for the sampled boundary.
+  - profile_id: email-authentication
+    name: Email Authentication Evidence
+    applies_to:
+      frameworks:
+        - NIST SP 800-177
+    source_requirements:
+      - source_id: email_domain_health
+        entity_type: email_domain_authentication
+        required_fields:
+          - domain
+          - spf_status
+          - spf_records
+          - spf_policy
+          - dkim_status
+          - dkim_selectors
+          - dmarc_status
+          - dmarc_records
+          - dmarc_policy
+          - dmarc_pct
+          - mx_records
+          - related_records
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Email-domain evidence shows the sending domain, SPF record and policy, DKIM selector results, DMARC record, policy, and percentage, MX records, related mail-security DNS records, validation time, and any exception or remediation state used for the claim.
   - profile_id: availability-resilience
     name: Availability and Resilience Evidence
     applies_to:

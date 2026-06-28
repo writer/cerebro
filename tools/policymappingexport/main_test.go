@@ -206,12 +206,28 @@ func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
 	coverageFindingCol := columnIndex(t, coverageHeader, "finding_id")
 	coverageSourceCol := columnIndex(t, coverageHeader, "coverage_source_id")
 	coverageDimensionCol := columnIndex(t, coverageHeader, "coverage_dimension_id")
+	foundAWSCoverage := false
 	for _, row := range coverageRows[1:] {
 		if row[coverageFindingCol] == "aws-s3-bucket-no-public-access" && row[coverageSourceCol] == "aws" && row[coverageDimensionCol] == "s3_bucket" {
-			return
+			foundAWSCoverage = true
+			break
 		}
 	}
-	t.Fatal("source_coverage_map.csv missing aws/s3_bucket coverage for aws-s3-bucket-no-public-access")
+	if !foundAWSCoverage {
+		t.Fatal("source_coverage_map.csv missing aws/s3_bucket coverage for aws-s3-bucket-no-public-access")
+	}
+	foundEmailCoverage := false
+	for _, row := range coverageRows[1:] {
+		if row[coverageFindingCol] == "email-domain-authentication-misconfigured" && row[coverageSourceCol] == "email_domain_health" && row[coverageDimensionCol] == "email_authentication_posture" {
+			assertCellContains(t, coverageHeader, row, "matched_control_refs", "NIST SP 800-177 TLS-MAIL")
+			assertCellContains(t, coverageHeader, row, "evidence_types", "email_authentication_control")
+			foundEmailCoverage = true
+			break
+		}
+	}
+	if !foundEmailCoverage {
+		t.Fatal("source_coverage_map.csv missing email_domain_health/email_authentication_posture coverage for email-domain-authentication-misconfigured")
+	}
 }
 
 func TestGenerateFilesIncludesFindingComplianceTagContract(t *testing.T) {
@@ -245,6 +261,17 @@ func TestGenerateFilesIncludesFindingComplianceTagContract(t *testing.T) {
 	assertCellEquals(t, header, reviewOnlyRow, "runtime_export_policy", "review_only")
 	assertCellContains(t, header, reviewOnlyRow, "tag_basis", "control_from_control_ref")
 	assertCellContains(t, header, reviewOnlyRow, "adjacent_control_rationales", "points of focus")
+
+	emailRow := findRowByColumns(t, rows, map[int]string{
+		findingCol:    "email-domain-authentication-misconfigured",
+		tagCol:        "control:nist-sp-800-177:tls-mail",
+		controlRefCol: "NIST SP 800-177 TLS-MAIL",
+	})
+	assertCellEquals(t, header, emailRow, "runtime_export_policy", "runtime_candidate")
+	assertCellEquals(t, header, emailRow, "claim_status", "source_evidence_claim")
+	assertCellContains(t, header, emailRow, "claim_rule_ids", "trustworthy-email-authentication-evidence")
+	assertCellContains(t, header, emailRow, "source_coverage_refs", "email_domain_health/email_authentication_posture")
+	assertCellEquals(t, header, emailRow, "source_capability_status", "source_capability_defined")
 }
 
 func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
@@ -321,11 +348,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4074")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "475")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "168")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4076")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "474")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "169")
 	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "943")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "475")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "474")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
@@ -731,6 +758,17 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertCellEquals(t, requirementHeader, baselineRow, "claim_rule_id", "iso-management-system-evidence")
 	assertCellEquals(t, requirementHeader, baselineRow, "claim_status", "scope_decision_required")
 	assertCellContains(t, requirementHeader, baselineRow, "adjacent_control_rationale", "management-system objective")
+
+	emailTrustRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "NIST SP 800-177", "TLS-MAIL", "email-authentication", "email_domain_health")
+	assertCellContains(t, requirementHeader, emailTrustRow, "required_fields", "dmarc_status")
+	assertCellContains(t, requirementHeader, emailTrustRow, "required_fields", "observed_at")
+	assertCellEquals(t, requirementHeader, emailTrustRow, "claim_rule_id", "trustworthy-email-authentication-evidence")
+	assertCellEquals(t, requirementHeader, emailTrustRow, "claim_strength", "email_domain_authentication_evidence_backed")
+	assertCellEquals(t, requirementHeader, emailTrustRow, "sufficiency_rule", "domain_dns_authentication_record_state")
+	assertCellContains(t, requirementHeader, emailTrustRow, "source_capability_refs", "email_domain_health/email_authentication_posture")
+	assertCellContains(t, requirementHeader, emailTrustRow, "framework_source_type", "email_security_guidance")
+	assertCellContains(t, requirementHeader, emailTrustRow, "framework_evidence_model", "mail-authentication records")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "NIST SP 800-177", "TLS-MAIL", "baseline-control-review")
 
 	findingRequirementRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_evidence_requirement_map.csv"))
 	findingRequirementHeader := findingRequirementRows[0]

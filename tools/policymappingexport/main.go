@@ -2736,6 +2736,8 @@ func domainForRequirementProfile(profileID string) string {
 		return "change_management"
 	case "data-protection":
 		return "data_protection"
+	case "email-authentication":
+		return "email_security"
 	case "governance-risk":
 		return "governance_risk"
 	case "identity-access":
@@ -2765,6 +2767,8 @@ func evidenceTypeForRequirementProfile(profileID string) string {
 		return "change_record"
 	case "data-protection":
 		return "data_protection"
+	case "email-authentication":
+		return "email_authentication_control"
 	case "governance-risk":
 		return "governance_review"
 	case "identity-access":
@@ -2821,16 +2825,18 @@ func requirementProfilePriority(profileID string) int {
 		return 60
 	case "data-protection":
 		return 70
-	case "logging-monitoring":
+	case "email-authentication":
 		return 80
-	case "availability-resilience":
+	case "logging-monitoring":
 		return 90
-	case "change-configuration":
+	case "availability-resilience":
 		return 100
-	case "governance-risk":
+	case "change-configuration":
 		return 110
-	case "baseline-control-review":
+	case "governance-risk":
 		return 120
+	case "baseline-control-review":
+		return 130
 	default:
 		return 1000
 	}

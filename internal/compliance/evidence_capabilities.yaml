@@ -489,3 +489,49 @@ sources:
             control_id: A.5.18
           - framework: SOC 2
             control_id: CC6.2
+  - source_id: email_domain_health
+    name: Email Domain Health
+    purpose: Declare source-backed SPF, DKIM, DMARC, MX, and related mail-security DNS evidence for trustworthy email controls.
+    dimensions:
+      - dimension_id: email_authentication_posture
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - email_domain
+          - health
+        evidence_types:
+          - email_authentication_control
+          - source_snapshot
+        control_domains:
+          - email_security
+          - network_security
+        control_refs:
+          - framework: NIST SP 800-177
+            control_id: TLS-MAIL
+          - framework: ISO 27001:2022
+            control_id: A.5.14
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: dns_record_checks
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - email_domain
+          - dkim_selector
+          - health
+        evidence_types:
+          - email_authentication_control
+          - network_configuration
+          - source_snapshot
+        control_domains:
+          - email_security
+          - network_security
+        control_refs:
+          - framework: NIST SP 800-177
+            control_id: TLS-MAIL
+          - framework: ISO 27001:2022
+            control_id: A.5.14
+          - framework: SOC 2
+            control_id: CC6.6

@@ -63,6 +63,10 @@ control_domains:
     - { framework_name: "ISO 27001:2022", control_id: "A.8.20" }
     - { framework_name: "ISO 27001:2022", control_id: "A.8.21" }
     - { framework_name: "ISO 27001:2022", control_id: "A.8.22" }
+  email_security:
+    - { framework_name: "NIST SP 800-177", control_id: "TLS-MAIL" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.14" }
+    - { framework_name: "SOC 2", control_id: "CC6.6" }
   data_protection:
     - { framework_name: "SOC 2", control_id: "CC6.1" }
     - { framework_name: "NIST 800-53 r5", control_id: "SC-12" }
