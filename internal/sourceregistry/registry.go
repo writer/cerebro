@@ -369,13 +369,13 @@ func Builtin() (*sourcecdk.Registry, error) {
 		}
 		sources = append(sources, source)
 	}
-	catalog, err := connectorcatalog.Builtin()
+	catalog, err := connectorcatalog.BuiltinRuntime()
 	if err != nil {
 		return nil, fmt.Errorf("load connector definition catalog: %w", err)
 	}
 	for _, entry := range catalog.Entries {
 		sourceID := entry.Definition.SourceID
-		if _, ok := registered[sourceID]; ok || entry.Status != connectorcatalog.StatusGenerateable {
+		if _, ok := registered[sourceID]; ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
 			continue
 		}
 		source, err := catalogruntimesource.New(entry)

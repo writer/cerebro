@@ -199,6 +199,40 @@ func TestBuiltinRegistersEveryGenerateableCatalogSource(t *testing.T) {
 	}
 }
 
+func TestBuiltinRegistersEverySupportedRuntimeCatalogSource(t *testing.T) {
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	catalog, err := connectorcatalog.BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("connectorcatalog.BuiltinRuntime() error = %v", err)
+	}
+	supported := 0
+	var missing []string
+	for _, entry := range catalog.Entries {
+		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+			continue
+		}
+		supported++
+		sourceID := entry.Definition.SourceID
+		source, ok := registry.Get(sourceID)
+		if !ok {
+			missing = append(missing, sourceID)
+			continue
+		}
+		if source.Spec().Id != sourceID {
+			t.Fatalf("%s Spec().Id = %q, want %q", sourceID, source.Spec().Id, sourceID)
+		}
+	}
+	if len(missing) != 0 {
+		t.Fatalf("registry missing supported runtime catalog sources: %#v", missing)
+	}
+	if got := len(registry.List()); got < supported {
+		t.Fatalf("registry.List() len = %d, want at least %d supported runtime catalog sources", got, supported)
+	}
+}
+
 func TestDynamicDefinitionSourceRejectsBlockedDefinition(t *testing.T) {
 	_, err := DynamicDefinitionSource(connectordefinitions.Definition{
 		ID:          "example",
