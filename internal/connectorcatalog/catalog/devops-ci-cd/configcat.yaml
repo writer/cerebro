@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: organizationid
+      label: Organizationid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: productid
+      label: Productid
+      required: true
+    description: "**Base API URL**: https://api.configcat.com"
+    display_name: ConfigCat
+    id: builtin_catalog-configcat
+    resource_families:
+    - coverage:
+      - families:
+        - auditlog
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Auditlog
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: configcat.auditlog
+        required_payload_fields:
+        - actionTarget
+        schema_ref: configcat/auditlog/v1
+        urn_kind: configcat_auditlog
+      event_kind: auditlog
+      id: auditlog
+      id_field: actionTarget
+      label: Auditlog
+      method: GET
+      name_field: userName
+      pagination:
+        type: none
+      path: "/v1/organizations/${config.organizationid}/auditlogs"
+      permissions_needed:
+      - Basic
+      projection:
+        fields:
+          id: actionTarget
+          name: userName
+          provider_id: actionTarget
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - organization
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: organization
+        support: partial
+        title: Organization
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: configcat.organization
+        required_payload_fields:
+        - name
+        schema_ref: configcat/organization/v1
+        urn_kind: configcat_organization
+      event_kind: organization
+      id: organization
+      id_field: name
+      label: Organization
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/organizations"
+      permissions_needed:
+      - Basic
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - member
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: member
+        support: partial
+        title: Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: configcat.member
+        required_payload_fields:
+        - email
+        schema_ref: configcat/member/v1
+        urn_kind: configcat_member
+      event_kind: member
+      id: member
+      id_field: email
+      label: Member
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/v1/organizations/${config.organizationid}/members"
+      permissions_needed:
+      - Basic
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - permission
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: permission
+        support: partial
+        title: Permission
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: configcat.permission
+        required_payload_fields:
+        - name
+        schema_ref: configcat/permission/v1
+        urn_kind: configcat_permission
+      event_kind: permission
+      id: permission
+      id_field: name
+      label: Permission
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/products/${config.productid}/permissions"
+      permissions_needed:
+      - Basic
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: permission
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - auditlog
+      id: auditlog
+      label: Auditlog
+    - default_enabled: true
+      families:
+      - organization
+      id: organization
+      label: Organization
+    - default_enabled: true
+      families:
+      - member
+      id: member
+      label: Member
+    - default_enabled: true
+      families:
+      - permission
+      id: permission
+      label: Permission
+    source_id: configcat
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.configcat.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/organizations/${config.organizationid}/auditlogs"

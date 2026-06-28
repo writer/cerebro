@@ -1,0 +1,223 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: Welcome to our current iteration of our REST API. While we encourage you to upgrade to v2.0 we will continue support for our [SOAP API](https://github.com/fulfillment/soap-integration).
+    display_name: Fulfillment.com APIv2
+    id: builtin_catalog-fulfillment_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - accounting
+        high_value: true
+        id: accounting
+        support: partial
+        title: Accounting
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: fulfillment_com.accounting
+        required_payload_fields:
+        - fees
+        schema_ref: fulfillment_com/accounting/v1
+        urn_kind: fulfillment_accounting
+      event_kind: accounting
+      id: accounting
+      id_field: fees
+      label: Accounting
+      list_key: data
+      method: GET
+      name_field: fees
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: limit
+        start_page: 1
+        type: page
+      path: "/accounting"
+      permissions_needed:
+      - oms
+      projection:
+        fields:
+          id: fees
+          name: fees
+          provider_id: fees
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - inventory
+        id: inventory
+        support: partial
+        title: Inventory
+        type: entity_family
+      event:
+        kind: fulfillment_com.inventory
+        required_payload_fields:
+        - item
+        schema_ref: fulfillment_com/inventory/v1
+        urn_kind: fulfillment_inventory
+      event_kind: inventory
+      id: inventory
+      id_field: item
+      label: Inventory
+      list_key: data
+      method: GET
+      name_field: item
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: limit
+        start_page: 1
+        type: page
+      path: "/inventory"
+      permissions_needed:
+      - oms
+      projection:
+        fields:
+          id: item
+          name: item
+          resource_id: item
+          resource_name: item
+          resource_type: inventory
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - return
+        id: return
+        support: partial
+        title: Return
+        type: entity_family
+      event:
+        kind: fulfillment_com.return
+        required_payload_fields:
+        - id
+        schema_ref: fulfillment_com/return/v1
+        urn_kind: fulfillment_return
+      event_kind: return
+      id: return
+      id_field: id
+      label: Return
+      list_key: data
+      method: GET
+      name_field: comments
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: limit
+        start_page: 1
+        type: page
+      path: "/returns"
+      permissions_needed:
+      - oms
+      projection:
+        fields:
+          id: id
+          name: comments
+          resource_id: id
+          resource_name: comments
+          resource_type: return
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - track
+        id: track
+        support: partial
+        title: Track
+        type: entity_family
+      event:
+        kind: fulfillment_com.track
+        required_payload_fields:
+        - eventCategory
+        schema_ref: fulfillment_com/track/v1
+        urn_kind: fulfillment_track
+      event_kind: track
+      id: track
+      id_field: eventCategory
+      label: Track
+      list_key: trackedEvents
+      method: GET
+      name_field: eventCategory
+      pagination:
+        type: none
+      path: "/track"
+      projection:
+        fields:
+          id: eventCategory
+          name: eventCategory
+          resource_id: eventCategory
+          resource_name: eventCategory
+          resource_type: track
+        template: asset
+      record_selector: "$.trackedEvents[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - accounting
+      id: accounting
+      label: Accounting
+    - families:
+      - inventory
+      id: inventory
+      label: Inventory
+    - families:
+      - return
+      id: return
+      label: Return
+    - families:
+      - track
+      id: track
+      label: Track
+    source_id: fulfillment_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.fulfillment.com/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/accounting"

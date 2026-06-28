@@ -1,0 +1,551 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: systemkey
+      label: Systemkey
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: collectionname
+      label: Collectionname
+      required: true
+    description: A friendly little API to help you interact with the ClearBlade platform.
+    display_name: ClearBlade API
+    id: builtin_catalog-clearblade_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - system
+        high_value: true
+        id: audit_events
+        support: partial
+        title: System
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clearblade_com.system
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/system/v1
+        urn_kind: clearblade_system
+      event_kind: system
+      id: system
+      id_field: name
+      label: System
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/admin/platform/systems"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.user
+        required_payload_fields:
+        - email
+        schema_ref: clearblade_com/user/v1
+        urn_kind: clearblade_user
+      event_kind: user
+      id: user
+      id_field: email
+      label: User
+      list_key: Data
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/api/v/1/user"
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: identity_user
+      record_selector: "$.Data[*]"
+    - coverage:
+      - control_domains:
+        - secure_delivery
+        evidence_types:
+        - change_management
+        families:
+        - deployment
+        high_value: true
+        id: deployments
+        support: partial
+        title: Deployment
+        type: deployment_state
+      default_enabled: true
+      event:
+        kind: clearblade_com.deployment
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/deployment/v1
+        urn_kind: clearblade_deployment
+      event_kind: deployment
+      id: deployment
+      id_field: name
+      label: Deployment
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v/3/${config.systemkey}/deployments"
+      projection:
+        fields:
+          deployment_environment: description
+          deployment_id: name
+          deployment_name: name
+          deployment_status: description
+          id: name
+          name: name
+        template: deployment
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - connection
+        high_value: true
+        id: connection
+        support: partial
+        title: Connection
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.connection
+        required_payload_fields:
+        - client_id
+        schema_ref: clearblade_com/connection/v1
+        urn_kind: clearblade_connection
+      event_kind: connection
+      id: connection
+      id_field: client_id
+      label: Connection
+      list_key: device_name
+      method: GET
+      name_field: client_id
+      pagination:
+        type: none
+      path: "/api/v/4/devices/${config.systemkey}/connections"
+      projection:
+        fields:
+          id: client_id
+          name: client_id
+          resource_id: client_id
+          resource_name: client_id
+          resource_type: connection
+        template: asset
+      record_selector: "$.device_name[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - platform_system
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Platform System
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clearblade_com.platform_system
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/platform_system/v1
+        urn_kind: clearblade_platform_system
+      event_kind: platform_system
+      id: platform_system
+      id_field: name
+      label: Platform System
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/admin/platform/systems/${config.systemkey}"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - audit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Audit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clearblade_com.audit
+        required_payload_fields:
+        - id
+        schema_ref: clearblade_com/audit/v1
+        urn_kind: clearblade_audit
+      event_kind: audit
+      id: audit
+      id_field: id
+      label: Audit
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/admin/audit"
+      projection:
+        fields:
+          id: id
+          name: email
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - timer
+        high_value: true
+        id: timer
+        support: partial
+        title: Timer
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.timer
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/timer/v1
+        urn_kind: clearblade_timer
+      event_kind: timer
+      id: timer
+      id_field: name
+      label: Timer
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v/3/code/${config.systemkey}/timers"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: timer
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - system_secret
+      - user_token
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - topic
+        high_value: true
+        id: topic
+        support: partial
+        title: Topic
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.topic
+        required_payload_fields:
+        - ip
+        schema_ref: clearblade_com/topic/v1
+        urn_kind: clearblade_topic
+      event_kind: topic
+      id: topic
+      id_field: ip
+      label: Topic
+      method: GET
+      name_field: ip
+      pagination:
+        type: none
+      path: "/api/v/4/message/${config.systemkey}/topics"
+      projection:
+        fields:
+          id: ip
+          name: ip
+          resource_id: ip
+          resource_name: ip
+          resource_type: topic
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - trigger
+        high_value: true
+        id: trigger
+        support: partial
+        title: Trigger
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.trigger
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/trigger/v1
+        urn_kind: clearblade_trigger
+      event_kind: trigger
+      id: trigger
+      id_field: name
+      label: Trigger
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v/3/code/${config.systemkey}/triggers"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: trigger
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - system_secret
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - session_user
+        high_value: true
+        id: session_user
+        support: partial
+        title: Session User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.session_user
+        required_payload_fields:
+        - issued
+        schema_ref: clearblade_com/session_user/v1
+        urn_kind: clearblade_session_user
+      event_kind: session_user
+      id: session_user
+      id_field: issued
+      label: Session User
+      method: GET
+      name_field: issued
+      pagination:
+        type: none
+      path: "/admin/v/4/session/${config.systemkey}/user"
+      projection:
+        fields:
+          id: issued
+          name: issued
+          provider_id: issued
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - listindexe
+        high_value: true
+        id: listindexe
+        support: partial
+        title: Listindexe
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clearblade_com.listindexe
+        required_payload_fields:
+        - name
+        schema_ref: clearblade_com/listindexe/v1
+        urn_kind: clearblade_listindexe
+      event_kind: listindexe
+      id: listindexe
+      id_field: name
+      label: Listindexe
+      list_key: Data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v/4/data/${config.systemkey}/${config.collectionname}/listindexes"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: listindexe
+        template: asset
+      record_selector: "$.Data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - admin_audit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Admin Audit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clearblade_com.admin_audit
+        required_payload_fields:
+        - id
+        schema_ref: clearblade_com/admin_audit/v1
+        urn_kind: clearblade_admin_audit
+      event_kind: admin_audit
+      id: admin_audit
+      id_field: id
+      label: Admin Audit
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/admin/audit/${config.systemkey}"
+      projection:
+        fields:
+          id: id
+          name: email
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - system
+      id: system
+      label: System
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - deployment
+      id: deployment
+      label: Deployment
+    - default_enabled: true
+      families:
+      - connection
+      id: connection
+      label: Connection
+    - default_enabled: true
+      families:
+      - platform_system
+      id: platform_system
+      label: Platform System
+    - default_enabled: true
+      families:
+      - audit
+      id: audit
+      label: Audit
+    - default_enabled: true
+      families:
+      - timer
+      id: timer
+      label: Timer
+    - default_enabled: true
+      families:
+      - topic
+      id: topic
+      label: Topic
+    - default_enabled: true
+      families:
+      - trigger
+      id: trigger
+      label: Trigger
+    - default_enabled: true
+      families:
+      - session_user
+      id: session_user
+      label: Session User
+    - default_enabled: true
+      families:
+      - listindexe
+      id: listindexe
+      label: Listindexe
+    - default_enabled: true
+      families:
+      - admin_audit
+      id: admin_audit
+      label: Admin Audit
+    source_id: clearblade_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://platform.clearblade.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/admin/platform/systems"

@@ -1,0 +1,229 @@
+---
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-creately
+    tenant_id: builtin_catalog
+    source_id: creately
+    display_name: Creately
+    description: Creately connector definition for high-value enterprise SaaS records.
+    categories:
+    - saas
+    - collaboration_productivity
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        label: Bearer token
+        secret: true
+        reference_only: true
+        required: true
+      requires_references: true
+    config_fields:
+    - key: base_url
+      label: API base URL
+      required: true
+      help: Tenant or regional API base URL.
+    transport:
+      base_url: "${config.base_url}"
+      verification:
+        method: GET
+        path: "/v1/me"
+        expect_status:
+        - 200
+    ingest:
+      mode: pull
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: creately.users
+        schema_ref: creately/users/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: identity_user
+        fields:
+          user_id: id
+          display_name: name
+          email: email
+          status: status
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: groups
+      label: Groups
+      path: "/v1/groups"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: creately.groups
+        schema_ref: creately/groups/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: identity_group
+        fields:
+          group_id: id
+          group_name: name
+      coverage:
+      - id: groups
+        type: entity_family
+        title: Groups
+        families:
+        - groups
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: workspaces
+      label: Workspaces
+      path: "/v1/workspaces"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: creately.workspaces
+        schema_ref: creately/workspaces/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: asset
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: workspace
+      coverage:
+      - id: workspaces
+        type: entity_family
+        title: Workspaces
+        families:
+        - workspaces
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: documents
+      label: Documents
+      path: "/v1/documents"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: creately.documents
+        schema_ref: creately/documents/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: asset
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: document
+      coverage:
+      - id: documents
+        type: entity_family
+        title: Documents
+        families:
+        - documents
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - data_governance
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit_events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: creately.audit_events
+        schema_ref: creately/audit_events/v1
+        required_payload_fields:
+        - id
+      projection:
+        template: audit_event
+        fields:
+          id: id
+          event_type: event_type
+          actor_id: actor_id
+          actor_email: actor_email
+          resource_id: resource_id
+          resource_type: resource_type
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+      default_enabled: true

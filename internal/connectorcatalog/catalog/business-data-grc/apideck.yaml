@@ -1,0 +1,208 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: Welcome to the Accounting API.
+    display_name: Apideck
+    id: builtin_catalog-apideck
+    resource_families:
+    - coverage:
+      - families:
+        - ledger_account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: ledger_account
+        support: partial
+        title: Ledger Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: apideck.ledger_account
+        required_payload_fields:
+        - id
+        schema_ref: apideck/ledger_account/v1
+        urn_kind: apideck_ledger_account
+      event_kind: ledger_account
+      id: ledger_account
+      id_field: id
+      label: Ledger Account
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/accounting/ledger-accounts"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - bill
+        id: bill
+        support: partial
+        title: Bill
+        type: entity_family
+      event:
+        kind: apideck.bill
+        required_payload_fields:
+        - id
+        schema_ref: apideck/bill/v1
+        urn_kind: apideck_bill
+      event_kind: bill
+      id: bill
+      id_field: id
+      label: Bill
+      list_key: data
+      method: GET
+      name_field: balance
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/accounting/bills"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: balance
+          resource_id: id
+          resource_name: balance
+          resource_type: bill
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - credit_note
+        id: credit_note
+        support: partial
+        title: Credit Note
+        type: entity_family
+      event:
+        kind: apideck.credit_note
+        required_payload_fields:
+        - id
+        schema_ref: apideck/credit_note/v1
+        urn_kind: apideck_credit_note
+      event_kind: credit_note
+      id: credit_note
+      id_field: id
+      label: Credit Note
+      list_key: data
+      method: GET
+      name_field: account
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/accounting/credit-notes"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: account
+          resource_id: id
+          resource_name: account
+          resource_type: credit_note
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - customer
+        id: customer
+        support: partial
+        title: Customer
+        type: entity_family
+      event:
+        kind: apideck.customer
+        required_payload_fields:
+        - id
+        schema_ref: apideck/customer/v1
+        urn_kind: apideck_customer
+      event_kind: customer
+      id: customer
+      id_field: id
+      label: Customer
+      list_key: data
+      method: GET
+      name_field: display_name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/accounting/customers"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: display_name
+          resource_id: id
+          resource_name: display_name
+          resource_type: customer
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - ledger_account
+      id: ledger_account
+      label: Ledger Account
+    - families:
+      - bill
+      id: bill
+      label: Bill
+    - families:
+      - credit_note
+      id: credit_note
+      label: Credit Note
+    - families:
+      - customer
+      id: customer
+      label: Customer
+    source_id: apideck
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://unify.apideck.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/accounting/ledger-accounts"

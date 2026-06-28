@@ -1,0 +1,520 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: XTRF Home Portal API enables you to perform operations on Projects, Quotes, Customers, Vendors etc. as a XTRF Home Portal user. <br>The documentation is generated from OpenAPI specification 3.0 available <a href="/home-api/openapi.json">here</a> <br> The API client/consumer code may be easily generated in 60+ programming languages using an open source code generator available at the time of...
+    display_name: XTRF Home Portal API
+    id: builtin_catalog-xtrf_eu
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: xtrf_eu.user
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/user/v1
+        urn_kind: xtrf_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/users"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - active
+        id: active
+        support: partial
+        title: Active
+        type: entity_family
+      event:
+        kind: xtrf_eu.active
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/active/v1
+        urn_kind: xtrf_active
+      event_kind: active
+      id: active
+      id_field: id
+      label: Active
+      list_key: calculationUnit
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/dictionaries/active"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: active
+        template: asset
+      record_selector: "$.calculationUnit[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - all
+        id: all
+        support: partial
+        title: All
+        type: entity_family
+      event:
+        kind: xtrf_eu.all
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/all/v1
+        urn_kind: xtrf_all
+      event_kind: all
+      id: all
+      id_field: id
+      label: All
+      list_key: calculationUnit
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/dictionaries/all"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: all
+        template: asset
+      record_selector: "$.calculationUnit[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - customer
+        id: customer
+        support: partial
+        title: Customer
+        type: entity_family
+      event:
+        kind: xtrf_eu.customer
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/customer/v1
+        urn_kind: xtrf_customer
+      event_kind: customer
+      id: customer
+      id_field: id
+      label: Customer
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/customers"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: customer
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - id
+        id: id
+        support: partial
+        title: Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/id/v1
+        urn_kind: xtrf_id
+      event_kind: id
+      id: id
+      id_field: id
+      label: Id
+      method: GET
+      pagination:
+        type: none
+      path: "/accounting/customers/invoices/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - invoices_id
+        id: invoices_id
+        support: partial
+        title: Invoices Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.invoices_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/invoices_id/v1
+        urn_kind: xtrf_invoices_id
+      event_kind: invoices_id
+      id: invoices_id
+      id_field: id
+      label: Invoices Id
+      method: GET
+      pagination:
+        type: none
+      path: "/accounting/providers/invoices/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - customers_id
+        id: customers_id
+        support: partial
+        title: Customers Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.customers_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/customers_id/v1
+        urn_kind: xtrf_customers_id
+      event_kind: customers_id
+      id: customers_id
+      id_field: id
+      label: Customers Id
+      method: GET
+      pagination:
+        type: none
+      path: "/customers/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - persons_id
+        id: persons_id
+        support: partial
+        title: Persons Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.persons_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/persons_id/v1
+        urn_kind: xtrf_persons_id
+      event_kind: persons_id
+      id: persons_id
+      id_field: id
+      label: Persons Id
+      method: GET
+      pagination:
+        type: none
+      path: "/customers/persons/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - projects_id
+        id: projects_id
+        support: partial
+        title: Projects Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.projects_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/projects_id/v1
+        urn_kind: xtrf_projects_id
+      event_kind: projects_id
+      id: projects_id
+      id_field: id
+      label: Projects Id
+      method: GET
+      pagination:
+        type: none
+      path: "/projects/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - providers_id
+        id: providers_id
+        support: partial
+        title: Providers Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.providers_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/providers_id/v1
+        urn_kind: xtrf_providers_id
+      event_kind: providers_id
+      id: providers_id
+      id_field: id
+      label: Providers Id
+      method: GET
+      pagination:
+        type: none
+      path: "/providers/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - id_2
+        id: id_2
+        support: partial
+        title: Id 2
+        type: entity_family
+      event:
+        kind: xtrf_eu.id_2
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/id_2/v1
+        urn_kind: xtrf_id_2
+      event_kind: id_2
+      id: id_2
+      id_field: id
+      label: Id 2
+      method: GET
+      pagination:
+        type: none
+      path: "/providers/persons/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - quotes_id
+        id: quotes_id
+        support: partial
+        title: Quotes Id
+        type: entity_family
+      event:
+        kind: xtrf_eu.quotes_id
+        required_payload_fields:
+        - id
+        schema_ref: xtrf_eu/quotes_id/v1
+        urn_kind: xtrf_quotes_id
+      event_kind: quotes_id
+      id: quotes_id
+      id_field: id
+      label: Quotes Id
+      method: GET
+      pagination:
+        type: none
+      path: "/quotes/ids"
+      permissions_needed:
+      - X-AUTH-ACCESS-TOKEN
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: id
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - families:
+      - active
+      id: active
+      label: Active
+    - families:
+      - all
+      id: all
+      label: All
+    - families:
+      - customer
+      id: customer
+      label: Customer
+    - families:
+      - id
+      id: id
+      label: Id
+    - families:
+      - invoices_id
+      id: invoices_id
+      label: Invoices Id
+    - families:
+      - customers_id
+      id: customers_id
+      label: Customers Id
+    - families:
+      - persons_id
+      id: persons_id
+      label: Persons Id
+    - families:
+      - projects_id
+      id: projects_id
+      label: Projects Id
+    - families:
+      - providers_id
+      id: providers_id
+      label: Providers Id
+    - families:
+      - id_2
+      id: id_2
+      label: Id 2
+    - families:
+      - quotes_id
+      id: quotes_id
+      label: Quotes Id
+    source_id: xtrf_eu
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://presentation.s.xtrf.eu/home-api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/users"

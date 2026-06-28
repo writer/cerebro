@@ -1,0 +1,116 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-microsoft_teams
+    tenant_id: builtin_catalog
+    source_id: microsoft_teams
+    display_name: Microsoft Teams
+    description: Microsoft Teams connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - saas
+    - collaboration
+    auth:
+      model: oauth_client_credentials
+      token_url: https://graph.microsoft.com/oauth/token
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://graph.microsoft.com
+      verification:
+        method: GET
+        path: "/v1.0/teams"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: microsoft_teams.users
+        schema_ref: microsoft_teams/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: content_assets
+      label: Content assets
+      path: "/v1/resources"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: microsoft_teams.content_assets
+        schema_ref: microsoft_teams/content_assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: content_assets
+        type: entity_family
+        title: Shared content assets
+        families:
+        - content_assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: microsoft_teams.audit_events
+        schema_ref: microsoft_teams/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

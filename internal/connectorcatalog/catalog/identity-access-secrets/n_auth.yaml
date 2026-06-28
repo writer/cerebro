@@ -1,0 +1,228 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: serverid
+      label: Serverid
+      required: true
+    description: API for the nextAuth server
+    display_name: nextAuth
+    id: builtin_catalog-n_auth
+    resource_families:
+    - coverage:
+      - families:
+        - apikey
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Apikey
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: n_auth.apikey
+        required_payload_fields:
+        - apikey
+        schema_ref: n_auth/apikey/v1
+        urn_kind: n_apikey
+      event_kind: apikey
+      id: apikey
+      id_field: apikey
+      label: Apikey
+      list_key: apikeys
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/apikeys/"
+      permissions_needed:
+      - api_key
+      - role_id
+      projection:
+        fields:
+          id: apikey
+          name: description
+          secret_id: apikey
+          secret_name: description
+          secret_type: apikey
+        template: secret
+      record_selector: "$.apikeys[*]"
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: n_auth.account
+        required_payload_fields:
+        - id
+        schema_ref: n_auth/account/v1
+        urn_kind: n_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: accounts
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/servers/${config.serverid}/accounts/"
+      permissions_needed:
+      - api_key
+      - role_id
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_user
+      record_selector: "$.accounts[*]"
+    - coverage:
+      - families:
+        - permission
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: permission
+        support: partial
+        title: Permission
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: n_auth.permission
+        required_payload_fields:
+        - acl
+        schema_ref: n_auth/permission/v1
+        urn_kind: n_permission
+      event_kind: permission
+      id: permission
+      id_field: acl
+      label: Permission
+      list_key: permissions
+      method: GET
+      name_field: acl
+      pagination:
+        type: none
+      path: "/servers/${config.serverid}/permissions/"
+      permissions_needed:
+      - api_key
+      - role_id
+      projection:
+        fields:
+          id: acl
+          name: acl
+          resource_id: acl
+          resource_name: acl
+          resource_type: permission
+        template: asset
+      record_selector: "$.permissions[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: n_auth.user
+        required_payload_fields:
+        - lastlogin
+        schema_ref: n_auth/user/v1
+        urn_kind: n_user
+      event_kind: user
+      id: user
+      id_field: lastlogin
+      label: User
+      list_key: users
+      method: GET
+      name_field: lastlogin
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/servers/${config.serverid}/users/"
+      permissions_needed:
+      - api_key
+      - role_id
+      projection:
+        fields:
+          id: lastlogin
+          name: lastlogin
+          provider_id: lastlogin
+        template: identity_user
+      record_selector: "$.users[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - apikey
+      id: apikey
+      label: Apikey
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - permission
+      id: permission
+      label: Permission
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    source_id: n_auth
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.nextauth.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/apikeys/"

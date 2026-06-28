@@ -1,0 +1,578 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: Generated from an OpenAPI description.
+    display_name: Files.com API
+    id: builtin_catalog-files_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - external_event
+        high_value: true
+        id: audit_events
+        support: partial
+        title: External Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: files_com.external_event
+        required_payload_fields:
+        - id
+        schema_ref: files_com/external_event/v1
+        urn_kind: files_external_event
+      event_kind: external_event
+      id: external_event
+      id_field: id
+      label: External Event
+      method: GET
+      name_field: body
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/external_events"
+      projection:
+        fields:
+          id: id
+          name: body
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - api_key
+        high_value: true
+        id: secrets
+        support: partial
+        title: Api Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.api_key
+        required_payload_fields:
+        - id
+        schema_ref: files_com/api_key/v1
+        urn_kind: files_api_key
+      event_kind: api_key
+      id: api_key
+      id_field: id
+      label: Api Key
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/api_keys"
+      projection:
+        fields:
+          id: id
+          name: name
+          secret_id: id
+          secret_name: name
+          secret_type: api_key
+        template: secret
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group
+        high_value: true
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.group
+        required_payload_fields:
+        - id
+        schema_ref: files_com/group/v1
+        urn_kind: files_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/groups"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group_user
+        high_value: true
+        id: group_user
+        support: partial
+        title: Group User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.group_user
+        required_payload_fields:
+        - admin
+        schema_ref: files_com/group_user/v1
+        urn_kind: files_group_user
+      event_kind: group_user
+      id: group_user
+      id_field: admin
+      label: Group User
+      method: GET
+      name_field: admin
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/group_users"
+      projection:
+        fields:
+          id: admin
+          name: admin
+          provider_id: admin
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - action_notification_export_result
+        high_value: true
+        id: alerts
+        support: partial
+        title: Action Notification Export Result
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: files_com.action_notification_export_result
+        required_payload_fields:
+        - id
+        schema_ref: files_com/action_notification_export_result/v1
+        urn_kind: files_action_notification_export_result
+      event_kind: action_notification_export_result
+      id: action_notification_export_result
+      id_field: id
+      label: Action Notification Export Result
+      method: GET
+      name_field: created_at
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/action_notification_export_results"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: created_at
+          alert_severity: created_at
+          alert_status: status
+          id: id
+          name: created_at
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - permission
+        high_value: true
+        id: permission
+        support: partial
+        title: Permission
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.permission
+        required_payload_fields:
+        - id
+        schema_ref: files_com/permission/v1
+        urn_kind: files_permission
+      event_kind: permission
+      id: permission
+      id_field: id
+      label: Permission
+      method: GET
+      name_field: username
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/permissions"
+      projection:
+        fields:
+          id: id
+          name: username
+          resource_id: id
+          resource_name: username
+          resource_type: permission
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - login
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Login
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: files_com.login
+        required_payload_fields:
+        - id
+        schema_ref: files_com/login/v1
+        urn_kind: files_login
+      event_kind: login
+      id: login
+      id_field: id
+      label: Login
+      method: GET
+      name_field: username
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/history/login"
+      projection:
+        fields:
+          id: id
+          name: username
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - site_api_key
+        high_value: true
+        id: secrets
+        support: partial
+        title: Site Api Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.site_api_key
+        required_payload_fields:
+        - id
+        schema_ref: files_com/site_api_key/v1
+        urn_kind: files_site_api_key
+      event_kind: site_api_key
+      id: site_api_key
+      id_field: id
+      label: Site Api Key
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/site/api_keys"
+      projection:
+        fields:
+          id: id
+          name: name
+          secret_id: id
+          secret_name: name
+          secret_type: api_key
+        template: secret
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user_api_key
+        high_value: true
+        id: secrets
+        support: partial
+        title: User Api Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.user_api_key
+        required_payload_fields:
+        - id
+        schema_ref: files_com/user_api_key/v1
+        urn_kind: files_user_api_key
+      event_kind: user_api_key
+      id: user_api_key
+      id_field: id
+      label: User Api Key
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/user/api_keys"
+      projection:
+        fields:
+          id: id
+          name: name
+          secret_id: id
+          secret_name: name
+          secret_type: api_key
+        template: secret
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - exavault_reserved
+        high_value: true
+        id: secrets
+        support: partial
+        title: Exavault Reserved
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.exavault_reserved
+        required_payload_fields:
+        - ftp_enabled
+        schema_ref: files_com/exavault_reserved/v1
+        urn_kind: files_exavault_reserved
+      event_kind: exavault_reserved
+      id: exavault_reserved
+      id_field: ftp_enabled
+      label: Exavault Reserved
+      method: GET
+      name_field: ftp_enabled
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/ip_addresses/exavault-reserved"
+      projection:
+        fields:
+          id: ftp_enabled
+          name: ftp_enabled
+          secret_id: ftp_enabled
+          secret_name: ftp_enabled
+          secret_type: exavault_reserved
+        template: secret
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user_group
+        high_value: true
+        id: user_group
+        support: partial
+        title: User Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.user_group
+        required_payload_fields:
+        - admin
+        schema_ref: files_com/user_group/v1
+        urn_kind: files_user_group
+      event_kind: user_group
+      id: user_group
+      id_field: admin
+      label: User Group
+      method: GET
+      name_field: admin
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/user/groups"
+      projection:
+        fields:
+          id: admin
+          name: admin
+          provider_id: admin
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: files_com.user
+        required_payload_fields:
+        - id
+        schema_ref: files_com/user/v1
+        urn_kind: files_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: per_page
+        type: cursor
+      path: "/users"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - days_remaining_until_password_expire
+      - password_expire_at
+      - password_expired
+      - password_set_at
+      - password_validity_days
+      - require_password_change
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - external_event
+      id: external_event
+      label: External Event
+    - default_enabled: true
+      families:
+      - api_key
+      id: api_key
+      label: Api Key
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - group_user
+      id: group_user
+      label: Group User
+    - default_enabled: true
+      families:
+      - action_notification_export_result
+      id: action_notification_export_result
+      label: Action Notification Export Result
+    - default_enabled: true
+      families:
+      - permission
+      id: permission
+      label: Permission
+    - default_enabled: true
+      families:
+      - login
+      id: login
+      label: Login
+    - default_enabled: true
+      families:
+      - site_api_key
+      id: site_api_key
+      label: Site Api Key
+    - default_enabled: true
+      families:
+      - user_api_key
+      id: user_api_key
+      label: User Api Key
+    - default_enabled: true
+      families:
+      - exavault_reserved
+      id: exavault_reserved
+      label: Exavault Reserved
+    - default_enabled: true
+      families:
+      - user_group
+      id: user_group
+      label: User Group
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    source_id: files_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "//app.files.com/api/rest/v1"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/external_events"

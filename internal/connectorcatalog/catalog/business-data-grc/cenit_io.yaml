@@ -1,0 +1,565 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    description: Cenit IO is an Open Platform for Data and Business Integration (iPaaS)
+    display_name: Cenit IO - REST API Specification
+    id: builtin_catalog-cenit_io
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - observer
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Observer
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: cenit_io.observer
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/observer/v1
+        urn_kind: cenit_observer
+      event_kind: observer
+      id: observer
+      id_field: id
+      label: Observer
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/observer/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - connection_role
+        high_value: true
+        id: connection_role
+        support: partial
+        title: Connection Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: cenit_io.connection_role
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/connection_role/v1
+        urn_kind: cenit_connection_role
+      event_kind: connection_role
+      id: connection_role
+      id_field: id
+      label: Connection Role
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/connection_role"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - webhook
+        high_value: true
+        id: webhook
+        support: partial
+        title: Webhook
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: cenit_io.webhook
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/webhook/v1
+        urn_kind: cenit_webhook
+      event_kind: webhook
+      id: webhook
+      id_field: id
+      label: Webhook
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/webhook/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: webhook
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - connection
+        id: connection
+        support: partial
+        title: Connection
+        type: entity_family
+      event:
+        kind: cenit_io.connection
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/connection/v1
+        urn_kind: cenit_connection
+      event_kind: connection
+      id: connection
+      id_field: id
+      label: Connection
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/connection"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: connection
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - token
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - data_type
+        id: data_type
+        support: partial
+        title: Data Type
+        type: entity_family
+      event:
+        kind: cenit_io.data_type
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/data_type/v1
+        urn_kind: cenit_data_type
+      event_kind: data_type
+      id: data_type
+      id_field: id
+      label: Data Type
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/data_type/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: data_type
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - flow
+        id: flow
+        support: partial
+        title: Flow
+        type: entity_family
+      event:
+        kind: cenit_io.flow
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/flow/v1
+        urn_kind: cenit_flow
+      event_kind: flow
+      id: flow
+      id_field: id
+      label: Flow
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/flow/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: flow
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - namespace
+        id: namespace
+        support: partial
+        title: Namespace
+        type: entity_family
+      event:
+        kind: cenit_io.namespace
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/namespace/v1
+        urn_kind: cenit_namespace
+      event_kind: namespace
+      id: namespace
+      id_field: id
+      label: Namespace
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/namespace/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: namespace
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - scheduler
+        id: scheduler
+        support: partial
+        title: Scheduler
+        type: entity_family
+      event:
+        kind: cenit_io.scheduler
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/scheduler/v1
+        urn_kind: cenit_scheduler
+      event_kind: scheduler
+      id: scheduler
+      id_field: id
+      label: Scheduler
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/scheduler/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: scheduler
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - schema
+        id: schema
+        support: partial
+        title: Schema
+        type: entity_family
+      event:
+        kind: cenit_io.schema
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/schema/v1
+        urn_kind: cenit_schema
+      event_kind: schema
+      id: schema
+      id_field: id
+      label: Schema
+      method: GET
+      name_field: id
+      pagination:
+        type: none
+      path: "/setup/schema/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: id
+          resource_id: id
+          resource_name: id
+          resource_type: schema
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - translator
+        id: translator
+        support: partial
+        title: Translator
+        type: entity_family
+      event:
+        kind: cenit_io.translator
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/translator/v1
+        urn_kind: cenit_translator
+      event_kind: translator
+      id: translator
+      id_field: id
+      label: Translator
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/translator/"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: translator
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - setup_connection_role
+        high_value: true
+        id: setup_connection_role
+        support: partial
+        title: Setup Connection Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: cenit_io.setup_connection_role
+        required_payload_fields:
+        - id
+        schema_ref: cenit_io/setup_connection_role/v1
+        urn_kind: cenit_setup_connection_role
+      event_kind: setup_connection_role
+      id: setup_connection_role
+      id_field: id
+      label: Setup Connection Role
+      list_key: connection
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/setup/connection_role/${config.id}"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.connection[*]"
+      sensitive_payload_paths:
+      - token
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - setup_webhook
+        high_value: true
+        id: setup_webhook
+        support: partial
+        title: Setup Webhook
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: cenit_io.setup_webhook
+        required_payload_fields:
+        - key
+        schema_ref: cenit_io/setup_webhook/v1
+        urn_kind: cenit_setup_webhook
+      event_kind: setup_webhook
+      id: setup_webhook
+      id_field: key
+      label: Setup Webhook
+      list_key: headers
+      method: GET
+      name_field: key
+      pagination:
+        type: none
+      path: "/setup/webhook/${config.id}"
+      permissions_needed:
+      - X-User-Access-Key
+      - X-User-Access-Token
+      projection:
+        fields:
+          id: key
+          name: key
+          resource_id: key
+          resource_name: key
+          resource_type: webhook
+        template: asset
+      record_selector: "$.headers[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - observer
+      id: observer
+      label: Observer
+    - default_enabled: true
+      families:
+      - connection_role
+      id: connection_role
+      label: Connection Role
+    - default_enabled: true
+      families:
+      - webhook
+      id: webhook
+      label: Webhook
+    - families:
+      - connection
+      id: connection
+      label: Connection
+    - families:
+      - data_type
+      id: data_type
+      label: Data Type
+    - families:
+      - flow
+      id: flow
+      label: Flow
+    - families:
+      - namespace
+      id: namespace
+      label: Namespace
+    - families:
+      - scheduler
+      id: scheduler
+      label: Scheduler
+    - families:
+      - schema
+      id: schema
+      label: Schema
+    - families:
+      - translator
+      id: translator
+      label: Translator
+    - default_enabled: true
+      families:
+      - setup_connection_role
+      id: setup_connection_role
+      label: Setup Connection Role
+    - default_enabled: true
+      families:
+      - setup_webhook
+      id: setup_webhook
+      label: Setup Webhook
+    source_id: cenit_io
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://cenit.io/api/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/setup/observer/"

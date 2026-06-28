@@ -1,0 +1,208 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    description: CallFire
+    display_name: CallFire
+    id: builtin_catalog-callfire
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: callfire.account
+        required_payload_fields:
+        - id
+        schema_ref: callfire/account/v1
+        urn_kind: callfire_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: messageFlows
+      method: GET
+      pagination:
+        type: none
+      path: "/me/account"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_user
+      record_selector: "$.messageFlows[*]"
+    - coverage:
+      - families:
+        - credential
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Credential
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: callfire.credential
+        required_payload_fields:
+        - id
+        schema_ref: callfire/credential/v1
+        urn_kind: callfire_credential
+      event_kind: credential
+      id: credential
+      id_field: id
+      label: Credential
+      list_key: items
+      method: GET
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/me/api/credentials"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          secret_id: id
+          secret_name: id
+          secret_type: credential
+        template: secret
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - broadcast
+        id: broadcast
+        support: partial
+        title: Broadcast
+        type: entity_family
+      event:
+        kind: callfire.broadcast
+        required_payload_fields:
+        - id
+        schema_ref: callfire/broadcast/v1
+        urn_kind: callfire_broadcast
+      event_kind: broadcast
+      id: broadcast
+      id_field: id
+      label: Broadcast
+      list_key: items
+      method: GET
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/calls/broadcasts"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: broadcast
+        template: asset
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - call
+        id: call
+        support: partial
+        title: Call
+        type: entity_family
+      event:
+        kind: callfire.call
+        required_payload_fields:
+        - id
+        schema_ref: callfire/call/v1
+        urn_kind: callfire_call
+      event_kind: call
+      id: call
+      id_field: id
+      label: Call
+      list_key: items
+      method: GET
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/calls"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: call
+        template: asset
+      record_selector: "$.items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - credential
+      id: credential
+      label: Credential
+    - families:
+      - broadcast
+      id: broadcast
+      label: Broadcast
+    - families:
+      - call
+      id: call
+      label: Call
+    source_id: callfire
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.callfire.com/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/me/account"

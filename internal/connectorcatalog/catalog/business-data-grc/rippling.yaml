@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-rippling
+    tenant_id: builtin_catalog
+    source_id: rippling
+    display_name: Rippling
+    description: Rippling connector definition catalog entry for high-value HR, identity, device, and background-check resources.
+    categories:
+    - hr
+    - endpoint
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://rest.ripplingapis.com
+      verification:
+        method: GET
+        path: "/companies"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Workers
+      path: "/workers"
+      method: GET
+      record_selector: "$.results[*]"
+      id_field: id
+      event:
+        kind: rippling.users
+        schema_ref: rippling/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Workers
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next"
+        page_size_param: limit
+        page_size: 100
+    - id: devices
+      label: Devices
+      path: "/devices"
+      method: GET
+      record_selector: "$.results[*]"
+      id_field: id
+      event:
+        kind: rippling.devices
+        schema_ref: rippling/devices/v1
+      projection:
+        template: endpoint_device
+      coverage:
+      - id: devices
+        type: entity_family
+        title: Devices
+        families:
+        - devices
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next"
+        page_size_param: limit
+        page_size: 100
+    - id: background_checks
+      label: Background checks
+      path: "/background-checks"
+      method: GET
+      record_selector: "$.results[*]"
+      id_field: id
+      event:
+        kind: rippling.background_checks
+        schema_ref: rippling/background_checks/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: background_checks
+        type: audit_event
+        title: Background checks
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next"
+        page_size_param: limit
+        page_size: 100

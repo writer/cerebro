@@ -408,8 +408,8 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 	if definition.Transport == nil || definition.Transport.Verification == nil || strings.TrimSpace(definition.Transport.Verification.Path) == "" {
 		issues = append(issues, Issue{Path: path, Message: "verification endpoint is required"})
 	}
-	if len(definition.ResourceFamilies) < 2 || len(definition.ResourceFamilies) > 4 {
-		issues = append(issues, Issue{Path: path, Message: "definition must include 2-4 high-value resource families"})
+	if len(definition.ResourceFamilies) < 2 || len(definition.ResourceFamilies) > 12 {
+		issues = append(issues, Issue{Path: path, Message: "definition must include 2-12 high-value resource families"})
 	}
 	highValue := false
 	for _, family := range definition.ResourceFamilies {

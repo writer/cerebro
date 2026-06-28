@@ -164,6 +164,9 @@ func collectCandidates(doc *openapi3.T, sourceID string, getOnly bool) []candida
 				continue
 			}
 			renderedPath, pathConfigFields := renderPathTemplate(pair.path)
+			if strings.Contains(renderedPath, "#") {
+				continue
+			}
 			staticSegments := staticPathSegments(pair.path)
 			familyID := familyIDFromPath(pair.path)
 			properties := schemaProperties(itemSchema)

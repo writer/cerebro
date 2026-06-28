@@ -1,0 +1,209 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: This is the official API documentation for the Public Hetzner Cloud.
+    display_name: Hetzner Cloud
+    id: builtin_catalog-hetzner
+    resource_families:
+    - coverage:
+      - families:
+        - placement_group
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: placement_group
+        support: partial
+        title: Placement Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: hetzner.placement_group
+        required_payload_fields:
+        - id
+        schema_ref: hetzner/placement_group/v1
+        urn_kind: hetzner_placement_group
+      event_kind: placement_group
+      id: placement_group
+      id_field: id
+      label: Placement Group
+      list_key: placement_groups
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/placement_groups"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.placement_groups[*]"
+    - coverage:
+      - families:
+        - certificate
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: certificate
+        support: partial
+        title: Certificate
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: hetzner.certificate
+        required_payload_fields:
+        - id
+        schema_ref: hetzner/certificate/v1
+        urn_kind: hetzner_certificate
+      event_kind: certificate
+      id: certificate
+      id_field: id
+      label: Certificate
+      list_key: certificates
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/certificates"
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: certificate
+        template: asset
+      record_selector: "$.certificates[*]"
+    - coverage:
+      - families:
+        - firewall
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: firewall
+        support: partial
+        title: Firewall
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: hetzner.firewall
+        required_payload_fields:
+        - id
+        schema_ref: hetzner/firewall/v1
+        urn_kind: hetzner_firewall
+      event_kind: firewall
+      id: firewall
+      id_field: id
+      label: Firewall
+      list_key: firewalls
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/firewalls"
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: firewall
+        template: asset
+      record_selector: "$.firewalls[*]"
+    - coverage:
+      - families:
+        - ssh_key
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: ssh_key
+        support: partial
+        title: Ssh Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: hetzner.ssh_key
+        required_payload_fields:
+        - id
+        schema_ref: hetzner/ssh_key/v1
+        urn_kind: hetzner_ssh_key
+      event_kind: ssh_key
+      id: ssh_key
+      id_field: id
+      label: Ssh Key
+      list_key: ssh_keys
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/ssh_keys"
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: ssh_key
+        template: asset
+      record_selector: "$.ssh_keys[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - placement_group
+      id: placement_group
+      label: Placement Group
+    - default_enabled: true
+      families:
+      - certificate
+      id: certificate
+      label: Certificate
+    - default_enabled: true
+      families:
+      - firewall
+      id: firewall
+      label: Firewall
+    - default_enabled: true
+      families:
+      - ssh_key
+      id: ssh_key
+      label: Ssh Key
+    source_id: hetzner
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.hetzner.cloud/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/placement_groups"
