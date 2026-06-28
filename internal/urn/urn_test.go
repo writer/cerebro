@@ -47,6 +47,40 @@ func TestMintAllowsKindOnlyProjectionURNs(t *testing.T) {
 	}
 }
 
+func TestEncodeSegment(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "empty", value: "", want: ""},
+		{name: "whitespace", value: "   ", want: ""},
+		{name: "colon and slash", value: " ISO:27001/2022 ", want: "ISO%3A27001%2F2022"},
+		{name: "space", value: "Access Policy:v2", want: "Access%20Policy%3Av2"},
+		{name: "literal plus", value: "role/Admin+Owner", want: "role%2FAdmin+Owner"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := EncodeSegment(tc.value); got != tc.want {
+				t.Fatalf("EncodeSegment(%q) = %q, want %q", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMintWithEncodedSegmentKeepsProviderIDInOnePart(t *testing.T) {
+	raw, err := Mint("writer", "policy", "provider", EncodeSegment("ISO:27001/2022"))
+	if err != nil {
+		t.Fatalf("Mint() error = %v", err)
+	}
+	parsed, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(parsed.Parts) != 2 || parsed.Parts[0] != "provider" || parsed.Parts[1] != "ISO%3A27001%2F2022" {
+		t.Fatalf("Parse().Parts = %#v", parsed.Parts)
+	}
+}
+
 func TestParseRejectsInvalidValue(t *testing.T) {
 	for _, raw := range []string{
 		"",
