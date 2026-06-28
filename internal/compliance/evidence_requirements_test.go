@@ -159,6 +159,38 @@ func TestControlEvidenceRequirementFrameworksGateKeywords(t *testing.T) {
 	}
 }
 
+func TestControlEvidenceRequirementKeywordsOrPrefixesMatch(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "data-protection",
+		Name: "Data Protection Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			FamilyKeywords:    []string{"Confidentiality"},
+			ControlIDPrefixes: []string{"A.8."},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Confidentiality",
+		Control:       Control{ID: "C1.1", Title: "Confidential information is protected"},
+	}) {
+		t.Fatal("profile did not match family keyword")
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "ISO 27001:2022",
+		FamilyName:    "Technology Controls",
+		Control:       Control{ID: "A.8.24", Title: "Use of cryptography"},
+	}) {
+		t.Fatal("profile did not match control ID prefix")
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "ISO 27001:2022",
+		FamilyName:    "Physical Controls",
+		Control:       Control{ID: "A.7.8", Title: "Equipment siting and protection"},
+	}) {
+		t.Fatal("profile matched without keyword or prefix")
+	}
+}
+
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTerms(t *testing.T) {
 	loggingProfile := ControlEvidenceRequirementProfile{
 		ID:   "logging-monitoring",
