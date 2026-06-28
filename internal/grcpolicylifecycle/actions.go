@@ -565,7 +565,7 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 		rows = append(rows, []string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN, "", "", ""})
 	}
 	for _, gap := range response.GovernanceGaps {
-		if !exportWindowIncludesAny(window, gap.DueAt, gap.StateUpdatedAt) {
+		if !exportWindowIncludesGovernanceGap(window, gap) {
 			continue
 		}
 		rows = append(rows, []string{"governance.gap", gap.SubjectID, gap.PolicyID, policyTitles[gap.PolicyID], "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", "", "", gap.ID, gap.Title, strings.Join(gap.MissingFields, "; "), gap.RuleID})
@@ -587,6 +587,13 @@ func exportPolicyTitles(policies []grcPolicyLifecyclePolicy) map[string]string {
 		}
 	}
 	return titles
+}
+
+func exportWindowIncludesGovernanceGap(window ExportWindow, gap grcPolicyGovernanceGap) bool {
+	if exportWindowIncludesAny(window, gap.DueAt, gap.StateUpdatedAt) {
+		return true
+	}
+	return (window.Start != nil || window.End != nil) && strings.TrimSpace(gap.DueAt) == "" && strings.TrimSpace(gap.StateUpdatedAt) == ""
 }
 
 func exportControls(items []grcPolicyControlRef) string {

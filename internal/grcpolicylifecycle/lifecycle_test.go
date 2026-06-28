@@ -718,6 +718,30 @@ func TestAuditExportRowsUseGovernanceGapColumns(t *testing.T) {
 	}
 }
 
+func TestAuditExportRowsIncludesUndatedGovernanceGapsInWindow(t *testing.T) {
+	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)
+	response := Response{
+		GovernanceGaps: []grcPolicyGovernanceGap{{
+			ID:        "urn:risk:gap:policy",
+			SubjectID: "privileged-access",
+			Title:     "Privileged access risk",
+			PolicyID:  "access-policy",
+			GapState:  "open",
+			Action:    "Link policy",
+			RuleID:    "risk.policy",
+		}},
+	}
+
+	rows := AuditExportRows(response, ExportWindow{Start: &start, End: &end})
+	for _, row := range rows {
+		if row[0] == "governance.gap" && row[1] == "privileged-access" {
+			return
+		}
+	}
+	t.Fatalf("rows = %+v, want undated governance gap in windowed export", rows)
+}
+
 func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:policy:access", "policy", "Access", map[string]string{
