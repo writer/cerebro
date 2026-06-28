@@ -610,10 +610,6 @@ func controlFamilyIndexFromCatalog(catalog complianceControlCatalog) controlFami
 	return index
 }
 
-func controlFamilyForRef(index controlFamilyIndex, ref controlRef) string {
-	return index[controlRefKey(ref)].Family
-}
-
 func controlCatalogRefs(catalog complianceControlCatalog) []controlRef {
 	var refs []controlRef
 	for _, framework := range catalog.Frameworks {
