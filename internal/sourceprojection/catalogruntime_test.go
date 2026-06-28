@@ -121,11 +121,11 @@ func TestGeneratedCatalogFamiliesProjectIntoGraph(t *testing.T) {
 			familyCount++
 		}
 	}
-	if sourceCount < 500 {
-		t.Fatalf("generateable catalog sources = %d, want at least 500 projected sources", sourceCount)
+	if sourceCount < 750 {
+		t.Fatalf("generateable catalog sources = %d, want at least 750 projected sources", sourceCount)
 	}
-	if familyCount < 2500 {
-		t.Fatalf("generateable catalog resource families = %d, want at least 2500 projected graph items", familyCount)
+	if familyCount < 3500 {
+		t.Fatalf("generateable catalog resource families = %d, want at least 3500 projected graph items", familyCount)
 	}
 }
 
