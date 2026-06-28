@@ -6,10 +6,11 @@ It complements [Architecture](../reference/architecture.md), [Compliance Control
 
 ## Why This Exists
 
-The GRC surface is the fastest-growing part of the Cerebro platform. It spans six packages:
+The GRC surface is the fastest-growing part of the Cerebro platform. It spans seven packages:
 
 - `internal/grccatalog` — bounded report source catalog for custom dashboards
 - `internal/grccontrol` — control evidence packet builder and report rendering
+- `internal/grcfindings` — GRC risk-inbox finding, control, evidence, and summary builders
 - `internal/grcinventory` — inventory posture, scope, accountability, and filtering
 - `internal/grcprogram` — program readiness scoring and work-item generation
 - `internal/grctrends` — time-bucketed finding trend aggregation
@@ -29,13 +30,13 @@ Before this doc, GRC behavior was described only in accumulating paragraphs insi
    (readiness)    (source catalog)  (posture/scope)
           |               |               |
           +-------+-------+-------+-------+
-                  |               |
-             grctrends        compliance
-           (trend buckets)   (control catalog)
-                  |               |
-                  v               v
-           Postgres trends    Control families
-           + findings         + coverage index
+                  |       |       |
+             grctrends grcfindings compliance
+           (trend buckets) (risk inbox) (control catalog)
+                  |       |       |
+                  v       v       v
+           Postgres trends + findings  Control families
+           + findings                 + coverage index
 ```
 
 ## Package Contracts
@@ -80,9 +81,36 @@ Boundaries:
 
 Dependencies: `compliance`, `ports`, `resourcescope`
 
+### grcfindings — Risk Inbox Rows
+
+`internal/grcfindings` converts persisted finding and evidence records into
+GRC-facing rows for risk-inbox, dashboard, control-posture, audit-packet, CSV,
+and inventory-detail surfaces. It owns finding status normalization, SLA state,
+control grouping, evidence row mapping, summary counts, recommended finding
+actions, and connector freshness labels used by GRC views.
+
+Key exports:
+
+- `FindingItems`, `EvidenceItems`, `ControlItems` — transform persisted records
+  into bounded GRC response rows
+- `BuildSummary` — builds dashboard-level counts from row previews or aggregate
+  store summaries
+- `SLAStatus`, `NormalizedFindingStatus`, `RecommendedAction` — common
+  presentation semantics for GRC finding rows
+
+Boundaries:
+
+- Does not list findings, evidence, runtimes, or graph records; bootstrap and
+  stores still own tenant-scoped data access
+- Does not own finding lifecycle, rule evaluation, or workflow persistence
+- Does not define control catalog semantics; control coverage and packet
+  readiness stay in `internal/compliance` and `internal/grccontrol`
+
+Dependencies: `ports`
+
 ### grcinventory — Inventory Posture
 
-`internal/grcinventory` manages GRC inventory posture logic: applies scope records and asset report summaries to graph inventory assets, computes review disposition and accountability states, filters assets by scope/review/accountability, and produces summary statistics.
+`internal/grcinventory` manages GRC inventory posture logic: applies scope records and asset report summaries to graph inventory assets, computes review disposition and accountability states, derives inventory detail tests, vulnerabilities, timelines, actions, and risk decoration, filters assets by scope/review/accountability, and produces summary statistics.
 
 Key exports:
 
@@ -91,6 +119,7 @@ Key exports:
 - `ApplyReviewPosture(asset)` — computes review disposition (baseline, needs_review, out_of_scope, reported_issue) and accountability (known, required, none)
 - `FilterByScope`, `FilterByReviewDisposition`, `FilterByAccountability` — filter assets by state
 - `Summarize(assets)` — produces aggregate `Summary` with totals, coverage percentages, risk distribution
+- `Tests`, `Vulnerabilities`, `Timeline`, `Actions`, `ApplyFindingRisk` — build inventory detail sections from finding, evidence, control, report, and asset context
 
 Review disposition states:
 
@@ -111,10 +140,10 @@ Accountability states:
 
 Boundaries:
 
-- Posture classification and inventory filtering remain in this package
+- Posture classification, inventory filtering, inventory detail sections, and asset risk decoration remain in this package
 - Bootstrap only handles GRC inventory request/response mapping and tenant authorization
 
-Dependencies: `graphquery`, `ports`
+Dependencies: `graphquery`, `grcfindings`, `ports`
 
 ### grcprogram — Program Readiness
 
@@ -166,8 +195,9 @@ Dependencies: `ports`
 3. `grccontrol` builds control evidence packets from findings, evidence, and runtime context using compliance control definitions.
 4. `grcprogram` consumes control packets to score readiness and generate work items.
 5. `grctrends` queries persisted findings for time-bucketed trend analysis.
-6. `grcinventory` applies scope and accountability posture to graph inventory assets.
-7. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
+6. `grcfindings` builds GRC-facing finding, control, evidence, and summary rows.
+7. `grcinventory` applies scope and accountability posture to graph inventory assets and builds inventory detail sections.
+8. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
 
 ## RBAC Ownership
 
@@ -186,7 +216,9 @@ The GRC domain maps to these RBAC roles defined in `internal/authz`:
 - `internal/grccontrol/packets.go` — control evidence packet builder
 - `internal/grccontrol/finding_reports.go` — finding report assembly
 - `internal/grccontrol/helpers.go` — shared control helpers
+- `internal/grcfindings/items.go` — risk-inbox finding, evidence, control, summary, and action builders
 - `internal/grcinventory/posture.go` — inventory posture, scope, accountability, filtering
+- `internal/grcinventory/detail.go` — inventory detail tests, vulnerabilities, risk decoration, timelines, and actions
 - `internal/grcprogram/readiness.go` — program readiness scoring and work items
 - `internal/grctrends/trends.go` — finding trend aggregation
 - `internal/compliance/` — control catalog, profiles, coverage (see [Compliance Controls](compliance-controls.md))
