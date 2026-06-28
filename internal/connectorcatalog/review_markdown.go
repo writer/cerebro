@@ -20,6 +20,8 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 	writeMetric(&b, "Sourcegen ready", report.Summary.Generateable)
 	writeMetric(&b, "Needs auth extension", report.Summary.NeedsAuthExtension)
 	writeMetric(&b, "Needs bespoke runtime", report.Summary.NeedsBespokeRuntime)
+	writeMetric(&b, "Reference-depth sources", report.Summary.HighFidelitySources)
+	writeMetric(&b, "Needs fidelity review", report.Summary.NeedsFidelityReview)
 	writeMetric(&b, "Resource families", report.Summary.ResourceFamilies)
 	writeMetric(&b, "Projected families", report.Summary.ProjectedFamilies)
 	writeMetric(&b, "Graph item types", report.Summary.ProjectionTemplates)
@@ -44,6 +46,22 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 			}
 			b.WriteString("\n")
 		}
+	}
+
+	b.WriteString("## Fidelity Queue\n\n")
+	if len(report.FidelityQueue) == 0 {
+		b.WriteString("No sources need fidelity review.\n\n")
+	} else {
+		fmt.Fprintf(&b, "Reference baseline: %d/100.\n\n", report.Summary.FidelityBaselineScore)
+		b.WriteString("| Source | Score | Missing | Next action |\n| --- | ---: | --- | --- |\n")
+		for i, candidate := range report.FidelityQueue {
+			if i >= maxItems {
+				fmt.Fprintf(&b, "| ... | ... | ... | %d more |\n", len(report.FidelityQueue)-maxItems)
+				break
+			}
+			fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", escapeCell(candidate.SourceID), candidate.Score, escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")), escapeCell(candidate.NextAction))
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("## Graph Coverage\n\n")

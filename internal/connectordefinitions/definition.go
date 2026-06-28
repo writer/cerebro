@@ -1414,7 +1414,7 @@ func normalizeCoverageControlRefSpecs(refs []CoverageControlRefSpec) []CoverageC
 }
 
 func normalizeScopeOptions(options []ScopeOption, families []ResourceFamily) []ScopeOption {
-	normalized := make([]ScopeOption, 0, len(options)+len(families))
+	normalized := make([]ScopeOption, 0, len(options))
 	seen := map[string]struct{}{}
 	for _, option := range options {
 		option.ID = normalizeIdentifier(option.ID)

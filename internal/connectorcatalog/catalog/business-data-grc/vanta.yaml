@@ -1,116 +1,138 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-vanta
-    tenant_id: builtin_catalog
-    source_id: vanta
-    display_name: Vanta
-    description: "Collects users, controls, and findings from Vanta and projects them into the Cerebro graph as users, assets, and findings for owner, account, evidence, and compliance context."
-    categories:
-    - grc
-    - compliance
-    auth:
-      model: oauth_client_credentials
-      token_url: https://api.vanta.com/oauth/token
-      credential_fields:
-      - key: client_id
-        reference_only: true
-      - key: client_secret
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.vanta.com
-      verification:
-        method: GET
-        path: "/v1/resources"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Users
-      path: "/v1/users"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: vanta.users
-        schema_ref: vanta/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: controls
-      label: Controls
-      path: "/v1/controls"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: vanta.controls
-        schema_ref: vanta/controls/v1
-      projection:
-        template: asset
-      coverage:
-      - id: controls
-        type: entity_family
-        title: Controls
-        families:
-        - controls
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: findings
-      label: Findings
-      path: "/v1/findings"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: vanta.findings
-        schema_ref: vanta/findings/v1
-      projection:
-        template: finding
-      coverage:
-      - id: findings
-        type: remediation_state
-        title: Findings
-        families:
-        - findings
-        support: partial
-        high_value: true
-        evidence_types:
-        - remediation_state
-        control_domains:
-        - remediation
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            reference_only: true
+            secret: true
+        model: oauth_client_credentials
+        token_url: https://api.vanta.com/oauth/token
+      categories:
+        - grc
+        - compliance
+      description: Collects users, controls, and findings from Vanta and projects them into the Cerebro graph as users, assets, and findings for owner, account, evidence, and compliance context.
+      display_name: Vanta
+      id: builtin-vanta
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Users
+              type: entity_family
+          event:
+            kind: vanta.users
+            required_payload_fields:
+              - id
+            schema_ref: vanta/users/v1
+            urn_kind: vanta_users
+          id: users
+          id_field: id
+          label: Users
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - controls
+              high_value: true
+              id: controls
+              support: partial
+              title: Controls
+              type: entity_family
+          event:
+            kind: vanta.controls
+            required_payload_fields:
+              - id
+            schema_ref: vanta/controls/v1
+            urn_kind: vanta_controls
+          id: controls
+          id_field: id
+          label: Controls
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/controls
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - remediation
+              evidence_types:
+                - remediation_state
+              families:
+                - findings
+              high_value: true
+              id: findings
+              support: partial
+              title: Findings
+              type: remediation_state
+          event:
+            kind: vanta.findings
+            required_payload_fields:
+              - id
+            schema_ref: vanta/findings/v1
+            urn_kind: vanta_findings
+          id: findings
+          id_field: id
+          label: Findings
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/findings
+          projection:
+            fields:
+              description: description|summary
+              finding_id: id
+              severity: severity|risk|priority
+              status: status|state
+            template: finding
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: vanta
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.vanta.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/resources

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-review connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -61,10 +61,39 @@ LOAD_SMOKE_MAX_5XX_RATE ?= 0
 LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
 LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
 AGENT_ONBOARD_PLAN ?= examples/onboarding/cerebro-onboarding.yaml
+AGENT_ONBOARD_GITHUB_PLAN ?= examples/onboarding/github-onboarding.yaml
 AGENT_ONBOARD_EFFECTIVE_PLAN = $(if $(PLAN),$(PLAN),$(AGENT_ONBOARD_PLAN))
 AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
 AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
+AGENT_ONBOARD_GITHUB_RECEIPT ?= tmp/onboarding/github-receipt.json
 CEREBRO_ONBOARD_BASE_URL ?=
+# Local Docker Compose defaults for agent onboarding smoke tests. The password
+# is generated under tmp/ so each worktree keeps its own local database secret.
+CEREBRO_LOCAL_POSTGRES_USER ?= cerebro
+CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE ?= tmp/local-postgres-password
+CEREBRO_LOCAL_POSTGRES_PASSWORD ?=
+CEREBRO_LOCAL_POSTGRES_DSN ?=
+define CEREBRO_LOCAL_POSTGRES_ENV_SH
+local_postgres_password="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)"; \
+if [ -z "$$local_postgres_password" ]; then \
+	umask 077; \
+	mkdir -p "$$(dirname "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; \
+	if [ ! -s "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)" ]; then \
+		$(PYTHON) -c 'import pathlib, secrets; pathlib.Path("$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)").write_text(secrets.token_urlsafe(24) + "\n", encoding="utf-8")'; \
+	fi; \
+	local_postgres_password="$$(cat "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; \
+fi; \
+local_postgres_dsn="$(CEREBRO_LOCAL_POSTGRES_DSN)"; \
+if [ -z "$$local_postgres_dsn" ]; then \
+	local_postgres_dsn="postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$$local_postgres_password@127.0.0.1:5432/cerebro?sslmode=disable"; \
+fi
+endef
+GITHUB_OWNER ?=
+GITHUB_REPO ?=
+GITHUB_TOKEN ?=
+CEREBRO_SOURCE_GITHUB_OWNER ?= $(GITHUB_OWNER)
+CEREBRO_SOURCE_GITHUB_REPO ?= $(GITHUB_REPO)
+CEREBRO_SOURCE_GITHUB_TOKEN ?= $(GITHUB_TOKEN)
 MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
 MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
 MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
@@ -81,6 +110,7 @@ DROID_CI_JSON_OUT ?= tmp/droid-ci-context.json
 CONNECTOR_CATALOG_REVIEW_MD ?= tmp/connector-catalog-review.md
 CONNECTOR_CATALOG_REVIEW_JSON ?= tmp/connector-catalog-review.json
 CONNECTOR_CATALOG_REVIEW_MAX_ITEMS ?= 80
+CONNECTOR_CATALOG_FIDELITY_JSON ?= tmp/connector-catalog-fidelity.json
 DROID_CONTEXT_OUT ?= tmp/droid-review-context.md
 DROID_CONTEXT_JSON_OUT ?= tmp/droid-review-context.json
 DROID_POST_MERGE_OUT ?= tmp/droid-post-merge-health.md
@@ -282,10 +312,16 @@ control-index-check: ## Verify compliance control coverage index is current.
 sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
 
+connector-catalog-fidelity-generate: ## Materialize deterministic connector catalog fidelity fields.
+	go run ./tools/connectorcatalogfidelity -write -json-out "$(CONNECTOR_CATALOG_FIDELITY_JSON)"
+
+connector-catalog-fidelity-check: ## Verify deterministic connector catalog fidelity fields are committed.
+	go run ./tools/connectorcatalogfidelity -check -json-out "$(CONNECTOR_CATALOG_FIDELITY_JSON)"
+
 connector-catalog-review: ## Generate connector catalog cleanup, promotion, and Q&A review artifacts.
 	go run ./tools/connectorcatalogreview -markdown-out "$(CONNECTOR_CATALOG_REVIEW_MD)" -json-out "$(CONNECTOR_CATALOG_REVIEW_JSON)" -max-items "$(CONNECTOR_CATALOG_REVIEW_MAX_ITEMS)"
 
-connector-catalog-maintenance: catalog-check sourcegen-check connector-catalog-review ## Validate connector catalog state and publish maintenance review artifacts.
+connector-catalog-maintenance: catalog-check sourcegen-check connector-catalog-fidelity-check connector-catalog-review ## Validate connector catalog state and publish maintenance review artifacts.
 
 connector-contract-check: ## Validate declarative connector evidence, fixtures, and security lint.
 	go run ./tools/connectorcontractcheck
@@ -406,17 +442,52 @@ agent-onboard-test: ## Run agent onboarding workflow unit tests.
 
 agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflow.
 	@command -v docker >/dev/null || { echo "docker is required for agent-onboard-e2e" >&2; exit 2; }
-	docker compose up --build -d
-	@CEREBRO_API_KEY="local-dev-key" \
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
-	CEREBRO_POSTGRES_DSN="postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable" \
+	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
 	CEREBRO_NEO4J_PASSWORD="local-password" \
 	python3 scripts/agent_onboard.py \
 		--plan "$(AGENT_ONBOARD_EFFECTIVE_PLAN)" \
 		--receipt "$(AGENT_ONBOARD_E2E_RECEIPT)" \
+		--wait
+
+github-business-demo-env: ## Check required GitHub demo environment.
+	@test -n "$(strip $(CEREBRO_SOURCE_GITHUB_OWNER))" || { echo "CEREBRO_SOURCE_GITHUB_OWNER is required. Set GITHUB_OWNER or CEREBRO_SOURCE_GITHUB_OWNER." >&2; exit 2; }
+	@test -n "$(strip $(CEREBRO_SOURCE_GITHUB_REPO))" || { echo "CEREBRO_SOURCE_GITHUB_REPO is required. Set GITHUB_REPO or CEREBRO_SOURCE_GITHUB_REPO." >&2; exit 2; }
+	@test -n "$(strip $(CEREBRO_SOURCE_GITHUB_TOKEN))" || { echo "CEREBRO_SOURCE_GITHUB_TOKEN is required. Set GITHUB_TOKEN or CEREBRO_SOURCE_GITHUB_TOKEN." >&2; exit 2; }
+
+github-business-demo: github-business-demo-env build ## Connect a GitHub repo, sync it, ingest graph data, and write a receipt.
+	@command -v docker >/dev/null || { echo "docker is required for github-business-demo" >&2; exit 2; }
+	@# Scope the GitHub token to Docker Compose and onboarding. The receipt stores env: references, not token values.
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
+	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
+	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	CEREBRO_API_KEY="local-dev-key" \
+	CEREBRO_API_KEYS="local-dev-key:local:local" \
+	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
+	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
+	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
+	CEREBRO_NEO4J_USERNAME="neo4j" \
+	CEREBRO_NEO4J_PASSWORD="local-password" \
+	CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
+	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
+	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
+	python3 scripts/agent_onboard.py \
+		--plan "$(AGENT_ONBOARD_GITHUB_PLAN)" \
+		--receipt "$(AGENT_ONBOARD_GITHUB_RECEIPT)" \
 		--wait
 
 # ==== Release and Environment ====

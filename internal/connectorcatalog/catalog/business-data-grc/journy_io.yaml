@@ -12,8 +12,8 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "Collects event, account, segments account, user, and segments user from Developer documentation and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context."
-    display_name: Developer documentation
+    description: Collects event, account, segments account, user, and segments user from Journy.io and projects them into the Cerebro graph as audit events and users for inventory, access review, audit, risk, and operational context.
+    display_name: Journy.io
     id: builtin_catalog-journy_io
     ingest:
       mode: pull

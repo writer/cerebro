@@ -1,0 +1,339 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: Management key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: Authorization
+        token_scheme: apikey
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - help: Required for account-scoped Qdrant Cloud families.
+          key: account_id
+          label: Account ID
+          required: true
+        - help: Optional filter for cluster-scoped backup and database API key families.
+          key: cluster_id
+          label: Cluster ID
+      description: Collects accounts, account members, clusters, database API keys, backups, backup restores, backup schedules, and IAM roles from Qdrant Cloud.
+      display_name: Qdrant Cloud
+      id: builtin-qdrant-cloud
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - accounts
+              high_value: true
+              id: accounts
+              support: partial
+              title: Accounts
+              type: entity_family
+          event:
+            kind: qdrant_cloud.accounts
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/accounts/v1
+            urn_kind: qdrant_cloud_accounts
+          id: accounts
+          id_field: id
+          label: Accounts
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api/account/v1/accounts
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.items[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - account_members
+              high_value: true
+              id: account_members
+              support: partial
+              title: Account members
+              type: app_entitlement
+          event:
+            kind: qdrant_cloud.account_members
+            required_payload_fields:
+              - account_member.id
+            schema_ref: qdrant_cloud/account_members/v1
+            urn_kind: qdrant_cloud_account_members
+          id: account_members
+          id_field: account_member.id
+          label: Account members
+          method: GET
+          name_field: account_member.email
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api/account/v1/accounts/${config.account_id}/members
+          projection:
+            fields:
+              display_name: account_member.email
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: account_member.id
+            template: identity_user
+          record_selector: $.items[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - configuration_state
+              families:
+                - clusters
+              high_value: true
+              id: clusters
+              support: partial
+              title: Clusters
+              type: deployment_state
+          event:
+            kind: qdrant_cloud.clusters
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/clusters/v1
+            urn_kind: qdrant_cloud_clusters
+          id: clusters
+          id_field: id
+          label: Clusters
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_page_token
+            cursor_param: page_token
+            page_size: 250
+            page_size_param: page_size
+            type: cursor
+          path: /api/cluster/v1/accounts/${config.account_id}/clusters
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.items[*]
+        - config_query:
+            cluster_id: cluster_id
+          coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - database_api_keys
+              high_value: true
+              id: database_api_keys
+              support: partial
+              title: Database API keys
+              type: app_entitlement
+          event:
+            kind: qdrant_cloud.database_api_keys
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/database_api_keys/v1
+            urn_kind: qdrant_cloud_database_api_keys
+          id: database_api_keys
+          id_field: id
+          label: Database API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api/cluster/auth/v2/accounts/${config.account_id}/database-api-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.items[*]
+        - config_query:
+            cluster_id: cluster_id
+          coverage:
+            - control_domains:
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - backups
+              high_value: true
+              id: backups
+              support: partial
+              title: Backups
+              type: lifecycle_state
+          event:
+            kind: qdrant_cloud.backups
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/backups/v1
+            urn_kind: qdrant_cloud_backups
+          id: backups
+          id_field: id
+          label: Backups
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_page_token
+            cursor_param: page_token
+            page_size: 250
+            page_size_param: page_size
+            type: cursor
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backups
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.items[*]
+        - config_query:
+            cluster_id: cluster_id
+          coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - backup_restores
+              high_value: true
+              id: backup_restores
+              support: partial
+              title: Backup restores
+              type: deployment_state
+          event:
+            kind: qdrant_cloud.backup_restores
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/backup_restores/v1
+            urn_kind: qdrant_cloud_backup_restores
+          id: backup_restores
+          id_field: id
+          label: Backup restores
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_page_token
+            cursor_param: page_token
+            page_size: 250
+            page_size_param: page_size
+            type: cursor
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backup_restores
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.items[*]
+        - config_query:
+            cluster_id: cluster_id
+          coverage:
+            - control_domains:
+                - policy_management
+              evidence_types:
+                - policy_configuration
+              families:
+                - backup_schedules
+              high_value: true
+              id: backup_schedules
+              support: partial
+              title: Backup schedules
+              type: lifecycle_state
+          event:
+            kind: qdrant_cloud.backup_schedules
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/backup_schedules/v1
+            urn_kind: qdrant_cloud_backup_schedules
+          id: backup_schedules
+          id_field: id
+          label: Backup schedules
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_page_token
+            cursor_param: page_token
+            page_size: 250
+            page_size_param: page_size
+            type: cursor
+          path: /api/cluster/backup/v1/accounts/${config.account_id}/backup_schedules
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: policy_status|status|state|enabled
+              policy_type: policy_type|type|kind|category
+            template: policy
+          record_selector: $.items[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - roles
+              high_value: true
+              id: roles
+              support: partial
+              title: Roles
+              type: app_entitlement
+          event:
+            kind: qdrant_cloud.roles
+            required_payload_fields:
+              - id
+            schema_ref: qdrant_cloud/roles/v1
+            urn_kind: qdrant_cloud_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api/iam/v1/accounts/${config.account_id}/roles
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $.items[*]
+      schema_version: cerebro.integration/v1
+      source_id: qdrant_cloud
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.cloud.qdrant.io
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/account/v1/accounts

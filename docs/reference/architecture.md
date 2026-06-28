@@ -81,6 +81,10 @@ Production Go under `internal/bootstrap` is ratcheted by `tools/archtests` so
 new routes and handlers do not quietly grow the bootstrap surface. If a PR must
 increase that budget, the PR should explain why the behavior cannot move behind
 a domain package yet and update this architecture note alongside the test.
+Stateless source MCP tools stay limited to request/response mapping over
+`internal/sourceops`; sourceops owns preview-config validation, including
+reserved runtime key rejection, while bootstrap invokes that guard at the MCP
+transport boundary.
 
 The current budget includes a narrow transport-boundary exception for graph
 reasoning: HTTP and MCP handlers clear the server write deadline before entering
@@ -224,6 +228,11 @@ whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap
 budget includes only the job registration, admin authorization, payload
 adaptation, and dependency wiring that binds the append log's index source and
 the state store's index writer into that domain entry point.
+
+Stateless source previews live behind `internal/sourceops`. The bootstrap budget
+includes only MCP request/response mapping for source check, discover, and read
+operations, plus response-boundary event limits so one live source page cannot
+produce an unbounded MCP payload.
 
 ## Postgres migrations
 

@@ -1,130 +1,152 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-auth0
-    tenant_id: builtin_catalog
-    source_id: auth0
-    display_name: Auth0
-    description: "Collects users, roles, and audit events from Auth0 and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
-    categories:
-    - identity
-    - access
-    config_fields:
-    - key: domain
-      label: Tenant domain
-      required: true
-      placeholder: example.us.auth0.com
-      help: Auth0 tenant domain used for Management API requests.
-    auth:
-      model: oauth_client_credentials
-      token_url: https://${config.domain}/oauth/token
-      scopes:
-      - read:users
-      - read:roles
-      - read:logs
-      token_params:
-        audience: https://${config.domain}/api/v2/
-      credential_fields:
-      - key: client_id
-        reference_only: true
-      - key: client_secret
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.domain}/api/v2
-      verification:
-        method: GET
-        path: "/users"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Users
-      path: "/users"
-      method: GET
-      record_selector: "$[*]"
-      id_field: user_id
-      name_field: name
-      event:
-        kind: auth0.users
-        schema_ref: auth0/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Identity users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: page
-        page_param: page
-        page_size_param: per_page
-        start_page: 0
-        page_size: 100
-    - id: roles
-      label: Roles
-      path: "/roles"
-      method: GET
-      record_selector: "$[*]"
-      id_field: id
-      name_field: name
-      event:
-        kind: auth0.roles
-        schema_ref: auth0/roles/v1
-      projection:
-        template: identity_group
-      coverage:
-      - id: roles
-        type: entity_family
-        title: Identity roles
-        families:
-        - roles
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: page
-        page_param: page
-        page_size_param: per_page
-        start_page: 0
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/logs"
-      method: GET
-      record_selector: "$[*]"
-      id_field: log_id
-      event:
-        kind: auth0.audit_events
-        schema_ref: auth0/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: from
-        cursor_json_path: "$[-1].log_id"
-        page_size_param: take
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            reference_only: true
+            secret: true
+        model: oauth_client_credentials
+        scopes:
+          - read:users
+          - read:roles
+          - read:logs
+        token_params:
+          audience: https://${config.domain}/api/v2/
+        token_url: https://${config.domain}/oauth/token
+      categories:
+        - identity
+        - access
+      config_fields:
+        - help: Auth0 tenant domain used for Management API requests.
+          key: domain
+          label: Tenant domain
+          placeholder: example.us.auth0.com
+          required: true
+      description: Collects users, roles, and audit events from Auth0 and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context.
+      display_name: Auth0
+      id: builtin-auth0
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Identity users
+              type: entity_family
+          event:
+            kind: auth0.users
+            required_payload_fields:
+              - user_id
+            schema_ref: auth0/users/v1
+            urn_kind: auth0_users
+          id: users
+          id_field: user_id
+          label: Users
+          method: GET
+          name_field: name
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            type: page
+          path: /users
+          projection:
+            fields:
+              display_name: name
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: user_id
+            template: identity_user
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - roles
+              high_value: true
+              id: roles
+              support: partial
+              title: Identity roles
+              type: entity_family
+          event:
+            kind: auth0.roles
+            required_payload_fields:
+              - id
+            schema_ref: auth0/roles/v1
+            urn_kind: auth0_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          name_field: name
+          pagination:
+            page_param: page
+            page_size: 100
+            page_size_param: per_page
+            type: page
+          path: /roles
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: auth0.audit_events
+            required_payload_fields:
+              - log_id
+            schema_ref: auth0/audit_events/v1
+            urn_kind: auth0_audit_events
+          id: audit_events
+          id_field: log_id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $[-1].log_id
+            cursor_param: from
+            page_size: 100
+            page_size_param: take
+            type: cursor
+          path: /logs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: log_id
+            template: audit_event
+          record_selector: $[*]
+      schema_version: cerebro.integration/v1
+      source_id: auth0
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.domain}/api/v2
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /users

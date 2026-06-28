@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -53,21 +54,22 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		}
 		sourceMatched := sourceMatchesDetection(detection, sourceID, searchText)
 		for _, dimension := range contract.Dimensions {
-			if len(dimension.ControlRefs) == 0 {
-				continue
-			}
-			matchedControls, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, dimension.ControlRefs)
-			if len(matchedControls) == 0 {
-				continue
-			}
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
-			if !sourceMatched && !dimensionMatched {
+			coverageRefs := dimension.ControlRefs
+			// Domain-derived control coverage is credited only within the
+			// detection's own (or explicitly named) source and only when the
+			// coverage dimension or evidence type also matches. This lets broad
+			// control_domains fill missing refs without letting every dimension
+			// from the same source inherit every matching framework control.
+			if sourceMatched && (dimensionMatched || evidenceMatched) {
+				coverageRefs = effectiveCoverageControlRefs(dimension)
+			}
+			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
+			if len(matches) == 0 || !coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
-			if !exactControlMatch && !dimensionMatched && !evidenceMatched {
-				continue
-			}
+			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
 			ref := SourceCoverageRef{
 				SourceID:           sourceID,
 				DimensionID:        strings.TrimSpace(dimension.ID),
@@ -173,6 +175,41 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 	return score + matchedControls
 }
 
+func coverageControlMatchAllowed(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
+	if !sourceMatched && !dimensionMatched {
+		return false
+	}
+	if !exactControlMatch && !dimensionMatched && !evidenceMatched {
+		return false
+	}
+	return true
+}
+
+func appendUniqueMatchedCoverageRefs(base []ports.FindingControlRef, next []ports.FindingControlRef) []ports.FindingControlRef {
+	if len(next) == 0 {
+		return base
+	}
+	seen := map[string]struct{}{}
+	for _, ref := range base {
+		seen[controlRefKey(ref)] = struct{}{}
+	}
+	for _, ref := range next {
+		key := controlRefKey(ref)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		base = append(base, ref)
+	}
+	sort.Slice(base, func(i int, j int) bool {
+		if base[i].FrameworkName != base[j].FrameworkName {
+			return base[i].FrameworkName < base[j].FrameworkName
+		}
+		return base[i].ControlID < base[j].ControlID
+	})
+	return base
+}
+
 func sourceMatchesDetection(detection PublicDetection, sourceID string, searchText string) bool {
 	sourceID = strings.TrimSpace(sourceID)
 	if sourceID == "" {
@@ -212,6 +249,26 @@ func evidenceMatchesDetection(evidenceType string, dimensionEvidenceTypes []stri
 		}
 	}
 	return false
+}
+
+// effectiveCoverageControlRefs returns the dimension's declared control refs
+// combined with the control refs derived from its declared control_domains. The
+// derived refs let coverage dimensions that declare only control_domains (the
+// large majority of source contracts) participate in the all-finding compliance
+// mapping without hand-authoring control_refs on every dimension. Duplicates are
+// harmless because the caller deduplicates matched refs.
+func effectiveCoverageControlRefs(dimension sourcecdk.CoverageDimension) []sourcecdk.CoverageControlRef {
+	derived := controlRefsForControlDomains(dimension.ControlDomains)
+	if len(derived) == 0 {
+		return dimension.ControlRefs
+	}
+	if len(dimension.ControlRefs) == 0 {
+		return derived
+	}
+	combined := make([]sourcecdk.CoverageControlRef, 0, len(dimension.ControlRefs)+len(derived))
+	combined = append(combined, dimension.ControlRefs...)
+	combined = append(combined, derived...)
+	return combined
 }
 
 func matchingCoverageControlRefs(detectionRefs []ports.FindingControlRef, coverageRefs []sourcecdk.CoverageControlRef) ([]ports.FindingControlRef, bool) {
@@ -341,7 +398,27 @@ func normalizeFramework(value string) string {
 }
 
 func normalizeControlID(value string) string {
-	return strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	normalized := strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	if normalized == "" {
+		return ""
+	}
+	return normalizeGDPRArticleControlID(normalized)
+}
+
+func normalizeGDPRArticleControlID(value string) string {
+	for _, prefix := range []string{"ART.", "ART-"} {
+		if suffix := strings.TrimPrefix(value, prefix); suffix != value && suffix != "" {
+			return "ARTICLE" + suffix
+		}
+	}
+	if len(value) > len("ART") && strings.HasPrefix(value, "ART") {
+		suffix := value[len("ART"):]
+		first, _ := utf8.DecodeRuneInString(suffix)
+		if unicode.IsDigit(first) {
+			return "ARTICLE" + suffix
+		}
+	}
+	return value
 }
 
 func sourceCoverageAliases(sourceID string) []string {
