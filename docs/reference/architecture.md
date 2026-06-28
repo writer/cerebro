@@ -225,6 +225,11 @@ budget includes only the job registration, admin authorization, payload
 adaptation, and dependency wiring that binds the append log's index source and
 the state store's index writer into that domain entry point.
 
+Stateless source previews live behind `internal/sourceops`. The bootstrap budget
+includes only MCP request/response mapping for source check, discover, and read
+operations, plus response-boundary event limits so one live source page cannot
+produce an unbounded MCP payload.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.
