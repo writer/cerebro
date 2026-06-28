@@ -440,9 +440,6 @@ func loadPolicyRuleExtensions(root string) (policyRuleExtensions, error) {
 func loadFrameworkReviewAreas(root string) ([]frameworkReviewArea, error) {
 	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(frameworkReviewAreasPath)))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read %s: %w", frameworkReviewAreasPath, err)
 	}
 	var catalog frameworkReviewAreaCatalog
@@ -455,9 +452,6 @@ func loadFrameworkReviewAreas(root string) ([]frameworkReviewArea, error) {
 func loadControlRelationships(root string) ([]controlRelationship, error) {
 	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(controlRelationshipsPath)))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read %s: %w", controlRelationshipsPath, err)
 	}
 	var catalog controlRelationshipCatalog
@@ -470,9 +464,6 @@ func loadControlRelationships(root string) ([]controlRelationship, error) {
 func loadEvidenceCapabilities(root string) ([]evidenceCapabilitySource, error) {
 	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(evidenceCapabilitiesPath)))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read %s: %w", evidenceCapabilitiesPath, err)
 	}
 	var catalog evidenceCapabilityCatalog
@@ -849,10 +840,6 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(catalogTags),
 			joinList(complianceTags),
 			joinList(allReviewTags),
-			joinList(frameworkReviewAreas),
-			joinList(controlRelationshipHints),
-			joinList(sourceCapabilityRefs),
-			sourceCapabilityStatus,
 			auditDepth.EvidenceType,
 			joinList(auditDepth.AssessmentMethods),
 			auditDepth.AuditorGuidance,
@@ -869,6 +856,10 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
 			complianceReview.ComplianceEvidenceStatus,
 			joinList(reviewFlags),
+			joinList(frameworkReviewAreas),
+			joinList(controlRelationshipHints),
+			joinList(sourceCapabilityRefs),
+			sourceCapabilityStatus,
 		})
 
 		for _, ref := range controlRefs {
@@ -2534,13 +2525,14 @@ func findingMapHeader() []string {
 		"finding_id", "name", "pack_id", "pack_name", "source_id", "evaluation_mode", "output_kind",
 		"severity", "status", "maturity", "resolved_audit_domain", "audit_language_source",
 		"frameworks", "control_refs", "control_families",
-		"catalog_tags", "compliance_review_tags", "all_review_tags", "framework_review_areas",
-		"control_relationship_hints", "source_capability_refs", "source_capability_status", "evidence_type",
+		"catalog_tags", "compliance_review_tags", "all_review_tags", "evidence_type",
 		"assessment_methods", "auditor_guidance", "risk_statement", "remediation_intent",
 		"source_coverage_ref_count", "source_coverage_refs", "coverage_evidence_types",
 		"coverage_control_domains", "source_matched_control_refs", "source_backed_control_refs",
 		"control_refs_without_source_match", "source_coverage_support_levels",
 		"source_coverage_high_value_count", "compliance_evidence_status", "review_flags",
+		"framework_review_areas", "control_relationship_hints", "source_capability_refs",
+		"source_capability_status",
 	}
 }
 
