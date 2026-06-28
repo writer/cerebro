@@ -284,7 +284,7 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	if recordURN == "" {
 		recordURN = ctx.resourceURN("policy_lifecycle_subject", recordID)
 	}
-	policyID := firstAttribute(ctx.attrs, "policy_id", "target_policy_id")
+	policyID := firstAttribute(ctx.attrs, "policy_id")
 	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
 	eventURN := addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
 	addGRCPolicyLifecycleTargetPolicyLink(ctx, eventURN, policyID)

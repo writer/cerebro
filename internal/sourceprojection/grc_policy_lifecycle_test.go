@@ -261,6 +261,40 @@ func TestProjectGRCPolicyLifecycleEventLinksTargetPolicy(t *testing.T) {
 	}
 }
 
+func TestProjectGRCPolicyLifecycleEventLinksTargetPolicyWithoutContextPolicy(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "gap-event-target-only",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_lifecycle_event",
+		Attributes: map[string]string{
+			"provider":           "policyops",
+			"source_event_id":    "gap-event-target-only",
+			"record_type":        "governance.gap",
+			"record_urn":         "urn:risk:privileged-access:gap:policy",
+			"gap_id":             "urn:risk:privileged-access:gap:policy",
+			"action":             "governance_gap.link_policy",
+			"status":             "in_progress",
+			"target_policy_id":   "linked-policy",
+			"target_policy_name": "Linked policy",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	lifecycleEventURN := "urn:cerebro:writer:policy_lifecycle_event:policyops:gap-event-target-only"
+	targetPolicyURN := "urn:cerebro:writer:policy:policyops:policy:linked-policy"
+	eventEntity := state.entities[lifecycleEventURN]
+	if eventEntity == nil || eventEntity.Attributes["policy_id"] != "" || eventEntity.Attributes["target_policy_id"] != "linked-policy" {
+		t.Fatalf("lifecycle event entity = %#v, want target policy without context policy", eventEntity)
+	}
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, targetPolicyURN)
+}
+
 func TestProjectGRCPolicyAcceptanceLinksEmployeeAndAssignment(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
