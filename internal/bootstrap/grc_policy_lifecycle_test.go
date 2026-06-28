@@ -76,8 +76,8 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	document := grcPolicyLifecycleTestNode("urn:cerebro:writer:document:policyops:doc-1", "document", "Access Control PDF", map[string]string{
 		"document_id":   "doc-1",
 		"document_type": "policy_pdf",
-		"status":        "draft",
-		"review_due_at": "2026-01-01",
+		"status":        "approved",
+		"review_due_at": "2099-01-01",
 	})
 	risk := grcPolicyLifecycleTestNode("urn:cerebro:writer:claim:policyops:risk_scenario:risk-1", "claim", "Access review risk", map[string]string{
 		"claim_type":          "risk_scenario",
@@ -147,6 +147,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			PendingApprovals       int `json:"pending_approvals"`
 			OverdueReviews         int `json:"overdue_reviews"`
 			DocumentsDueForReview  int `json:"documents_due_for_review"`
+			GovernanceGaps         int `json:"governance_gaps"`
+			PolicyDocumentGaps     int `json:"policy_document_gaps"`
+			RiskRegisterGaps       int `json:"risk_register_gaps"`
 			OpenRisks              int `json:"open_risks"`
 			HighRisks              int `json:"high_risks"`
 			AttestationCoveragePct int `json:"attestation_coverage_pct"`
@@ -175,8 +178,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			ResidualRisk     string `json:"residual_risk"`
 			SourceDocumentID string `json:"source_document_id"`
 		} `json:"risk_register"`
-		WorkQueue         []any `json:"work_queue"`
-		DocumentWorkQueue []any `json:"document_work_queue"`
+		GovernanceGaps    []grcPolicyLifecycleBootstrapGap `json:"governance_gaps"`
+		WorkQueue         []any                            `json:"work_queue"`
+		DocumentWorkQueue []any                            `json:"document_work_queue"`
 		Templates         []struct {
 			Controls []any `json:"controls"`
 		} `json:"templates"`
@@ -190,7 +194,7 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if payload.Summary.Policies != 1 || payload.Summary.Templates != 1 {
 		t.Fatalf("summary = %+v, want one policy and one template", payload.Summary)
 	}
-	if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 1 || payload.Summary.DocumentsDueForReview != 0 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
+	if payload.Summary.PolicyDocuments != 1 || payload.Summary.RiskRegisterItems != 1 || payload.Summary.DraftDocuments != 0 || payload.Summary.DocumentsDueForReview != 0 || payload.Summary.OpenRisks != 1 || payload.Summary.HighRisks != 1 {
 		t.Fatalf("summary document/risk rollups = %+v, want document and risk counts", payload.Summary)
 	}
 	if payload.Summary.DraftVersions != 1 || payload.Summary.PendingApprovals != 1 || payload.Summary.OverdueReviews != 1 || payload.Summary.OverdueAttestations != 1 {
@@ -198,6 +202,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	}
 	if payload.Summary.MappedControls != 1 || payload.Summary.EvidenceItems != 1 {
 		t.Fatalf("summary mappings = %+v, want one control and one evidence item", payload.Summary)
+	}
+	if payload.Summary.GovernanceGaps != 4 || payload.Summary.PolicyDocumentGaps != 2 || payload.Summary.RiskRegisterGaps != 2 {
+		t.Fatalf("summary gaps = %+v, want document and risk gap rollups", payload.Summary)
 	}
 	if len(payload.Policies) != 1 || payload.Policies[0].ID != "access" {
 		t.Fatalf("policies = %+v, want access policy", payload.Policies)
@@ -218,8 +225,14 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if len(payload.RiskRegister) != 1 || payload.RiskRegister[0].ID != "risk-1" || payload.RiskRegister[0].ResidualRisk != "high" || payload.RiskRegister[0].SourceDocumentID != "doc-1" {
 		t.Fatalf("risk register = %+v, want linked high risk", payload.RiskRegister)
 	}
-	if len(payload.DocumentWorkQueue) < 2 {
-		t.Fatalf("document work queue len = %d, want draft document and risk work", len(payload.DocumentWorkQueue))
+	if !grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "document", "doc-1", "Missing owner") ||
+		!grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "document", "doc-1", "No mapped controls") ||
+		!grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "risk", "risk-1", "Missing treatment") ||
+		!grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "risk", "risk-1", "Missing treatment date") {
+		t.Fatalf("governance gaps = %+v, want document ownership/control and risk treatment gaps", payload.GovernanceGaps)
+	}
+	if len(payload.DocumentWorkQueue) < 1 {
+		t.Fatalf("document work queue len = %d, want risk work", len(payload.DocumentWorkQueue))
 	}
 	if len(payload.Templates) != 1 || len(payload.Templates[0].Controls) != 1 {
 		t.Fatalf("templates = %+v, want template control mapping", payload.Templates)
@@ -238,6 +251,23 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			t.Fatalf("cypher query %q does not reference source and runtime filters", request.Query)
 		}
 	}
+}
+
+type grcPolicyLifecycleBootstrapGap struct {
+	Subject   string `json:"subject"`
+	SubjectID string `json:"subject_id"`
+	Reason    string `json:"reason"`
+	Action    string `json:"action"`
+	Severity  string `json:"severity"`
+}
+
+func grcPolicyLifecycleBootstrapGapExists(gaps []grcPolicyLifecycleBootstrapGap, subject string, subjectID string, reason string) bool {
+	for _, gap := range gaps {
+		if gap.Subject == subject && gap.SubjectID == subjectID && gap.Reason == reason {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGRCPolicyLifecycleActionUsesAuthenticatedActor(t *testing.T) {

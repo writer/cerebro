@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -40,14 +41,22 @@ type AttackPathCounts struct {
 }
 
 type AttackPath struct {
-	PublicPrincipal GraphEntityRef `json:"public_principal"`
-	ExposedResource GraphEntityRef `json:"exposed_resource"`
-	CloudAccount    GraphEntityRef `json:"cloud_account"`
-	Principal       GraphEntityRef `json:"principal"`
-	Permission      GraphEntityRef `json:"permission"`
-	ReachRelation   string         `json:"reach_relation"`
-	AccessRelation  string         `json:"access_relation"`
-	RelationChain   []string       `json:"relation_chain,omitempty"`
+	PublicPrincipal GraphEntityRef   `json:"public_principal"`
+	ExposedResource GraphEntityRef   `json:"exposed_resource"`
+	CloudAccount    GraphEntityRef   `json:"cloud_account"`
+	Principal       GraphEntityRef   `json:"principal"`
+	Permission      GraphEntityRef   `json:"permission"`
+	ReachRelation   string           `json:"reach_relation"`
+	AccessRelation  string           `json:"access_relation"`
+	RelationChain   []string         `json:"relation_chain,omitempty"`
+	TraversalEdges  []AttackPathEdge `json:"traversal_edges,omitempty"`
+}
+
+type AttackPathEdge struct {
+	From      GraphEntityRef `json:"from"`
+	Relation  string         `json:"relation"`
+	To        GraphEntityRef `json:"to"`
+	Direction string         `json:"direction,omitempty"`
 }
 
 func (s *Service) GetAttackPaths(ctx context.Context, request AttackPathRequest) (*AttackPathResult, error) {
@@ -103,16 +112,17 @@ func attackPathParams(tenantID string, request AttackPathRequest) map[string]any
 		"account_id":          strings.TrimSpace(request.AccountID),
 		"sample_limit":        int64(normalizeAttackPathLimit(request.Limit)),
 		"tenant_id":           tenantID,
-		"traversal_relations": attackPathTraversalRelations,
+		"traversal_relations": graphpaths.CloudExposurePrivilegeTraversalRelations(),
 	}
 }
 
-const attackPathPattern = `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+var attackPathPattern = fmt.Sprintf(`MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
 WHERE public.entity_type ENDS WITH '.public_principal'
   AND ($account_id = '' OR account.label = $account_id OR account.urn CONTAINS $account_id)
 MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})
 WHERE all(node IN nodes(proof_path) WHERE node.tenant_id = $tenant_id)
   AND all(rel IN relationships(proof_path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $traversal_relations)
+  AND %s
 MATCH (principal)-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
 WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND (
@@ -124,25 +134,15 @@ WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_imperso
   )
 WITH public, reach, exposed, account, principal, access, permission, proof_path
 ORDER BY length(proof_path), principal.label, principal.urn, permission.label, permission.urn
-WITH public, reach, exposed, account, principal, access, permission, head(collect(proof_path)) AS proof_path`
+WITH public, reach, exposed, account, principal, access, permission, head(collect(proof_path)) AS proof_path`, graphpaths.CloudExposurePrivilegeTraversalDirectionPredicate)
 
-var attackPathTraversalRelations = []string{
-	"assigned_to",
-	"attached_to",
-	"can_assume",
-	"can_impersonate",
-	"depends_on",
-	"member_of",
-	"runs_as",
-}
-
-const attackPathCountsQuery = attackPathPattern + `
+var attackPathCountsQuery = attackPathPattern + `
 RETURN count(*) AS path_count,
        count(DISTINCT exposed) AS exposed_resource_count,
        count(DISTINCT principal) AS privileged_principal_count,
        count(DISTINCT account) AS cloud_account_count`
 
-const attackPathSamplesQuery = attackPathPattern + `
+var attackPathSamplesQuery = attackPathPattern + `
 RETURN public.urn AS public_urn,
        public.entity_type AS public_entity_type,
        public.label AS public_label,
@@ -160,7 +160,17 @@ RETURN public.urn AS public_urn,
        permission.label AS permission_label,
        reach.relation AS reach_relation,
        access.relation AS access_relation,
-       [rel IN relationships(proof_path) | rel.relation] AS relation_chain
+       [rel IN relationships(proof_path) | rel.relation] AS relation_chain,
+       [idx IN range(0, length(proof_path) - 1) | {
+         from_urn: nodes(proof_path)[idx].urn,
+         from_label: nodes(proof_path)[idx].label,
+         from_entity_type: nodes(proof_path)[idx].entity_type,
+         relation: relationships(proof_path)[idx].relation,
+         to_urn: nodes(proof_path)[idx + 1].urn,
+         to_label: nodes(proof_path)[idx + 1].label,
+         to_entity_type: nodes(proof_path)[idx + 1].entity_type,
+         direction: CASE WHEN startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx] THEN 'forward' ELSE 'reverse' END
+       }] AS traversal_edges
 ORDER BY account.label, exposed.label, principal.label, permission.label
 LIMIT $sample_limit`
 
@@ -176,6 +186,8 @@ func attackPathCountsFromRow(row ports.CypherRow) AttackPathCounts {
 func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
 	result := make([]AttackPath, 0, len(rows))
 	for _, row := range rows {
+		relationChain := cypherStringList(row.Values["relation_chain"])
+		traversalEdges := attackPathEdgesFromRow(row)
 		path := AttackPath{
 			PublicPrincipal: GraphEntityRef{URN: cypherString(row, "public_urn"), EntityType: cypherString(row, "public_entity_type"), Label: cypherString(row, "public_label")},
 			ExposedResource: GraphEntityRef{URN: cypherString(row, "exposed_urn"), EntityType: cypherString(row, "exposed_entity_type"), Label: cypherString(row, "exposed_label")},
@@ -184,12 +196,78 @@ func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
 			Permission:      GraphEntityRef{URN: cypherString(row, "permission_urn"), EntityType: cypherString(row, "permission_entity_type"), Label: cypherString(row, "permission_label")},
 			ReachRelation:   cypherString(row, "reach_relation"),
 			AccessRelation:  cypherString(row, "access_relation"),
-			RelationChain:   cypherStringList(row.Values["relation_chain"]),
+			RelationChain:   relationChain,
+			TraversalEdges:  traversalEdges,
 		}
-		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" || len(path.RelationChain) == 0 {
+		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" || !attackPathTraversalProofMatches(relationChain, traversalEdges) {
 			continue
 		}
 		result = append(result, path)
 	}
 	return result
+}
+
+func attackPathTraversalProofMatches(relationChain []string, edges []AttackPathEdge) bool {
+	if len(relationChain) == 0 || len(edges) != len(relationChain) {
+		return false
+	}
+	for idx, relation := range relationChain {
+		relation = strings.TrimSpace(relation)
+		edge := edges[idx]
+		if relation == "" || relation != strings.TrimSpace(edge.Relation) {
+			return false
+		}
+		if edge.From.URN == "" || edge.To.URN == "" || !graphpaths.CloudExposurePrivilegeTraversalAllowsStep(edge.Relation, edge.Direction) {
+			return false
+		}
+	}
+	return true
+}
+
+func attackPathEdgesFromRow(row ports.CypherRow) []AttackPathEdge {
+	items, ok := row.Values["traversal_edges"].([]any)
+	if !ok || len(items) == 0 {
+		return nil
+	}
+	edges := make([]AttackPathEdge, 0, len(items))
+	for _, item := range items {
+		edge := AttackPathEdge{
+			From: GraphEntityRef{
+				URN:        cypherMapString(item, "from_urn"),
+				EntityType: cypherMapString(item, "from_entity_type"),
+				Label:      cypherMapString(item, "from_label"),
+			},
+			Relation: cypherMapString(item, "relation"),
+			To: GraphEntityRef{
+				URN:        cypherMapString(item, "to_urn"),
+				EntityType: cypherMapString(item, "to_entity_type"),
+				Label:      cypherMapString(item, "to_label"),
+			},
+			Direction: cypherMapString(item, "direction"),
+		}
+		if edge.From.URN == "" || edge.Relation == "" || edge.To.URN == "" {
+			continue
+		}
+		edges = append(edges, edge)
+	}
+	return edges
+}
+
+func cypherMapString(item any, key string) string {
+	values, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
+	}
 }
