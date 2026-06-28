@@ -45,13 +45,15 @@ Source coverage refs come from the source coverage contracts. When a contract de
 
 All-finding audit language uses the same YAML file:
 
+For policy-sourced detections, merge order is:
+
 1. `defaults`
 2. `evidence_modes.<evaluation-mode>`
 3. `domains.<resolved-domain>`
 4. `findings.<finding-id>`
 5. Public detection catalog fields
 
-Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. Direct catalog fields win when they are present. `audit_language_source` reports the final source of the emitted audit fields.
+For non-policy detections, public detection catalog fields load first as fallback values, then the same YAML layers override them in the order above through `findings.<finding-id>`. Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. `audit_language_source` reports the final source of the emitted audit fields.
 
 ## Generated Tables
 
