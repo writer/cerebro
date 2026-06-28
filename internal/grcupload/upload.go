@@ -63,26 +63,29 @@ type UploadRequest struct {
 }
 
 type EventRef struct {
-	EventID   string `json:"event_id"`
-	EventKind string `json:"event_kind"`
-	SchemaRef string `json:"schema_ref"`
-	RecordID  string `json:"record_id,omitempty"`
-	RecordURN string `json:"record_urn,omitempty"`
+	EventID         string `json:"event_id"`
+	EventKind       string `json:"event_kind"`
+	SchemaRef       string `json:"schema_ref"`
+	RecordID        string `json:"record_id,omitempty"`
+	RecordURN       string `json:"record_urn,omitempty"`
+	LegacyRecordURN string `json:"legacy_record_urn,omitempty"`
 }
 
 type Response struct {
-	UploadID       string     `json:"upload_id"`
-	Target         string     `json:"target"`
-	FileName       string     `json:"file_name"`
-	ContentType    string     `json:"content_type,omitempty"`
-	ReductoFileID  string     `json:"reducto_file_id,omitempty"`
-	ReductoParseID string     `json:"reducto_parse_id,omitempty"`
-	ParseStatus    string     `json:"parse_status,omitempty"`
-	TextPreview    string     `json:"text_preview,omitempty"`
-	ChunkCount     int        `json:"chunk_count,omitempty"`
-	PageCount      int        `json:"page_count,omitempty"`
-	Events         []EventRef `json:"events"`
-	GeneratedAt    time.Time  `json:"generated_at"`
+	UploadID           string     `json:"upload_id"`
+	Target             string     `json:"target"`
+	FileName           string     `json:"file_name"`
+	ContentType        string     `json:"content_type,omitempty"`
+	ReductoFileID      string     `json:"reducto_file_id,omitempty"`
+	ReductoParseID     string     `json:"reducto_parse_id,omitempty"`
+	ParseStatus        string     `json:"parse_status,omitempty"`
+	TextPreview        string     `json:"text_preview,omitempty"`
+	ChunkCount         int        `json:"chunk_count,omitempty"`
+	PageCount          int        `json:"page_count,omitempty"`
+	ProjectionStatus   string     `json:"projection_status,omitempty"`
+	ProjectionFailures int        `json:"projection_failures,omitempty"`
+	Events             []EventRef `json:"events"`
+	GeneratedAt        time.Time  `json:"generated_at"`
 }
 
 func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([]*cerebrov1.EventEnvelope, Response, error) {
@@ -128,11 +131,12 @@ func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([
 		}
 		events = append(events, event)
 		refs = append(refs, EventRef{
-			EventID:   event.GetId(),
-			EventKind: event.GetKind(),
-			SchemaRef: event.GetSchemaRef(),
-			RecordID:  spec.RecordID,
-			RecordURN: spec.RecordURN,
+			EventID:         event.GetId(),
+			EventKind:       event.GetKind(),
+			SchemaRef:       event.GetSchemaRef(),
+			RecordID:        spec.RecordID,
+			RecordURN:       spec.RecordURN,
+			LegacyRecordURN: spec.LegacyRecordURN,
 		})
 	}
 	return events, Response{
@@ -152,11 +156,12 @@ func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([
 }
 
 type eventSpec struct {
-	Kind      string
-	SchemaRef string
-	RecordID  string
-	RecordURN string
-	Attrs     map[string]string
+	Kind            string
+	SchemaRef       string
+	RecordID        string
+	RecordURN       string
+	LegacyRecordURN string
+	Attrs           map[string]string
 }
 
 func policyEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID string, now time.Time) []eventSpec {
@@ -190,8 +195,8 @@ func policyEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 		"upload_status":        "parsed",
 	})
 	return []eventSpec{
-		{Kind: "grc.policy", SchemaRef: SchemaRefPolicy, RecordID: policyID, RecordURN: recordURN(request, "grc.policy", policyID), Attrs: policyAttrs},
-		{Kind: "grc.document", SchemaRef: SchemaRefDocument, RecordID: documentID, RecordURN: recordURN(request, "grc.document", documentID), Attrs: documentAttrs},
+		recordEventSpec(request, "grc.policy", SchemaRefPolicy, policyID, policyAttrs),
+		recordEventSpec(request, "grc.document", SchemaRefDocument, documentID, documentAttrs),
 	}
 }
 
@@ -226,8 +231,20 @@ func vendorEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 		"upload_status":         "parsed",
 	})
 	return []eventSpec{
-		{Kind: "grc.vendor", SchemaRef: SchemaRefVendor, RecordID: vendorID, RecordURN: recordURN(request, "grc.vendor", vendorID), Attrs: vendorAttrs},
-		{Kind: "grc.assurance_document", SchemaRef: SchemaRefAssuranceDocument, RecordID: documentID, RecordURN: recordURN(request, "grc.assurance_document", documentID), Attrs: documentAttrs},
+		recordEventSpec(request, "grc.vendor", SchemaRefVendor, vendorID, vendorAttrs),
+		recordEventSpec(request, "grc.assurance_document", SchemaRefAssuranceDocument, documentID, documentAttrs),
+	}
+}
+
+func recordEventSpec(request UploadRequest, kind string, schemaRef string, recordID string, attrs map[string]string) eventSpec {
+	recordURN, legacyRecordURN := recordURNs(request, kind, recordID)
+	return eventSpec{
+		Kind:            kind,
+		SchemaRef:       schemaRef,
+		RecordID:        recordID,
+		RecordURN:       recordURN,
+		LegacyRecordURN: legacyRecordURN,
+		Attrs:           attrs,
 	}
 }
 
@@ -245,6 +262,9 @@ func buildEvent(request UploadRequest, spec eventSpec, uploadID string, index in
 	}
 	if spec.RecordURN != "" {
 		attrs["record_urn"] = spec.RecordURN
+	}
+	if spec.LegacyRecordURN != "" {
+		attrs["legacy_record_urn"] = spec.LegacyRecordURN
 	}
 	recordID := strings.TrimSpace(spec.RecordID)
 	if recordID == "" {
@@ -280,11 +300,28 @@ func buildEvent(request UploadRequest, spec eventSpec, uploadID string, index in
 }
 
 func recordURN(request UploadRequest, kind string, recordID string) string {
+	canonical, _ := recordURNs(request, kind, recordID)
+	return canonical
+}
+
+func recordURNs(request UploadRequest, kind string, recordID string) (string, string) {
+	recordID = strings.TrimSpace(recordID)
+	if recordID == "" {
+		return "", ""
+	}
+	canonical := mintRecordURN(request, kind, cerebrourn.EncodeSegment(recordID))
+	legacy := mintRecordURN(request, kind, url.QueryEscape(recordID))
+	if legacy == canonical {
+		legacy = ""
+	}
+	return canonical, legacy
+}
+
+func mintRecordURN(request UploadRequest, kind string, recordID string) string {
 	recordID = strings.TrimSpace(recordID)
 	if recordID == "" {
 		return ""
 	}
-	recordID = url.QueryEscape(recordID)
 	var urn string
 	var err error
 	switch kind {
