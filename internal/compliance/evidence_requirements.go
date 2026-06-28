@@ -12,19 +12,25 @@ import (
 const DefaultControlEvidenceRequirementsPath = "internal/compliance/control_evidence_requirements.yaml"
 
 type ControlEvidenceRequirementCatalog struct {
-	Version  string                              `json:"version" yaml:"version"`
-	Defaults ControlEvidenceRequirementDefaults  `json:"defaults" yaml:"defaults"`
-	Profiles []ControlEvidenceRequirementProfile `json:"profiles" yaml:"profiles"`
+	Version    string                              `json:"version" yaml:"version"`
+	Defaults   ControlEvidenceRequirementDefaults  `json:"defaults" yaml:"defaults"`
+	ClaimRules []ControlEvidenceClaimRule          `json:"claim_rules,omitempty" yaml:"claim_rules,omitempty"`
+	Profiles   []ControlEvidenceRequirementProfile `json:"profiles" yaml:"profiles"`
 }
 
 type ControlEvidenceRequirementDefaults struct {
-	SourceID              string   `json:"source_id,omitempty" yaml:"source_id,omitempty"`
-	EntityType            string   `json:"entity_type,omitempty" yaml:"entity_type,omitempty"`
-	RequiredFields        []string `json:"required_fields,omitempty" yaml:"required_fields,omitempty"`
-	FreshnessWindow       string   `json:"freshness_window,omitempty" yaml:"freshness_window,omitempty"`
-	AssessmentMethods     []string `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
-	AuditorGradeEvidence  string   `json:"auditor_grade_evidence,omitempty" yaml:"auditor_grade_evidence,omitempty"`
-	ManualEvidenceAllowed *bool    `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
+	SourceID                 string   `json:"source_id,omitempty" yaml:"source_id,omitempty"`
+	EntityType               string   `json:"entity_type,omitempty" yaml:"entity_type,omitempty"`
+	RequiredFields           []string `json:"required_fields,omitempty" yaml:"required_fields,omitempty"`
+	FreshnessWindow          string   `json:"freshness_window,omitempty" yaml:"freshness_window,omitempty"`
+	AssessmentMethods        []string `json:"assessment_methods,omitempty" yaml:"assessment_methods,omitempty"`
+	AuditorGradeEvidence     string   `json:"auditor_grade_evidence,omitempty" yaml:"auditor_grade_evidence,omitempty"`
+	ClaimStrength            string   `json:"claim_strength,omitempty" yaml:"claim_strength,omitempty"`
+	SufficiencyRule          string   `json:"sufficiency_rule,omitempty" yaml:"sufficiency_rule,omitempty"`
+	CoverageClaim            string   `json:"coverage_claim,omitempty" yaml:"coverage_claim,omitempty"`
+	OverclaimGuard           string   `json:"overclaim_guard,omitempty" yaml:"overclaim_guard,omitempty"`
+	AdjacentControlRationale string   `json:"adjacent_control_rationale,omitempty" yaml:"adjacent_control_rationale,omitempty"`
+	ManualEvidenceAllowed    *bool    `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
 }
 
 type ControlEvidenceRequirementProfile struct {
@@ -42,12 +48,27 @@ type ControlEvidenceRequirementSelector struct {
 }
 
 type ControlEvidenceSourceRequirement struct {
-	SourceID             string   `json:"source_id" yaml:"source_id"`
-	EntityType           string   `json:"entity_type" yaml:"entity_type"`
-	RequiredFields       []string `json:"required_fields" yaml:"required_fields"`
-	FreshnessWindow      string   `json:"freshness_window" yaml:"freshness_window"`
-	AssessmentMethods    []string `json:"assessment_methods" yaml:"assessment_methods"`
-	AuditorGradeEvidence string   `json:"auditor_grade_evidence" yaml:"auditor_grade_evidence"`
+	SourceID                 string   `json:"source_id" yaml:"source_id"`
+	EntityType               string   `json:"entity_type" yaml:"entity_type"`
+	RequiredFields           []string `json:"required_fields" yaml:"required_fields"`
+	FreshnessWindow          string   `json:"freshness_window" yaml:"freshness_window"`
+	AssessmentMethods        []string `json:"assessment_methods" yaml:"assessment_methods"`
+	AuditorGradeEvidence     string   `json:"auditor_grade_evidence" yaml:"auditor_grade_evidence"`
+	ClaimStrength            string   `json:"claim_strength" yaml:"claim_strength"`
+	SufficiencyRule          string   `json:"sufficiency_rule" yaml:"sufficiency_rule"`
+	CoverageClaim            string   `json:"coverage_claim" yaml:"coverage_claim"`
+	OverclaimGuard           string   `json:"overclaim_guard" yaml:"overclaim_guard"`
+	AdjacentControlRationale string   `json:"adjacent_control_rationale" yaml:"adjacent_control_rationale"`
+}
+
+type ControlEvidenceClaimRule struct {
+	ID                       string                             `json:"rule_id" yaml:"rule_id"`
+	AppliesTo                ControlEvidenceRequirementSelector `json:"applies_to" yaml:"applies_to"`
+	ClaimStrength            string                             `json:"claim_strength" yaml:"claim_strength"`
+	SufficiencyRule          string                             `json:"sufficiency_rule" yaml:"sufficiency_rule"`
+	CoverageClaim            string                             `json:"coverage_claim" yaml:"coverage_claim"`
+	OverclaimGuard           string                             `json:"overclaim_guard" yaml:"overclaim_guard"`
+	AdjacentControlRationale string                             `json:"adjacent_control_rationale" yaml:"adjacent_control_rationale"`
 }
 
 type ControlEvidenceRequirementResolution struct {
@@ -66,6 +87,7 @@ type ResolvedControlEvidenceRequirement struct {
 	ControlTitle          string                           `json:"control_title,omitempty" yaml:"control_title,omitempty"`
 	ProfileID             string                           `json:"profile_id" yaml:"profile_id"`
 	ProfileName           string                           `json:"profile_name" yaml:"profile_name"`
+	ClaimRuleID           string                           `json:"claim_rule_id,omitempty" yaml:"claim_rule_id,omitempty"`
 	SourceRequirement     ControlEvidenceSourceRequirement `json:"source_requirement" yaml:"source_requirement"`
 	ManualEvidenceAllowed *bool                            `json:"manual_evidence_allowed,omitempty" yaml:"manual_evidence_allowed,omitempty"`
 }
@@ -96,6 +118,27 @@ func ValidateControlEvidenceRequirementCatalog(catalog ControlEvidenceRequiremen
 	}
 	profileIDs := map[string]struct{}{}
 	hasFallback := false
+	claimRuleIDs := map[string]struct{}{}
+	for claimRuleIdx, rule := range catalog.ClaimRules {
+		path := fmt.Sprintf("claim_rules[%d]", claimRuleIdx)
+		ruleID := strings.TrimSpace(rule.ID)
+		if ruleID == "" {
+			issues = append(issues, ValidationIssue{Message: path + ".rule_id is required"})
+		} else if _, ok := claimRuleIDs[ruleID]; ok {
+			issues = append(issues, ValidationIssue{Message: fmt.Sprintf("claim rule %q is duplicated", ruleID)})
+		}
+		claimRuleIDs[ruleID] = struct{}{}
+		if controlEvidenceRequirementSelectorEmpty(rule.AppliesTo) {
+			issues = append(issues, ValidationIssue{Message: path + ".applies_to is required"})
+		}
+		issues = append(issues, validateControlEvidenceClaimFields(path, controlEvidenceClaimFields{
+			ClaimStrength:            rule.ClaimStrength,
+			SufficiencyRule:          rule.SufficiencyRule,
+			CoverageClaim:            rule.CoverageClaim,
+			OverclaimGuard:           rule.OverclaimGuard,
+			AdjacentControlRationale: rule.AdjacentControlRationale,
+		})...)
+	}
 	for profileIdx, profile := range catalog.Profiles {
 		path := fmt.Sprintf("profiles[%d]", profileIdx)
 		profileID := strings.TrimSpace(profile.ID)
@@ -144,8 +187,11 @@ func ResolveControlEvidenceRequirements(index *CatalogIndex, catalog ControlEvid
 			})
 			continue
 		}
+		claimRule := controlEvidenceClaimRuleForControl(catalog.ClaimRules, control)
 		for _, profile := range profiles {
 			for _, requirement := range profile.SourceRequirements {
+				sourceRequirement := MergeControlEvidenceRequirementDefaults(catalog.Defaults, requirement)
+				sourceRequirement = MergeControlEvidenceClaimRule(sourceRequirement, claimRule)
 				result.Requirements = append(result.Requirements, ResolvedControlEvidenceRequirement{
 					FrameworkID:           control.FrameworkID,
 					FrameworkName:         control.FrameworkName,
@@ -157,7 +203,8 @@ func ResolveControlEvidenceRequirements(index *CatalogIndex, catalog ControlEvid
 					ControlTitle:          strings.TrimSpace(control.Control.Title),
 					ProfileID:             strings.TrimSpace(profile.ID),
 					ProfileName:           strings.TrimSpace(profile.Name),
-					SourceRequirement:     MergeControlEvidenceRequirementDefaults(catalog.Defaults, requirement),
+					ClaimRuleID:           strings.TrimSpace(claimRule.ID),
+					SourceRequirement:     sourceRequirement,
 					ManualEvidenceAllowed: cloneBool(catalog.Defaults.ManualEvidenceAllowed),
 				})
 			}
@@ -171,12 +218,17 @@ func ResolveControlEvidenceRequirements(index *CatalogIndex, catalog ControlEvid
 
 func MergeControlEvidenceRequirementDefaults(defaults ControlEvidenceRequirementDefaults, requirement ControlEvidenceSourceRequirement) ControlEvidenceSourceRequirement {
 	merged := ControlEvidenceSourceRequirement{
-		SourceID:             strings.TrimSpace(defaults.SourceID),
-		EntityType:           strings.TrimSpace(defaults.EntityType),
-		RequiredFields:       uniqueStrings(defaults.RequiredFields),
-		FreshnessWindow:      strings.TrimSpace(defaults.FreshnessWindow),
-		AssessmentMethods:    uniqueStrings(defaults.AssessmentMethods),
-		AuditorGradeEvidence: strings.TrimSpace(defaults.AuditorGradeEvidence),
+		SourceID:                 strings.TrimSpace(defaults.SourceID),
+		EntityType:               strings.TrimSpace(defaults.EntityType),
+		RequiredFields:           uniqueStrings(defaults.RequiredFields),
+		FreshnessWindow:          strings.TrimSpace(defaults.FreshnessWindow),
+		AssessmentMethods:        uniqueStrings(defaults.AssessmentMethods),
+		AuditorGradeEvidence:     strings.TrimSpace(defaults.AuditorGradeEvidence),
+		ClaimStrength:            strings.TrimSpace(defaults.ClaimStrength),
+		SufficiencyRule:          strings.TrimSpace(defaults.SufficiencyRule),
+		CoverageClaim:            strings.TrimSpace(defaults.CoverageClaim),
+		OverclaimGuard:           strings.TrimSpace(defaults.OverclaimGuard),
+		AdjacentControlRationale: strings.TrimSpace(defaults.AdjacentControlRationale),
 	}
 	if value := strings.TrimSpace(requirement.SourceID); value != "" {
 		merged.SourceID = value
@@ -196,7 +248,41 @@ func MergeControlEvidenceRequirementDefaults(defaults ControlEvidenceRequirement
 	if value := strings.TrimSpace(requirement.AuditorGradeEvidence); value != "" {
 		merged.AuditorGradeEvidence = value
 	}
+	if value := strings.TrimSpace(requirement.ClaimStrength); value != "" {
+		merged.ClaimStrength = value
+	}
+	if value := strings.TrimSpace(requirement.SufficiencyRule); value != "" {
+		merged.SufficiencyRule = value
+	}
+	if value := strings.TrimSpace(requirement.CoverageClaim); value != "" {
+		merged.CoverageClaim = value
+	}
+	if value := strings.TrimSpace(requirement.OverclaimGuard); value != "" {
+		merged.OverclaimGuard = value
+	}
+	if value := strings.TrimSpace(requirement.AdjacentControlRationale); value != "" {
+		merged.AdjacentControlRationale = value
+	}
 	return merged
+}
+
+func MergeControlEvidenceClaimRule(requirement ControlEvidenceSourceRequirement, rule ControlEvidenceClaimRule) ControlEvidenceSourceRequirement {
+	if value := strings.TrimSpace(rule.ClaimStrength); value != "" {
+		requirement.ClaimStrength = value
+	}
+	if value := strings.TrimSpace(rule.SufficiencyRule); value != "" {
+		requirement.SufficiencyRule = value
+	}
+	if value := strings.TrimSpace(rule.CoverageClaim); value != "" {
+		requirement.CoverageClaim = value
+	}
+	if value := strings.TrimSpace(rule.OverclaimGuard); value != "" {
+		requirement.OverclaimGuard = value
+	}
+	if value := strings.TrimSpace(rule.AdjacentControlRationale); value != "" {
+		requirement.AdjacentControlRationale = value
+	}
+	return requirement
 }
 
 func validateResolvedControlEvidenceRequirement(path string, requirement ControlEvidenceSourceRequirement) []ValidationIssue {
@@ -220,6 +306,41 @@ func validateResolvedControlEvidenceRequirement(path string, requirement Control
 	if strings.TrimSpace(requirement.AuditorGradeEvidence) == "" {
 		issues = append(issues, ValidationIssue{Message: path + ".auditor_grade_evidence is required"})
 	}
+	issues = append(issues, validateControlEvidenceClaimFields(path, controlEvidenceClaimFields{
+		ClaimStrength:            requirement.ClaimStrength,
+		SufficiencyRule:          requirement.SufficiencyRule,
+		CoverageClaim:            requirement.CoverageClaim,
+		OverclaimGuard:           requirement.OverclaimGuard,
+		AdjacentControlRationale: requirement.AdjacentControlRationale,
+	})...)
+	return issues
+}
+
+type controlEvidenceClaimFields struct {
+	ClaimStrength            string
+	SufficiencyRule          string
+	CoverageClaim            string
+	OverclaimGuard           string
+	AdjacentControlRationale string
+}
+
+func validateControlEvidenceClaimFields(path string, claim controlEvidenceClaimFields) []ValidationIssue {
+	var issues []ValidationIssue
+	if strings.TrimSpace(claim.ClaimStrength) == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".claim_strength is required"})
+	}
+	if strings.TrimSpace(claim.SufficiencyRule) == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".sufficiency_rule is required"})
+	}
+	if strings.TrimSpace(claim.CoverageClaim) == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".coverage_claim is required"})
+	}
+	if strings.TrimSpace(claim.OverclaimGuard) == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".overclaim_guard is required"})
+	}
+	if strings.TrimSpace(claim.AdjacentControlRationale) == "" {
+		issues = append(issues, ValidationIssue{Message: path + ".adjacent_control_rationale is required"})
+	}
 	return issues
 }
 
@@ -239,6 +360,17 @@ func controlEvidenceRequirementProfilesForControl(profiles []ControlEvidenceRequ
 		return matched
 	}
 	return fallback
+}
+
+func controlEvidenceClaimRuleForControl(rules []ControlEvidenceClaimRule, control ResolvedControl) ControlEvidenceClaimRule {
+	for _, rule := range rules {
+		if controlEvidenceRequirementProfileApplies(ControlEvidenceRequirementProfile{
+			AppliesTo: rule.AppliesTo,
+		}, control) {
+			return rule
+		}
+	}
+	return ControlEvidenceClaimRule{}
 }
 
 func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirementProfile, control ResolvedControl) bool {

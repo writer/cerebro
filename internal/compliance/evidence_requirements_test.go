@@ -33,6 +33,20 @@ defaults:
   freshness_window: 90d
   assessment_methods: [examine]
   auditor_grade_evidence: Evidence identifies the control owner and observed state.
+  claim_strength: control_owner_attested
+  sufficiency_rule: owner_period_state_exception
+  coverage_claim: supports_control_review
+  overclaim_guard: Do not claim operating effectiveness without source evidence or sampled owner evidence.
+  adjacent_control_rationale: Use related controls as review context until they have their own evidence.
+claim_rules:
+  - rule_id: trust-services-operating-evidence
+    applies_to:
+      frameworks: [SOC 2]
+    claim_strength: source_or_sample_backed
+    sufficiency_rule: design_and_operating_effectiveness
+    coverage_claim: supports_trust_services_criterion
+    overclaim_guard: Do not claim criterion coverage from a control reference alone.
+    adjacent_control_rationale: Use adjacent common criteria only as review hints.
 profiles:
   - profile_id: identity-access
     name: Identity and Access Evidence
@@ -66,6 +80,13 @@ profiles:
 	if !resolvedRequirementExists(resolution.Requirements, "SOC 2", "CC6.1", "identity-access", "okta") {
 		t.Fatalf("requirements = %#v, want SOC 2 CC6.1 okta identity requirement", resolution.Requirements)
 	}
+	socRequirement := findResolvedRequirement(t, resolution.Requirements, "SOC 2", "CC6.1", "identity-access", "okta")
+	if socRequirement.ClaimRuleID != "trust-services-operating-evidence" {
+		t.Fatalf("SOC 2 claim rule = %q, want trust-services-operating-evidence", socRequirement.ClaimRuleID)
+	}
+	if got := socRequirement.SourceRequirement.SufficiencyRule; got != "design_and_operating_effectiveness" {
+		t.Fatalf("SOC 2 sufficiency rule = %q, want design_and_operating_effectiveness", got)
+	}
 	if !resolvedRequirementExists(resolution.Requirements, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review") {
 		t.Fatalf("requirements = %#v, want ISO A.7.8 fallback requirement", resolution.Requirements)
 	}
@@ -91,13 +112,18 @@ frameworks:
 	requirements := ControlEvidenceRequirementCatalog{
 		Version: "2026-06-28",
 		Defaults: ControlEvidenceRequirementDefaults{
-			SourceID:              "control_owner_review",
-			EntityType:            "control_evidence_packet",
-			RequiredFields:        []string{"control_ref"},
-			FreshnessWindow:       "90d",
-			AssessmentMethods:     []string{"examine"},
-			AuditorGradeEvidence:  "Evidence identifies the control and observed state.",
-			ManualEvidenceAllowed: &manualAllowed,
+			SourceID:                 "control_owner_review",
+			EntityType:               "control_evidence_packet",
+			RequiredFields:           []string{"control_ref"},
+			FreshnessWindow:          "90d",
+			AssessmentMethods:        []string{"examine"},
+			AuditorGradeEvidence:     "Evidence identifies the control and observed state.",
+			ClaimStrength:            "control_owner_attested",
+			SufficiencyRule:          "owner_period_state_exception",
+			CoverageClaim:            "supports_control_review",
+			OverclaimGuard:           "Do not claim operating effectiveness without source evidence.",
+			AdjacentControlRationale: "Use related controls as review context until they have their own evidence.",
+			ManualEvidenceAllowed:    &manualAllowed,
 		},
 		Profiles: []ControlEvidenceRequirementProfile{{
 			ID:       "baseline-control-review",
@@ -294,6 +320,9 @@ profiles:
 		"entity_type is required",
 		"required_fields is required",
 		"assessment_methods[0] must be one of examine, interview, test",
+		"claim_strength is required",
+		"sufficiency_rule is required",
+		"overclaim_guard is required",
 		"at least one fallback profile is required",
 	} {
 		if !issueContains(issues, want) {
@@ -369,15 +398,29 @@ func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) 
 }
 
 func resolvedRequirementExists(requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string, sourceID string) bool {
-	for _, requirement := range requirements {
+	return findResolvedRequirementOrNil(requirements, framework, controlID, profileID, sourceID) != nil
+}
+
+func findResolvedRequirement(t *testing.T, requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string, sourceID string) ResolvedControlEvidenceRequirement {
+	t.Helper()
+	requirement := findResolvedRequirementOrNil(requirements, framework, controlID, profileID, sourceID)
+	if requirement == nil {
+		t.Fatalf("requirement not found for %s %s %s %s", framework, controlID, profileID, sourceID)
+	}
+	return *requirement
+}
+
+func findResolvedRequirementOrNil(requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string, sourceID string) *ResolvedControlEvidenceRequirement {
+	for idx := range requirements {
+		requirement := &requirements[idx]
 		if requirement.FrameworkName == framework &&
 			requirement.ControlID == controlID &&
 			requirement.ProfileID == profileID &&
 			requirement.SourceRequirement.SourceID == sourceID {
-			return true
+			return requirement
 		}
 	}
-	return false
+	return nil
 }
 
 func resolvedRequirementProfileExists(requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string) bool {

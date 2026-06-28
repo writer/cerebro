@@ -13,6 +13,140 @@ defaults:
   freshness_window: 90d
   assessment_methods: [examine]
   auditor_grade_evidence: Evidence identifies the control, owner, period, source system, observed state, exceptions, and reviewer action.
+  claim_strength: control_owner_attested
+  sufficiency_rule: owner_period_state_exception
+  coverage_claim: supports_control_review
+  overclaim_guard: Do not claim operating effectiveness until source evidence or a sampled evidence packet proves the control operated during the stated period.
+  adjacent_control_rationale: Use the mapped control only when the evidence addresses that control objective; related controls stay review context until their own requirement is met.
+claim_rules:
+  - rule_id: trust-services-operating-evidence
+    applies_to:
+      frameworks: [SOC 2]
+    claim_strength: source_or_sample_backed
+    sufficiency_rule: design_and_operating_effectiveness
+    coverage_claim: supports_trust_services_criterion
+    overclaim_guard: Do not claim criterion coverage from a control reference alone; require source evidence, sampled activity, or reviewer evidence for the period.
+    adjacent_control_rationale: Use the criterion that matches the risky condition and keep neighboring common criteria as review hints unless the evidence addresses their points of focus.
+  - rule_id: iso-management-system-evidence
+    applies_to:
+      frameworks:
+        - ISO 27001:2022
+        - ISO 27701
+        - ISO 27701:2025
+        - ISO 42001
+    claim_strength: management_system_backed
+    sufficiency_rule: scope_risk_treatment_operation_review
+    coverage_claim: supports_management_system_control
+    overclaim_guard: Do not claim certification readiness from one technical signal; require scope, risk treatment, control operation, monitoring, and review evidence where the clause requires it.
+    adjacent_control_rationale: Use Annex, privacy, or AI controls only when the evidence ties to the stated management-system objective, not merely to a related security topic.
+  - rule_id: nist-assessment-objective-evidence
+    applies_to:
+      frameworks:
+        - NIST 800-53 r5
+        - FedRAMP Rev. 5
+    claim_strength: assessment_objective_backed
+    sufficiency_rule: examine_interview_test_objectives
+    coverage_claim: supports_assessment_objective
+    overclaim_guard: Do not treat a crosswalk, family match, or inherited control as tested implementation without artifact, interview, test, parameter, or inheritance evidence.
+    adjacent_control_rationale: Use the exact control or enhancement that matches the assessment objective; related controls only guide sampling and inheritance review.
+  - rule_id: cmmc-practice-evidence
+    applies_to:
+      frameworks: [CMMC 2.0]
+    claim_strength: practice_evidence_backed
+    sufficiency_rule: practice_objective_scope_asset
+    coverage_claim: supports_cmmc_practice
+    overclaim_guard: Do not claim practice satisfaction without scoped system, asset, CUI or FCI boundary, and objective-level evidence.
+    adjacent_control_rationale: Use the mapped practice when the evidence satisfies that practice objective; neighboring NIST 800-171 practices require their own evidence.
+  - rule_id: pci-testing-procedure-evidence
+    applies_to:
+      frameworks:
+        - PCI DSS v4.0.1
+        - PCI DSS v4.0
+        - PCI SAQ D-SP
+    claim_strength: testing_procedure_backed
+    sufficiency_rule: cde_scope_testing_procedure_sample
+    coverage_claim: supports_pci_requirement
+    overclaim_guard: Do not claim PCI requirement coverage without CDE scope, sampled system, testing procedure result, date, and exception or remediation state.
+    adjacent_control_rationale: Use parent requirements for scope and child requirements for testable detail; do not let a parent reference satisfy a child testing procedure.
+  - rule_id: cis-safeguard-technical-evidence
+    applies_to:
+      frameworks: [CIS Controls v8]
+    claim_strength: safeguard_evidence_backed
+    sufficiency_rule: safeguard_state_asset_scope
+    coverage_claim: supports_cis_safeguard
+    overclaim_guard: Do not claim safeguard implementation from a policy or framework tag alone; require asset, account, software, logging, vulnerability, or response evidence for the safeguard.
+    adjacent_control_rationale: Use the safeguard whose action matches the finding; adjacent safeguards remain implementation guidance until their own source evidence exists.
+  - rule_id: cis-benchmark-configuration-evidence
+    applies_to:
+      frameworks:
+        - CIS AWS Foundations Benchmark v2.0
+        - CIS Kubernetes Benchmark
+        - CIS GKE Benchmark v1.4
+        - CIS EKS Benchmark v1.3
+        - CIS Benchmarks
+        - CIS GitHub Benchmark
+        - CIS Google Workspace Benchmark
+    claim_strength: configuration_state_backed
+    sufficiency_rule: benchmark_version_setting_scope
+    coverage_claim: supports_benchmark_recommendation
+    overclaim_guard: Do not claim benchmark conformance without product benchmark version, sampled asset or tenant, current setting state, and exception or remediation state.
+    adjacent_control_rationale: Use the recommendation that names the setting or platform state; related benchmark sections are review context unless their settings are checked.
+  - rule_id: privacy-rights-operating-evidence
+    applies_to:
+      frameworks:
+        - GDPR
+        - CCPA
+        - US Data Privacy
+        - HIPAA
+    claim_strength: rights_or_safeguard_backed
+    sufficiency_rule: legal_basis_scope_request_or_safeguard
+    coverage_claim: supports_privacy_obligation
+    overclaim_guard: Do not claim privacy compliance from a security control alone; require processing scope, legal basis, request handling, safeguard, or breach evidence tied to the obligation.
+    adjacent_control_rationale: Use the article, section, or safeguard that matches the privacy duty; adjacent duties need separate processing or request evidence.
+  - rule_id: ai-risk-governance-evidence
+    applies_to:
+      frameworks:
+        - EU AI Act
+        - NIST AI RMF 1.0
+        - Cerebro AI Governance
+    claim_strength: ai_system_evidence_backed
+    sufficiency_rule: ai_system_role_risk_evaluation_monitoring
+    coverage_claim: supports_ai_governance_obligation
+    overclaim_guard: Do not claim AI governance coverage without system identity, role, risk class or risk context, evaluation result, mitigation, and monitoring or approval state.
+    adjacent_control_rationale: Use the obligation tied to the AI lifecycle state; related transparency, human oversight, and monitoring controls need their own evidence.
+  - rule_id: resilience-operating-evidence
+    applies_to:
+      frameworks:
+        - DORA
+        - NIS2
+        - CISA
+        - Cerebro Operational Resilience
+        - Cerebro Organizational Resilience
+    claim_strength: resilience_record_backed
+    sufficiency_rule: service_scope_incident_test_dependency
+    coverage_claim: supports_resilience_obligation
+    overclaim_guard: Do not claim resilience coverage without service scope, owner, dependency, incident, test, recovery, or third-party evidence for the obligation.
+    adjacent_control_rationale: Use the control that matches the resilience activity; related incident, continuity, and supplier controls remain review context until separately evidenced.
+  - rule_id: cloud-assurance-shared-responsibility-evidence
+    applies_to:
+      frameworks:
+        - CSA CCM v4.0
+        - NIST SP 800-177
+    claim_strength: shared_responsibility_backed
+    sufficiency_rule: cloud_service_scope_owner_evidence
+    coverage_claim: supports_cloud_assurance_control
+    overclaim_guard: Do not claim cloud control coverage without service model, tenant boundary, responsibility owner, configuration, and evidence owner.
+    adjacent_control_rationale: Use the cloud control that owns the responsibility split; adjacent controls are review context until the provider or customer evidence is present.
+  - rule_id: internal-operating-control-evidence
+    applies_to:
+      frameworks:
+        - Cerebro Financial Controls
+        - Cerebro Revenue Operations
+    claim_strength: operating_control_backed
+    sufficiency_rule: owner_approval_exception_closure
+    coverage_claim: supports_internal_control
+    overclaim_guard: Do not claim external assurance from an internal control row unless an external framework mapping and evidence requirement also support it.
+    adjacent_control_rationale: Use internal controls for operating ownership and closure; external controls require their own framework rule before coverage is asserted.
 profiles:
   - profile_id: identity-access
     name: Identity and Access Evidence
