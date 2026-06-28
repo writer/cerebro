@@ -167,6 +167,9 @@ func BuildActionEvent(request ActionRequest, now time.Time) (*cerebrov1.EventEnv
 	if definition.RequiresGapID && request.GapID == "" && request.RecordID == "" && request.RecordURN == "" && len(request.GapIDs) == 0 {
 		return nil, ActionResponse{}, fmt.Errorf("%w: gap_id is required for %s", ErrInvalidRequest, definition.ID)
 	}
+	if definition.ID == "governance_gap.link_policy" && policyLifecycleActionAttribute(request, "target_policy_id") == "" {
+		return nil, ActionResponse{}, fmt.Errorf("%w: target_policy_id is required for %s", ErrInvalidRequest, definition.ID)
+	}
 
 	recordID := policyLifecycleRecordID(request, definition, now)
 	attrs := policyLifecycleActionAttributes(request, definition, recordID, now)
@@ -219,6 +222,15 @@ func policyLifecycleActionDefinitionFor(action string) (policyLifecycleActionDef
 		}
 	}
 	return policyLifecycleActionDefinition{}, false
+}
+
+func policyLifecycleActionAttribute(request ActionRequest, key string) string {
+	for attrKey, value := range request.Attributes {
+		if strings.EqualFold(strings.TrimSpace(attrKey), key) {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func normalizeActionRequest(request ActionRequest) ActionRequest {
@@ -408,9 +420,6 @@ func policyLifecycleActionSpecificAttributes(attrs map[string]string, request Ac
 		}
 		if definition.ID == "governance_gap.set_treatment_date" {
 			attrs["treatment_due_at"] = firstNonEmpty(attrs["treatment_due_at"], request.DueAt)
-		}
-		if definition.ID == "governance_gap.link_policy" && request.PolicyID != "" {
-			attrs["target_policy_id"] = firstNonEmpty(attrs["target_policy_id"], request.PolicyID)
 		}
 	case "draft.submit", "approval.request":
 		attrs["requested_at"] = firstNonEmpty(attrs["requested_at"], now.Format(time.RFC3339))

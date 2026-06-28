@@ -3,6 +3,7 @@ package grcpolicylifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -663,6 +664,25 @@ func TestBuildActionEventKeepsLinkedPolicyTargetSeparate(t *testing.T) {
 	attrs := event.GetAttributes()
 	if attrs["policy_id"] != "context-policy" || attrs["target_policy_id"] != "linked-policy" {
 		t.Fatalf("policy attrs = %#v, want context policy and linked target", attrs)
+	}
+}
+
+func TestBuildActionEventRejectsLinkPolicyWithoutTarget(t *testing.T) {
+	_, _, err := BuildActionEvent(ActionRequest{
+		Action: "governance_gap.link_policy",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:    "writer",
+			SourceID:    "grc",
+			ActorUserID: "operator@example.com",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			PolicyID:  "context-policy",
+			GapID:     "urn:document:gap:policy",
+			RecordURN: "urn:document:gap:policy",
+		},
+	}, time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC))
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("BuildActionEvent() error = %v, want invalid request", err)
 	}
 }
 
