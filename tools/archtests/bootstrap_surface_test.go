@@ -64,14 +64,18 @@ import (
 // claim verdicts, gates, and work state live in internal/agentplatform. GRC
 // policy lifecycle adds route/scope/error mapping plus action and CSV export
 // adapters; graph aggregation, action event construction, audit row shaping,
-// and response shaping live in internal/grcpolicylifecycle. Stateless source
-// MCP tools add request/response mapping over the existing sourceops preview
+// and response shaping live in internal/grcpolicylifecycle. GRC document
+// uploads add route, scope, parser, cache, and error-status wiring while
+// multipart handling lives in internal/sourcehttp/grcupload, event construction
+// lives in internal/grcupload, and Reducto HTTP behavior lives in
+// internal/sourcehttp/reducto. Stateless source MCP tools add request/response
+// mapping over the existing sourceops preview
 // service so agents can check/discover/read live sources without durable stores;
 // the read tool also trims event and preview-event arrays at the response
 // boundary so MCP clients cannot receive an unbounded source page. The same MCP
 // source boundary calls sourceops preview-config validation before tenant checks
 // so reserved runtime keys cannot cross the MCP transport layer.
-const bootstrapProductionGoLineBudget = 26627
+const bootstrapProductionGoLineBudget = 26690
 
 type bootstrapFileLineCount struct {
 	path  string

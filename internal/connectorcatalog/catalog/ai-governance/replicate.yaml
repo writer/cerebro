@@ -1,0 +1,166 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects models, deployments, collections, and predictions from Replicate and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context.
+      display_name: Replicate
+      id: builtin-replicate
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - models
+              high_value: true
+              id: models
+              support: partial
+              title: Models
+              type: entity_family
+          event:
+            kind: replicate.models
+            required_payload_fields:
+              - name
+            schema_ref: replicate/models/v1
+            urn_kind: replicate_models
+          id: models
+          id_field: name
+          label: Models
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/models
+          projection:
+            fields:
+              resource_id: name
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - deployments
+              high_value: true
+              id: deployments
+              support: partial
+              title: Deployments
+              type: deployment_state
+          event:
+            kind: replicate.deployments
+            required_payload_fields:
+              - id
+            schema_ref: replicate/deployments/v1
+            urn_kind: replicate_deployments
+          id: deployments
+          id_field: id
+          label: Deployments
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/deployments
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - collections
+              high_value: true
+              id: collections
+              support: partial
+              title: Collections
+              type: entity_family
+          event:
+            kind: replicate.collections
+            required_payload_fields:
+              - slug
+            schema_ref: replicate/collections/v1
+            urn_kind: replicate_collections
+          id: collections
+          id_field: slug
+          label: Collections
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/collections
+          projection:
+            fields:
+              resource_id: slug
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - predictions
+              high_value: true
+              id: predictions
+              support: partial
+              title: Predictions
+              type: deployment_state
+          event:
+            kind: replicate.predictions
+            required_payload_fields:
+              - id
+            schema_ref: replicate/predictions/v1
+            urn_kind: replicate_predictions
+          id: predictions
+          id_field: id
+          label: Predictions
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/predictions
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.results[*]
+      schema_version: cerebro.integration/v1
+      source_id: replicate
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.replicate.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

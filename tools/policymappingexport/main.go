@@ -647,6 +647,10 @@ func controlCatalogRefs(catalog complianceControlCatalog) []controlRef {
 	return uniqueControlRefs(refs)
 }
 
+func controlFamilyForRef(index controlFamilyIndex, ref controlRef) string {
+	return index[controlRefKey(ref)].Family
+}
+
 func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) error {
 	var issues []string
 	areaKeys := map[string]struct{}{}

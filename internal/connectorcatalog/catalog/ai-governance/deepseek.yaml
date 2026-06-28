@@ -1,0 +1,97 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: API key
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects model catalog and account balances from DeepSeek and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context.
+      display_name: DeepSeek
+      id: builtin-deepseek
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: deepseek.model_catalog
+            required_payload_fields:
+              - id
+            schema_ref: deepseek/model_catalog/v1
+            urn_kind: deepseek_model_catalog
+          id: model_catalog
+          id_field: id
+          label: Model catalog
+          method: GET
+          name_field: id
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /models
+          projection:
+            fields:
+              resource_id: id
+              resource_name: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - account_balances
+              high_value: true
+              id: account_balances
+              support: partial
+              title: Account balances
+              type: entity_family
+          event:
+            kind: deepseek.account_balances
+            required_payload_fields:
+              - currency
+            schema_ref: deepseek/account_balances/v1
+            urn_kind: deepseek_account_balances
+          id: account_balances
+          id_field: currency
+          label: Account balances
+          method: GET
+          name_field: currency
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /user/balance
+          projection:
+            fields:
+              resource_id: currency
+              resource_name: currency
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.balance_infos[*]
+      schema_version: cerebro.integration/v1
+      source_id: deepseek
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.deepseek.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /models

@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-resend
-    tenant_id: builtin_catalog
-    source_id: resend
-    display_name: Resend
-    description: "Collects domains, API keys, and audit events from Resend and projects them into the Cerebro graph as assets, secrets, and audit events for alert, incident, service health, and response context."
-    categories:
-    - observability
-    - email
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.resend.com
-      verification:
-        method: GET
-        path: "/domains"
-        expect_status:
-        - 200
-    resource_families:
-    - id: domains
-      label: Domains
-      path: "/domains"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: resend.domains
-        schema_ref: resend/domains/v1
-      projection:
-        template: asset
-      coverage:
-      - id: domains
-        type: entity_family
-        title: Domains
-        families:
-        - domains
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: api_keys
-      label: API keys
-      path: "/api-keys"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: resend.api_keys
-        schema_ref: resend/api_keys/v1
-      projection:
-        template: secret
-      coverage:
-      - id: api_keys
-        type: entity_family
-        title: API keys
-        families:
-        - api_keys
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/audit/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: resend.audit_events
-        schema_ref: resend/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - observability
+        - email
+      description: Collects domains, API keys, and audit events from Resend and projects them into the Cerebro graph as assets, secrets, and audit events for alert, incident, service health, and response context.
+      display_name: Resend
+      id: builtin-resend
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - domains
+              high_value: true
+              id: domains
+              support: partial
+              title: Domains
+              type: entity_family
+          event:
+            kind: resend.domains
+            required_payload_fields:
+              - id
+            schema_ref: resend/domains/v1
+            urn_kind: resend_domains
+          id: domains
+          id_field: id
+          label: Domains
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /domains
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: entity_family
+          event:
+            kind: resend.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: resend/api_keys/v1
+            urn_kind: resend_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: resend.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: resend/audit_events/v1
+            urn_kind: resend_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /audit/events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: resend
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.resend.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /domains

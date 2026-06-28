@@ -1,0 +1,596 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - key: api_base_url
+      label: API base URL
+      placeholder: api.example.com
+      required: true
+    description: Collects task event, account, client role, formrule, notification, and device from GSMTasks and projects them into the Cerebro graph as alerts, assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context.
+    display_name: GSMTasks
+    id: builtin_catalog-gsmtasks
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - task_event
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Task Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: gsmtasks.task_event
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/task_event/v1
+        urn_kind: gsmtasks_task_event
+      event_kind: task_event
+      id: task_event
+      id_field: id
+      label: Task Event
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/task_events/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: url
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account
+        high_value: true
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.account
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/account/v1
+        urn_kind: gsmtasks_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/accounts/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - client_role
+        high_value: true
+        id: client_role
+        support: partial
+        title: Client Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.client_role
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/client_role/v1
+        urn_kind: gsmtasks_client_role
+      event_kind: client_role
+      id: client_role
+      id_field: id
+      label: Client Role
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/client_roles/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: url
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - formrule
+        high_value: true
+        id: policies
+        support: partial
+        title: Formrule
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: gsmtasks.formrule
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/formrule/v1
+        urn_kind: gsmtasks_formrule
+      event_kind: formrule
+      id: formrule
+      id_field: id
+      label: Formrule
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/formrules/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          policy_id: id
+          policy_name: name
+          policy_type: formrule
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notification
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: gsmtasks.notification
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/notification/v1
+        urn_kind: gsmtasks_notification
+      event_kind: notification
+      id: notification
+      id_field: id
+      label: Notification
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/notifications/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          alert_id: id
+          alert_name: url
+          alert_severity: add_tracking_link
+          alert_status: state
+          id: id
+          name: url
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - device
+        high_value: true
+        id: device
+        support: partial
+        title: Device
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.device
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/device/v1
+        urn_kind: gsmtasks_device
+      event_kind: device
+      id: device
+      id_field: id
+      label: Device
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/devices/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: url
+          resource_id: id
+          resource_name: url
+          resource_type: device
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - task_event_track
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Task Event Track
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: gsmtasks.task_event_track
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/task_event_track/v1
+        urn_kind: gsmtasks_task_event_track
+      event_kind: task_event_track
+      id: task_event_track
+      id_field: id
+      label: Task Event Track
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/task_event_tracks/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: url
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - users_on_duty_log
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Users On Duty Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: gsmtasks.users_on_duty_log
+        required_payload_fields:
+        - account
+        schema_ref: gsmtasks/users_on_duty_log/v1
+        urn_kind: gsmtasks_users_on_duty_log
+      event_kind: users_on_duty_log
+      id: users_on_duty_log
+      id_field: account
+      label: Users On Duty Log
+      method: GET
+      name_field: account
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/users_on_duty_log/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: account
+          name: account
+          provider_id: account
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account_role
+        high_value: true
+        id: account_role
+        support: partial
+        title: Account Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.account_role
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/account_role/v1
+        urn_kind: gsmtasks_account_role
+      event_kind: account_role
+      id: account_role
+      id_field: id
+      label: Account Role
+      method: GET
+      name_field: display_name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/account_roles/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: display_name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - email
+        high_value: true
+        id: email
+        support: partial
+        title: Email
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.email
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/email/v1
+        urn_kind: gsmtasks_email
+      event_kind: email
+      id: email
+      id_field: id
+      label: Email
+      method: GET
+      name_field: subject
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/emails/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          name: subject
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: gsmtasks.user
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/user/v1
+        urn_kind: gsmtasks_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/users/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notification_template
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notification Template
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: gsmtasks.notification_template
+        required_payload_fields:
+        - id
+        schema_ref: gsmtasks/notification_template/v1
+        urn_kind: gsmtasks_notification_template
+      event_kind: notification_template
+      id: notification_template
+      id_field: id
+      label: Notification Template
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/notification_templates/"
+      permissions_needed:
+      - tokenAuth
+      projection:
+        fields:
+          alert_id: id
+          alert_name: name
+          alert_severity: account
+          alert_status: state
+          id: id
+          name: name
+        template: alert
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - task_event
+      id: task_event
+      label: Task Event
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - client_role
+      id: client_role
+      label: Client Role
+    - default_enabled: true
+      families:
+      - formrule
+      id: formrule
+      label: Formrule
+    - default_enabled: true
+      families:
+      - notification
+      id: notification
+      label: Notification
+    - default_enabled: true
+      families:
+      - device
+      id: device
+      label: Device
+    - default_enabled: true
+      families:
+      - task_event_track
+      id: task_event_track
+      label: Task Event Track
+    - default_enabled: true
+      families:
+      - users_on_duty_log
+      id: users_on_duty_log
+      label: Users On Duty Log
+    - default_enabled: true
+      families:
+      - account_role
+      id: account_role
+      label: Account Role
+    - default_enabled: true
+      families:
+      - email
+      id: email
+      label: Email
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - notification_template
+      id: notification_template
+      label: Notification Template
+    source_id: gsmtasks
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://${config.api_base_url}
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/task_events/"
