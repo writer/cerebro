@@ -64,8 +64,12 @@ import (
 // claim verdicts, gates, and work state live in internal/agentplatform. GRC
 // policy lifecycle adds route/scope/error mapping plus action and CSV export
 // adapters; graph aggregation, action event construction, audit row shaping,
-// and response shaping live in internal/grcpolicylifecycle.
-const bootstrapProductionGoLineBudget = 26425
+// and response shaping live in internal/grcpolicylifecycle. GRC document
+// uploads add route, scope, parser, cache, and error-status wiring while
+// multipart handling lives in internal/sourcehttp/grcupload, event construction
+// lives in internal/grcupload, and Reducto HTTP behavior lives in
+// internal/sourcehttp/reducto.
+const bootstrapProductionGoLineBudget = 26487
 
 type bootstrapFileLineCount struct {
 	path  string

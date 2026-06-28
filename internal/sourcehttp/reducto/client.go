@@ -1,4 +1,4 @@
-package grcupload
+package reducto
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
@@ -24,36 +25,32 @@ const (
 	maxParsedTextPreviewChars       = 1200
 )
 
-type Parser interface {
-	Parse(ctx context.Context, fileName string, contentType string, contents io.Reader) (ParsedDocument, error)
-}
-
-type ReductoConfig struct {
+type Config struct {
 	APIKey  string
 	BaseURL string
 	Timeout time.Duration
 }
 
-type ReductoClient struct {
+type Client struct {
 	baseURL    *url.URL
 	apiKey     string
 	httpClient *http.Client
 }
 
-type ReductoOption func(*ReductoClient)
+type Option func(*Client)
 
-func WithReductoHTTPClient(client *http.Client) ReductoOption {
-	return func(c *ReductoClient) {
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *Client) {
 		if client != nil {
 			c.httpClient = client
 		}
 	}
 }
 
-func NewReductoClient(cfg ReductoConfig, opts ...ReductoOption) (*ReductoClient, error) {
+func NewClient(cfg Config, opts ...Option) (*Client, error) {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
-		return nil, fmt.Errorf("%w: CEREBRO_REDUCTO_API_KEY is required", ErrRuntimeUnavailable)
+		return nil, fmt.Errorf("%w: CEREBRO_REDUCTO_API_KEY is required", grcupload.ErrRuntimeUnavailable)
 	}
 	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if base == "" {
@@ -61,16 +58,16 @@ func NewReductoClient(cfg ReductoConfig, opts ...ReductoOption) (*ReductoClient,
 	}
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("%w: Reducto base URL is invalid", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: Reducto base URL is invalid", grcupload.ErrInvalidRequest)
 	}
 	if !allowedReductoURL(parsed) {
-		return nil, fmt.Errorf("%w: Reducto base URL must use https unless it targets loopback", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: Reducto base URL must use https unless it targets loopback", grcupload.ErrInvalidRequest)
 	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultReductoTimeout
 	}
-	client := &ReductoClient{
+	client := &Client{
 		baseURL: parsed,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
@@ -83,49 +80,49 @@ func NewReductoClient(cfg ReductoConfig, opts ...ReductoOption) (*ReductoClient,
 	return client, nil
 }
 
-func (c *ReductoClient) Parse(ctx context.Context, fileName string, contentType string, contents io.Reader) (ParsedDocument, error) {
+func (c *Client) Parse(ctx context.Context, fileName string, contentType string, contents io.Reader) (grcupload.ParsedDocument, error) {
 	if c == nil || c.baseURL == nil || c.httpClient == nil || strings.TrimSpace(c.apiKey) == "" {
-		return ParsedDocument{}, ErrRuntimeUnavailable
+		return grcupload.ParsedDocument{}, grcupload.ErrRuntimeUnavailable
 	}
 	fileID, err := c.upload(ctx, fileName, contentType, contents)
 	if err != nil {
-		return ParsedDocument{}, err
+		return grcupload.ParsedDocument{}, err
 	}
 	parsed, err := c.parse(ctx, fileID)
 	if err != nil {
-		return ParsedDocument{}, err
+		return grcupload.ParsedDocument{}, err
 	}
 	parsed.ProviderFileID = firstNonEmpty(parsed.ProviderFileID, fileID)
 	return parsed, nil
 }
 
-func (c *ReductoClient) upload(ctx context.Context, fileName string, contentType string, contents io.Reader) (string, error) {
+func (c *Client) upload(ctx context.Context, fileName string, contentType string, contents io.Reader) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormFile("file", firstNonEmpty(fileName, "document"))
 	if err != nil {
-		return "", fmt.Errorf("%w: build Reducto upload request: %w", ErrInvalidRequest, err)
+		return "", fmt.Errorf("%w: build Reducto upload request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	if _, err := io.Copy(part, contents); err != nil {
 		_ = writer.Close()
-		return "", fmt.Errorf("%w: read upload file: %w", ErrInvalidRequest, err)
+		return "", fmt.Errorf("%w: read upload file: %w", grcupload.ErrInvalidRequest, err)
 	}
 	if contentType != "" {
 		_ = writer.WriteField("content_type", contentType)
 	}
 	if err := writer.Close(); err != nil {
-		return "", fmt.Errorf("%w: close Reducto upload request: %w", ErrInvalidRequest, err)
+		return "", fmt.Errorf("%w: close Reducto upload request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.resolvePath("/upload"), &body)
 	if err != nil {
-		return "", fmt.Errorf("%w: build Reducto upload request: %w", ErrInvalidRequest, err)
+		return "", fmt.Errorf("%w: build Reducto upload request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("%w: upload request: %w", ErrRemote, err)
+		return "", fmt.Errorf("%w: upload request: %w", grcupload.ErrRemote, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -133,38 +130,38 @@ func (c *ReductoClient) upload(ctx context.Context, fileName string, contentType
 	}
 	payload, err := readJSON(response.Body, maxReductoBodyBytes)
 	if err != nil {
-		return "", fmt.Errorf("%w: decode Reducto upload response: %w", ErrRemote, err)
+		return "", fmt.Errorf("%w: decode Reducto upload response: %w", grcupload.ErrRemote, err)
 	}
 	fileID := lookupFirstString(payload, "file_id", "document_url", "url", "id", "reducto_file_id")
 	if fileID == "" {
-		return "", fmt.Errorf("%w: Reducto upload response missing file_id", ErrRemote)
+		return "", fmt.Errorf("%w: Reducto upload response missing file_id", grcupload.ErrRemote)
 	}
 	return fileID, nil
 }
 
-func (c *ReductoClient) parse(ctx context.Context, fileID string) (ParsedDocument, error) {
+func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocument, error) {
 	body, err := json.Marshal(map[string]any{"input": fileID})
 	if err != nil {
-		return ParsedDocument{}, fmt.Errorf("%w: encode Reducto parse request: %w", ErrInvalidRequest, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: encode Reducto parse request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.resolvePath("/parse"), bytes.NewReader(body))
 	if err != nil {
-		return ParsedDocument{}, fmt.Errorf("%w: build Reducto parse request: %w", ErrInvalidRequest, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: build Reducto parse request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return ParsedDocument{}, fmt.Errorf("%w: parse request: %w", ErrRemote, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: parse request: %w", grcupload.ErrRemote, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ParsedDocument{}, reductoStatusError("parse", response)
+		return grcupload.ParsedDocument{}, reductoStatusError("parse", response)
 	}
 	payload, err := readJSON(response.Body, maxReductoBodyBytes)
 	if err != nil {
-		return ParsedDocument{}, fmt.Errorf("%w: decode Reducto parse response: %w", ErrRemote, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: decode Reducto parse response: %w", grcupload.ErrRemote, err)
 	}
 	parsed := parsedDocumentFromPayload(payload)
 	if resultURL := lookupFirstString(payload, "result_url", "download_url", "url"); parsed.ChunkCount == 0 && resultURL != "" {
@@ -176,22 +173,22 @@ func (c *ReductoClient) parse(ctx context.Context, fileID string) (ParsedDocumen
 	return parsed, nil
 }
 
-func (c *ReductoClient) fetchResultURL(ctx context.Context, rawURL string) (any, error) {
+func (c *Client) fetchResultURL(ctx context.Context, rawURL string) (any, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("%w: Reducto result URL is invalid", ErrRemote)
+		return nil, fmt.Errorf("%w: Reducto result URL is invalid", grcupload.ErrRemote)
 	}
 	if !allowedReductoURL(parsed) {
-		return nil, fmt.Errorf("%w: Reducto result URL must use https unless it targets loopback", ErrRemote)
+		return nil, fmt.Errorf("%w: Reducto result URL must use https unless it targets loopback", grcupload.ErrRemote)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: build Reducto result request: %w", ErrRemote, err)
+		return nil, fmt.Errorf("%w: build Reducto result request: %w", grcupload.ErrRemote, err)
 	}
 	request.Header.Set("Accept", "application/json")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("%w: result request: %w", ErrRemote, err)
+		return nil, fmt.Errorf("%w: result request: %w", grcupload.ErrRemote, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -200,7 +197,7 @@ func (c *ReductoClient) fetchResultURL(ctx context.Context, rawURL string) (any,
 	return readJSON(response.Body, maxReductoResultURLBytes)
 }
 
-func parsedDocumentFromPayload(payload any) ParsedDocument {
+func parsedDocumentFromPayload(payload any) grcupload.ParsedDocument {
 	chunks := lookupArray(payload, "chunks")
 	texts := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
@@ -213,7 +210,7 @@ func parsedDocumentFromPayload(payload any) ParsedDocument {
 		texts = contentStrings(payload)
 	}
 	preview := truncateRunes(compactWhitespace(strings.Join(texts, " ")), maxParsedTextPreviewChars)
-	return ParsedDocument{
+	return grcupload.ParsedDocument{
 		ProviderFileID: lookupFirstString(payload, "file_id", "document_url", "input", "reducto_file_id"),
 		ParseID:        lookupFirstString(payload, "parse_id", "job_id", "id"),
 		Status:         firstNonEmpty(lookupFirstString(payload, "status"), "parsed"),
@@ -223,7 +220,7 @@ func parsedDocumentFromPayload(payload any) ParsedDocument {
 	}
 }
 
-func mergeParsedDocument(left ParsedDocument, right ParsedDocument) ParsedDocument {
+func mergeParsedDocument(left grcupload.ParsedDocument, right grcupload.ParsedDocument) grcupload.ParsedDocument {
 	if left.ProviderFileID == "" {
 		left.ProviderFileID = right.ProviderFileID
 	}
@@ -264,7 +261,7 @@ func reductoStatusError(action string, response *http.Response) error {
 	if message == "" {
 		message = "request failed"
 	}
-	return fmt.Errorf("%w: Reducto %s returned %d: %s", ErrRemote, action, response.StatusCode, message)
+	return fmt.Errorf("%w: Reducto %s returned %d: %s", grcupload.ErrRemote, action, response.StatusCode, message)
 }
 
 func errorMessage(body []byte) string {
@@ -445,7 +442,20 @@ func truncateRunes(value string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-func (c *ReductoClient) resolvePath(path string) string {
+func compactWhitespace(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func (c *Client) resolvePath(path string) string {
 	resolved := *c.baseURL
 	basePath := strings.TrimRight(resolved.Path, "/")
 	resolved.Path = basePath + "/" + strings.TrimLeft(path, "/")

@@ -1,4 +1,4 @@
-package grcupload
+package reducto
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/grcupload"
 )
 
 func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
@@ -70,13 +72,13 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewReductoClient(ReductoConfig{
+	client, err := NewClient(Config{
 		APIKey:  "reducto-token",
 		BaseURL: server.URL,
 		Timeout: time.Second,
-	}, WithReductoHTTPClient(server.Client()))
+	}, WithHTTPClient(server.Client()))
 	if err != nil {
-		t.Fatalf("NewReductoClient() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	parsed, err := client.Parse(context.Background(), "Access Policy.pdf", "application/pdf", strings.NewReader("policy body"))
 	if err != nil {
@@ -97,19 +99,19 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 }
 
 func TestNewReductoClientRequiresAPIKey(t *testing.T) {
-	_, err := NewReductoClient(ReductoConfig{BaseURL: "https://platform.reducto.ai"})
-	if !errors.Is(err, ErrRuntimeUnavailable) {
-		t.Fatalf("NewReductoClient() error = %v, want ErrRuntimeUnavailable", err)
+	_, err := NewClient(Config{BaseURL: "https://platform.reducto.ai"})
+	if !errors.Is(err, grcupload.ErrRuntimeUnavailable) {
+		t.Fatalf("NewClient() error = %v, want ErrRuntimeUnavailable", err)
 	}
 }
 
 func TestReductoClientRejectsNonLoopbackHTTPBaseURL(t *testing.T) {
-	_, err := NewReductoClient(ReductoConfig{
+	_, err := NewClient(Config{
 		APIKey:  "token",
 		BaseURL: "http://reducto.example.com",
 	})
-	if !errors.Is(err, ErrInvalidRequest) {
-		t.Fatalf("NewReductoClient() error = %v, want ErrInvalidRequest", err)
+	if !errors.Is(err, grcupload.ErrInvalidRequest) {
+		t.Fatalf("NewClient() error = %v, want ErrInvalidRequest", err)
 	}
 }
 
