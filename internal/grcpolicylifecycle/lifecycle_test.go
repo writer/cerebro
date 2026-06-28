@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -48,6 +49,39 @@ func TestEntityTypeLimitStaysWithinGraphRowCeiling(t *testing.T) {
 	typeLimit := grcPolicyLifecycleEntityTypeLimit(500)
 	if got := grcPolicyLifecycleEntityRowLimit(typeLimit); got > ports.MaxCypherQueryRows {
 		t.Fatalf("entity row limit = %d, want <= %d", got, ports.MaxCypherQueryRows)
+	}
+}
+
+func TestFinalizeUsesLatestDatedVersion(t *testing.T) {
+	policy := grcPolicyLifecyclePolicy{
+		Versions: []grcPolicyVersionItem{
+			{ID: "draft", URN: "urn:policy:version:draft", Version: "2", Status: "draft"},
+			{ID: "approved", URN: "urn:policy:version:approved", Version: "1", Status: "approved", CreatedAt: "2026-01-15"},
+		},
+	}
+
+	grcPolicyFinalize(&policy, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if policy.LatestVersion != "1" || policy.VersionStatus != "approved" {
+		t.Fatalf("latest version = %q/%q, want dated approved version", policy.LatestVersion, policy.VersionStatus)
+	}
+	if policy.Versions[0].ID != "approved" {
+		t.Fatalf("first version = %q, want dated version before dateless draft", policy.Versions[0].ID)
+	}
+}
+
+func TestAcceptanceRollupExcludesClosedUnacceptedAttestations(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	summary := grcPolicyAcceptanceRollup([]grcPolicyAcceptanceItem{
+		{ID: "accepted", Status: "accepted"},
+		{ID: "pending", Status: "pending", DueAt: "2026-02-15"},
+		{ID: "overdue", Status: "pending", DueAt: "2026-01-15"},
+		{ID: "rejected", Status: "rejected", DueAt: "2026-01-01"},
+		{ID: "expired", Status: "expired", DueAt: "2026-01-01"},
+	}, now)
+
+	if summary.Total != 3 || summary.Accepted != 1 || summary.Pending != 1 || summary.Overdue != 1 {
+		t.Fatalf("rollup = %#v, want closed unaccepted attestations excluded", summary)
 	}
 }
 

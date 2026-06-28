@@ -673,7 +673,15 @@ func grcPolicyReminderFromNode(node *grcPolicyGraphNode, relations []grcPolicyGr
 
 func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Versions, func(i, j int) bool {
-		return grcPolicySortDate(policy.Versions[i].ApprovedAt, policy.Versions[i].CreatedAt, policy.Versions[i].EffectiveAt).After(grcPolicySortDate(policy.Versions[j].ApprovedAt, policy.Versions[j].CreatedAt, policy.Versions[j].EffectiveAt))
+		iDate, iOK := grcPolicyFirstDate(policy.Versions[i].ApprovedAt, policy.Versions[i].CreatedAt, policy.Versions[i].EffectiveAt)
+		jDate, jOK := grcPolicyFirstDate(policy.Versions[j].ApprovedAt, policy.Versions[j].CreatedAt, policy.Versions[j].EffectiveAt)
+		if iOK != jOK {
+			return iOK
+		}
+		if iDate.Equal(jDate) {
+			return firstNonEmpty(policy.Versions[i].URN, policy.Versions[i].ID) < firstNonEmpty(policy.Versions[j].URN, policy.Versions[j].ID)
+		}
+		return iDate.After(jDate)
 	})
 	sort.Slice(policy.Approvals, func(i, j int) bool {
 		return grcPolicySortDate(policy.Approvals[i].DueAt, policy.Approvals[i].RequestedAt).Before(grcPolicySortDate(policy.Approvals[j].DueAt, policy.Approvals[j].RequestedAt))
@@ -827,14 +835,19 @@ func grcPolicyLifecycleWorkQueue(policies []grcPolicyLifecyclePolicy, now time.T
 func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) grcPolicyAcceptanceSummary {
 	var summary grcPolicyAcceptanceSummary
 	for _, item := range items {
-		summary.Total++
 		if grcPolicyAcceptedStatus(item.Status) || item.AcceptedAt != "" {
+			summary.Total++
 			summary.Accepted++
 			continue
 		}
+		if grcPolicyClosedStatus(item.Status) {
+			continue
+		}
 		if grcPolicyOverdue(item.DueAt, item.Status, now) {
+			summary.Total++
 			summary.Overdue++
-		} else {
+		} else if grcPolicyPendingStatus(item.Status) {
+			summary.Total++
 			summary.Pending++
 		}
 	}
@@ -1176,12 +1189,19 @@ func grcPolicyExpiring(raw string, now time.Time) bool {
 }
 
 func grcPolicySortDate(values ...string) time.Time {
-	for _, value := range values {
-		if parsed, ok := grcPolicyTime(value); ok {
-			return parsed
-		}
+	if value, ok := grcPolicyFirstDate(values...); ok {
+		return value
 	}
 	return time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+}
+
+func grcPolicyFirstDate(values ...string) (time.Time, bool) {
+	for _, value := range values {
+		if parsed, ok := grcPolicyTime(value); ok {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func grcPolicyTime(raw string) (time.Time, bool) {
