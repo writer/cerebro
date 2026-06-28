@@ -116,6 +116,8 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 	for _, row := range controlRows[1:] {
 		if row[controlFindingCol] == "aws-s3-bucket-no-public-access" && row[controlRefCol] == "SOC 2 CC6.6" {
 			assertCellContains(t, controlHeader, row, "control_match_source", "source_coverage_ref")
+			assertCellContains(t, controlHeader, row, "mapping_confidence", "high")
+			assertCellContains(t, controlHeader, row, "mapping_rationale", "matched source coverage")
 			assertCellContains(t, controlHeader, row, "source_coverage_refs", "aws/s3_bucket")
 			return
 		}

@@ -949,6 +949,11 @@ type findingComplianceReview struct {
 	SourceCoverageRefsByControlKey map[string][]string
 }
 
+type findingControlMappingReview struct {
+	Confidence string
+	Rationale  string
+}
+
 type controlRelationshipEdge struct {
 	Control      controlRef
 	Related      controlRef
@@ -1112,12 +1117,15 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			if len(sourceCoverageLabels) != 0 {
 				matchSource = "finding_control_ref+source_coverage_ref"
 			}
+			mappingReview := findingControlMappingReviewFor(sourceCoverageLabels, sourceCapabilityStatus)
 			findingControlRows = append(findingControlRows, []string{
 				ref.Framework,
 				ref.ControlID,
 				ref.Label(),
 				ref.Family,
 				matchSource,
+				mappingReview.Confidence,
+				mappingReview.Rationale,
 				joinList(sourceCoverageLabels),
 				detection.ID,
 				detection.Name,
@@ -1401,6 +1409,38 @@ func findingComplianceReviewFor(detection publicDetection, index controlFamilyIn
 		SourceCoverageHighValueCount:   sourceCoverageHighValueCount(detection.SourceCoverageRefs),
 		ComplianceEvidenceStatus:       complianceEvidenceStatus(directControlRefs, sourceMatchedControlRefs, controlRefsWithoutSourceMatch),
 		SourceCoverageRefsByControlKey: refsByControlKey,
+	}
+}
+
+func findingControlMappingReviewFor(sourceCoverageLabels []string, sourceCapabilityStatus string) findingControlMappingReview {
+	if len(uniqueSorted(sourceCoverageLabels)) != 0 {
+		if sourceCapabilityStatus == "source_capability_defined" {
+			return findingControlMappingReview{
+				Confidence: "high",
+				Rationale:  "Direct control ref is backed by matched source coverage with a declared YAML capability.",
+			}
+		}
+		return findingControlMappingReview{
+			Confidence: "medium",
+			Rationale:  "Direct control ref is backed by matched source coverage, but source capability YAML needs review.",
+		}
+	}
+	switch sourceCapabilityStatus {
+	case "no_source_coverage":
+		return findingControlMappingReview{
+			Confidence: "medium",
+			Rationale:  "Direct control ref is mapped from catalog metadata; no source coverage is attached to this finding.",
+		}
+	case "source_coverage_unkeyed", "missing_yaml_source_capability", "partial_yaml_source_capability":
+		return findingControlMappingReview{
+			Confidence: "review",
+			Rationale:  "Finding has source coverage, but it does not currently back this control with complete YAML capability context.",
+		}
+	default:
+		return findingControlMappingReview{
+			Confidence: "medium",
+			Rationale:  "Direct control ref is mapped from catalog metadata and should be reviewed with the requirement table.",
+		}
 	}
 }
 
@@ -2945,14 +2985,15 @@ func logicRows() [][]string {
 		{"5", "policy or finding override", "Apply any explicit policy ID or finding ID override when a rule needs different audit language."},
 		{"6", "source catalog fields", "Use policy YAML and public detection catalog fields as the strongest direct source for controls, tags, severity, evidence, and audit language."},
 		{"7", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
-		{"8", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
-		{"9", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
-		{"10", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
-		{"11", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
-		{"12", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
-		{"13", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
-		{"14", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."},
-		{"15", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"8", "mapping confidence", "Classify each finding-control edge as high, medium, or review using matched source coverage and YAML source capability status."},
+		{"9", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
+		{"10", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
+		{"11", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
+		{"12", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
+		{"13", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
+		{"14", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
+		{"15", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."},
+		{"16", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -2991,8 +3032,8 @@ func findingMapHeader() []string {
 func findingControlMapHeader() []string {
 	return []string{
 		"framework", "control_id", "control_ref", "control_family", "control_match_source",
-		"source_coverage_refs", "finding_id", "name", "pack_id", "source_id", "evaluation_mode",
-		"severity", "status", "maturity",
+		"mapping_confidence", "mapping_rationale", "source_coverage_refs", "finding_id", "name",
+		"pack_id", "source_id", "evaluation_mode", "severity", "status", "maturity",
 	}
 }
 

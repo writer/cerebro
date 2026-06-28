@@ -49,7 +49,7 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `control_map.csv` | One row per policy-control mapping for framework coverage review. |
 | `tag_map.csv` | One row per tag-policy mapping for routing and search cleanup. |
 | `finding_map.csv` | One row per public detection with pack, source, evaluation mode, controls, runtime catalog tags, compliance review tags, audit depth, and source coverage summary. |
-| `finding_control_map.csv` | One row per public detection-control mapping across policy and non-policy findings. |
+| `finding_control_map.csv` | One row per public detection-control mapping across policy and non-policy findings, including mapping confidence and rationale. |
 | `finding_tag_map.csv` | One row per public detection tag, including catalog tags and control-derived compliance review tags. |
 | `source_coverage_map.csv` | One row per public detection source coverage ref for evidence-source review. |
 | `finding_compliance_review_map.csv` | One row per public detection with resolved audit domain, audit language source, source-backed control counts, and review flags. |
@@ -106,6 +106,14 @@ Use `control_refs_without_source_match` as a review queue. It does not mean the 
 - `missing_yaml_source_capability`: source coverage exists but none of the keyed refs are declared in YAML.
 - `source_coverage_unkeyed`: source coverage exists but lacks source or dimension keys.
 - `no_source_coverage`: the finding has no source coverage refs.
+
+`finding_control_map.csv` assigns `mapping_confidence` to each finding-control edge:
+
+- `high`: the direct control ref has matched source coverage and a declared YAML capability.
+- `medium`: the direct control ref is cataloged and has either no source coverage attached or source coverage that still needs YAML capability cleanup.
+- `review`: source coverage exists, but it does not currently back this control with complete YAML capability context.
+
+Use `mapping_rationale` for the row-level reason before relying on a mapping in an audit packet.
 
 ## Quality Gates
 
