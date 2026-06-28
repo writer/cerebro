@@ -205,7 +205,10 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.facts.list",
 		"cerebro.graph.facts.explain",
 		"cerebro.graph.facts.trace",
+		"cerebro.agent.control_plane",
 		"cerebro.agent.preflight",
+		"cerebro.agent.claims.verify",
+		"cerebro.agent.work.contract",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
@@ -269,7 +272,10 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.facts.list":                {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.graph.facts.explain":             {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.graph.facts.trace":               {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.agent.control_plane":             {Markers: []string{"GET /api/v1/agent-platform/security-control-plane"}},
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
+	"cerebro.agent.claims.verify":             {Markers: []string{"agent-claim-verification"}},
+	"cerebro.agent.work.contract":             {Markers: []string{"agent-work-ledger"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
@@ -285,6 +291,7 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		"proto/cerebro/v1/bootstrap.proto",
 		"api/openapi.yaml",
 		"docs/domains/mcp-droid-setup.md",
+		"docs/domains/agent-platform-contract.md",
 		"docs/domains/findings-platform-architecture.md",
 	} {
 		// #nosec G304 -- rel comes from this fixed test corpus allowlist.
@@ -2313,6 +2320,108 @@ func TestMCPAgentPreflight(t *testing.T) {
 	overrideResult := overrideResponse["result"].(map[string]any)
 	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
 		t.Fatalf("agent.preflight tenant override response = %#v", overrideResponse)
+	}
+}
+
+func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
+	defer server.Close()
+
+	controlPlaneResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.control_plane",
+			"arguments": map[string]any{},
+		},
+	})
+	if controlPlaneResp["error"] != nil {
+		t.Fatalf("agent.control_plane error = %#v", controlPlaneResp["error"])
+	}
+	controlPlane := controlPlaneResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil {
+		t.Fatalf("control plane missing claim/work contracts: %#v", controlPlane)
+	}
+
+	workResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.work.contract",
+			"arguments": map[string]any{},
+		},
+	})
+	if workResp["error"] != nil {
+		t.Fatalf("agent.work.contract error = %#v", workResp["error"])
+	}
+	work := workResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if work["id"] != "agent-work-ledger" || len(work["state_model"].([]any)) == 0 {
+		t.Fatalf("work contract = %#v", work)
+	}
+}
+
+func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Prod app is externally reachable through an unmanaged identity path.",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"missing_evidence":         []any{"fresh Okta group membership"},
+				"freshness_state":          "stale",
+				"requested_action_stage":   "dry_run",
+				"coverage_context": map[string]any{
+					"version":          "2026-06-17.cerebro-agent-platform",
+					"tenant_id":        "writer",
+					"blind_spot_count": 1,
+					"stale_count":      1,
+				},
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("agent.claims.verify error = %#v", response["error"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["tenant_id"] != "writer" {
+		t.Fatalf("tenant_id = %#v, want authenticated tenant writer", content["tenant_id"])
+	}
+	if content["verdict"] != "weakly_supported" || content["allowed_next_stage"] != "explain" {
+		t.Fatalf("claim verification verdict/stage = %#v", content)
+	}
+	blockers := content["blockers"].([]any)
+	if len(blockers) == 0 || blockers[0].(map[string]any)["code"] != "stage_skip" {
+		t.Fatalf("claim verification blockers = %#v, want stage_skip", blockers)
+	}
+	warnings := content["warnings"].([]any)
+	if len(warnings) == 0 {
+		t.Fatalf("claim verification warnings = %#v, want stale/coverage warnings", warnings)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"tenant_id": "other",
+				"claim":     "Cross-tenant claim",
+			},
+		},
+	})
+	overrideResult := overrideResponse["result"].(map[string]any)
+	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
+		t.Fatalf("agent.claims.verify tenant override response = %#v", overrideResponse)
 	}
 }
 

@@ -32,6 +32,16 @@ Mutating workflows are exposed only as proposal tools with `dry_run=true`,
 `readOnlyHint=true`, and a response that describes the required write scope
 without applying the action.
 
+Agent control-loop tools expose the security-agent control plane without adding
+write access. `cerebro.agent.control_plane` returns the evidence packet, claim
+verification, agent work, verifier, action ladder, eval, memory, connector gate,
+and simulation contracts. `cerebro.agent.claims.verify` verifies an agent
+conclusion as an `agent-claim-verification` record with supporting evidence,
+counterevidence, missing evidence, freshness state, coverage caveats, a verdict,
+and the highest allowed next action stage. `cerebro.agent.work.contract` returns
+the `agent-work-ledger` state model and closure contract for resumable
+investigations.
+
 ## Native Droid client configuration
 
 Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the origin.

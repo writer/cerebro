@@ -57,12 +57,14 @@ import (
 // mapping, and the source-to-handler dispatch. GRC program readiness adds a
 // thin HTTP handler that composes existing GRC packet builders, connector
 // health mapping, and source coverage into the internal/grcprogram readiness
-// domain response. GRC policy lifecycle adds only route/scope/error mapping;
-// graph aggregation and response shaping live in internal/grcpolicylifecycle.
-// User preferences add only route wiring plus trusted actor resolution; HTTP
-// behavior lives in internal/sourcehttp/userpreferences and storage stays behind
-// the UserPreferenceStore port.
-const bootstrapProductionGoLineBudget = 26094
+// domain response. User preferences add only route wiring plus trusted actor
+// resolution; HTTP behavior lives in internal/sourcehttp/userpreferences and
+// storage stays behind the UserPreferenceStore port. Agent claim verification
+// and durable work contracts add MCP tool/resource request mapping while claim
+// verdicts, gates, and work state live in internal/agentplatform. GRC policy
+// lifecycle adds only route/scope/error mapping; graph aggregation and response
+// shaping live in internal/grcpolicylifecycle.
+const bootstrapProductionGoLineBudget = 26268
 
 type bootstrapFileLineCount struct {
 	path  string
