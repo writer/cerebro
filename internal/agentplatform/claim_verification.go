@@ -264,11 +264,11 @@ func evaluateClaimVerification(request ClaimVerificationRequest) []AgentVerifier
 }
 
 func claimVerdict(request ClaimVerificationRequest, verifiers []AgentVerifierResult) string {
-	if verifierResultStatus(verifiers, "counterevidence") == "blocked" {
-		return ClaimVerdictContradicted
-	}
 	if verifierResultStatus(verifiers, "tenant-scope") == "blocked" || verifierResultStatus(verifiers, "supporting-evidence") == "blocked" {
 		return ClaimVerdictUnknown
+	}
+	if verifierResultStatus(verifiers, "counterevidence") == "blocked" {
+		return ClaimVerdictContradicted
 	}
 	if verifierStatusCount(verifiers, "warning") > 0 || len(request.MissingEvidence) > 0 {
 		return ClaimVerdictWeaklySupported

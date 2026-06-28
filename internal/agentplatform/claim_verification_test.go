@@ -49,7 +49,7 @@ func TestBuildClaimVerificationGatesWeakClaims(t *testing.T) {
 	}
 }
 
-func TestBuildClaimVerificationBlocksCounterevidenceAndCrossTenantScope(t *testing.T) {
+func TestBuildClaimVerificationBlocksCounterevidenceAndPrefersTenantScope(t *testing.T) {
 	verification := BuildClaimVerification(ClaimVerificationRequest{
 		TenantID:               "tenant-1",
 		Claim:                  "This finding can be resolved.",
@@ -60,14 +60,14 @@ func TestBuildClaimVerificationBlocksCounterevidenceAndCrossTenantScope(t *testi
 		RequestedActionStage:   ActionStageRecommend,
 	})
 
-	if verification.Verdict != ClaimVerdictContradicted {
-		t.Fatalf("verdict = %q, want contradicted", verification.Verdict)
+	if verification.Verdict != ClaimVerdictUnknown {
+		t.Fatalf("verdict = %q, want unknown", verification.Verdict)
 	}
 	if !claimVerificationHasBlocker(verification, "tenant-scope") || !claimVerificationHasBlocker(verification, "counterevidence") {
 		t.Fatalf("blockers = %+v, want tenant-scope and counterevidence", verification.Blockers)
 	}
-	if verification.AllowedNextStage != ActionStageExplain {
-		t.Fatalf("allowed_next_stage = %q, want explain", verification.AllowedNextStage)
+	if verification.AllowedNextStage != ActionStageObserve {
+		t.Fatalf("allowed_next_stage = %q, want observe", verification.AllowedNextStage)
 	}
 
 	crossTenantOnly := BuildClaimVerification(ClaimVerificationRequest{
