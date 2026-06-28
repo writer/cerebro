@@ -1,0 +1,36 @@
+[
+  {
+    "id": "box-audit-audit-1",
+    "tenant_id": "tenant",
+    "source_id": "box",
+    "kind": "box.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "box/audit_events/v1",
+    "payload": {
+      "id": "audit-1",
+      "event_type": "file.downloaded",
+      "actor": {
+        "id": "user-1",
+        "email": "user@example.test",
+        "name": "User One"
+      },
+      "resource": {
+        "id": "file-1",
+        "type": "file",
+        "name": "Security Evidence.pdf"
+      }
+    },
+    "attributes": {
+      "actor_email": "user@example.test",
+      "actor_id": "user-1",
+      "actor_name": "User One",
+      "event_type": "file.downloaded",
+      "resource_id": "file-1",
+      "resource_name": "Security Evidence.pdf",
+      "resource_type": "file",
+      "resource_urn": "urn:cerebro:tenant:runtime_content_assets:file-1",
+      "source_event_id": "audit-1",
+      "tenant_id": "tenant"
+    }
+  }
+]
