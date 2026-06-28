@@ -1139,11 +1139,12 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 		}
 	}
 	for _, risk := range riskRegister {
-		if grcPolicyRiskOpen(risk.Status) {
+		openRisk := grcPolicyRiskOpen(risk.Status)
+		if openRisk {
 			summary.OpenRisks++
-		}
-		if grcPolicyHighRisk(risk.ResidualRisk, risk.InherentRisk) {
-			summary.HighRisks++
+			if grcPolicyHighRisk(risk.ResidualRisk, risk.InherentRisk) {
+				summary.HighRisks++
+			}
 		}
 		for _, control := range risk.Controls {
 			if control.ControlID != "" {

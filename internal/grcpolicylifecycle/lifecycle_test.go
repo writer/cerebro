@@ -190,6 +190,19 @@ func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
 	}
 }
 
+func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, nil, []grcPolicyRiskRegisterItem{
+		{ID: "open-high", Status: "open", ResidualRisk: "high"},
+		{ID: "closed-critical", Status: "closed", ResidualRisk: "critical"},
+		{ID: "accepted-high", Status: "accepted", InherentRisk: "high"},
+		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
+	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if summary.OpenRisks != 2 || summary.HighRisks != 1 {
+		t.Fatalf("risk summary = %+v, want two open risks and one open high risk", summary)
+	}
+}
+
 func TestExceptionRollupSkipsMissingStatus(t *testing.T) {
 	summary := grcPolicyExceptionRollup([]grcPolicyExceptionItem{
 		{ID: "missing", Status: "", ExpiresAt: "2026-03-01"},
