@@ -188,30 +188,50 @@ type Response struct {
 }
 
 type grcPolicyLifecycleSummary struct {
-	Policies               int `json:"policies"`
-	Templates              int `json:"templates"`
-	LifecycleEvents        int `json:"lifecycle_events"`
-	PolicyDocuments        int `json:"policy_documents"`
-	RiskRegisterItems      int `json:"risk_register_items"`
-	DraftVersions          int `json:"draft_versions"`
-	DraftDocuments         int `json:"draft_documents"`
-	PendingApprovals       int `json:"pending_approvals"`
-	OverdueReviews         int `json:"overdue_reviews"`
-	DocumentsDueForReview  int `json:"documents_due_for_review"`
-	GovernanceGaps         int `json:"governance_gaps"`
-	PolicyDocumentGaps     int `json:"policy_document_gaps"`
-	RiskRegisterGaps       int `json:"risk_register_gaps"`
-	OpenGovernanceGaps     int `json:"open_governance_gaps"`
-	InProgressGaps         int `json:"in_progress_governance_gaps"`
-	AcknowledgedGaps       int `json:"acknowledged_governance_gaps"`
-	SnoozedGaps            int `json:"snoozed_governance_gaps"`
-	AcceptedGaps           int `json:"accepted_governance_gaps"`
-	ResolvedGaps           int `json:"resolved_governance_gaps"`
-	HighGovernanceGaps     int `json:"high_governance_gaps"`
-	OpenExceptions         int `json:"open_exceptions"`
-	ExpiringExceptions     int `json:"expiring_exceptions"`
-	OpenRisks              int `json:"open_risks"`
-	HighRisks              int `json:"high_risks"`
+	GRCPolicyLifecycleInventorySummary
+	GRCPolicyLifecycleReviewSummary
+	GRCPolicyLifecycleGovernanceSummary
+	GRCPolicyLifecycleRiskSummary
+	GRCPolicyLifecycleEvidenceSummary
+}
+
+type GRCPolicyLifecycleInventorySummary struct {
+	Policies          int `json:"policies"`
+	Templates         int `json:"templates"`
+	LifecycleEvents   int `json:"lifecycle_events"`
+	PolicyDocuments   int `json:"policy_documents"`
+	RiskRegisterItems int `json:"risk_register_items"`
+}
+
+type GRCPolicyLifecycleReviewSummary struct {
+	DraftVersions         int `json:"draft_versions"`
+	DraftDocuments        int `json:"draft_documents"`
+	PendingApprovals      int `json:"pending_approvals"`
+	OverdueReviews        int `json:"overdue_reviews"`
+	DocumentsDueForReview int `json:"documents_due_for_review"`
+}
+
+type GRCPolicyLifecycleGovernanceSummary struct {
+	GovernanceGaps     int `json:"governance_gaps"`
+	PolicyDocumentGaps int `json:"policy_document_gaps"`
+	RiskRegisterGaps   int `json:"risk_register_gaps"`
+	OpenGovernanceGaps int `json:"open_governance_gaps"`
+	InProgressGaps     int `json:"in_progress_governance_gaps"`
+	AcknowledgedGaps   int `json:"acknowledged_governance_gaps"`
+	SnoozedGaps        int `json:"snoozed_governance_gaps"`
+	AcceptedGaps       int `json:"accepted_governance_gaps"`
+	ResolvedGaps       int `json:"resolved_governance_gaps"`
+	HighGovernanceGaps int `json:"high_governance_gaps"`
+}
+
+type GRCPolicyLifecycleRiskSummary struct {
+	OpenExceptions     int `json:"open_exceptions"`
+	ExpiringExceptions int `json:"expiring_exceptions"`
+	OpenRisks          int `json:"open_risks"`
+	HighRisks          int `json:"high_risks"`
+}
+
+type GRCPolicyLifecycleEvidenceSummary struct {
 	AttestationCoveragePct int `json:"attestation_coverage_pct"`
 	OverdueAttestations    int `json:"overdue_attestations"`
 	NextReminders          int `json:"next_reminders"`
@@ -1204,7 +1224,14 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 }
 
 func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, templates []grcPolicyTemplateItem, documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, mappings []grcPolicyLifecycleMapping, governanceGaps []grcPolicyGovernanceGap, now time.Time) grcPolicyLifecycleSummary {
-	summary := grcPolicyLifecycleSummary{Policies: len(policies), Templates: len(templates), PolicyDocuments: len(documents), RiskRegisterItems: len(riskRegister)}
+	summary := grcPolicyLifecycleSummary{
+		GRCPolicyLifecycleInventorySummary: GRCPolicyLifecycleInventorySummary{
+			Policies:          len(policies),
+			Templates:         len(templates),
+			PolicyDocuments:   len(documents),
+			RiskRegisterItems: len(riskRegister),
+		},
+	}
 	accepted := 0
 	totalAttestations := 0
 	mappedControls := map[string]struct{}{}

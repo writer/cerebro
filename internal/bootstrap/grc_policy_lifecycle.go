@@ -114,12 +114,7 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, err)
 		return
 	}
-	writeGRCCSV(
-		w,
-		grcExportFilename("policy-lifecycle"),
-		grcpolicylifecycle.AuditExportHeader(),
-		grcpolicylifecycle.AuditExportRows(response, window),
-	)
+	writeGRCCSV(w, grcExportFilename("policy-lifecycle"), grcpolicylifecycle.AuditExportHeader(), grcpolicylifecycle.AuditExportRows(response, window))
 }
 
 func grcPolicyLifecycleExportWindowFromRequest(r *http.Request) (grcpolicylifecycle.ExportWindow, error) {

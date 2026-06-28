@@ -28,33 +28,49 @@ var (
 )
 
 type ActionRequest struct {
-	Action          string            `json:"action"`
-	TenantID        string            `json:"tenant_id,omitempty"`
-	SourceID        string            `json:"source_id,omitempty"`
-	RuntimeID       string            `json:"runtime_id,omitempty"`
-	PolicyID        string            `json:"policy_id,omitempty"`
-	PolicyVersionID string            `json:"policy_version_id,omitempty"`
-	TemplateID      string            `json:"template_id,omitempty"`
-	GapID           string            `json:"gap_id,omitempty"`
-	GapIDs          []string          `json:"gap_ids,omitempty"`
-	GapState        string            `json:"gap_state,omitempty"`
-	RecordID        string            `json:"record_id,omitempty"`
-	RecordURN       string            `json:"record_urn,omitempty"`
-	Title           string            `json:"title,omitempty"`
-	Version         string            `json:"version,omitempty"`
-	Status          string            `json:"status,omitempty"`
-	ActorUserID     string            `json:"actor_user_id,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DueAt           string            `json:"due_at,omitempty"`
-	EffectiveAt     string            `json:"effective_at,omitempty"`
-	ExpiresAt       string            `json:"expires_at,omitempty"`
-	IdempotencyKey  string            `json:"idempotency_key,omitempty"`
-	Assignees       []string          `json:"assignees,omitempty"`
-	Approvers       []string          `json:"approvers,omitempty"`
-	Reviewers       []string          `json:"reviewers,omitempty"`
-	ControlIDs      []string          `json:"control_ids,omitempty"`
-	EvidenceURNs    []string          `json:"evidence_urns,omitempty"`
-	Attributes      map[string]string `json:"attributes,omitempty"`
+	Action string `json:"action"`
+	ActionRequestScope
+	ActionRequestTarget
+	ActionRequestState
+	ActionRequestAssignments
+}
+
+type ActionRequestScope struct {
+	TenantID       string `json:"tenant_id,omitempty"`
+	SourceID       string `json:"source_id,omitempty"`
+	RuntimeID      string `json:"runtime_id,omitempty"`
+	ActorUserID    string `json:"actor_user_id,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+type ActionRequestTarget struct {
+	PolicyID        string   `json:"policy_id,omitempty"`
+	PolicyVersionID string   `json:"policy_version_id,omitempty"`
+	TemplateID      string   `json:"template_id,omitempty"`
+	GapID           string   `json:"gap_id,omitempty"`
+	GapIDs          []string `json:"gap_ids,omitempty"`
+	RecordID        string   `json:"record_id,omitempty"`
+	RecordURN       string   `json:"record_urn,omitempty"`
+}
+
+type ActionRequestState struct {
+	Title       string `json:"title,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Status      string `json:"status,omitempty"`
+	GapState    string `json:"gap_state,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	DueAt       string `json:"due_at,omitempty"`
+	EffectiveAt string `json:"effective_at,omitempty"`
+	ExpiresAt   string `json:"expires_at,omitempty"`
+}
+
+type ActionRequestAssignments struct {
+	Assignees    []string          `json:"assignees,omitempty"`
+	Approvers    []string          `json:"approvers,omitempty"`
+	Reviewers    []string          `json:"reviewers,omitempty"`
+	ControlIDs   []string          `json:"control_ids,omitempty"`
+	EvidenceURNs []string          `json:"evidence_urns,omitempty"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
 }
 
 type ActionResponse struct {

@@ -570,16 +570,22 @@ func TestRelationEnrichmentDoesNotAttachRelationOnlyLifecycleChild(t *testing.T)
 func TestBuildActionEventCreatesNormalizedLifecycleEvent(t *testing.T) {
 	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
 	event, response, err := BuildActionEvent(ActionRequest{
-		Action:          "approval.approve",
-		TenantID:        "writer",
-		SourceID:        "grc",
-		RuntimeID:       "rt-1",
-		PolicyID:        "access",
-		PolicyVersionID: "access-2",
-		RecordID:        "approval-1",
-		ActorUserID:     "reviewer@example.com",
-		Reason:          "Ready for publish",
-		IdempotencyKey:  "approval-1-approved",
+		Action: "approval.approve",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:       "writer",
+			SourceID:       "grc",
+			RuntimeID:      "rt-1",
+			ActorUserID:    "reviewer@example.com",
+			IdempotencyKey: "approval-1-approved",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			PolicyID:        "access",
+			PolicyVersionID: "access-2",
+			RecordID:        "approval-1",
+		},
+		ActionRequestState: ActionRequestState{
+			Reason: "Ready for publish",
+		},
 	}, now)
 	if err != nil {
 		t.Fatalf("BuildActionEvent() error = %v", err)
@@ -599,16 +605,24 @@ func TestBuildActionEventCreatesGovernanceGapEvent(t *testing.T) {
 	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
 	gapID := "urn:document:secure-development:gap:owner"
 	event, response, err := BuildActionEvent(ActionRequest{
-		Action:         "governance_gap.assign_owner",
-		TenantID:       "writer",
-		SourceID:       "grc",
-		RuntimeID:      "rt-1",
-		GapID:          gapID,
-		RecordURN:      gapID,
-		ActorUserID:    "operator@example.com",
-		Reason:         "Owner found",
-		Assignees:      []string{"owner@example.com"},
-		IdempotencyKey: "assign-owner",
+		Action: "governance_gap.assign_owner",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:       "writer",
+			SourceID:       "grc",
+			RuntimeID:      "rt-1",
+			ActorUserID:    "operator@example.com",
+			IdempotencyKey: "assign-owner",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			GapID:     gapID,
+			RecordURN: gapID,
+		},
+		ActionRequestState: ActionRequestState{
+			Reason: "Owner found",
+		},
+		ActionRequestAssignments: ActionRequestAssignments{
+			Assignees: []string{"owner@example.com"},
+		},
 	}, now)
 	if err != nil {
 		t.Fatalf("BuildActionEvent() error = %v", err)
