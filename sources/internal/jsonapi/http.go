@@ -52,11 +52,18 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if pageCursor == "" {
 		pageCursor = strings.TrimSpace(family.PageFirstCursor)
 	}
-	if pageCursor != "" {
+	useNextURL := isAbsoluteHTTPURL(pageCursor)
+	if pageCursor != "" && !useNextURL {
 		query.Set(cursorParam(family), pageCursor)
 	}
 	var body json.RawMessage
-	headers, err := s.getJSONWithHeader(ctx, settings, query, &body)
+	var headers http.Header
+	var err error
+	if useNextURL {
+		headers, err = s.doRequest(ctx, settings, pageCursor, nil, &body, nil)
+	} else {
+		headers, err = s.getJSONWithHeader(ctx, settings, query, &body)
+	}
 	if err != nil {
 		return nil, "", err
 	}
@@ -148,6 +155,14 @@ func cursorParam(family Family) string {
 	return "cursor"
 }
 
+func isAbsoluteHTTPURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return parsed.IsAbs() && parsed.Host != "" && (strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https"))
+}
+
 func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount int, next string) string {
 	if strings.TrimSpace(family.PageFirstCursor) == "" || strings.TrimSpace(next) != "" || pageSize < 1 || itemCount < pageSize {
 		return next
@@ -211,9 +226,9 @@ func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query
 }
 
 func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
-	endpoint := settings.baseURL + settings.path
-	if strings.TrimSpace(path) != "" {
-		endpoint = settings.baseURL + path
+	endpoint, err := requestEndpoint(s.options.SourceID, settings.baseURL, settings.path, path)
+	if err != nil {
+		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
@@ -271,6 +286,21 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 		return resp.Header, fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
 	return resp.Header, nil
+}
+
+func requestEndpoint(sourceID string, baseURL string, defaultPath string, path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return baseURL + defaultPath, nil
+	}
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return "", err
+	}
+	if !parsed.IsAbs() {
+		return baseURL + path, nil
+	}
+	return sourcehttp.SameOriginAbsoluteURL(sourceID, baseURL, path)
 }
 
 func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {

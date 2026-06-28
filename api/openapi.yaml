@@ -8344,6 +8344,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCPolicyRiskRegisterItem'
+        governance_gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCPolicyGovernanceGap'
         work_queue:
           type: array
           items:
@@ -8410,6 +8414,15 @@ components:
           type: integer
           minimum: 0
         documents_due_for_review:
+          type: integer
+          minimum: 0
+        governance_gaps:
+          type: integer
+          minimum: 0
+        policy_document_gaps:
+          type: integer
+          minimum: 0
+        risk_register_gaps:
           type: integer
           minimum: 0
         open_exceptions:
@@ -8591,6 +8604,37 @@ components:
           type: object
           additionalProperties:
             type: string
+    GRCPolicyGovernanceGap:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        subject_id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        owner:
+          type: string
+        severity:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        reason:
+          type: string
+        action:
+          type: string
+        policy_id:
+          type: string
+        document_id:
+          type: string
+        risk_id:
+          type: string
     GRCPolicyLifecyclePolicy:
       type: object
       properties:

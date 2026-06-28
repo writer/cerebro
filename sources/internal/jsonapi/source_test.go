@@ -856,6 +856,94 @@ func TestReadUsesLinkHeaderCursor(t *testing.T) {
 	}
 }
 
+func TestReadUsesNextURLCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value":    []map[string]any{{"id": "item-1"}},
+				"nextLink": "http://" + r.Host + "/items?page=2",
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value": []map[string]any{{"id": "item-2"}},
+			})
+		default:
+			t.Fatalf("page = %q, want empty or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		NextCursorKeys:  []string{"nextLink"},
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"value"},
+		PageSizeParams:  []string{"limit"},
+		DisablePageSize: true,
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if want := "http://" + requests[0].Host + "/items?page=2"; first.NextCursor.GetOpaque() != want {
+		t.Fatalf("first NextCursor = %q, want %q", first.NextCursor.GetOpaque(), want)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" || requests[1].URL.Query().Has("limit") {
+		t.Fatalf("requests = %#v, want second request to follow nextLink without page-size query", requests)
+	}
+}
+
+func TestReadRejectsNextURLCursorWithUserInfo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value":    []map[string]any{{"id": "item-1"}},
+			"nextLink": "http://user@" + r.Host + "/items?page=2",
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		NextCursorKeys:  []string{"nextLink"},
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"value"},
+		DisablePageSize: true,
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), first.NextCursor)
+	if err == nil {
+		t.Fatal("Read(second) error = nil, want userinfo rejection")
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -962,6 +1050,49 @@ func TestReadObjectMapRecords(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["members"]; got != "alice@example.com,bob@example.com" {
 		t.Fatalf("members = %q, want joined map values", got)
+	}
+}
+
+func TestReadUsesNestedIdentityFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resources": []map[string]any{{
+				"metadata": map[string]any{"id": "model-1"},
+				"entity":   map[string]any{"name": "Risk Model"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "models",
+		Path:    "/models",
+		URNKind: "test_model",
+		IDKeys:  []string{"metadata.id"},
+		ListKeys: []string{
+			"resources",
+		},
+		Attributes: map[string]string{
+			"model_id":   "metadata.id",
+			"model_name": "entity.name",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "models",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want nested record", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["external_id"]; got != "model-1" {
+		t.Fatalf("external_id = %q, want model-1", got)
+	}
+	if got := pull.Events[0].Attributes["model_name"]; got != "Risk Model" {
+		t.Fatalf("model_name = %q, want Risk Model", got)
 	}
 }
 

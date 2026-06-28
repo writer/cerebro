@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/findingdsl"
 	"gopkg.in/yaml.v3"
@@ -595,7 +596,7 @@ func controlFamilyIndexFromCatalog(catalog complianceControlCatalog) controlFami
 			for _, control := range family.Controls {
 				controlID := strings.TrimSpace(control.ID)
 				if controlID != "" {
-					index[frameworkName+"\x00"+controlID] = familyLabel
+					index[controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})] = familyLabel
 				}
 			}
 		}
@@ -964,7 +965,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 			if frameworkName == "" || controlID == "" {
 				continue
 			}
-			key := frameworkName + "\x00" + controlID
+			key := controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})
 			if _, ok := seen[key]; ok {
 				continue
 			}
@@ -1224,7 +1225,7 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		if frameworkName == "" || controlID == "" {
 			continue
 		}
-		key := frameworkName + "\x00" + controlID
+		key := controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -1246,6 +1247,16 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 
 func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleExtensions) resolvedFindingAuditDepth {
 	resolved := resolvedFindingAuditDepth{fieldSources: map[string]string{}}
+	catalogAuditDepth := policyRuleExtension{
+		EvidenceType:      detection.EvidenceType,
+		AssessmentMethods: detection.AssessmentMethods,
+		AuditorGuidance:   detection.AuditorGuidance,
+		RiskStatement:     detection.RiskStatement,
+		RemediationIntent: detection.RemediationIntent,
+	}
+	if !policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	mergeResolvedFindingAuditDepth(&resolved, extensions.Defaults, "yaml:defaults")
 	if mode := strings.TrimSpace(detection.EvaluationMode); mode != "" {
 		mergeResolvedFindingAuditDepth(&resolved, extensions.EvidenceModes[mode], "yaml:evidence_mode:"+mode)
@@ -1257,19 +1268,19 @@ func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleEx
 	if extension, ok := lookupPolicyExtension(extensions.Findings, detection.ID); ok {
 		mergeResolvedFindingAuditDepth(&resolved, extension, "yaml:finding:"+detection.ID)
 	}
-	mergeResolvedFindingAuditDepth(&resolved, policyRuleExtension{
-		EvidenceType:      detection.EvidenceType,
-		AssessmentMethods: detection.AssessmentMethods,
-		AuditorGuidance:   detection.AuditorGuidance,
-		RiskStatement:     detection.RiskStatement,
-		RemediationIntent: detection.RemediationIntent,
-	}, "catalog")
+	if policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	resolved.Domain = domain
 	for _, source := range resolved.fieldSources {
 		resolved.FieldSources = append(resolved.FieldSources, source)
 	}
 	resolved.FieldSources = uniqueSorted(resolved.FieldSources)
 	return resolved
+}
+
+func policySourceDetection(detection publicDetection) bool {
+	return strings.EqualFold(strings.TrimSpace(detection.SourceID), "policy")
 }
 
 func mergeResolvedFindingAuditDepth(resolved *resolvedFindingAuditDepth, next policyRuleExtension, source string) {
@@ -1519,7 +1530,41 @@ func controlRefSet(refs []controlRef) map[string]struct{} {
 }
 
 func controlRefKey(ref controlRef) string {
-	return strings.TrimSpace(ref.Framework) + "\x00" + strings.TrimSpace(ref.ControlID)
+	return normalizeControlFramework(ref.Framework) + "\x00" + normalizeControlID(ref.ControlID)
+}
+
+func normalizeControlFramework(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func normalizeControlID(value string) string {
+	normalized := strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	if normalized == "" {
+		return ""
+	}
+	return normalizeGDPRArticleControlID(normalized)
+}
+
+func normalizeGDPRArticleControlID(value string) string {
+	for _, prefix := range []string{"ART.", "ART-"} {
+		if suffix := strings.TrimPrefix(value, prefix); suffix != value && suffix != "" {
+			return "ARTICLE" + suffix
+		}
+	}
+	if len(value) > len("ART") && strings.HasPrefix(value, "ART") {
+		suffix := value[len("ART"):]
+		first, _ := utf8.DecodeRuneInString(suffix)
+		if unicode.IsDigit(first) {
+			return "ARTICLE" + suffix
+		}
+	}
+	return value
 }
 
 func policyEvidenceMode(rule findingdsl.PolicyFindingRule) string {
