@@ -272,10 +272,9 @@ func policyLifecycleRecordID(request ActionRequest, definition policyLifecycleAc
 	}
 	switch definition.idAttribute {
 	case "gap_id":
-		if len(request.GapIDs) > 0 {
-			return policyLifecycleSlug(strings.Join(request.GapIDs, "-"))
+		if len(request.GapIDs) == 0 {
+			return firstNonEmpty(request.GapID, request.RecordID, request.RecordURN)
 		}
-		return firstNonEmpty(request.GapID, request.RecordID, request.RecordURN)
 	case "template_id":
 		if request.TemplateID != "" {
 			return request.TemplateID

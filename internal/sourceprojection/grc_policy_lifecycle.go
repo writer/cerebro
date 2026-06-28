@@ -277,10 +277,13 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	if recordID == "" && firstAttribute(ctx.attrs, "record_urn") != "" {
 		recordID = firstAttribute(ctx.attrs, "record_urn")
 	}
+	gapURNs := grcPolicyLifecycleEventGapURNs(ctx.attrs)
+	if recordID == "" && len(gapURNs) != 0 {
+		recordID = grcDerivedID(strings.Join(gapURNs, ","), firstAttribute(ctx.attrs, "action", "lifecycle_action"), ctx.event.GetId())
+	}
 	if recordID == "" {
 		recordID = ctx.event.GetId()
 	}
-	gapURNs := grcPolicyLifecycleEventGapURNs(ctx.attrs)
 	recordURN := firstAttribute(ctx.attrs, "record_urn", "gap_id")
 	if recordType == "governance.gap" && len(gapURNs) > 0 && !strings.Contains(recordURN, ":gap:") {
 		recordURN = gapURNs[0]
