@@ -502,6 +502,10 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.18", "data-protection")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.30", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC1.5", "identity-access")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.9", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "CIS Controls v8", "11", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "NIST 800-53 r5", "PA-1", "change-configuration")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "A1.1", "ai-governance")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "PI1.1", "privacy-rights")
 
