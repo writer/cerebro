@@ -148,6 +148,32 @@ func TestResolveFindingAuditDepthPolicyCatalogRemainsAuthoritative(t *testing.T)
 	assertStringSliceContains(t, resolved.FieldSources, "catalog")
 }
 
+func TestControlRefSetsNormalizeGDPRArticleAliases(t *testing.T) {
+	detectionRefs := []controlRef{
+		{Framework: "GDPR", ControlID: "Article 13"},
+		{Framework: "SOC 2", ControlID: "CC6.1"},
+	}
+	coverageRefs := []controlRef{
+		{Framework: " gdpr ", ControlID: "Art.13"},
+	}
+
+	matched := intersectControlRefs(detectionRefs, coverageRefs)
+	if len(matched) != 1 {
+		t.Fatalf("intersectControlRefs returned %d refs, want 1", len(matched))
+	}
+	if matched[0].Label() != "GDPR Article 13" {
+		t.Fatalf("matched ref = %q, want GDPR Article 13", matched[0].Label())
+	}
+
+	missing := differenceControlRefs(detectionRefs, coverageRefs)
+	if len(missing) != 1 {
+		t.Fatalf("differenceControlRefs returned %d refs, want 1", len(missing))
+	}
+	if missing[0].Label() != "SOC 2 CC6.1" {
+		t.Fatalf("missing ref = %q, want SOC 2 CC6.1", missing[0].Label())
+	}
+}
+
 func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
 	files, err := generateFiles(repoRoot(t))
 	if err != nil {
