@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -291,13 +292,38 @@ func containsStringFold(values []string, want string) bool {
 }
 
 func containsAnySubstringFold(value string, needles []string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
+	valueTokens := keywordTokens(value)
 	for _, needle := range needles {
-		if needle = strings.ToLower(strings.TrimSpace(needle)); needle != "" && strings.Contains(value, needle) {
+		if containsKeywordTokens(valueTokens, keywordTokens(needle)) {
 			return true
 		}
 	}
 	return false
+}
+
+func containsKeywordTokens(valueTokens []string, needleTokens []string) bool {
+	if len(valueTokens) == 0 || len(needleTokens) == 0 || len(needleTokens) > len(valueTokens) {
+		return false
+	}
+	for i := 0; i <= len(valueTokens)-len(needleTokens); i++ {
+		matched := true
+		for j, token := range needleTokens {
+			if valueTokens[i+j] != token {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordTokens(value string) []string {
+	return strings.FieldsFunc(strings.ToLower(strings.TrimSpace(value)), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
 }
 
 func hasAnyPrefixFold(value string, prefixes []string) bool {
