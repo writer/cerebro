@@ -668,6 +668,10 @@ func TestBuildActionEventKeepsLinkedPolicyTargetSeparate(t *testing.T) {
 
 func TestAuditExportRowsUseGovernanceGapColumns(t *testing.T) {
 	response := Response{
+		Policies: []grcPolicyLifecyclePolicy{{
+			ID:    "secure-development-policy",
+			Title: "Secure Development Standard",
+		}},
 		GovernanceGaps: []grcPolicyGovernanceGap{{
 			ID:             "urn:document:gap:owner",
 			SubjectID:      "secure-development",
@@ -686,17 +690,26 @@ func TestAuditExportRowsUseGovernanceGapColumns(t *testing.T) {
 
 	header := AuditExportHeader()
 	rows := AuditExportRows(response, ExportWindow{})
-	if len(rows) != 1 {
-		t.Fatalf("rows = %+v, want one governance gap row", rows)
-	}
-	if len(rows[0]) != len(header) {
-		t.Fatalf("row length = %d, header length = %d", len(rows[0]), len(header))
-	}
 	column := map[string]int{}
 	for index, name := range header {
 		column[name] = index
 	}
-	row := rows[0]
+	var row []string
+	for _, candidate := range rows {
+		if candidate[column["record_type"]] == "governance.gap" {
+			row = candidate
+			break
+		}
+	}
+	if row == nil {
+		t.Fatalf("rows = %+v, want governance gap row", rows)
+	}
+	if len(row) != len(header) {
+		t.Fatalf("row length = %d, header length = %d", len(row), len(header))
+	}
+	if row[column["policy_title"]] != "Secure Development Standard" || row[column["gap_subject_title"]] != "Secure Development Policy" {
+		t.Fatalf("policy/gap titles = %q/%q, want separate titles", row[column["policy_title"]], row[column["gap_subject_title"]])
+	}
 	if row[column["controls"]] != "" || row[column["evidence"]] != "" {
 		t.Fatalf("controls/evidence = %q/%q, want empty for governance gaps", row[column["controls"]], row[column["evidence"]])
 	}
