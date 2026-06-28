@@ -334,6 +334,20 @@ func TestBuiltinControlEvidenceRequirementsCoverCatalog(t *testing.T) {
 	if !resolvedRequirementExists(resolution.Requirements, "ISO 27701", "7.2.6", "privacy-rights", "privacy_request_system") {
 		t.Fatal("builtin requirements missing ISO 27701 7.2.6 request system privacy requirement")
 	}
+	for _, tc := range []struct {
+		framework string
+		controlID string
+		profileID string
+	}{
+		{framework: "SOC 2", controlID: "CC1.5", profileID: "identity-access"},
+		{framework: "DORA", controlID: "Art.9", profileID: "logging-monitoring"},
+		{framework: "CIS Controls v8", controlID: "11", profileID: "data-protection"},
+		{framework: "NIST 800-53 r5", controlID: "PA-1", profileID: "change-configuration"},
+	} {
+		if resolvedRequirementProfileExists(resolution.Requirements, tc.framework, tc.controlID, tc.profileID) {
+			t.Fatalf("builtin requirements unexpectedly matched %s %s to %s", tc.framework, tc.controlID, tc.profileID)
+		}
+	}
 }
 
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) {
@@ -360,6 +374,17 @@ func resolvedRequirementExists(requirements []ResolvedControlEvidenceRequirement
 			requirement.ControlID == controlID &&
 			requirement.ProfileID == profileID &&
 			requirement.SourceRequirement.SourceID == sourceID {
+			return true
+		}
+	}
+	return false
+}
+
+func resolvedRequirementProfileExists(requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string) bool {
+	for _, requirement := range requirements {
+		if requirement.FrameworkName == framework &&
+			requirement.ControlID == controlID &&
+			requirement.ProfileID == profileID {
 			return true
 		}
 	}
