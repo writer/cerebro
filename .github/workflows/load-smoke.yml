@@ -103,6 +103,24 @@ jobs:
             echo "LOAD_SMOKE_MARKDOWN_OUT=tmp/load-smoke.md"
           } >> "$GITHUB_ENV"
 
+      - name: Assert required Infisical secrets
+        if: steps.target.outputs.skip != 'true'
+        shell: bash
+        env:
+          REQUIRED_KEYS: CEREBRO_LOAD_SMOKE_BEARER_TOKEN
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in ${REQUIRED_KEYS}; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Infisical required keys missing: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Run load smoke
         if: steps.target.outputs.skip != 'true'
         run: make load-smoke
