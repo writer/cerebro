@@ -59,9 +59,7 @@ func (a *App) handleGRCPolicyLifecycleAction(w http.ResponseWriter, r *http.Requ
 	if strings.TrimSpace(request.RuntimeID) == "" {
 		request.RuntimeID = scope.RuntimeID
 	}
-	if strings.TrimSpace(request.ActorUserID) == "" {
-		request.ActorUserID = customDashboardActorID(r.Context())
-	}
+	request.ActorUserID = customDashboardActorID(r.Context())
 	if a.deps.AppendLog == nil {
 		writeGRCError(w, grcpolicylifecycle.ErrRuntimeUnavailable)
 		return
@@ -84,6 +82,7 @@ func (a *App) handleGRCPolicyLifecycleAction(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, fmt.Errorf("%w: project policy lifecycle event: %w", grcpolicylifecycle.ErrRuntimeUnavailable, err))
 		return
 	}
+	a.bumpGRCCacheVersions(r.Context(), request.TenantID, grcCacheScopeGraph)
 	writeJSON(w, http.StatusAccepted, response)
 }
 
