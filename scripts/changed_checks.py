@@ -96,6 +96,9 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")
 
+    if any(path_matches(path, prefixes=("internal/connectorcatalog/", "internal/connectordefinitions/", "internal/sourcegen/", "tools/connectorcatalogreview/"), exact=("Makefile", ".github/workflows/connector-catalog-maintenance.yml")) for path in files):
+        add_command(commands, seen, "connector-catalog-review", ["make", "connector-catalog-review"], "Connector catalog metadata, generation, or maintenance review changed.")
+
     if any(path_matches(path, prefixes=("policies/", "schemas/", "tools/findingdsl/", "internal/findingdsl/", "tools/policyrulegen/"), exact=("internal/compliance/policy_rule_extensions.yaml",)) for path in files):
         add_command(commands, seen, "finding-dsl-check", ["make", "finding-dsl-check"], "Policy DSL authoring changed.")
         add_command(commands, seen, "policy-rule-check", ["make", "policy-rule-check"], "Policy authoring or generated rule enrichment changed.")

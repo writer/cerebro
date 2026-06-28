@@ -358,7 +358,7 @@ class AgentOnboardRunner:
                 "id": runtime_id,
                 "source_id": required_str(runtime, "source_id"),
                 "tenant_id": runtime.get("tenant_id") or self.plan["tenant_id"],
-                "config": runtime.get("config", {}),
+                "config": resolved_config_values(runtime.get("config", {})),
             }
         }
         status, body = self.request_json("PUT", f"/source-runtimes/{quote(runtime_id)}", payload)
