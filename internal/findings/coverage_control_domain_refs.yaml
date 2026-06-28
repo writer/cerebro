@@ -1,0 +1,146 @@
+# Canonical mapping from a coverage dimension's declared control_domains to the
+# framework controls that the dimension's evidence can defensibly support. Source
+# coverage contracts declare coarse control_domains (e.g. identity_access) rather
+# than per-control mappings; this overlay lets every source's coverage dimensions
+# participate in the all-finding compliance mapping using one auditable table
+# instead of hand-authoring control_refs on 580+ individual dimensions.
+#
+# Matching stays bounded by the existing source / dimension / evidence gating and
+# only ever surfaces the intersection of a detection's controls and a dimension's
+# controls, so controls listed here that no detection maps simply never appear.
+version: "2026-06-28"
+control_domains:
+  identity_access:
+    - { framework_name: "SOC 2", control_id: "CC6.1" }
+    - { framework_name: "SOC 2", control_id: "CC6.2" }
+    - { framework_name: "SOC 2", control_id: "CC6.3" }
+    - { framework_name: "SOC 2", control_id: "CC6.6" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-6" }
+    - { framework_name: "NIST 800-53 r5", control_id: "IA-5" }
+    - { framework_name: "CIS Controls v8", control_id: "5" }
+    - { framework_name: "CIS Controls v8", control_id: "6" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "7.2" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "8.3" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.15" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.17" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.18" }
+  asset_inventory:
+    - { framework_name: "SOC 2", control_id: "CC6.1" }
+    - { framework_name: "SOC 2", control_id: "CC7.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-6" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-8" }
+    - { framework_name: "CIS Controls v8", control_id: "1" }
+    - { framework_name: "CIS Controls v8", control_id: "2" }
+    - { framework_name: "CIS Controls v8", control_id: "4" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.9" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.9" }
+  cloud_security:
+    - { framework_name: "SOC 2", control_id: "CC6.1" }
+    - { framework_name: "SOC 2", control_id: "CC6.6" }
+    - { framework_name: "SOC 2", control_id: "CC7.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-6" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SC-7" }
+    - { framework_name: "CIS Controls v8", control_id: "4" }
+    - { framework_name: "CIS Controls v8", control_id: "12" }
+    - { framework_name: "CIS Controls v8", control_id: "13" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "1.3" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "1.4" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.9" }
+  network_security:
+    - { framework_name: "SOC 2", control_id: "CC6.6" }
+    - { framework_name: "SOC 2", control_id: "CC6.7" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SC-7" }
+    - { framework_name: "CIS Controls v8", control_id: "13" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "1.2" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "1.3" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "1.4" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.20" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.21" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.22" }
+  data_protection:
+    - { framework_name: "SOC 2", control_id: "CC6.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SC-12" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SC-13" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SC-28" }
+    - { framework_name: "CIS Controls v8", control_id: "3" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "3.5" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.24" }
+  logging_monitoring:
+    - { framework_name: "SOC 2", control_id: "CC7.1" }
+    - { framework_name: "SOC 2", control_id: "CC7.2" }
+    - { framework_name: "SOC 2", control_id: "CC7.3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AU-2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AU-6" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-4" }
+    - { framework_name: "CIS Controls v8", control_id: "8" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.15" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.16" }
+  security_operations:
+    - { framework_name: "SOC 2", control_id: "CC7.2" }
+    - { framework_name: "SOC 2", control_id: "CC7.3" }
+    - { framework_name: "SOC 2", control_id: "CC7.4" }
+    - { framework_name: "NIST 800-53 r5", control_id: "IR-4" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-4" }
+    - { framework_name: "CIS Controls v8", control_id: "8" }
+    - { framework_name: "CIS Controls v8", control_id: "17" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.24" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.25" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.26" }
+  vulnerability_management:
+    - { framework_name: "SOC 2", control_id: "CC7.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "RA-5" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-2" }
+    - { framework_name: "CIS Controls v8", control_id: "7" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "6.3" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "11.3" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.8" }
+  remediation:
+    - { framework_name: "SOC 2", control_id: "CC7.4" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "RA-7" }
+    - { framework_name: "CIS Controls v8", control_id: "7" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.8" }
+  endpoint_security:
+    - { framework_name: "SOC 2", control_id: "CC6.8" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-3" }
+    - { framework_name: "CIS Controls v8", control_id: "10" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.7" }
+  device_management:
+    - { framework_name: "SOC 2", control_id: "CC6.7" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-19" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-8" }
+    - { framework_name: "CIS Controls v8", control_id: "1" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.7.9" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.1" }
+  secure_delivery:
+    - { framework_name: "SOC 2", control_id: "CC8.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SA-11" }
+    - { framework_name: "CIS Controls v8", control_id: "16" }
+    - { framework_name: "PCI DSS v4.0.1", control_id: "6.3" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.25" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.28" }
+  vendor_risk:
+    - { framework_name: "SOC 2", control_id: "CC9.2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SA-9" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SR-3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SR-6" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.19" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.20" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.21" }
+  compliance_operations:
+    - { framework_name: "SOC 2", control_id: "CC1.2" }
+    - { framework_name: "SOC 2", control_id: "CC2.1" }
+    - { framework_name: "SOC 2", control_id: "CC4.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CA-2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CA-7" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.1" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.35" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.36" }
+  customer_assurance:
+    - { framework_name: "SOC 2", control_id: "CC2.3" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.34" }

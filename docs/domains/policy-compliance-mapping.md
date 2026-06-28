@@ -12,6 +12,8 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `internal/findings/public_detection_catalog.json` | Public detection IDs, packs, sources, evaluation modes, runtime tags, control refs, audit depth, and source coverage refs for every public finding type. |
 | `internal/compliance/control_families.yaml` | Framework names, control IDs, and control family labels. |
 | `internal/compliance/policy_rule_extensions.yaml` | Shared audit language by defaults, evidence mode, domain, and policy override. |
+| `internal/findings/builtin_rule_audit_extensions.yaml` | Layered audit-depth fields (assessment method, evidence type, frequency, false-positive guidance) for non-policy public detections, by defaults, anchors, sources, and per-rule override. |
+| `internal/findings/coverage_control_domain_refs.yaml` | Curated `control_domains` to framework control refs, used to enrich a detection's source coverage refs only for the matched coverage source. |
 | `tools/policymappingexport` | Generated CSV tables for spreadsheet review. |
 
 ## Merge Order
@@ -25,6 +27,19 @@ Audit language is merged in this order:
 5. Policy YAML fields
 
 Specific string fields replace earlier values. Assessment methods replace earlier values. False-positive guidance is accumulated and de-duplicated.
+
+## Non-Policy Audit and Coverage Overlays
+
+Policy findings inherit audit language from `policy_rule_extensions.yaml`. Non-policy public detections (for example correlation and source-native rules) inherit audit depth from `builtin_rule_audit_extensions.yaml`, merged in this order:
+
+1. `defaults`
+2. `anchors.<anchor>`
+3. `sources.<source-id>`
+4. `rules.<detection-id>`
+
+Rule-level values win. Policy-sourced detections are skipped so policy YAML stays authoritative. `detection-catalog-generate` validates that every public detection ends up with complete audit depth.
+
+Source coverage refs come from the source coverage contracts. When a contract declares only coarse `control_domains`, `coverage_control_domain_refs.yaml` maps those domains to defensible framework controls. Derived refs are added only when the detection matches the coverage source, so coverage stays source-bounded and avoids cross-source over-claiming.
 
 ## Generated Tables
 

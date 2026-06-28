@@ -53,15 +53,24 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		}
 		sourceMatched := sourceMatchesDetection(detection, sourceID, searchText)
 		for _, dimension := range contract.Dimensions {
-			if len(dimension.ControlRefs) == 0 {
+			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
+			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
+			// Domain-derived control coverage is credited only within the
+			// detection's own (or explicitly named) source, so a source's
+			// declared control_domains evidence its own detections without
+			// over-claiming that unrelated sources supply that evidence.
+			// Dimensions that declare explicit control_refs always use them.
+			dimensionControlRefs := dimension.ControlRefs
+			if sourceMatched {
+				dimensionControlRefs = effectiveCoverageControlRefs(dimension)
+			}
+			if len(dimensionControlRefs) == 0 {
 				continue
 			}
-			matchedControls, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, dimension.ControlRefs)
+			matchedControls, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, dimensionControlRefs)
 			if len(matchedControls) == 0 {
 				continue
 			}
-			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
-			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
 			if !sourceMatched && !dimensionMatched {
 				continue
 			}
@@ -212,6 +221,26 @@ func evidenceMatchesDetection(evidenceType string, dimensionEvidenceTypes []stri
 		}
 	}
 	return false
+}
+
+// effectiveCoverageControlRefs returns the dimension's declared control refs
+// combined with the control refs derived from its declared control_domains. The
+// derived refs let coverage dimensions that declare only control_domains (the
+// large majority of source contracts) participate in the all-finding compliance
+// mapping without hand-authoring control_refs on every dimension. Duplicates are
+// harmless because the caller deduplicates matched refs.
+func effectiveCoverageControlRefs(dimension sourcecdk.CoverageDimension) []sourcecdk.CoverageControlRef {
+	derived := controlRefsForControlDomains(dimension.ControlDomains)
+	if len(derived) == 0 {
+		return dimension.ControlRefs
+	}
+	if len(dimension.ControlRefs) == 0 {
+		return derived
+	}
+	combined := make([]sourcecdk.CoverageControlRef, 0, len(dimension.ControlRefs)+len(derived))
+	combined = append(combined, dimension.ControlRefs...)
+	combined = append(combined, derived...)
+	return combined
 }
 
 func matchingCoverageControlRefs(detectionRefs []ports.FindingControlRef, coverageRefs []sourcecdk.CoverageControlRef) ([]ports.FindingControlRef, bool) {

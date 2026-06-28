@@ -501,11 +501,24 @@ func shadowRepoForFindingRuleScaffold(t *testing.T, repoRoot string) string {
 	if err := os.MkdirAll(filepath.Join(findingsDir, "testdata", "rules"), 0o750); err != nil {
 		t.Fatalf("mkdir shadow findings testdata: %v", err)
 	}
-	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings"), findingsDir, map[string]bool{
+	findingsSkip := map[string]bool{
 		"correlation_patterns": true,
 		"testdata":             true,
-	})
+	}
+	// go:embed cannot resolve through symlinks, so embedded data files must be
+	// copied into the shadow package as real files (mirrors correlation_patterns).
+	embedYAMLFiles, err := filepath.Glob(filepath.Join(repoRoot, "internal", "findings", "*.yaml"))
+	if err != nil {
+		t.Fatalf("glob findings embed files: %v", err)
+	}
+	for _, embedFile := range embedYAMLFiles {
+		findingsSkip[filepath.Base(embedFile)] = true
+	}
+	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings"), findingsDir, findingsSkip)
 	copyRepoTree(t, filepath.Join(repoRoot, "internal", "findings", "correlation_patterns"), filepath.Join(findingsDir, "correlation_patterns"))
+	for _, embedFile := range embedYAMLFiles {
+		copyRepoFile(t, embedFile, filepath.Join(findingsDir, filepath.Base(embedFile)))
+	}
 	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings", "testdata"), filepath.Join(findingsDir, "testdata"), map[string]bool{
 		"rules": true,
 	})
@@ -562,6 +575,17 @@ func copyRepoTree(t *testing.T, srcDir, dstDir string) {
 		if err := os.WriteFile(dst, payload, info.Mode().Perm()&0o600); err != nil { // #nosec G703 -- destination is validated to remain under dstDir above.
 			t.Fatalf("write file %q: %v", dst, err)
 		}
+	}
+}
+
+func copyRepoFile(t *testing.T, src, dst string) {
+	t.Helper()
+	payload, err := os.ReadFile(src) // #nosec G304 -- source path is a repository fixture copied into a temp shadow repo.
+	if err != nil {
+		t.Fatalf("read file %q: %v", src, err)
+	}
+	if err := os.WriteFile(dst, payload, 0o600); err != nil {
+		t.Fatalf("write file %q: %v", dst, err)
 	}
 }
 
