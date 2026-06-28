@@ -74,20 +74,6 @@ relationships:
         evidence_use: review_hint
         rationale: Incident-procedure evidence should be reviewed with audit-control records that show how the incident was detected or reconstructed.
   - framework: GDPR
-    control_id: Art.30
-    related_controls:
-      - control_id: Article 30
-        relationship: alias_normalization
-        evidence_use: alias_hint
-        rationale: The catalog uses both short and formal article labels; reviewers should treat them as the same processing-record obligation.
-  - framework: GDPR
-    control_id: Article 30
-    related_controls:
-      - control_id: Art.30
-        relationship: alias_normalization
-        evidence_use: alias_hint
-        rationale: The formal article label should normalize to the short label where spreadsheet filters use the shorter tag.
-  - framework: GDPR
     control_id: Article 32
     related_controls:
       - control_id: Article 33

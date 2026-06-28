@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/findingdsl"
 	"gopkg.in/yaml.v3"
@@ -109,13 +110,12 @@ type controlEvidenceRequirementCatalog struct {
 }
 
 type controlEvidenceRequirementDefaults struct {
-	SourceID              string   `yaml:"source_id"`
-	EntityType            string   `yaml:"entity_type"`
-	RequiredFields        []string `yaml:"required_fields"`
-	FreshnessWindow       string   `yaml:"freshness_window"`
-	AssessmentMethods     []string `yaml:"assessment_methods"`
-	AuditorGradeEvidence  string   `yaml:"auditor_grade_evidence"`
-	ManualEvidenceAllowed *bool    `yaml:"manual_evidence_allowed"`
+	SourceID             string   `yaml:"source_id"`
+	EntityType           string   `yaml:"entity_type"`
+	RequiredFields       []string `yaml:"required_fields"`
+	FreshnessWindow      string   `yaml:"freshness_window"`
+	AssessmentMethods    []string `yaml:"assessment_methods"`
+	AuditorGradeEvidence string   `yaml:"auditor_grade_evidence"`
 }
 
 type controlEvidenceRequirementProfile struct {
@@ -179,7 +179,12 @@ type complianceControlEvidenceExpectation struct {
 	AcceptedFrom      []string `yaml:"accepted_from"`
 }
 
-type controlFamilyIndex map[string]string
+type controlFamilyIndex map[string]controlFamilyEntry
+
+type controlFamilyEntry struct {
+	Ref    controlRef
+	Family string
+}
 
 type publicDetectionCatalog struct {
 	Version    string            `json:"version"`
@@ -599,7 +604,8 @@ func controlFamilyIndexFromCatalog(catalog complianceControlCatalog) controlFami
 			for _, control := range family.Controls {
 				controlID := strings.TrimSpace(control.ID)
 				if controlID != "" {
-					index[frameworkName+"\x00"+controlID] = familyLabel
+					ref := controlRef{Framework: frameworkName, ControlID: controlID, Family: familyLabel}
+					index[controlRefKey(ref)] = controlFamilyEntry{Ref: ref, Family: familyLabel}
 				}
 			}
 		}
@@ -638,6 +644,10 @@ func controlCatalogRefs(catalog complianceControlCatalog) []controlRef {
 		}
 	}
 	return uniqueControlRefs(refs)
+}
+
+func controlFamilyForRef(index controlFamilyIndex, ref controlRef) string {
+	return index[controlRefKey(ref)].Family
 }
 
 func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) error {
@@ -973,7 +983,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 			if frameworkName == "" || controlID == "" {
 				continue
 			}
-			key := frameworkName + "\x00" + controlID
+			key := controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})
 			if _, ok := seen[key]; ok {
 				continue
 			}
@@ -981,7 +991,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 			refs = append(refs, controlRef{
 				Framework: frameworkName,
 				ControlID: controlID,
-				Family:    index[key],
+				Family:    index[key].Family,
 			})
 		}
 	}
@@ -1236,7 +1246,7 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		if frameworkName == "" || controlID == "" {
 			continue
 		}
-		key := frameworkName + "\x00" + controlID
+		key := controlRefKey(controlRef{Framework: frameworkName, ControlID: controlID})
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -1244,7 +1254,7 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		refs = append(refs, controlRef{
 			Framework: frameworkName,
 			ControlID: controlID,
-			Family:    index[key],
+			Family:    index[key].Family,
 		})
 	}
 	sort.Slice(refs, func(i, j int) bool {
@@ -1258,6 +1268,16 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 
 func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleExtensions) resolvedFindingAuditDepth {
 	resolved := resolvedFindingAuditDepth{fieldSources: map[string]string{}}
+	catalogAuditDepth := policyRuleExtension{
+		EvidenceType:      detection.EvidenceType,
+		AssessmentMethods: detection.AssessmentMethods,
+		AuditorGuidance:   detection.AuditorGuidance,
+		RiskStatement:     detection.RiskStatement,
+		RemediationIntent: detection.RemediationIntent,
+	}
+	if !policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	mergeResolvedFindingAuditDepth(&resolved, extensions.Defaults, "yaml:defaults")
 	if mode := strings.TrimSpace(detection.EvaluationMode); mode != "" {
 		mergeResolvedFindingAuditDepth(&resolved, extensions.EvidenceModes[mode], "yaml:evidence_mode:"+mode)
@@ -1269,19 +1289,19 @@ func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleEx
 	if extension, ok := lookupPolicyExtension(extensions.Findings, detection.ID); ok {
 		mergeResolvedFindingAuditDepth(&resolved, extension, "yaml:finding:"+detection.ID)
 	}
-	mergeResolvedFindingAuditDepth(&resolved, policyRuleExtension{
-		EvidenceType:      detection.EvidenceType,
-		AssessmentMethods: detection.AssessmentMethods,
-		AuditorGuidance:   detection.AuditorGuidance,
-		RiskStatement:     detection.RiskStatement,
-		RemediationIntent: detection.RemediationIntent,
-	}, "catalog")
+	if policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	resolved.Domain = domain
 	for _, source := range resolved.fieldSources {
 		resolved.FieldSources = append(resolved.FieldSources, source)
 	}
 	resolved.FieldSources = uniqueSorted(resolved.FieldSources)
 	return resolved
+}
+
+func policySourceDetection(detection publicDetection) bool {
+	return strings.EqualFold(strings.TrimSpace(detection.SourceID), "policy")
 }
 
 func mergeResolvedFindingAuditDepth(resolved *resolvedFindingAuditDepth, next policyRuleExtension, source string) {
@@ -1422,7 +1442,7 @@ func findingControlMappingReviewFor(sourceCoverageLabels []string, sourceCapabil
 			Confidence: "medium",
 			Rationale:  "Direct control ref is mapped from catalog metadata; no source coverage is attached to this finding.",
 		}
-	case "source_coverage_unkeyed", "missing_yaml_source_capability", "partial_yaml_source_capability":
+	case "source_capability_defined", "source_coverage_unkeyed", "missing_yaml_source_capability", "partial_yaml_source_capability":
 		return findingControlMappingReview{
 			Confidence: "review",
 			Rationale:  "Finding has source coverage, but it does not currently back this control with complete YAML capability context.",
@@ -1563,7 +1583,41 @@ func controlRefSet(refs []controlRef) map[string]struct{} {
 }
 
 func controlRefKey(ref controlRef) string {
-	return strings.TrimSpace(ref.Framework) + "\x00" + strings.TrimSpace(ref.ControlID)
+	return normalizeControlFramework(ref.Framework) + "\x00" + normalizeControlID(ref.ControlID)
+}
+
+func normalizeControlFramework(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func normalizeControlID(value string) string {
+	normalized := strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(value)), ""))
+	if normalized == "" {
+		return ""
+	}
+	return normalizeGDPRArticleControlID(normalized)
+}
+
+func normalizeGDPRArticleControlID(value string) string {
+	for _, prefix := range []string{"ART.", "ART-"} {
+		if suffix := strings.TrimPrefix(value, prefix); suffix != value && suffix != "" {
+			return "ARTICLE" + suffix
+		}
+	}
+	if len(value) > len("ART") && strings.HasPrefix(value, "ART") {
+		suffix := value[len("ART"):]
+		first, _ := utf8.DecodeRuneInString(suffix)
+		if unicode.IsDigit(first) {
+			return "ARTICLE" + suffix
+		}
+	}
+	return value
 }
 
 func policyEvidenceMode(rule findingdsl.PolicyFindingRule) string {
@@ -2063,7 +2117,7 @@ func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFa
 		ref.Framework = strings.TrimSpace(ref.Framework)
 		ref.ControlID = strings.TrimSpace(ref.ControlID)
 		if ref.Family == "" {
-			ref.Family = index[controlRefKey(ref)]
+			ref.Family = controlFamilyForRef(index, ref)
 		}
 		key := controlRefKey(ref)
 		item := enrichments[key]
@@ -2076,12 +2130,9 @@ func frameworkControlEnrichments(catalog publicDetectionCatalog, index controlFa
 		enrichments[controlRefKey(item.Ref)] = item
 	}
 
-	for key, family := range index {
-		framework, controlID, ok := strings.Cut(key, "\x00")
-		if !ok {
-			continue
-		}
-		ref := controlRef{Framework: framework, ControlID: controlID, Family: family}
+	for _, entry := range index {
+		ref := entry.Ref
+		ref.Family = entry.Family
 		item := ensure(ref)
 		store(item)
 	}
@@ -2258,29 +2309,33 @@ func frameworkCoverageCandidateRows(catalog publicDetectionCatalog, index contro
 			continue
 		}
 		controlRequirements := requirementsByControl[key]
-		reviewContextRefs := append([]string{}, item.ReviewAreaRefs...)
-		reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
-		reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
-		rows = append(rows, []string{
-			item.Ref.Framework,
-			item.Ref.ControlID,
-			item.Ref.Label(),
-			item.Ref.Family,
-			status,
-			frameworkControlGapType(status),
-			frameworkCoverageCandidatePriority(status),
-			candidateType,
-			suggestedFindingDomain(controlRequirements),
-			suggestedEvidenceType(controlRequirements),
-			joinList(requirementProfileIDs(controlRequirements)),
-			joinList(requirementSourceIDs(controlRequirements)),
-			joinList(item.SourceCapabilityRefs),
-			joinList(reviewContextRefs),
-			frameworkCoverageCandidateAction(status),
-		})
+		rows = append(rows, frameworkCoverageCandidateRow(item, status, controlRequirements))
 	}
 	sortRows(rows)
 	return rows
+}
+
+func frameworkCoverageCandidateRow(item frameworkControlEnrichment, status string, controlRequirements []expandedControlEvidenceRequirement) []string {
+	reviewContextRefs := append([]string{}, item.ReviewAreaRefs...)
+	reviewContextRefs = append(reviewContextRefs, item.OutboundRelationshipRefs...)
+	reviewContextRefs = append(reviewContextRefs, item.InboundRelationshipRefs...)
+	return []string{
+		item.Ref.Framework,
+		item.Ref.ControlID,
+		item.Ref.Label(),
+		item.Ref.Family,
+		status,
+		frameworkControlGapType(status),
+		frameworkCoverageCandidatePriority(status),
+		frameworkCoverageCandidateType(status),
+		suggestedFindingDomain(controlRequirements),
+		suggestedEvidenceType(controlRequirements),
+		joinList(requirementProfileIDs(controlRequirements)),
+		joinList(requirementSourceIDs(controlRequirements)),
+		joinList(item.SourceCapabilityRefs),
+		joinList(reviewContextRefs),
+		frameworkCoverageCandidateAction(status),
+	}
 }
 
 func expandedRequirementsByControl(requirements []expandedControlEvidenceRequirement) map[string][]expandedControlEvidenceRequirement {
@@ -2533,8 +2588,13 @@ func controlEvidenceProfileApplies(profile controlEvidenceRequirementProfile, re
 	if selectorIsEmpty(selector) {
 		return false
 	}
-	if values := trimStrings(selector.Frameworks); len(values) != 0 && containsFold(values, ref.Framework) {
-		return true
+	if values := trimStrings(selector.Frameworks); len(values) != 0 {
+		if !containsFold(values, ref.Framework) {
+			return false
+		}
+		if len(trimStrings(selector.FamilyKeywords)) == 0 && len(trimStrings(selector.ControlIDPrefixes)) == 0 {
+			return true
+		}
 	}
 	if values := trimStrings(selector.FamilyKeywords); len(values) != 0 && containsAnyFold(searchText, values) {
 		return true
@@ -2889,7 +2949,7 @@ func frameworkReviewAreaControlRefs(area frameworkReviewArea, index controlFamil
 		if ref.Framework == "" || ref.ControlID == "" {
 			continue
 		}
-		ref.Family = index[controlRefKey(ref)]
+		ref.Family = controlFamilyForRef(index, ref)
 		refs = append(refs, ref)
 	}
 	return uniqueControlRefs(refs)
@@ -2921,7 +2981,7 @@ func controlRelationshipEdges(relationships []controlRelationship, index control
 		if control.Framework == "" || control.ControlID == "" {
 			continue
 		}
-		control.Family = index[controlRefKey(control)]
+		control.Family = controlFamilyForRef(index, control)
 		for _, related := range item.RelatedControls {
 			relatedRef := controlRef{
 				Framework: firstNonEmpty(related.Framework, control.Framework),
@@ -2930,7 +2990,7 @@ func controlRelationshipEdges(relationships []controlRelationship, index control
 			if relatedRef.Framework == "" || relatedRef.ControlID == "" {
 				continue
 			}
-			relatedRef.Family = index[controlRefKey(relatedRef)]
+			relatedRef.Family = controlFamilyForRef(index, relatedRef)
 			edge := controlRelationshipEdge{
 				Control:      control,
 				Related:      relatedRef,
@@ -3125,7 +3185,7 @@ func evidenceCapabilityControlRefs(dimension evidenceCapabilityDimension, index 
 		if ref.Framework == "" || ref.ControlID == "" {
 			continue
 		}
-		ref.Family = index[controlRefKey(ref)]
+		ref.Family = controlFamilyForRef(index, ref)
 		refs = append(refs, ref)
 	}
 	return uniqueControlRefs(refs)

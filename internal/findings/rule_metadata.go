@@ -262,7 +262,7 @@ func loadBuiltinRuleMetadataCache() {
 			if !ok || definition.IsZero() {
 				continue
 			}
-			metadata = append(metadata, definition)
+			metadata = append(metadata, applyBuiltinRuleAuditDepth(definition))
 		}
 	}
 	sort.Slice(metadata, func(i int, j int) bool {
@@ -292,7 +292,7 @@ func BuiltinPublicDetectionCatalog() PublicDetectionCatalog {
 			if _, ok := asGraphRule(rule); ok {
 				mode = "graph"
 			}
-			catalog.Detections = append(catalog.Detections, publicDetectionFromRule(pack, metadata, mode))
+			catalog.Detections = append(catalog.Detections, publicDetectionFromRule(pack, applyBuiltinRuleAuditDepth(metadata), mode))
 		}
 	}
 	sort.Slice(catalog.Detections, func(i int, j int) bool {

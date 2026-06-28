@@ -13,7 +13,6 @@ defaults:
   freshness_window: 90d
   assessment_methods: [examine]
   auditor_grade_evidence: Evidence identifies the control, owner, period, source system, observed state, exceptions, and reviewer action.
-  manual_evidence_allowed: true
 profiles:
   - profile_id: identity-access
     name: Identity and Access Evidence
@@ -75,7 +74,7 @@ profiles:
         - Detection
         - Event
         - Incident
-        - Log
+        - Logging
         - Monitoring
         - Response
     source_requirements:
@@ -169,14 +168,12 @@ profiles:
     name: Data Protection Evidence
     applies_to:
       family_keywords:
-        - Classification
         - Confidentiality
         - Cryptographic
         - Cryptography
         - Data
         - Encryption
         - Information Protection
-        - Key
         - Privacy
         - Secret
       control_id_prefixes:
@@ -374,7 +371,7 @@ profiles:
         - Personal
         - Data Subject
         - Consumer
-        - Processing
+        - Data Processing
     source_requirements:
       - source_id: data_inventory
         entity_type: processing_activity
@@ -408,7 +405,6 @@ profiles:
       frameworks:
         - ISO 42001
       family_keywords:
-        - AI
         - Artificial Intelligence
         - Model
         - Machine Learning

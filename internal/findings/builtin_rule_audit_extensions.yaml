@@ -1,0 +1,223 @@
+version: "2026-06-28"
+defaults:
+  evidence_type: control_state
+  assessment_methods:
+    - examine
+    - test
+  auditor_guidance: Confirm the affected asset, identity, or control owner, the evidence timestamp, the finding scope, the exception status, and the mapped control references before relying on this detection for an audit conclusion.
+  risk_statement: The mapped control may not be operating effectively, leaving the affected asset, identity, or data exposed for the assessment period.
+  remediation_intent: Remediate the underlying risky state, preserve remediation and re-test evidence, and document any accepted risk or compensating control.
+anchors:
+  graph_anchored:
+    assessment_methods:
+      - examine
+      - test
+    auditor_guidance: Review the correlated graph path and each joined entity (identity, resource, control, and sensitivity marker), confirm the relationship is current, and validate the supporting evidence before relying on this detection.
+  source_state:
+    assessment_methods:
+      - examine
+      - test
+    auditor_guidance: Review the normalized source-state snapshot and the provider evidence behind the flagged configuration to confirm the control state for the assessment period.
+  none:
+    assessment_methods:
+      - examine
+    auditor_guidance: Treat this as point-in-time runtime evidence; confirm the signal timestamp, the affected asset, and the triage disposition, and retain the underlying event as audit evidence.
+sources:
+  anthropic:
+    evidence_type: ai_provider_access_governance
+    risk_statement: Unmanaged or orphaned Anthropic organization credentials may grant unaccountable access to AI model capabilities and data.
+    remediation_intent: Attribute or revoke the API key, assign an accountable owner, and retain provider access evidence.
+  archetype:
+    evidence_type: vulnerability_management
+    risk_statement: An active code vulnerability may be exploitable in a delivered or running component.
+    remediation_intent: Patch or mitigate the vulnerability, validate the fix, and retain scan evidence.
+  aurelius:
+    evidence_type: vulnerability_management
+    risk_statement: A promoted container image may carry active vulnerabilities into a trusted environment.
+    remediation_intent: Rebuild or patch the image, re-attest the promotion, and retain promotion and scan evidence.
+  asset:
+    evidence_type: data_security_posture
+    risk_statement: A sensitive or crown-jewel asset may be exposed or insufficiently protected.
+    remediation_intent: Restrict access and exposure for the sensitive asset, validate its classification, and retain data-protection evidence.
+  backstage:
+    evidence_type: ownership_accountability
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: A critical service component without an accountable owner may stall remediation and weaken accountability evidence.
+    remediation_intent: Assign an accountable owner in the service catalog and retain ownership evidence.
+  cerebro:
+    evidence_type: application_access_control
+    risk_statement: High-risk API access may grant excessive or unaccountable privileges to the security platform.
+    remediation_intent: Review and constrain the API access grant, validate authorization, and retain access evidence.
+  cloud:
+    evidence_type: cloud_configuration
+    risk_statement: Cloud resource configuration or privilege paths may expose data or grant excessive access.
+    remediation_intent: Reconfigure the cloud resource or revoke the privilege path, validate the effective state, and retain provider evidence.
+  cloudflare:
+    evidence_type: network_configuration
+    risk_statement: Paused edge protection may expose origin services to traffic-based attacks.
+    remediation_intent: Re-enable zone protection, validate effective enforcement, and retain edge configuration evidence.
+  cosmo:
+    evidence_type: ai_agent_governance
+    risk_statement: Active agent-memory coordination risk may allow unsafe automated actions or data exposure.
+    remediation_intent: Constrain the agent coordination path, validate guardrails, and retain agent evidence.
+  duo:
+    evidence_type: identity_governance
+    risk_statement: Active users without enforced MFA weaken authentication assurance.
+    remediation_intent: Enforce MFA for the affected users, validate enrollment, and retain identity evidence.
+  email_domain_health:
+    evidence_type: email_authentication_control
+    risk_statement: Misconfigured SPF, DKIM, or DMARC weakens protection against domain spoofing and phishing.
+    remediation_intent: Correct the mail-authentication records, validate enforcement, and retain DNS evidence.
+  evidence_cas:
+    evidence_type: evidence_integrity
+    assessment_methods:
+      - examine
+    risk_statement: Unresolved evidence linkage weakens chain-of-custody and the integrity of audit evidence.
+    remediation_intent: Resolve the evidence object linkage, validate integrity, and retain chain-of-custody evidence.
+  github:
+    evidence_type: source_control_governance
+    risk_statement: Source-control, repository, dependency, or code-security configuration may not satisfy change-management or vulnerability controls.
+    remediation_intent: Restore the repository or organization control, remediate the alert, and retain repository evidence.
+  graph:
+    evidence_type: graph_integrity
+    assessment_methods:
+      - examine
+    risk_statement: Graph inconsistency may indicate incomplete projection or unmanaged risk concentration affecting downstream findings.
+    remediation_intent: Resolve the graph inconsistency or duplicate-finding concentration and retain graph evidence.
+  grc:
+    evidence_type: control_procedure
+    assessment_methods:
+      - examine
+      - interview
+      - test
+    risk_statement: A governance control, control test, vulnerability SLA, vendor review, or ownership obligation may not be operating effectively.
+    remediation_intent: Complete the control procedure, restore ownership or evidence coverage, and document owner approval.
+  identity:
+    evidence_type: identity_governance
+    risk_statement: Identity lifecycle, access, authentication, or entitlement controls may not be operating effectively.
+    remediation_intent: Correct the identity or entitlement state, revoke inappropriate access, and retain access-review evidence.
+  kandji:
+    evidence_type: endpoint_posture
+    risk_statement: Endpoint device posture such as disk encryption may not satisfy device-protection controls.
+    remediation_intent: Restore the required device control, validate posture, and retain MDM evidence.
+  kolide:
+    evidence_type: endpoint_posture
+    risk_statement: A host failing compliance checks may not satisfy endpoint-protection controls.
+    remediation_intent: Remediate the failing host checks, validate posture, and retain endpoint evidence.
+  okta:
+    evidence_type: identity_governance
+    risk_statement: Okta policy, authentication, session, or deprovisioning controls may not be operating effectively.
+    remediation_intent: Update the Okta policy or identity state, validate the effective assignment, and retain admin evidence.
+  openai:
+    evidence_type: ai_provider_access_governance
+    risk_statement: An orphaned privileged OpenAI API key may grant unaccountable access to AI model capabilities and data.
+    remediation_intent: Attribute or revoke the API key, assign an accountable owner, and retain provider access evidence.
+  pagerduty:
+    evidence_type: incident_response_control
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: A service without an escalation policy may lack incident-response coverage.
+    remediation_intent: Attach an escalation policy and on-call coverage, validate routing, and retain responder evidence.
+  panopticon:
+    evidence_type: security_operations_case
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: A curated security-operations case may represent an unresolved active risk requiring response.
+    remediation_intent: Triage and resolve the case, contain affected assets, and retain incident evidence.
+  runtime:
+    evidence_type: runtime_threat_signal
+    assessment_methods:
+      - examine
+    risk_statement: Runtime threat evidence may indicate active compromise, malware, or policy bypass.
+    remediation_intent: Triage the runtime signal, contain affected assets, remediate the root cause, and retain incident evidence.
+  sdk:
+    evidence_type: integration_control
+    risk_statement: An SDK-onboarded integration may carry an active control gap or unmanaged risk.
+    remediation_intent: Close the integration control gap, validate configuration, and retain integration evidence.
+  security_reviewer:
+    evidence_type: code_review_finding
+    assessment_methods:
+      - examine
+    risk_statement: A reported code or workflow finding may represent an unremediated security weakness.
+    remediation_intent: Remediate the reported finding, validate the fix, and retain review evidence.
+  security_tooling_map:
+    evidence_type: control_coverage
+    assessment_methods:
+      - examine
+      - interview
+    risk_statement: A security-tooling control-coverage gap may leave a control objective without operating evidence.
+    remediation_intent: Close the tooling coverage gap, validate control operation, and retain coverage evidence.
+  sentinelone:
+    evidence_type: endpoint_detection_response
+    risk_statement: Endpoint detection, protection, or response controls may not be operating effectively.
+    remediation_intent: Triage the threat or agent state, restore protection controls, and retain SentinelOne evidence.
+  slack:
+    evidence_type: identity_governance
+    risk_statement: Privileged collaboration accounts without enforced MFA weaken authentication assurance.
+    remediation_intent: Enforce MFA for the privileged users, validate enrollment, and retain workspace evidence.
+  tailscale:
+    evidence_type: network_configuration
+    risk_statement: Disabled device approval may allow unmanaged devices onto the private network.
+    remediation_intent: Re-enable device approval, review enrolled devices, and retain tailnet evidence.
+  trivy:
+    evidence_type: vulnerability_management
+    risk_statement: Active container-image vulnerabilities may be exploitable in deployed workloads.
+    remediation_intent: Patch or rebuild the affected image, validate the fix, and retain scan evidence.
+  trusted_endpoint:
+    evidence_type: endpoint_posture
+    risk_statement: An active trust-gate failure may allow non-compliant workstations to access protected resources.
+    remediation_intent: Restore the endpoint trust posture, validate the gate, and retain device-trust evidence.
+  vulnview:
+    evidence_type: attack_surface_management
+    risk_statement: An actionable external attack-surface finding may be exploitable from the public internet.
+    remediation_intent: Remediate or remove the exposed surface, validate closure, and retain external-scan evidence.
+rules:
+  cloud-public-exposure-privileged-principal:
+    risk_statement: A publicly exposed resource reaches a privileged principal, forming a high-impact attack path from the internet to privileged access.
+    remediation_intent: Remove the public exposure or the privileged reachability, validate the effective path, and retain cloud evidence.
+  github-code-security-controls-disabled:
+    risk_statement: Repository code-security controls are disabled, reducing detection of vulnerable code and dependencies.
+    remediation_intent: Re-enable the code-security controls, validate enforcement, and retain repository evidence.
+  github-secret-scanning-alert-created:
+    risk_statement: A secret-scanning alert indicates a credential may be exposed in source control.
+    remediation_intent: Revoke and rotate the exposed secret, remove it from history, and retain remediation evidence.
+  grc-failing-control-open-operational-findings:
+    risk_statement: A failing control is corroborated by open operational findings, indicating the control objective is not being met.
+    remediation_intent: Remediate the failing control and the linked operational findings, and retain control-test evidence.
+  grc-inactive-identity-active-access:
+    risk_statement: An inactive identity retains active access, indicating a lifecycle or access-review control failure.
+    remediation_intent: Revoke the inactive identity's access, confirm the access review, and retain governance evidence.
+  grc-overdue-vulnerability-live-on-assets:
+    risk_statement: A vulnerability past its remediation SLA remains live on assets, indicating a vulnerability-management control failure.
+    remediation_intent: Remediate or formally accept the overdue vulnerability and retain validation evidence.
+  grc-privileged-account-missing-person:
+    risk_statement: A privileged account is not linked to an accountable person, weakening least-privilege and accountability evidence.
+    remediation_intent: Attribute the privileged account to an accountable person or disable it, and retain access-governance evidence.
+  identity-github-active-without-okta-link:
+    risk_statement: An active GitHub identity has no linked Okta identity, indicating an unmanaged or unaccountable account.
+    remediation_intent: Link the GitHub identity to a managed Okta identity or deprovision it, and retain identity-governance evidence.
+  identity-okta-deprovisioned-active-cloud-access:
+    risk_statement: An identity deprovisioned in Okta retains active cloud access, indicating an offboarding control failure.
+    remediation_intent: Revoke the residual cloud access, confirm the offboarding workflow, and retain deprovisioning evidence.
+  identity-okta-deprovisioned-active-in-github:
+    risk_statement: An identity deprovisioned in Okta retains active GitHub access, indicating an offboarding control failure.
+    remediation_intent: Revoke the residual GitHub access, confirm the offboarding workflow, and retain deprovisioning evidence.
+  identity-privileged-no-mfa-plus-sensitive-access:
+    risk_statement: A privileged identity without MFA currently has access to crown-jewel or sensitive-classified resources, creating a high-impact account-takeover path.
+    remediation_intent: Enroll MFA or remove the sensitive access for the identity, validate the resource classification, and retain identity and access-review evidence.
+  sentinelone-endpoint-active-infection:
+    risk_statement: An endpoint shows an active, unmitigated infection, indicating a potential live compromise.
+    remediation_intent: Contain and remediate the infected endpoint, confirm mitigation, and retain incident evidence.
+  sentinelone-infected-endpoint-privileged-owner:
+    risk_statement: An infected endpoint is owned by a privileged identity, raising the risk of privilege compromise and lateral movement.
+    remediation_intent: Contain the endpoint, review the privileged owner's sessions and credentials, and retain incident evidence.
+  sentinelone-mitigation-failed:
+    risk_statement: A threat mitigation failed, leaving the endpoint potentially compromised.
+    remediation_intent: Manually remediate the threat, confirm endpoint health, and retain response evidence.
+  vulnview-actionable-external-finding:
+    risk_statement: An actionable external finding indicates an internet-exposed weakness that may be exploitable.
+    remediation_intent: Remediate or remove the exposed surface, validate closure, and retain external-scan evidence.

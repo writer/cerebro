@@ -1,0 +1,218 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: API key
+            reference_only: true
+            secret: true
+        model: api_key
+        token_header: x-api-key
+      categories:
+        - ai
+        - governance
+      description: Collects model catalog, organization members, api keys, workspaces, and organization invites from Anthropic and projects them into the Cerebro graph as assets, secrets, and users for inventory, access review, audit, risk, and operational context.
+      display_name: Anthropic
+      id: builtin-anthropic
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - model_catalog
+              high_value: true
+              id: model_catalog
+              support: partial
+              title: Model catalog
+              type: entity_family
+          event:
+            kind: anthropic.model_catalog
+            required_payload_fields:
+              - id
+            schema_ref: anthropic/model_catalog/v1
+            urn_kind: anthropic_model_catalog
+          id: model_catalog
+          id_field: id
+          label: Model catalog
+          method: GET
+          name_field: display_name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/models
+          projection:
+            fields:
+              resource_id: id
+              resource_name: display_name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - organization_members
+              high_value: true
+              id: organization_members
+              support: partial
+              title: Organization members
+              type: entity_family
+          event:
+            kind: anthropic.organization_members
+            required_payload_fields:
+              - id
+            schema_ref: anthropic/organization_members/v1
+            urn_kind: anthropic_organization_members
+          id: organization_members
+          id_field: id
+          label: Organization members
+          method: GET
+          name_field: email
+          pagination:
+            cursor_json_path: $.last_id
+            cursor_param: after_id
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/organizations/users
+          projection:
+            fields:
+              display_name: email
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: app_entitlement
+          event:
+            kind: anthropic.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: anthropic/api_keys/v1
+            urn_kind: anthropic_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.last_id
+            cursor_param: after_id
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/organizations/api_keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - workspaces
+              high_value: true
+              id: workspaces
+              support: partial
+              title: Workspaces
+              type: entity_family
+          event:
+            kind: anthropic.workspaces
+            required_payload_fields:
+              - id
+            schema_ref: anthropic/workspaces/v1
+            urn_kind: anthropic_workspaces
+          id: workspaces
+          id_field: id
+          label: Workspaces
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.last_id
+            cursor_param: after_id
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/organizations/workspaces
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - organization_invites
+              high_value: true
+              id: organization_invites
+              support: partial
+              title: Organization invites
+              type: app_entitlement
+          event:
+            kind: anthropic.organization_invites
+            required_payload_fields:
+              - id
+            schema_ref: anthropic/organization_invites/v1
+            urn_kind: anthropic_organization_invites
+          id: organization_invites
+          id_field: id
+          label: Organization invites
+          method: GET
+          name_field: email
+          pagination:
+            cursor_json_path: $.last_id
+            cursor_param: after_id
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/organizations/invites
+          projection:
+            fields:
+              display_name: email
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: anthropic
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.anthropic.com
+        headers:
+          anthropic-version: "2023-06-01"
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

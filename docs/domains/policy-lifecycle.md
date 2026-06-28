@@ -144,6 +144,9 @@ Recommended summary fields:
 | `acceptance_overdue_policies` | Assigned policies with overdue employee acceptance. |
 | `exceptions_active` | Active policy exceptions in scope. |
 | `exceptions_expiring_soon` | Active exceptions nearing expiration. |
+| `governance_gaps` | Document records that are not drafts, including records with no status, and open risk-register records missing ownership, review dates, links, controls, treatment, or evidence. |
+| `policy_document_gaps` | Document records that are not drafts, including records with no status, that are missing operating metadata or mappings. |
+| `risk_register_gaps` | Open risk-register records missing owner, treatment, dates, links, controls, or evidence. |
 
 Recommended work items:
 
@@ -158,6 +161,10 @@ Recommended work items:
 | Exception expires soon | Renew, close, or replace exception. |
 | Policy has no mapped controls | Map policy to controls before audit reliance. |
 | Policy has no approved document evidence | Attach approved policy document. |
+| Document has no owner or review date | Assign an owner and set the next review date. |
+| Document is not linked to a policy | Link the document to the policy it supports. |
+| Open risk has no treatment or treatment date | Add a treatment plan and due date. |
+| Open risk has no source document, control, policy, or evidence link | Link the risk to its source register, policy, controls, and supporting evidence. |
 
 ## API Shape
 
@@ -167,7 +174,7 @@ Implemented endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, documents, risk-register records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
+| `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, documents, risk-register records, governance gaps, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
 | `POST /grc/policy-lifecycle/actions` | Append and project a lifecycle action event for template, draft, approval, publish, attestation, review, exception, reminder, or escalation work. |
 | `GET /grc/policy-lifecycle/export` | CSV export of policy versions, approvals, attestations, reviews, exceptions, lifecycle events, and control/evidence mappings, with optional `start` and `end` date filters. |
 
