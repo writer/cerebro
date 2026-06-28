@@ -165,14 +165,20 @@ func renderTestFile(definition connectordefinitions.Definition) string {
 }
 
 func renderFixture(family connectordefinitions.ResourceFamily) string {
+	recordID := fmt.Sprintf("fixture-%s-001", family.ID)
+	recordName := fmt.Sprintf("Test %s", toPascal(family.ID))
 	record := map[string]any{
-		"id":   fmt.Sprintf("fixture-%s-001", family.ID),
-		"name": fmt.Sprintf("Test %s", toPascal(family.ID)),
+		"id":   recordID,
+		"name": recordName,
 		"type": family.ID,
 	}
 	idField := strings.TrimSpace(family.IDField)
-	if idField != "" && idField != "id" {
-		record[idField] = fmt.Sprintf("fixture-%s-001", family.ID)
+	if idField != "" {
+		setFixtureField(record, idField, recordID)
+	}
+	nameField := strings.TrimSpace(family.NameField)
+	if nameField != "" && fixturePrimaryPath(nameField) != fixturePrimaryPath(idField) {
+		setFixtureField(record, nameField, recordName)
 	}
 
 	records := []map[string]any{record}
@@ -207,6 +213,42 @@ func renderFixture(family connectordefinitions.ResourceFamily) string {
 	}
 	payload, _ := json.MarshalIndent(response, "", "  ")
 	return string(payload) + "\n"
+}
+
+func setFixtureField(record map[string]any, rawPath string, value any) {
+	if path := fixturePrimaryPath(rawPath); path != "" {
+		setFixturePath(record, strings.Split(path, "."), value)
+	}
+}
+
+func fixturePrimaryPath(rawPath string) string {
+	for _, path := range strings.Split(rawPath, "|") {
+		path = strings.TrimSpace(strings.TrimPrefix(path, "$."))
+		if path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func setFixturePath(record map[string]any, parts []string, value any) {
+	current := record
+	for index, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+		}
+		if index == len(parts)-1 {
+			current[part] = value
+			return
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			current[part] = next
+		}
+		current = next
+	}
 }
 
 func sanitizePackageName(sourceID string) string {
