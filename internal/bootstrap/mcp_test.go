@@ -2408,9 +2408,29 @@ func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
 		t.Fatalf("claim verification warnings = %#v, want stale/coverage warnings", warnings)
 	}
 
-	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+	crossTenantMissingResponse, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Cross-tenant missing evidence",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"missing_evidence":         []any{"urn:cerebro:other:evidence:evidence-2"},
+			},
+		},
+	})
+	crossTenantMissingResult := crossTenantMissingResponse["result"].(map[string]any)
+	crossTenantMissingError := crossTenantMissingResult["structuredContent"].(map[string]any)["error"].(map[string]any)
+	if crossTenantMissingResult["isError"] != true || crossTenantMissingError["kind"] != "not_found" {
+		t.Fatalf("agent.claims.verify cross-tenant missing evidence response = %#v", crossTenantMissingResponse)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name": "cerebro.agent.claims.verify",
