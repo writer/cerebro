@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/writer/cerebro/internal/findingdsl"
 	"gopkg.in/yaml.v3"
@@ -17,6 +19,7 @@ import (
 const defaultOutputDir = "docs/reference/policy-compliance-mapping"
 const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yaml"
 const controlFamiliesPath = "internal/compliance/control_families.yaml"
+const publicDetectionCatalogPath = "internal/findings/public_detection_catalog.json"
 
 type policyRuleExtensions struct {
 	Defaults      policyRuleExtension            `yaml:"defaults"`
@@ -54,6 +57,66 @@ type complianceControlCatalogControl struct {
 }
 
 type controlFamilyIndex map[string]string
+
+type publicDetectionCatalog struct {
+	Version    string            `json:"version"`
+	Detections []publicDetection `json:"detections"`
+}
+
+type publicDetection struct {
+	ID                 string                             `json:"id"`
+	PackID             string                             `json:"pack_id"`
+	PackName           string                             `json:"pack_name"`
+	Name               string                             `json:"name"`
+	SourceID           string                             `json:"source_id"`
+	EvaluationMode     string                             `json:"evaluation_mode"`
+	OutputKind         string                             `json:"output_kind"`
+	Severity           string                             `json:"severity"`
+	Status             string                             `json:"status"`
+	Maturity           string                             `json:"maturity"`
+	Tags               []string                           `json:"tags"`
+	ControlRefs        []publicDetectionControlRef        `json:"control_refs"`
+	SourceCoverageRefs []publicDetectionSourceCoverageRef `json:"source_coverage_refs"`
+	EvidenceType       string                             `json:"evidence_type"`
+	AssessmentMethods  []string                           `json:"assessment_methods"`
+	AuditorGuidance    string                             `json:"auditor_guidance"`
+	RiskStatement      string                             `json:"risk_statement"`
+	RemediationIntent  string                             `json:"remediation_intent"`
+}
+
+type publicDetectionControlRef struct {
+	FrameworkName string `json:"framework_name"`
+	ControlID     string `json:"control_id"`
+}
+
+type publicDetectionSourceCoverageRef struct {
+	SourceID           string                      `json:"source_id"`
+	DimensionID        string                      `json:"dimension_id"`
+	DimensionType      string                      `json:"dimension_type"`
+	SupportLevel       string                      `json:"support_level"`
+	HighValue          bool                        `json:"high_value"`
+	Families           []string                    `json:"families"`
+	EvidenceTypes      []string                    `json:"evidence_types"`
+	ControlDomains     []string                    `json:"control_domains"`
+	MatchedControlRefs []publicDetectionControlRef `json:"matched_control_refs"`
+}
+
+type findingExportSummary struct {
+	FindingCount                  int
+	NonPolicyFindingCount         int
+	ControlRowCount               int
+	TagRowCount                   int
+	SourceCoverageRowCount        int
+	UniqueReviewTagCount          int
+	MissingCatalogTagCount        int
+	MissingControlRefCount        int
+	MissingAuditDepthCount        int
+	MissingSourceCoverageRefCount int
+	Packs                         map[string]int
+	Sources                       map[string]int
+	EvaluationModes               map[string]int
+	Frameworks                    map[string]int
+}
 
 type generatedFile struct {
 	Name    string
@@ -120,6 +183,10 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return nil, err
 	}
 	controlFamilies, err := loadControlFamilyIndex(root)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := loadPublicDetectionCatalog(root)
 	if err != nil {
 		return nil, err
 	}
@@ -226,11 +293,17 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return strings.Join(tagRows[i], "\x00") < strings.Join(tagRows[j], "\x00")
 	})
 
+	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingSummary := findingReviewRows(catalog, controlFamilies)
+
 	files := []generatedFile{
-		{Name: "overview.csv", Content: csvBytes(overviewRows(len(rules), len(controlRows), len(tagRows), len(uniqueTags), domains, frameworks, evidenceModes))},
+		{Name: "overview.csv", Content: csvBytes(overviewRows(len(rules), len(controlRows), len(tagRows), len(uniqueTags), domains, frameworks, evidenceModes, findingSummary))},
 		{Name: "policy_map.csv", Content: csvBytes(append([][]string{policyMapHeader()}, policyRows...))},
 		{Name: "control_map.csv", Content: csvBytes(append([][]string{controlMapHeader()}, controlRows...))},
 		{Name: "tag_map.csv", Content: csvBytes(append([][]string{tagMapHeader()}, tagRows...))},
+		{Name: "finding_map.csv", Content: csvBytes(append([][]string{findingMapHeader()}, findingRows...))},
+		{Name: "finding_control_map.csv", Content: csvBytes(append([][]string{findingControlMapHeader()}, findingControlRows...))},
+		{Name: "finding_tag_map.csv", Content: csvBytes(append([][]string{findingTagMapHeader()}, findingTagRows...))},
+		{Name: "source_coverage_map.csv", Content: csvBytes(append([][]string{sourceCoverageMapHeader()}, sourceCoverageRows...))},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
 		{Name: "logic.csv", Content: csvBytes(logicRows())},
 	}
@@ -290,6 +363,21 @@ func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
 	return index, nil
 }
 
+func loadPublicDetectionCatalog(root string) (publicDetectionCatalog, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(publicDetectionCatalogPath)))
+	if err != nil {
+		return publicDetectionCatalog{}, fmt.Errorf("read %s: %w", publicDetectionCatalogPath, err)
+	}
+	var catalog publicDetectionCatalog
+	if err := json.Unmarshal(content, &catalog); err != nil {
+		return publicDetectionCatalog{}, fmt.Errorf("decode %s: %w", publicDetectionCatalogPath, err)
+	}
+	sort.Slice(catalog.Detections, func(i, j int) bool {
+		return catalog.Detections[i].ID < catalog.Detections[j].ID
+	})
+	return catalog, nil
+}
+
 func (extensions policyRuleExtensions) extensionFor(rule findingdsl.PolicyFindingRule) policyRuleExtension {
 	merged := policyRuleExtension{}
 	merged = mergePolicyRuleExtension(merged, extensions.Defaults)
@@ -319,18 +407,18 @@ func mergePolicyRuleExtension(base, next policyRuleExtension) policyRuleExtensio
 	return base
 }
 
-type policyControlRef struct {
+type controlRef struct {
 	Framework string
 	ControlID string
 	Family    string
 }
 
-func (ref policyControlRef) Label() string {
+func (ref controlRef) Label() string {
 	return strings.TrimSpace(ref.Framework + " " + ref.ControlID)
 }
 
-func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []policyControlRef {
-	var refs []policyControlRef
+func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []controlRef {
+	var refs []controlRef
 	seen := map[string]struct{}{}
 	for _, framework := range rule.Spec.Frameworks {
 		frameworkName := strings.TrimSpace(framework.Name)
@@ -344,12 +432,199 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 				continue
 			}
 			seen[key] = struct{}{}
-			refs = append(refs, policyControlRef{
+			refs = append(refs, controlRef{
 				Framework: frameworkName,
 				ControlID: controlID,
 				Family:    index[key],
 			})
 		}
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		if refs[i].Framework == refs[j].Framework {
+			return refs[i].ControlID < refs[j].ControlID
+		}
+		return refs[i].Framework < refs[j].Framework
+	})
+	return refs
+}
+
+func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex) ([][]string, [][]string, [][]string, [][]string, findingExportSummary) {
+	var findingRows [][]string
+	var findingControlRows [][]string
+	var findingTagRows [][]string
+	var sourceCoverageRows [][]string
+	summary := findingExportSummary{
+		FindingCount:    len(catalog.Detections),
+		Packs:           map[string]int{},
+		Sources:         map[string]int{},
+		EvaluationModes: map[string]int{},
+		Frameworks:      map[string]int{},
+	}
+	uniqueReviewTags := map[string]struct{}{}
+
+	for _, detection := range catalog.Detections {
+		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
+		controlFamilies := uniqueControlFamilies(controlRefs)
+		catalogTags := uniqueSorted(detection.Tags)
+		complianceTags := complianceReviewTags(controlRefs)
+		allReviewTags := uniqueSorted(append(append([]string{}, catalogTags...), complianceTags...))
+		sourceCoverageRefs := sourceCoverageRefLabels(detection.SourceCoverageRefs)
+		reviewFlags := findingReviewFlags(detection, controlRefs, catalogTags, sourceCoverageRefs)
+
+		summary.Packs[strings.TrimSpace(detection.PackID)]++
+		summary.Sources[strings.TrimSpace(detection.SourceID)]++
+		summary.EvaluationModes[strings.TrimSpace(detection.EvaluationMode)]++
+		if strings.TrimSpace(detection.PackID) != "policy" {
+			summary.NonPolicyFindingCount++
+		}
+		if len(catalogTags) == 0 {
+			summary.MissingCatalogTagCount++
+		}
+		if len(controlRefs) == 0 {
+			summary.MissingControlRefCount++
+		}
+		if len(findingAuditDepthFlags(detection)) != 0 {
+			summary.MissingAuditDepthCount++
+		}
+		if len(sourceCoverageRefs) == 0 {
+			summary.MissingSourceCoverageRefCount++
+		}
+		for _, ref := range controlRefs {
+			summary.Frameworks[ref.Framework]++
+		}
+		for _, tag := range allReviewTags {
+			uniqueReviewTags[tag] = struct{}{}
+		}
+
+		findingRows = append(findingRows, []string{
+			detection.ID,
+			detection.Name,
+			detection.PackID,
+			detection.PackName,
+			detection.SourceID,
+			detection.EvaluationMode,
+			detection.OutputKind,
+			normalizedSeverity(detection.Severity),
+			detection.Status,
+			detection.Maturity,
+			joinList(controlFrameworkNames(controlRefs)),
+			joinList(controlRefLabels(controlRefs)),
+			joinList(controlFamilies),
+			joinList(catalogTags),
+			joinList(complianceTags),
+			joinList(allReviewTags),
+			detection.EvidenceType,
+			joinList(detection.AssessmentMethods),
+			detection.AuditorGuidance,
+			detection.RiskStatement,
+			detection.RemediationIntent,
+			fmt.Sprint(len(detection.SourceCoverageRefs)),
+			joinList(sourceCoverageRefs),
+			joinList(sourceCoverageEvidenceTypes(detection.SourceCoverageRefs)),
+			joinList(sourceCoverageControlDomains(detection.SourceCoverageRefs)),
+			joinList(reviewFlags),
+		})
+
+		for _, ref := range controlRefs {
+			findingControlRows = append(findingControlRows, []string{
+				ref.Framework,
+				ref.ControlID,
+				ref.Label(),
+				ref.Family,
+				detection.ID,
+				detection.Name,
+				detection.PackID,
+				detection.SourceID,
+				detection.EvaluationMode,
+				normalizedSeverity(detection.Severity),
+				detection.Status,
+				detection.Maturity,
+			})
+		}
+
+		catalogTagSet := stringSet(catalogTags)
+		complianceTagSet := stringSet(complianceTags)
+		for _, tag := range allReviewTags {
+			source := "catalog"
+			_, catalogTag := catalogTagSet[tag]
+			_, complianceTag := complianceTagSet[tag]
+			switch {
+			case catalogTag && complianceTag:
+				source = "catalog+control_ref"
+			case complianceTag:
+				source = "control_ref"
+			}
+			findingTagRows = append(findingTagRows, []string{
+				tag,
+				tagKind(tag),
+				source,
+				detection.ID,
+				detection.Name,
+				detection.PackID,
+				detection.SourceID,
+				detection.EvaluationMode,
+				normalizedSeverity(detection.Severity),
+				detection.Status,
+				detection.Maturity,
+			})
+		}
+
+		for _, coverageRef := range detection.SourceCoverageRefs {
+			matchedControlRefs := publicDetectionControlRefs(coverageRef.MatchedControlRefs, index)
+			sourceCoverageRows = append(sourceCoverageRows, []string{
+				coverageRef.SourceID,
+				coverageRef.DimensionID,
+				coverageRef.DimensionType,
+				coverageRef.SupportLevel,
+				fmt.Sprint(coverageRef.HighValue),
+				joinList(coverageRef.Families),
+				joinList(coverageRef.EvidenceTypes),
+				joinList(coverageRef.ControlDomains),
+				joinList(controlRefLabels(matchedControlRefs)),
+				joinList(uniqueControlFamilies(matchedControlRefs)),
+				detection.ID,
+				detection.Name,
+				detection.PackID,
+				detection.SourceID,
+				detection.EvaluationMode,
+				normalizedSeverity(detection.Severity),
+				detection.Status,
+				detection.Maturity,
+			})
+		}
+	}
+
+	summary.ControlRowCount = len(findingControlRows)
+	summary.TagRowCount = len(findingTagRows)
+	summary.SourceCoverageRowCount = len(sourceCoverageRows)
+	summary.UniqueReviewTagCount = len(uniqueReviewTags)
+
+	sortRows(findingRows)
+	sortRows(findingControlRows)
+	sortRows(findingTagRows)
+	sortRows(sourceCoverageRows)
+	return findingRows, findingControlRows, findingTagRows, sourceCoverageRows, summary
+}
+
+func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFamilyIndex) []controlRef {
+	var refs []controlRef
+	seen := map[string]struct{}{}
+	for _, item := range raw {
+		frameworkName := strings.TrimSpace(item.FrameworkName)
+		controlID := strings.TrimSpace(item.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		key := frameworkName + "\x00" + controlID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, controlRef{
+			Framework: frameworkName,
+			ControlID: controlID,
+			Family:    index[key],
+		})
 	}
 	sort.Slice(refs, func(i, j int) bool {
 		if refs[i].Framework == refs[j].Framework {
@@ -474,7 +749,7 @@ func policyMITRE(rule findingdsl.PolicyFindingRule) []string {
 	return uniqueSorted(values)
 }
 
-func controlRefLabels(refs []policyControlRef) []string {
+func controlRefLabels(refs []controlRef) []string {
 	values := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		values = append(values, ref.Label())
@@ -482,7 +757,7 @@ func controlRefLabels(refs []policyControlRef) []string {
 	return uniqueSorted(values)
 }
 
-func uniqueControlFamilies(refs []policyControlRef) []string {
+func uniqueControlFamilies(refs []controlRef) []string {
 	values := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		if family := strings.TrimSpace(ref.Family); family != "" {
@@ -492,7 +767,131 @@ func uniqueControlFamilies(refs []policyControlRef) []string {
 	return uniqueSorted(values)
 }
 
-func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCount int, domains map[string]int, frameworks map[string]int, evidenceModes map[string]int) [][]string {
+func controlFrameworkNames(refs []controlRef) []string {
+	values := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if framework := strings.TrimSpace(ref.Framework); framework != "" {
+			values = append(values, framework)
+		}
+	}
+	return uniqueSorted(values)
+}
+
+func complianceReviewTags(refs []controlRef) []string {
+	values := make([]string, 0, len(refs)*3)
+	for _, ref := range refs {
+		frameworkSlug := tagSlug(ref.Framework)
+		controlSlug := tagSlug(ref.ControlID)
+		if frameworkSlug != "" {
+			values = append(values, "framework:"+frameworkSlug)
+		}
+		if frameworkSlug != "" && controlSlug != "" {
+			values = append(values, "control:"+frameworkSlug+":"+controlSlug)
+		}
+		if familySlug := tagSlug(ref.Family); familySlug != "" {
+			values = append(values, "control-family:"+familySlug)
+		}
+	}
+	return uniqueSorted(values)
+}
+
+func tagSlug(value string) string {
+	var builder strings.Builder
+	previousDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+			previousDash = false
+		default:
+			if builder.Len() != 0 && !previousDash {
+				builder.WriteByte('-')
+				previousDash = true
+			}
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
+
+func sourceCoverageRefLabels(refs []publicDetectionSourceCoverageRef) []string {
+	values := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		sourceID := strings.TrimSpace(ref.SourceID)
+		dimensionID := strings.TrimSpace(ref.DimensionID)
+		switch {
+		case sourceID != "" && dimensionID != "":
+			values = append(values, sourceID+"/"+dimensionID)
+		case sourceID != "":
+			values = append(values, sourceID)
+		case dimensionID != "":
+			values = append(values, dimensionID)
+		}
+	}
+	return uniqueSorted(values)
+}
+
+func sourceCoverageEvidenceTypes(refs []publicDetectionSourceCoverageRef) []string {
+	var values []string
+	for _, ref := range refs {
+		values = append(values, ref.EvidenceTypes...)
+	}
+	return uniqueSorted(values)
+}
+
+func sourceCoverageControlDomains(refs []publicDetectionSourceCoverageRef) []string {
+	var values []string
+	for _, ref := range refs {
+		values = append(values, ref.ControlDomains...)
+	}
+	return uniqueSorted(values)
+}
+
+func findingReviewFlags(detection publicDetection, controlRefs []controlRef, catalogTags []string, sourceCoverageRefs []string) []string {
+	flags := []string{}
+	if len(catalogTags) == 0 {
+		flags = append(flags, "missing_catalog_tags")
+	}
+	if len(controlRefs) == 0 {
+		flags = append(flags, "missing_control_refs")
+	}
+	flags = append(flags, findingAuditDepthFlags(detection)...)
+	if len(sourceCoverageRefs) == 0 {
+		flags = append(flags, "missing_source_coverage_refs")
+	}
+	return uniqueSorted(flags)
+}
+
+func findingAuditDepthFlags(detection publicDetection) []string {
+	flags := []string{}
+	if strings.TrimSpace(detection.EvidenceType) == "" {
+		flags = append(flags, "missing_evidence_type")
+	}
+	if len(uniqueSorted(detection.AssessmentMethods)) == 0 {
+		flags = append(flags, "missing_assessment_methods")
+	}
+	if strings.TrimSpace(detection.AuditorGuidance) == "" {
+		flags = append(flags, "missing_auditor_guidance")
+	}
+	if strings.TrimSpace(detection.RiskStatement) == "" {
+		flags = append(flags, "missing_risk_statement")
+	}
+	if strings.TrimSpace(detection.RemediationIntent) == "" {
+		flags = append(flags, "missing_remediation_intent")
+	}
+	return uniqueSorted(flags)
+}
+
+func normalizedSeverity(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func sortRows(rows [][]string) {
+	sort.Slice(rows, func(i, j int) bool {
+		return strings.Join(rows[i], "\x00") < strings.Join(rows[j], "\x00")
+	})
+}
+
+func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCount int, domains map[string]int, frameworks map[string]int, evidenceModes map[string]int, findingSummary findingExportSummary) [][]string {
 	rows := [][]string{
 		{"metric", "value"},
 		{"policy finding rules", fmt.Sprint(policyCount)},
@@ -502,6 +901,18 @@ func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCoun
 		{"domains", fmt.Sprint(len(domains))},
 		{"frameworks", fmt.Sprint(len(frameworks))},
 		{},
+		{"all finding metric", "value"},
+		{"public detections", fmt.Sprint(findingSummary.FindingCount)},
+		{"non-policy detections", fmt.Sprint(findingSummary.NonPolicyFindingCount)},
+		{"finding-control rows", fmt.Sprint(findingSummary.ControlRowCount)},
+		{"finding-tag rows", fmt.Sprint(findingSummary.TagRowCount)},
+		{"source-coverage rows", fmt.Sprint(findingSummary.SourceCoverageRowCount)},
+		{"unique finding review tags", fmt.Sprint(findingSummary.UniqueReviewTagCount)},
+		{"detections missing catalog tags", fmt.Sprint(findingSummary.MissingCatalogTagCount)},
+		{"detections missing control refs", fmt.Sprint(findingSummary.MissingControlRefCount)},
+		{"detections missing audit depth", fmt.Sprint(findingSummary.MissingAuditDepthCount)},
+		{"detections missing source coverage refs", fmt.Sprint(findingSummary.MissingSourceCoverageRefCount)},
+		{},
 		{"evidence mode", "rules"},
 	}
 	rows = appendCountRows(rows, evidenceModes)
@@ -509,6 +920,14 @@ func overviewRows(policyCount int, controlCount int, tagCount int, uniqueTagCoun
 	rows = appendCountRows(rows, domains)
 	rows = append(rows, []string{}, []string{"framework", "rules"})
 	rows = appendCountRows(rows, frameworks)
+	rows = append(rows, []string{}, []string{"finding evaluation mode", "detections"})
+	rows = appendCountRows(rows, findingSummary.EvaluationModes)
+	rows = append(rows, []string{}, []string{"finding pack", "detections"})
+	rows = appendCountRows(rows, findingSummary.Packs)
+	rows = append(rows, []string{}, []string{"finding source", "detections"})
+	rows = appendCountRows(rows, findingSummary.Sources)
+	rows = append(rows, []string{}, []string{"finding framework", "control rows"})
+	rows = appendCountRows(rows, findingSummary.Frameworks)
 	return rows
 }
 
@@ -571,7 +990,9 @@ func logicRows() [][]string {
 		{"3", "domain", "Apply the domain block keyed by the policy folder under policies/."},
 		{"4", "policy override", "Apply any explicit policy ID override when a rule needs different audit language."},
 		{"5", "policy YAML", "Use each PolicyFindingRule YAML file for controls, tags, severity, resource, remediation, risk categories, and MITRE references."},
-		{"6", "spreadsheet", "Generate CSV rows from YAML and derived layers. Do not edit spreadsheet rows back into source by hand."},
+		{"6", "public detection catalog", "Use internal/findings/public_detection_catalog.json for all public finding types, including non-policy detections."},
+		{"7", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
+		{"8", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -590,6 +1011,34 @@ func controlMapHeader() []string {
 
 func tagMapHeader() []string {
 	return []string{"tag", "tag_kind", "tag_source", "rule_id", "name", "domain", "severity", "evidence_mode", "path"}
+}
+
+func findingMapHeader() []string {
+	return []string{
+		"finding_id", "name", "pack_id", "pack_name", "source_id", "evaluation_mode", "output_kind",
+		"severity", "status", "maturity", "frameworks", "control_refs", "control_families",
+		"catalog_tags", "compliance_review_tags", "all_review_tags", "evidence_type",
+		"assessment_methods", "auditor_guidance", "risk_statement", "remediation_intent",
+		"source_coverage_ref_count", "source_coverage_refs", "coverage_evidence_types",
+		"coverage_control_domains", "review_flags",
+	}
+}
+
+func findingControlMapHeader() []string {
+	return []string{"framework", "control_id", "control_ref", "control_family", "finding_id", "name", "pack_id", "source_id", "evaluation_mode", "severity", "status", "maturity"}
+}
+
+func findingTagMapHeader() []string {
+	return []string{"tag", "tag_kind", "tag_source", "finding_id", "name", "pack_id", "source_id", "evaluation_mode", "severity", "status", "maturity"}
+}
+
+func sourceCoverageMapHeader() []string {
+	return []string{
+		"coverage_source_id", "coverage_dimension_id", "coverage_dimension_type", "support_level",
+		"high_value", "families", "evidence_types", "control_domains", "matched_control_refs",
+		"matched_control_families", "finding_id", "name", "pack_id", "finding_source_id",
+		"evaluation_mode", "severity", "status", "maturity",
+	}
 }
 
 func writeFiles(root string, output string, files []generatedFile) error {
@@ -657,6 +1106,8 @@ func tagKind(tag string) string {
 		return "evidence"
 	case strings.HasPrefix(normalized, "assessment:"):
 		return "assessment"
+	case strings.HasPrefix(normalized, "framework:") || strings.HasPrefix(normalized, "control:") || strings.HasPrefix(normalized, "control-family:"):
+		return "compliance"
 	case normalized == "policy" || normalized == "cel" || normalized == "query" || normalized == "graph" || normalized == "manual":
 		return "generated"
 	case strings.Contains(normalized, "soc") || strings.Contains(normalized, "nist") || strings.Contains(normalized, "iso") || strings.Contains(normalized, "pci") || strings.Contains(normalized, "hipaa") || strings.Contains(normalized, "cis") || strings.Contains(normalized, "gdpr") || strings.Contains(normalized, "ccpa") || strings.Contains(normalized, "compliance"):

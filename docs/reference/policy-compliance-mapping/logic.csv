@@ -4,4 +4,6 @@ step,layer,definition
 3,domain,Apply the domain block keyed by the policy folder under policies/.
 4,policy override,Apply any explicit policy ID override when a rule needs different audit language.
 5,policy YAML,"Use each PolicyFindingRule YAML file for controls, tags, severity, resource, remediation, risk categories, and MITRE references."
-6,spreadsheet,Generate CSV rows from YAML and derived layers. Do not edit spreadsheet rows back into source by hand.
+6,public detection catalog,"Use internal/findings/public_detection_catalog.json for all public finding types, including non-policy detections."
+7,compliance review tags,"Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."
+8,spreadsheet,"Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."
