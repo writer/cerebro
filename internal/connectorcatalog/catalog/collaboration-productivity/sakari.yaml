@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: client_id
+        label: Client ID
+        reference_only: true
+        required: true
+        secret: true
+      - key: client_secret
+        label: Client secret
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_client_credentials
+      requires_references: true
+      scopes:
+      - messages:send
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: "/oauth2/token"
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: accountid
+      label: Accountid
+      required: true
+    description: "# Introduction"
+    display_name: Sakari
+    id: builtin_catalog-sakari
+    resource_families:
+    - coverage:
+      - families:
+        - webhook
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: webhook
+        support: partial
+        title: Webhook
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sakari.webhook
+        required_payload_fields:
+        - eventTypes
+        schema_ref: sakari/webhook/v1
+        urn_kind: sakari_webhook
+      event_kind: webhook
+      id: webhook
+      id_field: eventTypes
+      label: Webhook
+      list_key: data
+      method: GET
+      name_field: url
+      pagination:
+        type: none
+      path: "/v1/accounts/${config.accountid}/webhooks"
+      permissions_needed:
+      - sakari_auth
+      projection:
+        fields:
+          id: eventTypes
+          name: url
+          resource_id: eventTypes
+          resource_name: url
+          resource_type: webhook
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - campaign
+        id: campaign
+        support: partial
+        title: Campaign
+        type: entity_family
+      event:
+        kind: sakari.campaign
+        required_payload_fields:
+        - id
+        schema_ref: sakari/campaign/v1
+        urn_kind: sakari_campaign
+      event_kind: campaign
+      id: campaign
+      id_field: id
+      label: Campaign
+      list_key: data
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/accounts/${config.accountid}/campaigns"
+      permissions_needed:
+      - sakari_auth
+      projection:
+        fields:
+          id: id
+          name: id
+          resource_id: id
+          resource_name: id
+          resource_type: campaign
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - contact
+        id: contact
+        support: partial
+        title: Contact
+        type: entity_family
+      event:
+        kind: sakari.contact
+        required_payload_fields:
+        - id
+        schema_ref: sakari/contact/v1
+        urn_kind: sakari_contact
+      event_kind: contact
+      id: contact
+      id_field: id
+      label: Contact
+      list_key: data
+      method: GET
+      name_field: email
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/accounts/${config.accountid}/contacts"
+      permissions_needed:
+      - sakari_auth
+      projection:
+        fields:
+          id: id
+          name: email
+          resource_id: id
+          resource_name: email
+          resource_type: contact
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - conversation
+        id: conversation
+        support: partial
+        title: Conversation
+        type: entity_family
+      event:
+        kind: sakari.conversation
+        required_payload_fields:
+        - id
+        schema_ref: sakari/conversation/v1
+        urn_kind: sakari_conversation
+      event_kind: conversation
+      id: conversation
+      id_field: id
+      label: Conversation
+      list_key: data
+      method: GET
+      name_field: closed
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/accounts/${config.accountid}/conversations"
+      permissions_needed:
+      - sakari_auth
+      projection:
+        fields:
+          id: id
+          name: closed
+          resource_id: id
+          resource_name: closed
+          resource_type: conversation
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - webhook
+      id: webhook
+      label: Webhook
+    - families:
+      - campaign
+      id: campaign
+      label: Campaign
+    - families:
+      - contact
+      id: contact
+      label: Contact
+    - families:
+      - conversation
+      id: conversation
+      label: Conversation
+    source_id: sakari
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.sakari.io
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/accounts/${config.accountid}/webhooks"

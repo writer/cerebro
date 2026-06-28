@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-digitalocean
+    tenant_id: builtin_catalog
+    source_id: digitalocean
+    display_name: DigitalOcean
+    description: DigitalOcean connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - devops
+    - cloud
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.digitalocean.com/v2
+      verification:
+        method: GET
+        path: "/account"
+        expect_status:
+        - 200
+    resource_families:
+    - id: droplets
+      label: Droplets
+      path: "/droplets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: digitalocean.droplets
+        schema_ref: digitalocean/droplets/v1
+      projection:
+        template: cloud_resource
+      coverage:
+      - id: droplets
+        type: entity_family
+        title: Droplets
+        families:
+        - droplets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: teams
+      label: Teams
+      path: "/teams"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: digitalocean.teams
+        schema_ref: digitalocean/teams/v1
+      projection:
+        template: identity_group
+      coverage:
+      - id: teams
+        type: entity_family
+        title: Teams
+        families:
+        - teams
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/actions"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: digitalocean.audit_events
+        schema_ref: digitalocean/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

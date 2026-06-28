@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-jfrog_artifactory_xray
+    tenant_id: builtin_catalog
+    source_id: jfrog_artifactory_xray
+    display_name: JFrog Artifactory/Xray
+    description: JFrog Artifactory/Xray connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - dev
+    - artifacts
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.jfrog_url}
+      verification:
+        method: GET
+        path: "/xray/api/v1/system/ping"
+        expect_status:
+        - 200
+    resource_families:
+    - id: assets
+      label: Assets
+      path: "/v1/assets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: jfrog_artifactory_xray.assets
+        schema_ref: jfrog_artifactory_xray/assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: assets
+        type: entity_family
+        title: Assets
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: findings
+      label: Findings
+      path: "/v1/findings"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: jfrog_artifactory_xray.findings
+        schema_ref: jfrog_artifactory_xray/findings/v1
+      projection:
+        template: finding
+      coverage:
+      - id: findings
+        type: remediation_state
+        title: Findings
+        families:
+        - findings
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: vulnerabilities
+      label: Vulnerabilities
+      path: "/v1/vulnerabilities"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: jfrog_artifactory_xray.vulnerabilities
+        schema_ref: jfrog_artifactory_xray/vulnerabilities/v1
+      projection:
+        template: vulnerability
+      coverage:
+      - id: vulnerabilities
+        type: remediation_state
+        title: Vulnerabilities
+        families:
+        - vulnerabilities
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

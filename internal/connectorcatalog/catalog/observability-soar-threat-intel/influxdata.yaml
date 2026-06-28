@@ -1,0 +1,221 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: taskid
+      label: Taskid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: orgid
+      label: Orgid
+      required: true
+    description: "# Authentication"
+    display_name: InfluxDB
+    id: builtin_catalog-influxdata
+    resource_families:
+    - coverage:
+      - families:
+        - log
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: influxdata.log
+        required_payload_fields:
+        - message
+        schema_ref: influxdata/log/v1
+        urn_kind: influxdata_log
+      event_kind: log
+      id: log
+      id_field: message
+      label: Log
+      list_key: events
+      method: GET
+      name_field: message
+      pagination:
+        type: none
+      path: "/tasks/${config.taskid}/logs"
+      projection:
+        fields:
+          id: message
+          name: message
+          provider_id: message
+        template: audit_event
+      record_selector: "$.events[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: influxdata.user
+        required_payload_fields:
+        - id
+        schema_ref: influxdata/user/v1
+        urn_kind: influxdata_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      list_key: users
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: after
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/users"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.users[*]"
+    - coverage:
+      - families:
+        - secret
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Secret
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: influxdata.secret
+        required_payload_fields:
+        - id
+        schema_ref: influxdata/secret/v1
+        urn_kind: influxdata_secret
+      event_kind: secret
+      id: secret
+      id_field: id
+      label: Secret
+      list_key: secrets
+      method: GET
+      pagination:
+        type: none
+      path: "/orgs/${config.orgid}/secrets"
+      projection:
+        fields:
+          id: id
+          secret_id: id
+          secret_name: id
+          secret_type: secret
+        template: secret
+      record_selector: "$.secrets[*]"
+    - coverage:
+      - families:
+        - dbrp
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Dbrp
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: influxdata.dbrp
+        required_payload_fields:
+        - id
+        schema_ref: influxdata/dbrp/v1
+        urn_kind: influxdata_dbrp
+      event_kind: dbrp
+      id: dbrp
+      id_field: id
+      label: Dbrp
+      list_key: content
+      method: GET
+      name_field: bucketID
+      pagination:
+        type: none
+      path: "/dbrps"
+      projection:
+        fields:
+          id: id
+          name: bucketID
+          policy_id: id
+          policy_name: bucketID
+          policy_type: dbrp
+        template: policy
+      record_selector: "$.content[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - log
+      id: log
+      label: Log
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - secret
+      id: secret
+      label: Secret
+    - default_enabled: true
+      families:
+      - dbrp
+      id: dbrp
+      label: Dbrp
+    source_id: influxdata
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "/api/v2"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/tasks/${config.taskid}/logs"

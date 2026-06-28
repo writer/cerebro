@@ -1,0 +1,292 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: https://slack.com/oauth/authorize
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      requires_references: true
+      scopes:
+      - admin
+      - admin.apps:read
+      - admin.apps:write
+      - admin.conversations:read
+      - admin.conversations:write
+      - admin.invites:read
+      - admin.invites:write
+      - admin.teams:read
+      - admin.teams:write
+      - admin.usergroups:read
+      - admin.usergroups:write
+      - admin.users:read
+      - admin.users:write
+      - authorizations:read
+      - bot
+      - calls:read
+      - calls:write
+      - channels:history
+      - channels:manage
+      - channels:read
+      - channels:write
+      - chat:write
+      - chat:write:bot
+      - chat:write:user
+      - conversations:history
+      - conversations:read
+      - conversations:write
+      - dnd:read
+      - dnd:write
+      - emoji:read
+      - files:read
+      - files:write:user
+      - groups:history
+      - groups:read
+      - groups:write
+      - identity.basic
+      - im:history
+      - im:read
+      - im:write
+      - links:write
+      - mpim:history
+      - mpim:read
+      - mpim:write
+      - none
+      - pins:read
+      - pins:write
+      - reactions:read
+      - reactions:write
+      - reminders:read
+      - reminders:write
+      - remote_files:read
+      - remote_files:share
+      - remote_files:write
+      - rtm:stream
+      - search:read
+      - stars:read
+      - stars:write
+      - team:read
+      - tokens.basic
+      - usergroups:read
+      - usergroups:write
+      - users.profile:read
+      - users.profile:write
+      - users:read
+      - users:read.email
+      - users:write
+      - workflow.steps:execute
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: https://slack.com/api/oauth.access
+    categories:
+    - saas
+    description: One way to interact with the Slack platform is its HTTP RPC-based Web API, a collection of methods requiring OAuth 2.0-based user, bot, or workspace tokens blessed with related OAuth scopes.
+    display_name: Slack
+    id: builtin_catalog-slack
+    resource_families:
+    - coverage:
+      - families:
+        - usergroups_list
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: usergroups_list
+        support: partial
+        title: Usergroups List
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: slack.usergroups_list
+        required_payload_fields:
+        - id
+        schema_ref: slack/usergroups_list/v1
+        urn_kind: slack_usergroups_list
+      event_kind: usergroups_list
+      id: usergroups_list
+      id_field: id
+      label: Usergroups List
+      list_key: usergroups
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/usergroups.list"
+      permissions_needed:
+      - usergroups:read
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.usergroups[*]"
+    - coverage:
+      - families:
+        - team_accesslog
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Team Accesslog
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: slack.team_accesslog
+        required_payload_fields:
+        - count
+        schema_ref: slack/team_accesslog/v1
+        urn_kind: slack_team_accesslog
+      event_kind: team_accesslog
+      id: team_accesslog
+      id_field: count
+      label: Team Accesslog
+      list_key: logins
+      method: GET
+      name_field: username
+      pagination:
+        cursor_param: before
+        page_size: 100
+        page_size_param: count
+        type: cursor
+      path: "/team.accessLogs"
+      permissions_needed:
+      - admin
+      projection:
+        fields:
+          id: count
+          name: username
+          provider_id: count
+        template: audit_event
+      record_selector: "$.logins[*]"
+    - coverage:
+      - families:
+        - admin_conversations_getteam
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: admin_conversations_getteam
+        support: partial
+        title: Admin Conversations Getteam
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: slack.admin_conversations_getteam
+        required_payload_fields:
+        - id
+        schema_ref: slack/admin_conversations_getteam/v1
+        urn_kind: slack_admin_conversations_getteam
+      event_kind: admin_conversations_getteam
+      id: admin_conversations_getteam
+      id_field: id
+      label: Admin Conversations Getteam
+      list_key: team_ids
+      method: GET
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/admin.conversations.getTeams"
+      permissions_needed:
+      - admin.conversations:read
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$.team_ids[*]"
+    - coverage:
+      - families:
+        - apps_permissions_resources_list
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: apps_permissions_resources_list
+        support: partial
+        title: Apps Permissions Resources List
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: slack.apps_permissions_resources_list
+        required_payload_fields:
+        - id
+        schema_ref: slack/apps_permissions_resources_list/v1
+        urn_kind: slack_apps_permissions_resources_list
+      event_kind: apps_permissions_resources_list
+      id: apps_permissions_resources_list
+      id_field: id
+      label: Apps Permissions Resources List
+      list_key: resources
+      method: GET
+      name_field: id
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/apps.permissions.resources.list"
+      permissions_needed:
+      - none
+      projection:
+        fields:
+          id: id
+          name: id
+          resource_id: id
+          resource_name: id
+          resource_type: apps_permissions_resources_list
+        template: asset
+      record_selector: "$.resources[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - usergroups_list
+      id: usergroups_list
+      label: Usergroups List
+    - default_enabled: true
+      families:
+      - team_accesslog
+      id: team_accesslog
+      label: Team Accesslog
+    - default_enabled: true
+      families:
+      - admin_conversations_getteam
+      id: admin_conversations_getteam
+      label: Admin Conversations Getteam
+    - default_enabled: true
+      families:
+      - apps_permissions_resources_list
+      id: apps_permissions_resources_list
+      label: Apps Permissions Resources List
+    source_id: slack
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://slack.com/api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/usergroups.list"

@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-linear
+    tenant_id: builtin_catalog
+    source_id: linear
+    display_name: Linear
+    description: Linear connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - saas
+    - project
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.linear.app
+      verification:
+        method: GET
+        path: "/graphql"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: linear.users
+        schema_ref: linear/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: projects
+      label: Projects
+      path: "/v1/projects"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: linear.projects
+        schema_ref: linear/projects/v1
+      projection:
+        template: asset
+      coverage:
+      - id: projects
+        type: entity_family
+        title: Projects
+        families:
+        - projects
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: linear.audit_events
+        schema_ref: linear/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

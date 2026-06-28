@@ -1,0 +1,586 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: API documentation for redirection.io
+    display_name: redirection.io
+    id: builtin_catalog-redirection_io
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - aggregate_log
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Aggregate Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: redirection_io.aggregate_log
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/aggregate_log/v1
+        urn_kind: redirection_aggregate_log
+      event_kind: aggregate_log
+      id: aggregate_log
+      id_field: id
+      label: Aggregate Log
+      method: GET
+      name_field: fixed
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/aggregate-logs"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: fixed
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: redirection_io.user
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/user/v1
+        urn_kind: redirection_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/users"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - agent_rule
+        high_value: true
+        id: policies
+        support: partial
+        title: Agent Rule
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.agent_rule
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/agent_rule/v1
+        urn_kind: redirection_agent_rule
+      event_kind: agent_rule
+      id: agent_rule
+      id_field: id
+      label: Agent Rule
+      method: GET
+      name_field: actions
+      pagination:
+        type: none
+      path: "/agent-rules"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: actions
+          policy_id: id
+          policy_name: actions
+          policy_type: agent_rule
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notification
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: redirection_io.notification
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/notification/v1
+        urn_kind: redirection_notification
+      event_kind: notification
+      id: notification
+      id_field: id
+      label: Notification
+      method: GET
+      name_field: createdAt
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/notifications"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          alert_id: id
+          alert_name: createdAt
+          alert_severity: createdAt
+          alert_status: createdAt
+          id: id
+          name: createdAt
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - smart_list
+        id: smart_list
+        support: partial
+        title: Smart List
+        type: entity_family
+      event:
+        kind: redirection_io.smart_list
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/smart_list/v1
+        urn_kind: redirection_smart_list
+      event_kind: smart_list
+      id: smart_list
+      id_field: id
+      label: Smart List
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/smart-lists"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: smart_list
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - log
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: redirection_io.log
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/log/v1
+        urn_kind: redirection_log
+      event_kind: log
+      id: log
+      id_field: id
+      label: Log
+      method: GET
+      name_field: createdAt
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/logs"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: createdAt
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - agent_rule_complexe
+        high_value: true
+        id: policies
+        support: partial
+        title: Agent Rule Complexe
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.agent_rule_complexe
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/agent_rule_complexe/v1
+        urn_kind: redirection_agent_rule_complexe
+      event_kind: agent_rule_complexe
+      id: agent_rule_complexe
+      id_field: id
+      label: Agent Rule Complexe
+      method: GET
+      name_field: actions
+      pagination:
+        type: none
+      path: "/agent-rule-complexes"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: actions
+          policy_id: id
+          policy_name: actions
+          policy_type: agent_rule_complexe
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - agent_rule_straight
+        high_value: true
+        id: policies
+        support: partial
+        title: Agent Rule Straight
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.agent_rule_straight
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/agent_rule_straight/v1
+        urn_kind: redirection_agent_rule_straight
+      event_kind: agent_rule_straight
+      id: agent_rule_straight
+      id_field: id
+      label: Agent Rule Straight
+      method: GET
+      name_field: actions
+      pagination:
+        type: none
+      path: "/agent-rule-straights"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: actions
+          policy_id: id
+          policy_name: actions
+          policy_type: agent_rule_straight
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - export_rule
+        high_value: true
+        id: policies
+        support: partial
+        title: Export Rule
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.export_rule
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/export_rule/v1
+        urn_kind: redirection_export_rule
+      event_kind: export_rule
+      id: export_rule
+      id_field: id
+      label: Export Rule
+      method: GET
+      name_field: actions
+      pagination:
+        type: none
+      path: "/export-rules"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: actions
+          policy_id: id
+          policy_name: actions
+          policy_type: export_rule
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - rule
+        high_value: true
+        id: policies
+        support: partial
+        title: Rule
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.rule
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/rule/v1
+        urn_kind: redirection_rule
+      event_kind: rule
+      id: rule
+      id_field: id
+      label: Rule
+      method: GET
+      name_field: actions
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/rules"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: actions
+          policy_id: id
+          policy_name: actions
+          policy_type: rule
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - rule_change
+        high_value: true
+        id: policies
+        support: partial
+        title: Rule Change
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.rule_change
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/rule_change/v1
+        urn_kind: redirection_rule_change
+      event_kind: rule_change
+      id: rule_change
+      id_field: id
+      label: Rule Change
+      method: GET
+      name_field: action
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/rule-changes"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: action
+          policy_id: id
+          policy_name: action
+          policy_type: rule_change
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - rule_set_version
+        high_value: true
+        id: policies
+        support: partial
+        title: Rule Set Version
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: redirection_io.rule_set_version
+        required_payload_fields:
+        - id
+        schema_ref: redirection_io/rule_set_version/v1
+        urn_kind: redirection_rule_set_version
+      event_kind: rule_set_version
+      id: rule_set_version
+      id_field: id
+      label: Rule Set Version
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        start_page: 1
+        type: page
+      path: "/rule-set-versions"
+      permissions_needed:
+      - apiKey
+      projection:
+        fields:
+          id: id
+          name: name
+          policy_id: id
+          policy_name: name
+          policy_type: rule_set_version
+        template: policy
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - aggregate_log
+      id: aggregate_log
+      label: Aggregate Log
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - agent_rule
+      id: agent_rule
+      label: Agent Rule
+    - default_enabled: true
+      families:
+      - notification
+      id: notification
+      label: Notification
+    - families:
+      - smart_list
+      id: smart_list
+      label: Smart List
+    - default_enabled: true
+      families:
+      - log
+      id: log
+      label: Log
+    - default_enabled: true
+      families:
+      - agent_rule_complexe
+      id: agent_rule_complexe
+      label: Agent Rule Complexe
+    - default_enabled: true
+      families:
+      - agent_rule_straight
+      id: agent_rule_straight
+      label: Agent Rule Straight
+    - default_enabled: true
+      families:
+      - export_rule
+      id: export_rule
+      label: Export Rule
+    - default_enabled: true
+      families:
+      - rule
+      id: rule
+      label: Rule
+    - default_enabled: true
+      families:
+      - rule_change
+      id: rule_change
+      label: Rule Change
+    - default_enabled: true
+      families:
+      - rule_set_version
+      id: rule_set_version
+      label: Rule Set Version
+    source_id: redirection_io
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.redirection.io
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/aggregate-logs"

@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: org_id
+      label: Org Id
+      required: true
+    description: "> Version: **0.36.1** > > Date: **March 3, 2022**"
+    display_name: Juniper Mist
+    id: builtin_catalog-mist
+    resource_families:
+    - coverage:
+      - families:
+        - call_event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Call Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: mist.call_event
+        required_payload_fields:
+        - key
+        schema_ref: mist/call_event/v1
+        urn_kind: mist_call_event
+      event_kind: call_event
+      id: call_event
+      id_field: key
+      label: Call Event
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/api/v1/const/call_events"
+      permissions_needed:
+      - apiToken
+      - basicAuth
+      projection:
+        fields:
+          id: key
+          name: description
+          provider_id: key
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - sitegroup
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: sitegroup
+        support: partial
+        title: Sitegroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: mist.sitegroup
+        required_payload_fields:
+        - id
+        schema_ref: mist/sitegroup/v1
+        urn_kind: mist_sitegroup
+      event_kind: sitegroup
+      id: sitegroup
+      id_field: id
+      label: Sitegroup
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v1/installer/orgs/${config.org_id}/sitegroups"
+      permissions_needed:
+      - apiToken
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - alarmtemplate
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Alarmtemplate
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: mist.alarmtemplate
+        required_payload_fields:
+        - id
+        schema_ref: mist/alarmtemplate/v1
+        urn_kind: mist_alarmtemplate
+      event_kind: alarmtemplate
+      id: alarmtemplate
+      id_field: id
+      label: Alarmtemplate
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v1/installer/orgs/${config.org_id}/alarmtemplates"
+      permissions_needed:
+      - apiToken
+      - basicAuth
+      projection:
+        fields:
+          alert_id: id
+          alert_name: name
+          alert_severity: id
+          alert_status: id
+          id: id
+          name: name
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - secpolicy
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Secpolicy
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: mist.secpolicy
+        required_payload_fields:
+        - id
+        schema_ref: mist/secpolicy/v1
+        urn_kind: mist_secpolicy
+      event_kind: secpolicy
+      id: secpolicy
+      id_field: id
+      label: Secpolicy
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v1/installer/orgs/${config.org_id}/secpolicies"
+      permissions_needed:
+      - apiToken
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          policy_id: id
+          policy_name: name
+          policy_type: secpolicy
+        template: policy
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - call_event
+      id: call_event
+      label: Call Event
+    - default_enabled: true
+      families:
+      - sitegroup
+      id: sitegroup
+      label: Sitegroup
+    - default_enabled: true
+      families:
+      - alarmtemplate
+      id: alarmtemplate
+      label: Alarmtemplate
+    - default_enabled: true
+      families:
+      - secpolicy
+      id: secpolicy
+      label: Secpolicy
+    source_id: mist
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.mist.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v1/const/call_events"

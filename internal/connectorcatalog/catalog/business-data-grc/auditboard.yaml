@@ -1,0 +1,116 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-auditboard
+    tenant_id: builtin_catalog
+    source_id: auditboard
+    display_name: AuditBoard
+    description: AuditBoard connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - grc
+    - audit
+    auth:
+      model: oauth_client_credentials
+      token_url: https://${config.tenant_url}/oauth/token
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.tenant_url}
+      verification:
+        method: GET
+        path: "/api/v1/users"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: auditboard.users
+        schema_ref: auditboard/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: controls
+      label: Controls
+      path: "/v1/controls"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: auditboard.controls
+        schema_ref: auditboard/controls/v1
+      projection:
+        template: asset
+      coverage:
+      - id: controls
+        type: entity_family
+        title: Controls
+        families:
+        - controls
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: findings
+      label: Findings
+      path: "/v1/findings"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: auditboard.findings
+        schema_ref: auditboard/findings/v1
+      projection:
+        template: finding
+      coverage:
+      - id: findings
+        type: remediation_state
+        title: Findings
+        families:
+        - findings
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

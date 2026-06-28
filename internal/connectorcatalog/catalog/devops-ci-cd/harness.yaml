@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-harness
+    tenant_id: builtin_catalog
+    source_id: harness
+    display_name: Harness
+    description: Harness connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - dev
+    - ci
+    auth:
+      model: api_key
+      credential_fields:
+      - key: api_key
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://app.harness.io
+      verification:
+        method: GET
+        path: "/gateway/ng/api/user/currentUser"
+        expect_status:
+        - 200
+    resource_families:
+    - id: pipelines
+      label: Pipelines
+      path: "/v1/pipelines"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: harness.pipelines
+        schema_ref: harness/pipelines/v1
+      projection:
+        template: asset
+      coverage:
+      - id: pipelines
+        type: entity_family
+        title: Pipelines
+        families:
+        - pipelines
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: findings
+      label: Findings
+      path: "/v1/findings"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: harness.findings
+        schema_ref: harness/findings/v1
+      projection:
+        template: finding
+      coverage:
+      - id: findings
+        type: remediation_state
+        title: Build findings
+        families:
+        - findings
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: harness.audit_events
+        schema_ref: harness/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

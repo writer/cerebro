@@ -24,6 +24,8 @@ nav:
       - Packages: reference/packages.md
   - Operations:
       - Hosting: operations/hosting.md
+      - Runtime Profiles: operations/runtime-profiles.md
+      - Deployment Readiness: operations/deployment-readiness.md
       - Cloud Deployment: operations/cloud-deployment.md
       - Deployment Examples: operations/deployment-examples.md
       - Operations Runbook: operations/operations-runbook.md

@@ -1,0 +1,212 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: accountid
+      label: Accountid
+      required: true
+    description: The DocuSign REST API provides you with a powerful, convenient, and simple Web services API for interacting with DocuSign.
+    display_name: DocuSign
+    id: builtin_catalog-docusign
+    resource_families:
+    - coverage:
+      - families:
+        - bcc_email_archive
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: bcc_email_archive
+        support: partial
+        title: Bcc Email Archive
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: docusign.bcc_email_archive
+        required_payload_fields:
+        - email
+        schema_ref: docusign/bcc_email_archive/v1
+        urn_kind: docusign_bcc_email_archive
+      event_kind: bcc_email_archive
+      id: bcc_email_archive
+      id_field: email
+      label: Bcc Email Archive
+      list_key: bccEmailArchives
+      method: GET
+      name_field: email
+      pagination:
+        page_size: 100
+        page_size_param: count
+        type: page
+      path: "/v2.1/accounts/${config.accountid}/settings/bcc_email_archives"
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: identity_user
+      record_selector: "$.bccEmailArchives[*]"
+    - coverage:
+      - families:
+        - signing_group
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: signing_group
+        support: partial
+        title: Signing Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: docusign.signing_group
+        required_payload_fields:
+        - created
+        schema_ref: docusign/signing_group/v1
+        urn_kind: docusign_signing_group
+      event_kind: signing_group
+      id: signing_group
+      id_field: created
+      label: Signing Group
+      list_key: groups
+      method: GET
+      name_field: created
+      pagination:
+        type: none
+      path: "/v2.1/accounts/${config.accountid}/signing_groups"
+      projection:
+        fields:
+          id: created
+          name: created
+          provider_id: created
+        template: identity_group
+      record_selector: "$.groups[*]"
+    - coverage:
+      - families:
+        - request_log
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Request Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: docusign.request_log
+        required_payload_fields:
+        - createdDateTime
+        schema_ref: docusign/request_log/v1
+        urn_kind: docusign_request_log
+      event_kind: request_log
+      id: request_log
+      id_field: createdDateTime
+      label: Request Log
+      list_key: apiRequestLogs
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/v2.1/diagnostics/request_logs"
+      projection:
+        fields:
+          id: createdDateTime
+          name: description
+          provider_id: createdDateTime
+        template: audit_event
+      record_selector: "$.apiRequestLogs[*]"
+    - coverage:
+      - families:
+        - permission_profile
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: permission_profile
+        support: partial
+        title: Permission Profile
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: docusign.permission_profile
+        required_payload_fields:
+        - modifiedByUsername
+        schema_ref: docusign/permission_profile/v1
+        urn_kind: docusign_permission_profile
+      event_kind: permission_profile
+      id: permission_profile
+      id_field: modifiedByUsername
+      label: Permission Profile
+      list_key: permissionProfiles
+      method: GET
+      name_field: modifiedByUsername
+      pagination:
+        type: none
+      path: "/v2.1/accounts/${config.accountid}/permission_profiles"
+      projection:
+        fields:
+          id: modifiedByUsername
+          name: modifiedByUsername
+          resource_id: modifiedByUsername
+          resource_name: modifiedByUsername
+          resource_type: permission_profile
+        template: asset
+      record_selector: "$.permissionProfiles[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - bcc_email_archive
+      id: bcc_email_archive
+      label: Bcc Email Archive
+    - default_enabled: true
+      families:
+      - signing_group
+      id: signing_group
+      label: Signing Group
+    - default_enabled: true
+      families:
+      - request_log
+      id: request_log
+      label: Request Log
+    - default_enabled: true
+      families:
+      - permission_profile
+      id: permission_profile
+      label: Permission Profile
+    source_id: docusign
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://www.docusign.net/restapi
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v2.1/accounts/${config.accountid}/settings/bcc_email_archives"

@@ -1,0 +1,120 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-ramp
+    tenant_id: builtin_catalog
+    source_id: ramp
+    display_name: Ramp
+    description: Ramp connector definition catalog entry for high-value finance, card, and user resources.
+    categories:
+    - finance
+    - business
+    auth:
+      model: oauth_client_credentials
+      token_url: https://api.ramp.com/developer/v1/token
+      scopes:
+      - users:read
+      - cards:read
+      - transactions:read
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.ramp.com/developer/v1
+      verification:
+        method: GET
+        path: "/users"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: ramp.users
+        schema_ref: ramp/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: cards
+      label: Cards
+      path: "/cards"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: ramp.cards
+        schema_ref: ramp/cards/v1
+      projection:
+        template: asset
+      coverage:
+      - id: cards
+        type: entity_family
+        title: Cards
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: transactions
+      label: Transactions
+      path: "/transactions"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: ramp.transactions
+        schema_ref: ramp/transactions/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: transactions
+        type: audit_event
+        title: Transactions
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

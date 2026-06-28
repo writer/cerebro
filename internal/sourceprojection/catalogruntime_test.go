@@ -1,6 +1,8 @@
 package sourceprojection
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -28,6 +30,102 @@ func TestBuiltinRegistryRegistersGenerateableCatalogProjectors(t *testing.T) {
 				t.Fatalf("BuiltinRegistry() missing catalog-runtime projector for %s", kind)
 			}
 		}
+	}
+}
+
+func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
+	projector := BuiltinRegistry().projectors["akeneo_com.asset"]
+	if projector == nil {
+		t.Fatal("BuiltinRegistry() missing akeneo_com.asset projector")
+	}
+	entities, links, err := projector(&cerebrov1.EventEnvelope{
+		Id:       "event-akeneo-asset-1",
+		TenantId: "tenant",
+		SourceId: "akeneo_com",
+		Kind:     "akeneo_com.asset",
+		Attributes: map[string]string{
+			"resource_id":                       "asset-123",
+			"resource_name":                     "Laptop fleet",
+			"resource_type":                     "asset",
+			ports.EventAttributeSourceRuntimeID: "akeneo-runtime",
+		},
+	})
+	if err != nil {
+		t.Fatalf("akeneo asset projector error = %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("akeneo asset projector links = %#v, want none without evidence", links)
+	}
+	wantURN := "urn:cerebro:tenant:runtime_asset:asset-123"
+	var got *ports.ProjectedEntity
+	for _, entity := range entities {
+		if entity != nil && entity.URN == wantURN {
+			got = entity
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("projected entities missing %s: %#v", wantURN, entities)
+	}
+	if got.EntityType != "runtime.asset" {
+		t.Fatalf("entity type = %q, want runtime.asset", got.EntityType)
+	}
+	if got.Attributes[ports.EventAttributeSourceRuntimeID] != "akeneo-runtime" {
+		t.Fatalf("source runtime attr = %q, want akeneo-runtime", got.Attributes[ports.EventAttributeSourceRuntimeID])
+	}
+}
+
+func TestGeneratedCatalogFamiliesProjectIntoGraph(t *testing.T) {
+	catalog, err := connectorcatalog.Builtin()
+	if err != nil {
+		t.Fatalf("connectorcatalog.Builtin() error = %v", err)
+	}
+	projectors := map[string]ProjectFunc{}
+	registerCatalogRuntimeProjectorsForEntries(projectors, catalog.Entries)
+	registry, err := catalogRuntimeRegistry(projectors)
+	if err != nil {
+		t.Fatalf("catalog runtime registry error = %v", err)
+	}
+
+	sourceCount := 0
+	familyCount := 0
+	for _, entry := range catalog.Entries {
+		if entry.Status != connectorcatalog.StatusGenerateable {
+			continue
+		}
+		sourceID := strings.TrimSpace(entry.Definition.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		sourceCount++
+		for _, resource := range entry.Definition.ResourceFamilies {
+			kind := catalogRuntimeEventKind(sourceID, resource)
+			if projectors[kind] == nil {
+				t.Fatalf("%s resource %s missing catalog runtime projector", sourceID, resource.ID)
+			}
+			graph := &projectionRecorder{}
+			service := NewWithRegistry(nil, graph, registry)
+			result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "event-" + catalogRuntimeSyntheticToken(sourceID, resource.ID),
+				TenantId:   "tenant",
+				SourceId:   sourceID,
+				Kind:       kind,
+				Attributes: catalogRuntimeSyntheticAttributes(sourceID, resource),
+			})
+			if err != nil {
+				t.Fatalf("%s resource %s graph projection error = %v", sourceID, resource.ID, err)
+			}
+			if result.EntitiesProjected == 0 || len(graph.entities) == 0 {
+				t.Fatalf("%s resource %s projected no graph entities: result=%#v", sourceID, resource.ID, result)
+			}
+			familyCount++
+		}
+	}
+	if sourceCount < 500 {
+		t.Fatalf("generateable catalog sources = %d, want at least 500 projected sources", sourceCount)
+	}
+	if familyCount < 2500 {
+		t.Fatalf("generateable catalog resource families = %d, want at least 2500 projected graph items", familyCount)
 	}
 }
 
@@ -580,6 +678,240 @@ func projectedLinksContainRelationFrom(links []*ports.ProjectedLink, fromURN str
 		}
 	}
 	return false
+}
+
+func catalogRuntimeRegistry(projectors map[string]ProjectFunc) (*Registry, error) {
+	entries := make([]EventProjector, 0, len(projectors))
+	for kind, projector := range projectors {
+		entries = append(entries, EventProjector{Kind: kind, Project: projector})
+	}
+	return NewRegistry(entries...)
+}
+
+func catalogRuntimeSyntheticAttributes(sourceID string, resource connectordefinitions.ResourceFamily) map[string]string {
+	familyID := firstNonEmpty(strings.TrimSpace(resource.ID), "resource")
+	token := catalogRuntimeSyntheticToken(sourceID, familyID)
+	recordID := token + "-1"
+	email := catalogRuntimeSyntheticEmail(token)
+	label := familyID + " one"
+	resourceURN := projectionURN("tenant", "runtime_"+familyID, recordID)
+	attrs := map[string]string{
+		"id":                                recordID,
+		"uuid":                              recordID,
+		"uid":                               recordID,
+		"sid":                               recordID,
+		"key":                               recordID,
+		"slug":                              recordID,
+		"external_id":                       recordID,
+		"object_id":                         recordID,
+		"resource_id":                       recordID,
+		"asset_id":                          recordID,
+		"record_id":                         recordID,
+		"item_id":                           recordID,
+		"entity_id":                         recordID,
+		"guid":                              recordID,
+		"_id":                               recordID,
+		"name":                              label,
+		"display_name":                      label,
+		"displayName":                       label,
+		"title":                             label,
+		"friendly_name":                     label,
+		"label":                             label,
+		"summary":                           label,
+		"description":                       label,
+		"subject":                           label,
+		"hostname":                          token + ".example.test",
+		"url":                               "https://example.test/" + token,
+		"self":                              "https://example.test/" + token,
+		"resource_name":                     label,
+		"resource_type":                     familyID,
+		"resource_urn":                      resourceURN,
+		"resource_entity_type":              "runtime." + strings.ReplaceAll(familyID, "_", "."),
+		"provider_id":                       recordID,
+		"domain":                            "example.test",
+		"user_id":                           recordID,
+		"primary_email":                     email,
+		"email":                             email,
+		"login":                             email,
+		"status":                            "active",
+		"group_id":                          "group-" + recordID,
+		"group_name":                        familyID + " group",
+		"group_email":                       "group-" + email,
+		"member_id":                         "member-" + recordID,
+		"member_user_id":                    "member-" + recordID,
+		"member_email":                      "member-" + email,
+		"member_name":                       familyID + " member",
+		"member_type":                       "user",
+		"role":                              "member",
+		"actor_id":                          "actor-" + recordID,
+		"actor_email":                       "actor-" + email,
+		"actor_name":                        familyID + " actor",
+		"actor_type":                        "user",
+		"target_id":                         recordID,
+		"target_type":                       familyID,
+		"target_name":                       label,
+		"event_type":                        "updated",
+		"finding_id":                        "finding-" + recordID,
+		"severity":                          "medium",
+		"priority":                          "medium",
+		"risk":                              "medium",
+		"state":                             "open",
+		"resolution":                        "open",
+		"evidence_id":                       "evidence-" + recordID,
+		"evidence_type":                     familyID,
+		"evidence_cas_uri":                  "cas://tenant/" + token,
+		"evidence_cas_digest":               "sha256:" + token,
+		"source_event_id":                   "source-event-" + recordID,
+		"observed_at":                       "2026-06-28T00:00:00Z",
+		"occurred_at":                       "2026-06-28T00:00:00Z",
+		ports.EventAttributeSourceRuntimeID: sourceID + "-runtime",
+		"policy_id":                         "policy-" + recordID,
+		"policy_name":                       familyID + " policy",
+		"policy_type":                       familyID,
+		"deployment_id":                     "deployment-" + recordID,
+		"deployment_name":                   familyID + " deployment",
+		"deployment_environment":            "prod",
+		"deployment_status":                 "ready",
+		"alert_id":                          "alert-" + recordID,
+		"alert_name":                        familyID + " alert",
+		"alert_severity":                    "medium",
+		"alert_status":                      "open",
+		"secret_id":                         "secret-" + recordID,
+		"secret_name":                       familyID + " secret",
+		"secret_type":                       familyID,
+		"tenant_id":                         "tenant",
+		"resource_link_status":              "linked",
+		"case_id":                           "case-" + recordID,
+		"case_link_status":                  "linked",
+		"confidence":                        "0.9",
+		"unresolved_case_context":           "false",
+		"unresolved_resource_context":       "false",
+		"evidence_cas_manifest_version":     "1",
+		"evidence_cas_blocks_count":         "1",
+		"evidence_cas_content_type":         "application/json",
+		"evidence_cas_ref_type":             "object",
+		"evidence_cas_size_bytes":           "128",
+		"evidence_cas_commit_id":            "commit-" + token,
+		"evidence_cas_merkle_root":          "root-" + token,
+		"detector_id":                       sourceID,
+		"trace_id":                          "trace-" + token,
+		"request_id":                        "request-" + token,
+		"verdict":                           "observed",
+	}
+	catalogRuntimeSetSyntheticField(attrs, resource.IDField, recordID)
+	catalogRuntimeSetSyntheticField(attrs, resource.NameField, label)
+	for _, attr := range resource.Event.RequiredAttributes {
+		catalogRuntimeSetSyntheticField(attrs, attr, catalogRuntimeSyntheticFieldValue(attr, recordID, label, familyID, resourceURN, email))
+	}
+	for _, attr := range resource.Event.RequiredPayloadFields {
+		catalogRuntimeSetSyntheticField(attrs, attr, catalogRuntimeSyntheticFieldValue(attr, recordID, label, familyID, resourceURN, email))
+	}
+	if resource.Projection != nil {
+		for target, source := range resource.Projection.Fields {
+			value := catalogRuntimeSyntheticFieldValue(target, recordID, label, familyID, resourceURN, email)
+			catalogRuntimeSetSyntheticField(attrs, target, value)
+			if strings.TrimSpace(source) != "" {
+				catalogRuntimeSetSyntheticField(attrs, source, value)
+			}
+		}
+		if resource.Projection.Entity != nil {
+			catalogRuntimeFillEntitySpec(attrs, *resource.Projection.Entity, recordID, label, familyID, resourceURN, email)
+		}
+		for _, relationship := range resource.Projection.Relationships {
+			for _, attr := range relationship.RequiredAttributes {
+				catalogRuntimeSetSyntheticField(attrs, attr, catalogRuntimeSyntheticFieldValue(attr, recordID, label, familyID, resourceURN, email))
+			}
+			for _, attr := range relationship.LinkAttributes {
+				catalogRuntimeSetSyntheticField(attrs, attr, catalogRuntimeSyntheticFieldValue(attr, recordID, label, familyID, resourceURN, email))
+			}
+			if relationship.From != nil {
+				catalogRuntimeFillEntitySpec(attrs, *relationship.From, recordID, label, familyID, resourceURN, email)
+			}
+			catalogRuntimeFillEntitySpec(attrs, relationship.To, recordID, label, familyID, resourceURN, email)
+		}
+	}
+	return attrs
+}
+
+func catalogRuntimeFillEntitySpec(attrs map[string]string, spec connectordefinitions.ProjectionEntitySpec, recordID string, label string, familyID string, resourceURN string, email string) {
+	for _, attr := range spec.IDAttributes {
+		catalogRuntimeSetSyntheticField(attrs, attr, catalogRuntimeSyntheticFieldValue(attr, recordID, label, familyID, resourceURN, email))
+	}
+	catalogRuntimeSetSyntheticField(attrs, spec.LabelAttribute, label)
+}
+
+func catalogRuntimeSetSyntheticField(attrs map[string]string, key string, value string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	if strings.TrimSpace(value) == "" {
+		value = "value"
+	}
+	attrs[key] = value
+}
+
+func catalogRuntimeSyntheticFieldValue(field string, recordID string, label string, familyID string, resourceURN string, email string) string {
+	key := strings.ToLower(strings.TrimSpace(field))
+	switch {
+	case key == "":
+		return recordID
+	case strings.Contains(key, "urn"):
+		return resourceURN
+	case strings.Contains(key, "email") || strings.Contains(key, "login"):
+		return email
+	case strings.Contains(key, "name") || strings.Contains(key, "title") || strings.Contains(key, "summary") || strings.Contains(key, "description") || strings.Contains(key, "label"):
+		return label
+	case strings.Contains(key, "type"):
+		return familyID
+	case strings.Contains(key, "severity") || strings.Contains(key, "priority") || strings.Contains(key, "risk"):
+		return "medium"
+	case strings.Contains(key, "status") || strings.Contains(key, "state") || strings.Contains(key, "resolution"):
+		return "active"
+	case strings.Contains(key, "time") || strings.Contains(key, "date") || strings.HasSuffix(key, "_at"):
+		return "2026-06-28T00:00:00Z"
+	case strings.Contains(key, "url") || key == "self":
+		return "https://example.test/" + recordID
+	default:
+		return recordID
+	}
+}
+
+func catalogRuntimeSyntheticToken(parts ...string) string {
+	tokens := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		var builder strings.Builder
+		for _, r := range part {
+			switch {
+			case r >= 'a' && r <= 'z':
+				builder.WriteRune(r)
+			case r >= 'A' && r <= 'Z':
+				builder.WriteRune(r + ('a' - 'A'))
+			case r >= '0' && r <= '9':
+				builder.WriteRune(r)
+			default:
+				builder.WriteByte('-')
+			}
+		}
+		token := strings.Trim(builder.String(), "-")
+		if token != "" {
+			tokens = append(tokens, token)
+		}
+	}
+	if len(tokens) == 0 {
+		return "resource"
+	}
+	return strings.Join(tokens, "-")
+}
+
+func catalogRuntimeSyntheticEmail(token string) string {
+	token = catalogRuntimeSyntheticToken(token)
+	token = strings.ReplaceAll(token, "-", ".")
+	return token + "@example.test"
 }
 
 func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {

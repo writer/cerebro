@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-mercury
+    tenant_id: builtin_catalog
+    source_id: mercury
+    display_name: Mercury
+    description: Mercury connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - finance
+    - identity
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.mercury.com
+      verification:
+        method: GET
+        path: "/v1/accounts"
+        expect_status:
+        - 200
+    resource_families:
+    - id: accounts
+      label: Accounts
+      path: "/v1/accounts"
+      method: GET
+      record_selector: "$.accounts[*]"
+      id_field: id
+      event:
+        kind: mercury.accounts
+        schema_ref: mercury/accounts/v1
+      projection:
+        template: asset
+      coverage:
+      - id: accounts
+        type: entity_family
+        title: Accounts
+        families:
+        - accounts
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: transactions
+      label: Transactions
+      path: "/v1/transactions"
+      method: GET
+      record_selector: "$.transactions[*]"
+      id_field: id
+      event:
+        kind: mercury.transactions
+        schema_ref: mercury/transactions/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: transactions
+        type: audit_event
+        title: Transactions
+        families:
+        - transactions
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: mercury.users
+        schema_ref: mercury/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

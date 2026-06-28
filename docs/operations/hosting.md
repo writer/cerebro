@@ -5,6 +5,8 @@ This guide describes how to host the Cerebro bootstrap service using public, env
 Use it with:
 
 - [`README.md`](../../README.md) for the current runtime overview and quick start.
+- [`docs/operations/runtime-profiles.md`](runtime-profiles.md) for profile-specific dependencies, config, and checks.
+- [`docs/operations/deployment-readiness.md`](deployment-readiness.md) for the operator journey and readiness receipt.
 - [`docs/operations/cloud-deployment.md`](cloud-deployment.md) for AWS, GCP, Azure, and Pulumi templates.
 - [`docs/reference/configuration.md`](../reference/configuration.md) for a short configuration baseline.
 - [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for the current environment variable reference.
@@ -35,7 +37,7 @@ By default the service listens on `:8080`. Override that with `CEREBRO_HTTP_ADDR
 
 ## Hosting profiles
 
-Choose the smallest profile that matches the operations you need.
+Choose the smallest profile that matches the operations you need. See [Runtime profiles](runtime-profiles.md) for profile recipes and post-deploy checks.
 
 | Profile | Dependencies | Good for | Not enough for |
 | --- | --- | --- | --- |
@@ -466,6 +468,7 @@ Before first traffic:
 13. Run a low-risk source preview or source runtime check.
 14. Verify logs and metrics reach your observability platform.
 15. Document rollback as image tag revert plus config revert.
+16. Run `cerebro deploy preflight` and store the redacted receipt with deployment records.
 
 During rollout:
 

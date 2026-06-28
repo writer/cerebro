@@ -1,0 +1,217 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: key
+      label: Key
+      required: true
+    description: Taxamo’s elegant suite of APIs and comprehensive reporting dashboard enables digital merchants to easily comply with EU regulatory requirements on tax calculation, evidence collection, tax return creation and data storage.
+    display_name: Taxamo
+    id: builtin_catalog-taxamo
+    resource_families:
+    - coverage:
+      - families:
+        - payment
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: payment
+        support: partial
+        title: Payment
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: taxamo.payment
+        required_payload_fields:
+        - amount
+        schema_ref: taxamo/payment/v1
+        urn_kind: taxamo_payment
+      event_kind: payment
+      id: payment
+      id_field: amount
+      label: Payment
+      list_key: payments
+      method: GET
+      name_field: amount
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/api/v1/transactions/${config.key}/payments"
+      projection:
+        fields:
+          id: amount
+          name: amount
+          resource_id: amount
+          resource_name: amount
+          resource_type: payment
+        template: asset
+      record_selector: "$.payments[*]"
+    - coverage:
+      - families:
+        - refund
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: refund
+        support: partial
+        title: Refund
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: taxamo.refund
+        required_payload_fields:
+        - amount
+        schema_ref: taxamo/refund/v1
+        urn_kind: taxamo_refund
+      event_kind: refund
+      id: refund
+      id_field: amount
+      label: Refund
+      list_key: refunds
+      method: GET
+      name_field: amount
+      pagination:
+        type: none
+      path: "/api/v1/transactions/${config.key}/refunds"
+      projection:
+        fields:
+          id: amount
+          name: amount
+          resource_id: amount
+          resource_name: amount
+          resource_type: refund
+        template: asset
+      record_selector: "$.refunds[*]"
+    - coverage:
+      - families:
+        - transaction
+        id: transaction
+        support: partial
+        title: Transaction
+        type: entity_family
+      event:
+        kind: taxamo.transaction
+        required_payload_fields:
+        - key
+        schema_ref: taxamo/transaction/v1
+        urn_kind: taxamo_transaction
+      event_kind: transaction
+      id: transaction
+      id_field: key
+      label: Transaction
+      list_key: transactions
+      method: GET
+      name_field: description
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/api/v1/transactions"
+      projection:
+        fields:
+          id: key
+          name: description
+          resource_id: key
+          resource_name: description
+          resource_type: transaction
+        template: asset
+      record_selector: "$.transactions[*]"
+      sensitive_payload_paths:
+      - verification_token
+    - coverage:
+      - families:
+        - vy
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: vy
+        support: partial
+        title: Vy
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: taxamo.vy
+        required_payload_fields:
+        - amount
+        schema_ref: taxamo/vy/v1
+        urn_kind: taxamo_vy
+      event_kind: vy
+      id: vy
+      id_field: amount
+      label: Vy
+      list_key: report
+      method: GET
+      name_field: amount
+      pagination:
+        type: none
+      path: "/api/v1/reports/eu/vies"
+      projection:
+        fields:
+          id: amount
+          name: amount
+          resource_id: amount
+          resource_name: amount
+          resource_type: vy
+        template: asset
+      record_selector: "$.report[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - payment
+      id: payment
+      label: Payment
+    - default_enabled: true
+      families:
+      - refund
+      id: refund
+      label: Refund
+    - families:
+      - transaction
+      id: transaction
+      label: Transaction
+    - default_enabled: true
+      families:
+      - vy
+      id: vy
+      label: Vy
+    source_id: taxamo
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.taxamo.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v1/transactions/${config.key}/payments"

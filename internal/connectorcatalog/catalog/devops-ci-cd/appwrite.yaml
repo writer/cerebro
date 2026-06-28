@@ -1,0 +1,221 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: teamid
+      label: Teamid
+      required: true
+    description: Appwrite backend as a service cuts up to 70% of the time and costs required for building a modern application. We abstract and simplify common development tasks behind a REST APIs, to help you develop your app in a fast and secure way. For full API documentation and tutorials go to [https://appwrite.io/docs](https://appwrite.io/docs)
+    display_name: Appwrite
+    id: builtin_catalog-appwrite
+    resource_families:
+    - coverage:
+      - families:
+        - team
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: team
+        support: partial
+        title: Team
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: appwrite.team
+        required_payload_fields:
+        - name
+        schema_ref: appwrite/team/v1
+        urn_kind: appwrite_team
+      event_kind: team
+      id: team
+      id_field: name
+      label: Team
+      list_key: teams
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/teams"
+      permissions_needed:
+      - JWT
+      - Project
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_group
+      record_selector: "$.teams[*]"
+    - coverage:
+      - families:
+        - log
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: appwrite.log
+        required_payload_fields:
+        - clientCode
+        schema_ref: appwrite/log/v1
+        urn_kind: appwrite_log
+      event_kind: log
+      id: log
+      id_field: clientCode
+      label: Log
+      list_key: logs
+      method: GET
+      name_field: clientCode
+      pagination:
+        type: none
+      path: "/account/logs"
+      permissions_needed:
+      - JWT
+      - Project
+      projection:
+        fields:
+          id: clientCode
+          name: clientCode
+          provider_id: clientCode
+        template: audit_event
+      record_selector: "$.logs[*]"
+    - coverage:
+      - families:
+        - membership
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: membership
+        support: partial
+        title: Membership
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: appwrite.membership
+        required_payload_fields:
+        - name
+        schema_ref: appwrite/membership/v1
+        urn_kind: appwrite_membership
+      event_kind: membership
+      id: membership
+      id_field: name
+      label: Membership
+      list_key: memberships
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/teams/${config.teamid}/memberships"
+      permissions_needed:
+      - JWT
+      - Project
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: group_membership
+      record_selector: "$.memberships[*]"
+    - coverage:
+      - families:
+        - continent
+        id: continent
+        support: partial
+        title: Continent
+        type: entity_family
+      event:
+        kind: appwrite.continent
+        required_payload_fields:
+        - name
+        schema_ref: appwrite/continent/v1
+        urn_kind: appwrite_continent
+      event_kind: continent
+      id: continent
+      id_field: name
+      label: Continent
+      list_key: continents
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/locale/continents"
+      permissions_needed:
+      - JWT
+      - Project
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: continent
+        template: asset
+      record_selector: "$.continents[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - team
+      id: team
+      label: Team
+    - default_enabled: true
+      families:
+      - log
+      id: log
+      label: Log
+    - default_enabled: true
+      families:
+      - membership
+      id: membership
+      label: Membership
+    - families:
+      - continent
+      id: continent
+      label: Continent
+    source_id: appwrite
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://appwrite.io/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/teams"

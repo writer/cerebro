@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 EXCLUDED_DIRS = {
     ".git",
     ".idea",
+    ".venv",
     ".vscode",
     "bin",
     "dist",
@@ -29,6 +30,28 @@ EXCLUDED_FILES = {
     "go.sum",
     "scripts/leak_patterns.txt",
 }
+
+PUBLIC_DOC_PREFIXES = (
+    "README.md",
+    "docs/",
+    "deploy/pulumi/",
+)
+
+PUBLIC_DOC_ALLOWED_ACCOUNT_IDS = {
+    "111122223333",
+}
+
+PUBLIC_DOC_FORBIDDEN_MARKERS = tuple(sorted((
+    "WriterInternal",
+    "writerinternal",
+    "sec-dev",
+    "go-prod",
+    "cerebro-sec-dev",
+    "cerebro-go-production",
+    "writer-sec",
+    "adm.prod.writer.com",
+    "prod.writer.com",
+), key=len, reverse=True))
 
 ALLOWED_FIXTURE_EMAIL_DOMAINS = {
     "example.com",
@@ -68,6 +91,7 @@ SENSITIVE_QUERY_KEYS = {
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 URL_RE = re.compile(r"https?://[^\s\"']+")
+ACCOUNT_ID_RE = re.compile(r"\b\d{12}\b")
 NESTED_QUANTIFIER_RE = re.compile(
     r"\((?:\?:)?[^)]*(?:\+|\*|\{\d+(?:,\d*)?\})[^)]*\)(?:\+|\*|\{\d+(?:,\d*)?\})"
 )
@@ -202,6 +226,38 @@ def scan_fixture_semantics(root: Path) -> list[str]:
     return findings
 
 
+def scan_public_doc_infrastructure_markers(root: Path) -> list[str]:
+    findings: list[str] = []
+    for path, rel in iter_files(root):
+        if not is_public_doc_path(rel) or not is_probably_text(path):
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            findings.append(f"{rel}: read failed: {exc}")
+            continue
+        for line_number, line in enumerate(lines, start=1):
+            for marker in PUBLIC_DOC_FORBIDDEN_MARKERS:
+                if marker in line:
+                    findings.append(f"{rel}:{line_number}: public docs must not include deployment marker {redact(marker)}")
+                    break
+            for match in ACCOUNT_ID_RE.finditer(line):
+                account_id = match.group(0)
+                if account_id not in PUBLIC_DOC_ALLOWED_ACCOUNT_IDS:
+                    findings.append(f"{rel}:{line_number}: public docs must not include account id {redact(account_id)}")
+    return findings
+
+
+def is_public_doc_path(rel: str) -> bool:
+    for prefix in PUBLIC_DOC_PREFIXES:
+        if prefix.endswith("/"):
+            if rel.startswith(prefix):
+                return True
+        elif rel == prefix:
+            return True
+    return False
+
+
 def walk_json_strings(value, prefix: str = "$"):
     if isinstance(value, dict):
         for key, item in value.items():
@@ -276,6 +332,7 @@ def main() -> int:
     else:
         print("oss-audit: no leak patterns configured", file=sys.stderr)
     findings.extend(scan_fixture_semantics(root))
+    findings.extend(scan_public_doc_infrastructure_markers(root))
     if findings:
         print("oss-audit: public hygiene findings detected", file=sys.stderr)
         for finding in findings:

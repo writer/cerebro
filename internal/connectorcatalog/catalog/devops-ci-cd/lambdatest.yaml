@@ -1,0 +1,203 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: test_id
+      label: Test Id
+      required: true
+    description: Generated from an OpenAPI description.
+    display_name: LambdaTest
+    id: builtin_catalog-lambdatest
+    resource_families:
+    - coverage:
+      - families:
+        - profile
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Profile
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: lambdatest.profile
+        required_payload_fields:
+        - name
+        schema_ref: lambdatest/profile/v1
+        urn_kind: lambdatest_profile
+      event_kind: profile
+      id: profile
+      id_field: name
+      label: Profile
+      list_key: profiles
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/profiles"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$.profiles[*]"
+    - coverage:
+      - families:
+        - resolution
+        id: resolution
+        support: partial
+        title: Resolution
+        type: entity_family
+      event:
+        kind: lambdatest.resolution
+        required_payload_fields:
+        - id
+        schema_ref: lambdatest/resolution/v1
+        urn_kind: lambdatest_resolution
+      event_kind: resolution
+      id: resolution
+      id_field: id
+      label: Resolution
+      list_key: mac_res
+      method: GET
+      pagination:
+        type: none
+      path: "/resolutions"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: resolution
+        template: asset
+      record_selector: "$.mac_res[*]"
+    - coverage:
+      - families:
+        - location
+        id: location
+        support: partial
+        title: Location
+        type: entity_family
+      event:
+        kind: lambdatest.location
+        required_payload_fields:
+        - name
+        schema_ref: lambdatest/location/v1
+        urn_kind: lambdatest_location
+      event_kind: location
+      id: location
+      id_field: name
+      label: Location
+      list_key: locations
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/locations"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: location
+        template: asset
+      record_selector: "$.locations[*]"
+    - coverage:
+      - families:
+        - resource
+        id: resource
+        support: partial
+        title: Resource
+        type: entity_family
+      event:
+        kind: lambdatest.resource
+        required_payload_fields:
+        - activity_id
+        schema_ref: lambdatest/resource/v1
+        urn_kind: lambdatest_resource
+      event_kind: resource
+      id: resource
+      id_field: activity_id
+      label: Resource
+      list_key: screenshots
+      method: GET
+      name_field: activity_id
+      pagination:
+        type: none
+      path: "/${config.test_id}"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: activity_id
+          name: activity_id
+          resource_id: activity_id
+          resource_name: activity_id
+          resource_type: resource
+        template: asset
+      record_selector: "$.screenshots[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - profile
+      id: profile
+      label: Profile
+    - families:
+      - resolution
+      id: resolution
+      label: Resolution
+    - families:
+      - location
+      id: location
+      label: Location
+    - families:
+      - resource
+      id: resource
+      label: Resource
+    source_id: lambdatest
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.lambdatest.com/screenshots/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/profiles"

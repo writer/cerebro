@@ -1,0 +1,235 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    description: Twitter API v2 available endpoints
+    display_name: Twitter
+    id: builtin_catalog-twitter
+    resource_families:
+    - coverage:
+      - families:
+        - list_membership
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: list_membership
+        support: partial
+        title: List Membership
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: twitter.list_membership
+        required_payload_fields:
+        - id
+        schema_ref: twitter/list_membership/v1
+        urn_kind: twitter_list_membership
+      event_kind: list_membership
+      id: list_membership
+      id_field: id
+      label: List Membership
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: max_results
+        type: page
+      path: "/2/users/${config.id}/list_memberships"
+      permissions_needed:
+      - BearerToken
+      - UserToken
+      - list.read
+      - tweet.read
+      - users.read
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: group_membership
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - member
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: member
+        support: partial
+        title: Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: twitter.member
+        required_payload_fields:
+        - id
+        schema_ref: twitter/member/v1
+        urn_kind: twitter_member
+      event_kind: member
+      id: member
+      id_field: id
+      label: Member
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: max_results
+        type: page
+      path: "/2/lists/${config.id}/members"
+      permissions_needed:
+      - BearerToken
+      - UserToken
+      - list.read
+      - tweet.read
+      - users.read
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - job
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Job
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: twitter.job
+        required_payload_fields:
+        - id
+        schema_ref: twitter/job/v1
+        urn_kind: twitter_job
+      event_kind: job
+      id: job
+      id_field: id
+      label: Job
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/2/compliance/jobs"
+      permissions_needed:
+      - BearerToken
+      projection:
+        fields:
+          id: id
+          name: name
+          policy_id: id
+          policy_name: name
+          policy_type: job
+        template: policy
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - dm_event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Dm Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: twitter.dm_event
+        required_payload_fields:
+        - id
+        schema_ref: twitter/dm_event/v1
+        urn_kind: twitter_dm_event
+      event_kind: dm_event
+      id: dm_event
+      id_field: id
+      label: Dm Event
+      list_key: data
+      method: GET
+      name_field: attachments
+      pagination:
+        page_size: 100
+        page_size_param: max_results
+        type: page
+      path: "/2/dm_events"
+      permissions_needed:
+      - UserToken
+      - dm.read
+      - tweet.read
+      - users.read
+      projection:
+        fields:
+          id: id
+          name: attachments
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - list_membership
+      id: list_membership
+      label: List Membership
+    - default_enabled: true
+      families:
+      - member
+      id: member
+      label: Member
+    - default_enabled: true
+      families:
+      - job
+      id: job
+      label: Job
+    - default_enabled: true
+      families:
+      - dm_event
+      id: dm_event
+      label: Dm Event
+    source_id: twitter
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.twitter.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/2/users/${config.id}/list_memberships"

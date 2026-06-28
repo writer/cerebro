@@ -1,0 +1,228 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - key: api_base_url
+      label: API base URL
+      placeholder: api.example.com
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: ip_address
+      label: Ip Address
+      required: true
+    description: The public API open to the users. [Read the docs and learn more.](https://threatjammer.com/docs).
+    display_name: ThreatJammer
+    id: builtin_catalog-threatjammer
+    resource_families:
+    - coverage:
+      - families:
+        - activity
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Activity
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: threatjammer.activity
+        required_payload_fields:
+        - self
+        schema_ref: threatjammer/activity/v1
+        urn_kind: threatjammer_activity
+      event_kind: activity
+      id: activity
+      id_field: self
+      label: Activity
+      list_key: activities
+      method: GET
+      name_field: description
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: page_size
+        start_page: 1
+        type: page
+      path: "/v1/token/activity"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: self
+          name: description
+          provider_id: self
+        template: audit_event
+      record_selector: "$.activities[*]"
+    - coverage:
+      - families:
+        - all
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: all
+        support: partial
+        title: All
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: threatjammer.all
+        required_payload_fields:
+        - self
+        schema_ref: threatjammer/all/v1
+        urn_kind: threatjammer_all
+      event_kind: all
+      id: all
+      id_field: self
+      label: All
+      list_key: tokens
+      method: GET
+      name_field: self
+      pagination:
+        type: none
+      path: "/v1/origin_token/all"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: self
+          name: self
+          resource_id: self
+          resource_name: self
+          resource_type: all
+        template: asset
+      record_selector: "$.tokens[*]"
+    - coverage:
+      - families:
+        - ip
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+        id: findings
+        support: partial
+        title: Ip
+        type: remediation_state
+      default_enabled: true
+      event:
+        kind: threatjammer.ip
+        required_payload_fields:
+        - id
+        schema_ref: threatjammer/ip/v1
+        urn_kind: threatjammer_ip
+      event_kind: ip
+      id: ip
+      id_field: id
+      label: Ip
+      list_key: datasets
+      method: GET
+      pagination:
+        type: none
+      path: "/v1/assess/ip/${config.ip_address}"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          finding_id: id
+          id: id
+          title: id
+        template: finding
+      record_selector: "$.datasets[*]"
+    - coverage:
+      - families:
+        - reported_ip
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: reported_ip
+        support: partial
+        title: Reported Ip
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: threatjammer.reported_ip
+        required_payload_fields:
+        - self
+        schema_ref: threatjammer/reported_ip/v1
+        urn_kind: threatjammer_reported_ip
+      event_kind: reported_ip
+      id: reported_ip
+      id_field: self
+      label: Reported Ip
+      list_key: addresses
+      method: GET
+      name_field: self
+      pagination:
+        type: none
+      path: "/v1/denylist/reported/ip"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: self
+          name: self
+          resource_id: self
+          resource_name: self
+          resource_type: ip
+        template: asset
+      record_selector: "$.addresses[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - activity
+      id: activity
+      label: Activity
+    - default_enabled: true
+      families:
+      - all
+      id: all
+      label: All
+    - default_enabled: true
+      families:
+      - ip
+      id: ip
+      label: Ip
+    - default_enabled: true
+      families:
+      - reported_ip
+      id: reported_ip
+      label: Reported Ip
+    source_id: threatjammer
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://${config.api_base_url}
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/token/activity"

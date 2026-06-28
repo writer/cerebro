@@ -1,0 +1,549 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: webid
+      label: Webid
+      required: true
+    description: Swagger Spec file that describes PI Web API
+    display_name: PI Web API 2018 SP1 Swagger Spec
+    id: builtin_catalog-osisoft_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - search
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Search
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.search
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/search/v1
+        urn_kind: osisoft_search
+      event_kind: search
+      id: search
+      id_field: Id
+      label: Search
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/eventframes/search"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - securityidentity
+        high_value: true
+        id: securityidentity
+        support: partial
+        title: Securityidentity
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: osisoft_com.securityidentity
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/securityidentity/v1
+        urn_kind: osisoft_securityidentity
+      event_kind: securityidentity
+      id: securityidentity
+      id_field: Id
+      label: Securityidentity
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetservers/${config.webid}/securityidentities"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: identity_user
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notificationcontacttemplates_search
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notificationcontacttemplates Search
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: osisoft_com.notificationcontacttemplates_search
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/notificationcontacttemplates_search/v1
+        urn_kind: osisoft_notificationcontacttemplates_search
+      event_kind: notificationcontacttemplates_search
+      id: notificationcontacttemplates_search
+      id_field: Id
+      label: Notificationcontacttemplates Search
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/notificationcontacttemplates/search"
+      projection:
+        fields:
+          alert_id: Id
+          alert_name: Name
+          alert_severity: Available
+          alert_status: Available
+          id: Id
+          name: Name
+        template: alert
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - analysisruleplugin
+        high_value: true
+        id: policies
+        support: partial
+        title: Analysisruleplugin
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: osisoft_com.analysisruleplugin
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/analysisruleplugin/v1
+        urn_kind: osisoft_analysisruleplugin
+      event_kind: analysisruleplugin
+      id: analysisruleplugin
+      id_field: Id
+      label: Analysisruleplugin
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetservers/${config.webid}/analysisruleplugins"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          policy_id: Id
+          policy_name: Name
+          policy_type: analysisruleplugin
+        template: policy
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - remediation
+        evidence_types:
+        - remediation_state
+        families:
+        - baseelementtemplate
+        high_value: true
+        id: findings
+        support: partial
+        title: Baseelementtemplate
+        type: remediation_state
+      default_enabled: true
+      event:
+        kind: osisoft_com.baseelementtemplate
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/baseelementtemplate/v1
+        urn_kind: osisoft_baseelementtemplate
+      event_kind: baseelementtemplate
+      id: baseelementtemplate
+      id_field: Id
+      label: Baseelementtemplate
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/elementtemplates/${config.webid}/baseelementtemplates"
+      projection:
+        fields:
+          finding_id: Id
+          id: Id
+          name: Name
+          severity: Severity
+          status: AllowElementToExtend
+          title: Name
+        template: finding
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - assetserver
+        high_value: true
+        id: assetserver
+        support: partial
+        title: Assetserver
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: osisoft_com.assetserver
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/assetserver/v1
+        urn_kind: osisoft_assetserver
+      event_kind: assetserver
+      id: assetserver
+      id_field: Id
+      label: Assetserver
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetservers"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          resource_id: Id
+          resource_name: Name
+          resource_type: assetserver
+        template: asset
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - elementtemplate
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Elementtemplate
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.elementtemplate
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/elementtemplate/v1
+        urn_kind: osisoft_elementtemplate
+      event_kind: elementtemplate
+      id: elementtemplate
+      id_field: Id
+      label: Elementtemplate
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetdatabases/${config.webid}/elementtemplates"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - eventframe
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Eventframe
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.eventframe
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/eventframe/v1
+        urn_kind: osisoft_eventframe
+      event_kind: eventframe
+      id: eventframe
+      id_field: Id
+      label: Eventframe
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetdatabases/${config.webid}/eventframes"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - elements_eventframe
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Elements Eventframe
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.elements_eventframe
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/elements_eventframe/v1
+        urn_kind: osisoft_elements_eventframe
+      event_kind: elements_eventframe
+      id: elements_eventframe
+      id_field: Id
+      label: Elements Eventframe
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/elements/${config.webid}/eventframes"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - eventframes_eventframe
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Eventframes Eventframe
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.eventframes_eventframe
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/eventframes_eventframe/v1
+        urn_kind: osisoft_eventframes_eventframe
+      event_kind: eventframes_eventframe
+      id: eventframes_eventframe
+      id_field: Id
+      label: Eventframes Eventframe
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/eventframes/${config.webid}/eventframes"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - eventframeattribute
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Eventframeattribute
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.eventframeattribute
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/eventframeattribute/v1
+        urn_kind: osisoft_eventframeattribute
+      event_kind: eventframeattribute
+      id: eventframeattribute
+      id_field: Id
+      label: Eventframeattribute
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/assetdatabases/${config.webid}/eventframeattributes"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - eventframes_eventframeattribute
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Eventframes Eventframeattribute
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: osisoft_com.eventframes_eventframeattribute
+        required_payload_fields:
+        - Id
+        schema_ref: osisoft_com/eventframes_eventframeattribute/v1
+        urn_kind: osisoft_eventframes_eventframeattribute
+      event_kind: eventframes_eventframeattribute
+      id: eventframes_eventframeattribute
+      id_field: Id
+      label: Eventframes Eventframeattribute
+      list_key: Items
+      method: GET
+      name_field: Name
+      pagination:
+        type: none
+      path: "/eventframes/${config.webid}/eventframeattributes"
+      projection:
+        fields:
+          id: Id
+          name: Name
+          provider_id: Id
+        template: audit_event
+      record_selector: "$.Items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - search
+      id: search
+      label: Search
+    - default_enabled: true
+      families:
+      - securityidentity
+      id: securityidentity
+      label: Securityidentity
+    - default_enabled: true
+      families:
+      - notificationcontacttemplates_search
+      id: notificationcontacttemplates_search
+      label: Notificationcontacttemplates Search
+    - default_enabled: true
+      families:
+      - analysisruleplugin
+      id: analysisruleplugin
+      label: Analysisruleplugin
+    - default_enabled: true
+      families:
+      - baseelementtemplate
+      id: baseelementtemplate
+      label: Baseelementtemplate
+    - default_enabled: true
+      families:
+      - assetserver
+      id: assetserver
+      label: Assetserver
+    - default_enabled: true
+      families:
+      - elementtemplate
+      id: elementtemplate
+      label: Elementtemplate
+    - default_enabled: true
+      families:
+      - eventframe
+      id: eventframe
+      label: Eventframe
+    - default_enabled: true
+      families:
+      - elements_eventframe
+      id: elements_eventframe
+      label: Elements Eventframe
+    - default_enabled: true
+      families:
+      - eventframes_eventframe
+      id: eventframes_eventframe
+      label: Eventframes Eventframe
+    - default_enabled: true
+      families:
+      - eventframeattribute
+      id: eventframeattribute
+      label: Eventframeattribute
+    - default_enabled: true
+      families:
+      - eventframes_eventframeattribute
+      id: eventframes_eventframeattribute
+      label: Eventframes Eventframeattribute
+    source_id: osisoft_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://devdata.osisoft.com/piwebapi
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/eventframes/search"

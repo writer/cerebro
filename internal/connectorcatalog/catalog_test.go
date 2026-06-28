@@ -9,6 +9,8 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
+const wantBuiltinCatalogEntries = 578
+
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogFile(t, root, `
@@ -110,7 +112,7 @@ entries:
 	}
 	for _, want := range []string{
 		"verification endpoint is required",
-		"definition must include 2-4 high-value resource families",
+		"definition must include 2-12 high-value resource families",
 		`resource family "users" must declare coverage dimensions`,
 		"at least one high-value coverage dimension is required",
 	} {
@@ -165,13 +167,13 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Issues) != 0 {
 		t.Fatalf("issues = %#v, want none", analysis.Issues)
 	}
-	if analysis.Summary.Total != 207 {
-		t.Fatalf("summary total = %d, want 207", analysis.Summary.Total)
+	if analysis.Summary.Total != wantBuiltinCatalogEntries {
+		t.Fatalf("summary total = %d, want %d", analysis.Summary.Total, wantBuiltinCatalogEntries)
 	}
-	if len(analysis.Entries) != 207 {
-		t.Fatalf("entries len = %d, want 207", len(analysis.Entries))
+	if len(analysis.Entries) != wantBuiltinCatalogEntries {
+		t.Fatalf("entries len = %d, want %d", len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.Generateable != 207 {
+	if analysis.Summary.Generateable != wantBuiltinCatalogEntries {
 		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {
@@ -198,10 +200,10 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
 	}
-	if analysis.Summary.Total != 207 || len(analysis.Entries) != 207 {
-		t.Fatalf("runtime catalog size = total %d entries %d, want 207", analysis.Summary.Total, len(analysis.Entries))
+	if analysis.Summary.Total != wantBuiltinCatalogEntries || len(analysis.Entries) != wantBuiltinCatalogEntries {
+		t.Fatalf("runtime catalog size = total %d entries %d, want %d", analysis.Summary.Total, len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.CatalogReady != 207 || analysis.Summary.Generateable != 0 {
+	if analysis.Summary.CatalogReady != wantBuiltinCatalogEntries || analysis.Summary.Generateable != 0 {
 		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
 	}
 	for _, entry := range analysis.Entries {

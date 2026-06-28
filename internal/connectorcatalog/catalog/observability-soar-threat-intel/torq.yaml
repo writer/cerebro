@@ -1,0 +1,116 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-torq
+    tenant_id: builtin_catalog
+    source_id: torq
+    display_name: Torq
+    description: Torq connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - soar
+    - security
+    auth:
+      model: oauth_client_credentials
+      token_url: https://api.torq.io/oauth/token
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.torq.io
+      verification:
+        method: GET
+        path: "/v1/users/me"
+        expect_status:
+        - 200
+    resource_families:
+    - id: audit_events
+      label: Workflow events
+      path: "/v1/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: torq.audit_events
+        schema_ref: torq/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Workflow events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: findings
+      label: Cases
+      path: "/v1/cases"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: torq.findings
+        schema_ref: torq/findings/v1
+      projection:
+        template: finding
+      coverage:
+      - id: findings
+        type: remediation_state
+        title: Cases
+        families:
+        - findings
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: assets
+      label: Assets
+      path: "/v1/assets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: torq.assets
+        schema_ref: torq/assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: assets
+        type: entity_family
+        title: Assets
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

@@ -2,6 +2,8 @@
 
 These Pulumi templates deploy the public Cerebro runtime on AWS, Google Cloud, or Azure using environment-agnostic defaults. They intentionally use placeholder names and caller-owned configuration only. Do not put live account IDs, hostnames, tenant names, source schedules, provider tokens, or secret values in this directory.
 
+Use these templates with [`docs/operations/runtime-profiles.md`](../../docs/operations/runtime-profiles.md) and [`docs/operations/deployment-readiness.md`](../../docs/operations/deployment-readiness.md). The templates wire the API service and scheduled job runners; the deployment environment owns backing stores, schedules, secret paths, approval gates, and rollback records.
+
 The stack entrypoint creates one reusable `CerebroService` component. That component chooses a provider-specific child component from the shared `cerebro:cloud` config:
 
 - AWS: ECS Fargate service behind an Application Load Balancer, with optional ACM HTTPS, private subnets, NAT, and EventBridge Scheduler jobs.

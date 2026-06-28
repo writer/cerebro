@@ -1,0 +1,150 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-snowflake
+    tenant_id: builtin_catalog
+    source_id: snowflake
+    display_name: Snowflake
+    description: Snowflake connector definition catalog entry for high-value security and operations resources.
+    categories:
+    - data
+    - warehouse
+    config_fields:
+    - key: account
+      label: Account
+      required: true
+    auth:
+      model: oauth_client_credentials
+      token_url: https://${config.account}.snowflakecomputing.com/oauth/token
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.account}.snowflakecomputing.com
+      verification:
+        method: GET
+        path: "/api/v2/databases"
+        expect_status:
+        - 200
+    resource_families:
+    - id: assets
+      label: Data assets
+      path: "/v1/assets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: snowflake.assets
+        schema_ref: snowflake/assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: assets
+        type: entity_family
+        title: Data assets
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: cortex_search_services
+      label: Cortex search services
+      path: "/v1/cortex/search/services"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: name
+      name_field: name
+      event:
+        kind: snowflake.cortex_search_services
+        schema_ref: snowflake/cortex_search_services/v1
+      projection:
+        template: asset
+      coverage:
+      - id: cortex_search_services
+        type: entity_family
+        title: Cortex search services
+        families:
+        - cortex_search_services
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: snowflake.audit_events
+        schema_ref: snowflake/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: vulnerabilities
+      label: Vulnerabilities
+      path: "/v1/vulnerabilities"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: snowflake.vulnerabilities
+        schema_ref: snowflake/vulnerabilities/v1
+      projection:
+        template: vulnerability
+      coverage:
+      - id: vulnerabilities
+        type: remediation_state
+        title: Vulnerabilities
+        families:
+        - vulnerabilities
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

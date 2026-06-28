@@ -1,0 +1,222 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: userusername
+      label: Userusername
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: groupid
+      label: Groupid
+      required: true
+    description: See https://developers.facebook.com/docs/whatsapp
+    display_name: WhatsApp Business
+    id: builtin_catalog-whatsapp
+    resource_families:
+    - coverage:
+      - families:
+        - group
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: whatsapp.group
+        required_payload_fields:
+        - code
+        schema_ref: whatsapp/group/v1
+        urn_kind: whatsapp_group
+      event_kind: group
+      id: group
+      id_field: code
+      label: Group
+      list_key: errors
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/groups"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: code
+          name: title
+          provider_id: code
+        template: identity_group
+      record_selector: "$.errors[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: whatsapp.user
+        required_payload_fields:
+        - code
+        schema_ref: whatsapp/user/v1
+        urn_kind: whatsapp_user
+      event_kind: user
+      id: user
+      id_field: code
+      label: User
+      list_key: errors
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/users/${config.userusername}"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: code
+          name: title
+          provider_id: code
+        template: identity_user
+      record_selector: "$.errors[*]"
+    - coverage:
+      - families:
+        - invite
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: invite
+        support: partial
+        title: Invite
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: whatsapp.invite
+        required_payload_fields:
+        - code
+        schema_ref: whatsapp/invite/v1
+        urn_kind: whatsapp_invite
+      event_kind: invite
+      id: invite
+      id_field: code
+      label: Invite
+      list_key: errors
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/groups/${config.groupid}/invite"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: code
+          name: title
+          resource_id: code
+          resource_name: title
+          resource_type: invite
+        template: asset
+      record_selector: "$.errors[*]"
+    - coverage:
+      - families:
+        - group_2
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: group_2
+        support: partial
+        title: Group 2
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: whatsapp.group_2
+        required_payload_fields:
+        - code
+        schema_ref: whatsapp/group_2/v1
+        urn_kind: whatsapp_group_2
+      event_kind: group_2
+      id: group_2
+      id_field: code
+      label: Group 2
+      list_key: errors
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/groups/${config.groupid}"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: code
+          name: title
+          provider_id: code
+        template: identity_group
+      record_selector: "$.errors[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - invite
+      id: invite
+      label: Invite
+    - default_enabled: true
+      families:
+      - group_2
+      id: group_2
+      label: Group 2
+    source_id: whatsapp
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://whatsapp.local
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/groups"
