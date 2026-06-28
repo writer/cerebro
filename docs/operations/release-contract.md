@@ -6,6 +6,8 @@ Use it with:
 
 - [`README.md`](../../README.md) "Release and deploy artifacts".
 - [`docs/operations/hosting.md`](hosting.md) for how to run the image.
+- [`docs/operations/runtime-profiles.md`](runtime-profiles.md) for profile-specific dependencies, config, and checks.
+- [`docs/operations/deployment-readiness.md`](deployment-readiness.md) for rollout gates and preflight receipts.
 - [`docs/domains/source-runtime-guide.md`](../domains/source-runtime-guide.md) for source runtime manifests.
 - [`tools/sourcedeploy`](../../tools/sourcedeploy) for contract rendering code.
 
@@ -115,6 +117,12 @@ Top-level shape:
   "environment": "<environment>",
   "tenant_id": "<tenant-id>",
   "required_secrets": ["PROVIDER_API_TOKEN"],
+  "runtime_profiles": [],
+  "required_env_vars": [],
+  "required_backing_services": [],
+  "optional_capabilities": [],
+  "post_deploy_health_checks": [],
+  "compatibility_notes": [],
   "sources": []
 }
 ```
@@ -128,7 +136,29 @@ Top-level fields:
 | `environment` | caller-supplied environment label |
 | `tenant_id` | caller-supplied tenant identifier |
 | `required_secrets` | union of source runtime secret env vars needed by rendered manifests |
+| `runtime_profiles` | portable profiles and their backing-service requirements |
+| `required_env_vars` | conditional environment variable names needed by hosted deployments |
+| `required_backing_services` | Postgres, JetStream, Neo4j/Aura, or other services required by runtime capabilities |
+| `optional_capabilities` | config gates, dependencies, and health checks for optional surfaces |
+| `post_deploy_health_checks` | public-safe commands or probes deployment automation should run after rollout |
+| `compatibility_notes` | deployment compatibility and source-of-truth notes for contract consumers |
 | `sources` | per-source capability and runtime metadata |
+
+Environment variable entries:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | environment variable name |
+| `required_for` | profile or capability that needs the variable |
+| `secret` | whether the value must stay in a secret manager or orchestrator secret |
+
+Backing-service entries:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | service identifier such as `postgres`, `nats-jetstream`, or `neo4j` |
+| `required_for` | runtime behavior that depends on the service |
+| `config_vars` | environment variable names that wire the service |
 
 Per-source fields:
 
