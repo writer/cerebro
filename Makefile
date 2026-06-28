@@ -319,7 +319,7 @@ connector-catalog-fidelity-check: ## Verify deterministic connector catalog fide
 	go run ./tools/connectorcatalogfidelity -check -json-out "$(CONNECTOR_CATALOG_FIDELITY_JSON)"
 
 connector-catalog-review: ## Generate connector catalog cleanup, promotion, and Q&A review artifacts.
-	go run ./tools/connectorcatalogreview -markdown-out "$(CONNECTOR_CATALOG_REVIEW_MD)" -json-out "$(CONNECTOR_CATALOG_REVIEW_JSON)" -max-items "$(CONNECTOR_CATALOG_REVIEW_MAX_ITEMS)"
+	go run ./tools/connectorcatalogreview -runtime-depth-required -markdown-out "$(CONNECTOR_CATALOG_REVIEW_MD)" -json-out "$(CONNECTOR_CATALOG_REVIEW_JSON)" -max-items "$(CONNECTOR_CATALOG_REVIEW_MAX_ITEMS)"
 
 connector-catalog-maintenance: catalog-check sourcegen-check connector-catalog-fidelity-check connector-catalog-review ## Validate connector catalog state and publish maintenance review artifacts.
 
