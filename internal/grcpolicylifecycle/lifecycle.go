@@ -1974,7 +1974,12 @@ func grcPolicyRiskOpen(status string) bool {
 	if normalized == "" {
 		return false
 	}
-	return !grcPolicyAcceptedStatus(normalized) && !grcPolicyClosedStatus(normalized) && normalized != "resolved"
+	switch normalized {
+	case "resolved", "mitigated", "remediated", "transferred", "treated":
+		return false
+	default:
+		return !grcPolicyAcceptedStatus(normalized) && !grcPolicyClosedStatus(normalized)
+	}
 }
 
 func grcPolicyHighRisk(values ...string) bool {

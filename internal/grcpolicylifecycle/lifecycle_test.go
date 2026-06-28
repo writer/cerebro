@@ -233,6 +233,9 @@ func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 		{ID: "acknowledged-high", Status: "acknowledged", ResidualRisk: "high"},
 		{ID: "expired-high", Status: "expired", ResidualRisk: "high"},
 		{ID: "rejected-high", Status: "rejected", ResidualRisk: "high"},
+		{ID: "mitigated-high", Status: "mitigated", ResidualRisk: "high"},
+		{ID: "remediated-high", Status: "remediated", ResidualRisk: "high"},
+		{ID: "transferred-high", Status: "transferred", ResidualRisk: "high"},
 		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
 	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
