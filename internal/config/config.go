@@ -58,6 +58,7 @@ type Config struct {
 	ConnectorSecretStores ConnectorSecretStoreConfig
 	ConnectorAccess       ConnectorAccessConfig
 	GraphActions          GraphActionsConfig
+	DocumentParsing       DocumentParsingConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
 }
@@ -158,6 +159,19 @@ type ConnectorAccessConfig struct {
 // GraphActionsConfig configures graph action executors.
 type GraphActionsConfig struct {
 	AccessApprovals AccessApprovalsActionConfig
+}
+
+// DocumentParsingConfig configures document parsing providers used by GRC
+// upload surfaces.
+type DocumentParsingConfig struct {
+	Reducto ReductoConfig
+}
+
+// ReductoConfig points Cerebro at the Reducto document parsing API.
+type ReductoConfig struct {
+	APIKey  string
+	BaseURL string
+	Timeout time.Duration
 }
 
 // AccessApprovalsActionConfig points Cerebro at the access-approvals action executor.
@@ -392,6 +406,13 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	reductoAPIKey, err := readConfigValue("CEREBRO_REDUCTO_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	if strings.TrimSpace(reductoAPIKey) == "" {
+		reductoAPIKey = strings.TrimSpace(os.Getenv("REDUCTO_API_KEY"))
+	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err
@@ -462,6 +483,12 @@ func Load() (Config, error) {
 			AccessApprovals: AccessApprovalsActionConfig{
 				BaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL")), "/"),
 				BearerToken: graphActionsAccessApprovalsToken,
+			},
+		},
+		DocumentParsing: DocumentParsingConfig{
+			Reducto: ReductoConfig{
+				APIKey:  reductoAPIKey,
+				BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_REDUCTO_BASE_URL")), "/"),
 			},
 		},
 		OTEL: OpenTelemetryConfig{
@@ -617,6 +644,12 @@ func Load() (Config, error) {
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout, err = parseDurationEnv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
+	}
+	if cfg.DocumentParsing.Reducto.Timeout, err = parseDurationEnv("CEREBRO_REDUCTO_TIMEOUT", 30*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.DocumentParsing.Reducto.Timeout <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_REDUCTO_TIMEOUT must be greater than zero")
 	}
 	if cfg.Cache.DefaultTTL, err = parseDurationEnv("CEREBRO_CACHE_DEFAULT_TTL", 30*time.Second); err != nil {
 		return Config{}, err

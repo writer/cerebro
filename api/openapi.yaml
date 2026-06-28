@@ -2162,6 +2162,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GRCPolicyLifecycleActionResponse'
+  /grc/policy-lifecycle/uploads:
+    post:
+      summary: Upload a policy document
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                tenant_id:
+                  type: string
+                policy_id:
+                  type: string
+                title:
+                  type: string
+                document_title:
+                  type: string
+                status:
+                  type: string
+                owner_id:
+                  type: string
+                document_type:
+                  type: string
+                next_review_due_at:
+                  type: string
+      responses:
+        '202':
+          description: Accepted policy and document upload events after Reducto parsing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCUploadResponse'
+        '400':
+          description: Invalid upload form or file.
+        '502':
+          description: Reducto parsing request failed.
+        '503':
+          description: Upload dependencies are unavailable.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -2915,6 +2965,56 @@ paths:
       responses:
         '200':
           description: Canonical vendor rows with lifecycle, explainable risk scoring, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, owner, security review, freshness, renewal, offboarding, queue, contract, assurance, finding, and evidence counts.
+  /grc/vendors/uploads:
+    post:
+      summary: Upload a vendor document
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                tenant_id:
+                  type: string
+                vendor_id:
+                  type: string
+                vendor_name:
+                  type: string
+                document_title:
+                  type: string
+                document_type:
+                  type: string
+                status:
+                  type: string
+                risk_level:
+                  type: string
+                website_url:
+                  type: string
+      responses:
+        '202':
+          description: Accepted vendor and assurance-document upload events after Reducto parsing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCUploadResponse'
+        '400':
+          description: Invalid upload form or file.
+        '502':
+          description: Reducto parsing request failed.
+        '503':
+          description: Upload dependencies are unavailable.
   /grc/vendors/{vendorID}:
     get:
       summary: Vendor detail
@@ -9055,6 +9155,50 @@ components:
           type: object
           additionalProperties:
             type: string
+        generated_at:
+          type: string
+          format: date-time
+    GRCUploadEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+        event_kind:
+          type: string
+        schema_ref:
+          type: string
+        record_id:
+          type: string
+        record_urn:
+          type: string
+    GRCUploadResponse:
+      type: object
+      properties:
+        upload_id:
+          type: string
+        target:
+          type: string
+          enum: [policy, vendor]
+        file_name:
+          type: string
+        content_type:
+          type: string
+        reducto_file_id:
+          type: string
+        reducto_parse_id:
+          type: string
+        parse_status:
+          type: string
+        text_preview:
+          type: string
+        chunk_count:
+          type: integer
+        page_count:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadEvent'
         generated_at:
           type: string
           format: date-time
