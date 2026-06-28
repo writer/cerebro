@@ -81,5 +81,28 @@ class WafOAuthLoopbackAllowRuleTest(unittest.TestCase):
             self.assertIn(expected, encoded)
 
 
+class WafManagedRuleOverridesTest(unittest.TestCase):
+    def test_common_rule_body_size_restriction_counts_large_json_batches(self) -> None:
+        captured: dict[str, list] = {}
+
+        def fake_web_acl(*_args, **kwargs):
+            captured["rules"] = kwargs["rules"]
+            return SimpleNamespace(arn="web-acl-arn")
+
+        with (
+            patch.object(waf.aws.wafv2, "WebAcl", side_effect=fake_web_acl),
+            patch.object(waf.aws.wafv2, "WebAclAssociation", return_value=SimpleNamespace(arn="association-arn")),
+        ):
+            waf.create_waf("cerebro-test", alb_arn="alb-arn", enable_logging=False)
+
+        common_rule = next(rule for rule in captured["rules"] if rule.name == "aws-common-rules")
+        encoded = json.dumps(_to_data(common_rule), sort_keys=True)
+
+        self.assertIn("AWSManagedRulesCommonRuleSet", encoded)
+        self.assertIn("SizeRestrictions_BODY", encoded)
+        self.assertIn("count", encoded)
+        self.assertNotIn("allow-source-runtime-writes", encoded)
+
+
 if __name__ == "__main__":
     unittest.main()
