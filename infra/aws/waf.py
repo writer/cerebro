@@ -184,6 +184,15 @@ def _mcp_oauth_loopback_allow_rules() -> list[aws.wafv2.WebAclRuleArgs]:
     return rules
 
 
+def _count_rule_override(rule_name: str) -> aws.wafv2.WebAclRuleStatementManagedRuleGroupStatementRuleActionOverrideArgs:
+    return aws.wafv2.WebAclRuleStatementManagedRuleGroupStatementRuleActionOverrideArgs(
+        name=rule_name,
+        action_to_use=aws.wafv2.WebAclRuleStatementManagedRuleGroupStatementRuleActionOverrideActionToUseArgs(
+            count=aws.wafv2.WebAclRuleStatementManagedRuleGroupStatementRuleActionOverrideActionToUseCountArgs(),
+        ),
+    )
+
+
 def create_waf(
     name: str,
     alb_arn: pulumi.Output[str],
@@ -249,6 +258,9 @@ def create_waf(
                     managed_rule_group_statement=aws.wafv2.WebAclRuleStatementManagedRuleGroupStatementArgs(
                         name="AWSManagedRulesCommonRuleSet",
                         vendor_name="AWS",
+                        rule_action_overrides=[
+                            _count_rule_override("SizeRestrictions_BODY"),
+                        ],
                     ),
                 ),
                 visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
