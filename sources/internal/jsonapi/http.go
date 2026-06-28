@@ -52,7 +52,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if pageCursor == "" {
 		pageCursor = strings.TrimSpace(family.PageFirstCursor)
 	}
-	useNextURL := strings.TrimSpace(family.NextURLKey) != "" && pageCursor != ""
+	useNextURL := isAbsoluteHTTPURL(pageCursor)
 	if pageCursor != "" && !useNextURL {
 		query.Set(cursorParam(family), pageCursor)
 	}
@@ -153,6 +153,14 @@ func cursorParam(family Family) string {
 		return param
 	}
 	return "cursor"
+}
+
+func isAbsoluteHTTPURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return parsed.IsAbs() && parsed.Host != "" && (strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https"))
 }
 
 func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount int, next string) string {
@@ -392,9 +400,6 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 
 func responseCursor(family Family, object map[string]json.RawMessage) string {
 	if value := offsetResponseCursor(family, object); value != "" {
-		return value
-	}
-	if value := rawStringAtPath(object, family.NextURLKey); value != "" {
 		return value
 	}
 	if !responseHasMore(family, object) {

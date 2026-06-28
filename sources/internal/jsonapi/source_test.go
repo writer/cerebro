@@ -879,7 +879,7 @@ func TestReadUsesNextURLCursor(t *testing.T) {
 	source := newCustomTestSource(t, server.URL, Family{
 		Name:            "item",
 		Path:            "/items",
-		NextURLKey:      "nextLink",
+		NextCursorKeys:  []string{"nextLink"},
 		URNKind:         "item",
 		IDKeys:          []string{"id"},
 		ListKeys:        []string{"value"},

@@ -721,7 +721,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`Path:             "/models"`,
 		`CursorParam:      "after"`,
 		`NextCursorKeys:   []string{"paging.continuation"}`,
-		`NextURLKey:       "nextLink"`,
+		`NextCursorKeys:   []string{"nextLink"}`,
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,

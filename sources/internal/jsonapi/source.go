@@ -23,7 +23,6 @@ type Family struct {
 	NextCursorKeys        []string
 	HasMoreKey            string
 	LinkHeader            string
-	NextURLKey            string
 	PageFirstCursor       string
 	URNKind               string
 	IDKeys                []string
