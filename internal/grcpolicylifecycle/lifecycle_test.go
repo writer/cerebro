@@ -168,6 +168,26 @@ func TestRelationEnrichmentDoesNotPromoteRelationOnlyPolicy(t *testing.T) {
 	}
 }
 
+func TestRelationEnrichmentDoesNotAttachRelationOnlyLifecycleChild(t *testing.T) {
+	policy := policyLifecycleTestRow("urn:source-a:policy:access", "policy", "Access", map[string]string{
+		"policy_id":   "access",
+		"policy_type": "policy",
+	})
+	foreignVersion := policyLifecycleTestRow("urn:source-b:policy_version:v1", "policy.version", "Foreign Access v1", map[string]string{
+		"policy_id":         "access",
+		"policy_version_id": "v1",
+	})
+	relation := policyLifecycleTestRelation(foreignVersion, fabriccontract.RelationBelongsTo, nil, policy)
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy}, []ports.CypherRow{relation}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if len(response.Policies) != 1 {
+		t.Fatalf("policies = %+v, want one in-scope policy", response.Policies)
+	}
+	if len(response.Policies[0].Versions) != 0 {
+		t.Fatalf("versions = %+v, want relation-only lifecycle child excluded", response.Policies[0].Versions)
+	}
+}
+
 type recordingPolicyLifecycleStore struct {
 	requests []ports.CypherQueryRequest
 }

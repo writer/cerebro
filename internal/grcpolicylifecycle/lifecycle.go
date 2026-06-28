@@ -464,6 +464,9 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 	reminders := []grcPolicyReminderItem{}
 	mappings := []grcPolicyLifecycleMapping{}
 	for _, node := range nodes {
+		if _, ok := entityNodeURNs[node.URN]; !ok {
+			continue
+		}
 		switch node.EntityType {
 		case "policy.template":
 			templates = append(templates, grcPolicyTemplateFromNode(node, relations))
