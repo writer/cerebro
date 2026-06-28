@@ -44,12 +44,22 @@ func TestParseURNAllowsColonDelimitedIDs(t *testing.T) {
 	}
 }
 
+func TestParseURNAllowsKindOnlyURNs(t *testing.T) {
+	raw := "urn:cerebro:writer:org_inventory"
+	urn, err := ParseURN(raw)
+	if err != nil {
+		t.Fatalf("ParseURN() error = %v", err)
+	}
+	if urn.String() != raw {
+		t.Fatalf("URN = %q, want %q", urn.String(), raw)
+	}
+}
+
 func TestParseURNRejectsInvalidValue(t *testing.T) {
 	for _, raw := range []string{
 		"user:123",
 		"urn:cerebro:",
 		"urn:cerebro:tenant",
-		"urn:cerebro:tenant:user",
 		"urn:cerebro::user:123",
 		"urn:cerebro:tenant::123",
 		"urn:cerebro:tenant:user::123",

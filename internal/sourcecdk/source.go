@@ -24,9 +24,6 @@ func ParseURN(raw string) (URN, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(parsed.Parts) == 0 {
-		return "", fmt.Errorf("invalid cerebro urn %q", strings.TrimSpace(raw))
-	}
 	return URN(parsed.String()), nil
 }
 
