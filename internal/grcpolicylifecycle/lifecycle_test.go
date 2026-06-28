@@ -666,6 +666,45 @@ func TestBuildActionEventKeepsLinkedPolicyTargetSeparate(t *testing.T) {
 	}
 }
 
+func TestAuditExportRowsUseGovernanceGapColumns(t *testing.T) {
+	response := Response{
+		GovernanceGaps: []grcPolicyGovernanceGap{{
+			ID:             "urn:document:gap:owner",
+			SubjectID:      "secure-development",
+			Title:          "Secure Development Policy",
+			PolicyID:       "secure-development-policy",
+			GapState:       "open",
+			Owner:          "AppSec",
+			Action:         "Assign owner",
+			LastActor:      "grc@example.com",
+			StateUpdatedAt: "2026-02-01T12:00:00Z",
+			DueAt:          "2026-02-07",
+			MissingFields:  []string{"owner", "controls"},
+			RuleID:         "document.owner",
+		}},
+	}
+
+	header := AuditExportHeader()
+	rows := AuditExportRows(response, ExportWindow{})
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one governance gap row", rows)
+	}
+	if len(rows[0]) != len(header) {
+		t.Fatalf("row length = %d, header length = %d", len(rows[0]), len(header))
+	}
+	column := map[string]int{}
+	for index, name := range header {
+		column[name] = index
+	}
+	row := rows[0]
+	if row[column["controls"]] != "" || row[column["evidence"]] != "" {
+		t.Fatalf("controls/evidence = %q/%q, want empty for governance gaps", row[column["controls"]], row[column["evidence"]])
+	}
+	if row[column["gap_missing_fields"]] != "owner; controls" || row[column["gap_rule_id"]] != "document.owner" {
+		t.Fatalf("gap columns = %q/%q, want missing fields and rule id", row[column["gap_missing_fields"]], row[column["gap_rule_id"]])
+	}
+}
+
 func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:policy:access", "policy", "Access", map[string]string{

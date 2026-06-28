@@ -513,7 +513,7 @@ func AuditExportHeader() []string {
 		"record_type", "record_id", "policy_id", "policy_title", "version_id",
 		"status", "owner", "reviewer", "action", "actor",
 		"occurred_at", "due_at", "effective_at", "expires_at",
-		"controls", "evidence", "record_urn",
+		"controls", "evidence", "record_urn", "gap_missing_fields", "gap_rule_id",
 	}
 }
 
@@ -521,53 +521,53 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 	rows := [][]string{}
 	for _, policy := range response.Policies {
 		if exportWindowIncludesAny(window, policy.NextReviewDueAt) {
-			rows = append(rows, []string{"policy", policy.ID, policy.ID, policy.Title, policy.LatestVersion, policy.Status, policy.Owner, policy.Reviewer, "", "", "", policy.NextReviewDueAt, "", "", exportControls(policy.Controls), exportEvidence(policy.Evidence), policy.URN})
+			rows = append(rows, []string{"policy", policy.ID, policy.ID, policy.Title, policy.LatestVersion, policy.Status, policy.Owner, policy.Reviewer, "", "", "", policy.NextReviewDueAt, "", "", exportControls(policy.Controls), exportEvidence(policy.Evidence), policy.URN, "", ""})
 		}
 		for _, version := range policy.Versions {
 			if !exportWindowIncludesAny(window, version.CreatedAt, version.ApprovedAt, version.EffectiveAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.version", version.ID, policy.ID, policy.Title, version.Version, version.Status, firstNonEmpty(version.Owner, policy.Owner), "", "", version.Author, firstNonEmpty(version.CreatedAt, version.ApprovedAt), "", version.EffectiveAt, "", exportControls(version.Controls), exportEvidence(version.Evidence), version.URN})
+			rows = append(rows, []string{"policy.version", version.ID, policy.ID, policy.Title, version.Version, version.Status, firstNonEmpty(version.Owner, policy.Owner), "", "", version.Author, firstNonEmpty(version.CreatedAt, version.ApprovedAt), "", version.EffectiveAt, "", exportControls(version.Controls), exportEvidence(version.Evidence), version.URN, "", ""})
 		}
 		for _, approval := range policy.Approvals {
 			if !exportWindowIncludesAny(window, approval.RequestedAt, approval.ApprovedAt, approval.DueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.approval", approval.ID, policy.ID, policy.Title, approval.VersionID, approval.Status, firstNonEmpty(approval.RequestedBy, firstNonEmpty(approval.Approvers...)), "", "approval", firstNonEmpty(approval.Approvers...), firstNonEmpty(approval.ApprovedAt, approval.RequestedAt), approval.DueAt, "", "", "", "", approval.URN})
+			rows = append(rows, []string{"policy.approval", approval.ID, policy.ID, policy.Title, approval.VersionID, approval.Status, firstNonEmpty(approval.RequestedBy, firstNonEmpty(approval.Approvers...)), "", "approval", firstNonEmpty(approval.Approvers...), firstNonEmpty(approval.ApprovedAt, approval.RequestedAt), approval.DueAt, "", "", "", "", approval.URN, "", ""})
 		}
 		for _, attestation := range policy.Attestations {
 			if !exportWindowIncludesAny(window, attestation.AcceptedAt, attestation.DueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN})
+			rows = append(rows, []string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN, "", ""})
 		}
 		for _, review := range policy.Reviews {
 			if !exportWindowIncludesAny(window, review.ReviewedAt, review.ReviewDueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.review", review.ID, policy.ID, policy.Title, review.VersionID, review.Status, firstNonEmpty(review.Owner, policy.Owner), firstNonEmpty(review.Reviewers...), "review", firstNonEmpty(review.Reviewers...), review.ReviewedAt, review.ReviewDueAt, "", "", "", "", review.URN})
+			rows = append(rows, []string{"policy.review", review.ID, policy.ID, policy.Title, review.VersionID, review.Status, firstNonEmpty(review.Owner, policy.Owner), firstNonEmpty(review.Reviewers...), "review", firstNonEmpty(review.Reviewers...), review.ReviewedAt, review.ReviewDueAt, "", "", "", "", review.URN, "", ""})
 		}
 		for _, exception := range policy.Exceptions {
 			if !exportWindowIncludesAny(window, exception.ApprovedAt, exception.ExpiresAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.exception", exception.ID, policy.ID, policy.Title, exception.VersionID, exception.Status, firstNonEmpty(exception.Owner, policy.Owner), firstNonEmpty(exception.Approvers...), "exception", firstNonEmpty(exception.Approvers...), exception.ApprovedAt, "", "", exception.ExpiresAt, exportControls(exception.Controls), "", exception.URN})
+			rows = append(rows, []string{"policy.exception", exception.ID, policy.ID, policy.Title, exception.VersionID, exception.Status, firstNonEmpty(exception.Owner, policy.Owner), firstNonEmpty(exception.Approvers...), "exception", firstNonEmpty(exception.Approvers...), exception.ApprovedAt, "", "", exception.ExpiresAt, exportControls(exception.Controls), "", exception.URN, "", ""})
 		}
 		for _, event := range policy.Events {
 			if !exportWindowIncludesAny(window, event.OccurredAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.lifecycle.event", event.ID, policy.ID, policy.Title, event.VersionID, event.Status, "", "", event.Action, event.Actor, event.OccurredAt, "", "", "", "", "", event.URN})
+			rows = append(rows, []string{"policy.lifecycle.event", event.ID, policy.ID, policy.Title, event.VersionID, event.Status, "", "", event.Action, event.Actor, event.OccurredAt, "", "", "", "", "", event.URN, "", ""})
 		}
 	}
 	for _, mapping := range response.Mappings {
-		rows = append(rows, []string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN})
+		rows = append(rows, []string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN, "", ""})
 	}
 	for _, gap := range response.GovernanceGaps {
 		if !exportWindowIncludesAny(window, gap.DueAt, gap.StateUpdatedAt) {
 			continue
 		}
-		rows = append(rows, []string{"governance.gap", gap.SubjectID, gap.PolicyID, gap.Title, "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", strings.Join(gap.MissingFields, "; "), gap.RuleID, gap.ID})
+		rows = append(rows, []string{"governance.gap", gap.SubjectID, gap.PolicyID, gap.Title, "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", "", "", gap.ID, strings.Join(gap.MissingFields, "; "), gap.RuleID})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i][0] == rows[j][0] {
