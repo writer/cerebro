@@ -1,0 +1,33 @@
+[
+  {
+    "id": "box-content-asset-file-1",
+    "tenant_id": "tenant",
+    "source_id": "box",
+    "kind": "box.content_assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "box/content_assets/v1",
+    "payload": {
+      "id": "file-1",
+      "type": "file",
+      "name": "Security Evidence.pdf",
+      "etag": "1",
+      "owned_by": {
+        "id": "user-1",
+        "login": "user@example.test",
+        "name": "User One"
+      },
+      "created_at": "2026-05-15T00:00:00Z",
+      "modified_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/box-content-asset-file-1",
+      "resource_id": "file-1",
+      "resource_name": "Security Evidence.pdf",
+      "resource_type": "file",
+      "resource_urn": "urn:cerebro:tenant:runtime_content_assets:file-1",
+      "source_event_id": "file-1",
+      "tenant_id": "tenant"
+    }
+  }
+]
