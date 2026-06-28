@@ -297,7 +297,7 @@ func claimBlockers(request ClaimVerificationRequest, allowedStage string, verifi
 			Fields:  []string{request.RequestedActionStage, allowedStage},
 		})
 	}
-	if actionStageOrder(request.RequestedActionStage) >= actionStageOrder(ActionStageExecute) && !request.HumanApproved {
+	if actionStageRequiresMutationApproval(request.RequestedActionStage) && !request.HumanApproved {
 		blockers = append(blockers, CapabilityDecisionBlocker{
 			Code:    "unapproved_mutation",
 			Message: "Mutating execution requires human approval.",

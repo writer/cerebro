@@ -957,6 +957,16 @@ func actionStageOrder(stage string) int {
 	return 0
 }
 
+func actionStageRequiresMutationApproval(stage string) bool {
+	stage = normalizeActionStage(stage)
+	for _, candidate := range agentActionLadder() {
+		if candidate.ID == stage {
+			return candidate.Mutating && candidate.RequiresApproval
+		}
+	}
+	return false
+}
+
 func verifierPassed(id string, message string, evidence []string) AgentVerifierResult {
 	return AgentVerifierResult{ID: id, Status: "pass", Message: message, Evidence: uniqueSortedStrings(evidence)}
 }

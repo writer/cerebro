@@ -86,6 +86,48 @@ func TestBuildClaimVerificationBlocksCounterevidenceAndCrossTenantScope(t *testi
 	}
 }
 
+func TestBuildClaimVerificationApprovalFollowsMutatingActionStages(t *testing.T) {
+	for _, stage := range []string{ActionStageVerify, ActionStageCloseLoop} {
+		t.Run(stage, func(t *testing.T) {
+			verification := BuildClaimVerification(ClaimVerificationRequest{
+				TenantID:               "tenant-1",
+				Claim:                  "This finding has verified evidence.",
+				ScopeURN:               "urn:cerebro:tenant-1:finding:finding-1",
+				SupportingEvidenceURNs: []string{"urn:cerebro:tenant-1:evidence:evidence-1"},
+				FreshnessState:         "fresh",
+				RequestedActionStage:   stage,
+				CoverageContext: &AgentCoverageContext{
+					Version:  ContractVersion,
+					TenantID: "tenant-1",
+				},
+			})
+
+			if !claimVerificationHasBlocker(verification, "stage_skip") {
+				t.Fatalf("blockers = %+v, want stage_skip", verification.Blockers)
+			}
+			if claimVerificationHasBlocker(verification, "unapproved_mutation") {
+				t.Fatalf("blockers = %+v, did not want unapproved_mutation for read-only stage %q", verification.Blockers, stage)
+			}
+		})
+	}
+
+	execute := BuildClaimVerification(ClaimVerificationRequest{
+		TenantID:               "tenant-1",
+		Claim:                  "This finding has verified evidence.",
+		ScopeURN:               "urn:cerebro:tenant-1:finding:finding-1",
+		SupportingEvidenceURNs: []string{"urn:cerebro:tenant-1:evidence:evidence-1"},
+		FreshnessState:         "fresh",
+		RequestedActionStage:   ActionStageExecute,
+		CoverageContext: &AgentCoverageContext{
+			Version:  ContractVersion,
+			TenantID: "tenant-1",
+		},
+	})
+	if !claimVerificationHasBlocker(execute, "unapproved_mutation") {
+		t.Fatalf("execute blockers = %+v, want unapproved_mutation", execute.Blockers)
+	}
+}
+
 func TestClaimVerificationAndAgentWorkContractsAreInControlPlane(t *testing.T) {
 	snapshot := SecurityControlPlaneSnapshot()
 	if snapshot.ClaimVerification.ID != "agent-claim-verification" {
