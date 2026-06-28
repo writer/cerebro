@@ -15,6 +15,7 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `internal/compliance/framework_review_areas.yaml` | Framework-level review queues that group direct control refs without changing evidence status. |
 | `internal/compliance/control_relationships.yaml` | Alias, child requirement, sibling scope, evidence dependency, and follow-up hints between controls. |
 | `internal/compliance/evidence_capabilities.yaml` | Source and dimension capability declarations for source-backed evidence review. |
+| `internal/compliance/control_evidence_requirements.yaml` | Profile-driven control evidence requirements, including required sources, entity types, fields, freshness, assessment methods, and auditor-grade evidence language. |
 | `tools/policymappingexport` | Generated CSV tables for spreadsheet review. |
 
 ## Merge Order
@@ -62,6 +63,8 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `source_capability_review_map.csv` | One row per source/dimension comparing YAML capability refs with observed public catalog source coverage refs. |
 | `framework_control_enrichment_map.csv` | One row per framework control showing direct findings, source-backed findings, source capabilities, review areas, and relationships. |
 | `framework_control_gap_map.csv` | One row per framework control with direct, indirect, or no-coverage status plus the next action for coverage cleanup. |
+| `control_evidence_requirements.csv` | One row per expanded control evidence requirement with required source, entity type, fields, freshness, assessment methods, catalog evidence refs, source capability refs, and current coverage status. |
+| `finding_evidence_requirement_map.csv` | One row per public finding-control-requirement link so reviewers can see which requirement source each mapped finding points toward. |
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
 | `logic.csv` | The generation contract in spreadsheet form. |
 
@@ -124,6 +127,23 @@ Use `control_refs_without_source_match` as a review queue. It does not mean the 
 
 `framework_control_enrichment_map.csv` is the control-centric view. It answers the reverse question for each framework control: which findings map directly, which findings are source-backed, which source capabilities can support it, which review areas use it, and which related controls should be inspected with it.
 
+## Evidence Requirements
+
+`control_evidence_requirements.yaml` defines reusable requirement profiles. A profile can apply by framework, control family or title keyword, or control ID prefix. When no specialized profile applies, the baseline control-review profile applies so every cataloged framework control has at least one evidence requirement.
+
+Each requirement declares:
+
+- source ID
+- entity type
+- required fields
+- freshness window
+- assessment methods
+- auditor-grade evidence language
+
+`control_evidence_requirements.csv` expands those profiles across the full framework catalog. It also preserves catalog-native evidence expectations from `control_families.yaml` in `catalog_evidence_refs` when a control already has richer evidence definitions.
+
+`finding_evidence_requirement_map.csv` joins public findings to the expanded requirements through direct control refs. Use `requirement_match_status` to see whether the finding source or source coverage already matches the requirement source, or whether the requirement is defined but not source-matched yet.
+
 ## Commands
 
 ```bash
@@ -132,4 +152,4 @@ make policy-mapping-export
 make policy-mapping-check
 ```
 
-Run `make policy-mapping-export` after changing policy YAML, public detection metadata, control families, or policy rule extensions. The target regenerates the policy rule catalog and public detection catalog first so all-finding CSVs use the latest checked-in catalogs. Run `make policy-mapping-check` before opening a PR.
+Run `make policy-mapping-export` after changing policy YAML, public detection metadata, control families, control evidence requirements, or policy rule extensions. The target regenerates the policy rule catalog and public detection catalog first so all-finding CSVs use the latest checked-in catalogs. Run `make policy-mapping-check` before opening a PR.

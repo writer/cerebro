@@ -22,6 +22,7 @@ const controlFamiliesPath = "internal/compliance/control_families.yaml"
 const frameworkReviewAreasPath = "internal/compliance/framework_review_areas.yaml"
 const controlRelationshipsPath = "internal/compliance/control_relationships.yaml"
 const evidenceCapabilitiesPath = "internal/compliance/evidence_capabilities.yaml"
+const controlEvidenceRequirementsPath = "internal/compliance/control_evidence_requirements.yaml"
 const publicDetectionCatalogPath = "internal/findings/public_detection_catalog.json"
 
 type policyRuleExtensions struct {
@@ -102,6 +103,44 @@ type evidenceCapabilityDimension struct {
 	ControlRefs    []yamlControlRef `yaml:"control_refs"`
 }
 
+type controlEvidenceRequirementCatalog struct {
+	Defaults controlEvidenceRequirementDefaults  `yaml:"defaults"`
+	Profiles []controlEvidenceRequirementProfile `yaml:"profiles"`
+}
+
+type controlEvidenceRequirementDefaults struct {
+	SourceID              string   `yaml:"source_id"`
+	EntityType            string   `yaml:"entity_type"`
+	RequiredFields        []string `yaml:"required_fields"`
+	FreshnessWindow       string   `yaml:"freshness_window"`
+	AssessmentMethods     []string `yaml:"assessment_methods"`
+	AuditorGradeEvidence  string   `yaml:"auditor_grade_evidence"`
+	ManualEvidenceAllowed *bool    `yaml:"manual_evidence_allowed"`
+}
+
+type controlEvidenceRequirementProfile struct {
+	ProfileID          string                             `yaml:"profile_id"`
+	Name               string                             `yaml:"name"`
+	Fallback           bool                               `yaml:"fallback"`
+	AppliesTo          controlEvidenceRequirementSelector `yaml:"applies_to"`
+	SourceRequirements []controlEvidenceSourceRequirement `yaml:"source_requirements"`
+}
+
+type controlEvidenceRequirementSelector struct {
+	Frameworks        []string `yaml:"frameworks"`
+	FamilyKeywords    []string `yaml:"family_keywords"`
+	ControlIDPrefixes []string `yaml:"control_id_prefixes"`
+}
+
+type controlEvidenceSourceRequirement struct {
+	SourceID             string   `yaml:"source_id"`
+	EntityType           string   `yaml:"entity_type"`
+	RequiredFields       []string `yaml:"required_fields"`
+	FreshnessWindow      string   `yaml:"freshness_window"`
+	AssessmentMethods    []string `yaml:"assessment_methods"`
+	AuditorGradeEvidence string   `yaml:"auditor_grade_evidence"`
+}
+
 type yamlControlRef struct {
 	Framework string `yaml:"framework"`
 	ControlID string `yaml:"control_id"`
@@ -123,7 +162,21 @@ type complianceControlCatalogFamily struct {
 }
 
 type complianceControlCatalogControl struct {
-	ID string `yaml:"id"`
+	ID                   string                                 `yaml:"id"`
+	Title                string                                 `yaml:"title"`
+	EvidenceExpectations []complianceControlEvidenceExpectation `yaml:"evidence_expectations"`
+	FreshnessSLA         string                                 `yaml:"freshness_sla"`
+	AssessmentMethods    []string                               `yaml:"assessment_methods"`
+}
+
+type complianceControlEvidenceExpectation struct {
+	ID                string   `yaml:"id"`
+	Title             string   `yaml:"title"`
+	Type              string   `yaml:"type"`
+	Required          *bool    `yaml:"required"`
+	AssessmentMethods []string `yaml:"assessment_methods"`
+	FreshnessSLA      string   `yaml:"freshness_sla"`
+	AcceptedFrom      []string `yaml:"accepted_from"`
 }
 
 type controlFamilyIndex map[string]string
@@ -257,10 +310,11 @@ func generateFiles(root string) ([]generatedFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	controlFamilies, err := loadControlFamilyIndex(root)
+	controlCatalog, err := loadControlCatalog(root)
 	if err != nil {
 		return nil, err
 	}
+	controlFamilies := controlFamilyIndexFromCatalog(controlCatalog)
 	reviewAreas, err := loadFrameworkReviewAreas(root)
 	if err != nil {
 		return nil, err
@@ -271,6 +325,13 @@ func generateFiles(root string) ([]generatedFile, error) {
 	}
 	evidenceCapabilities, err := loadEvidenceCapabilities(root)
 	if err != nil {
+		return nil, err
+	}
+	controlEvidenceRequirements, err := loadControlEvidenceRequirements(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateControlEvidenceRequirements(controlEvidenceRequirements); err != nil {
 		return nil, err
 	}
 	if err := validateMappingCatalogs(controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities); err != nil {
@@ -392,6 +453,12 @@ func generateFiles(root string) ([]generatedFile, error) {
 	sourceCapabilityReviewRows := sourceCapabilityReviewRows(catalog, controlFamilies, evidenceCapabilities)
 	frameworkControlEnrichmentRows := frameworkControlEnrichmentRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
 	frameworkControlGapRows := frameworkControlGapRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
+	controlRequirementItems := expandedControlEvidenceRequirements(controlCatalog, controlEvidenceRequirements, catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
+	controlRequirementRows := controlEvidenceRequirementRows(controlRequirementItems)
+	findingRequirementRows := findingEvidenceRequirementRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems)
+	if err := validateControlEvidenceRequirementCoverage(controlCatalogRefs(controlCatalog), controlRequirementItems); err != nil {
+		return nil, err
+	}
 	if err := enforceComplianceQuality(qualityIssueRows, frameworkControlGapRows); err != nil {
 		return nil, err
 	}
@@ -416,6 +483,8 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "source_capability_review_map.csv", Content: csvBytes(append([][]string{sourceCapabilityReviewMapHeader()}, sourceCapabilityReviewRows...))},
 		{Name: "framework_control_enrichment_map.csv", Content: csvBytes(append([][]string{frameworkControlEnrichmentMapHeader()}, frameworkControlEnrichmentRows...))},
 		{Name: "framework_control_gap_map.csv", Content: csvBytes(append([][]string{frameworkControlGapMapHeader()}, frameworkControlGapRows...))},
+		{Name: "control_evidence_requirements.csv", Content: csvBytes(append([][]string{controlEvidenceRequirementsHeader()}, controlRequirementRows...))},
+		{Name: "finding_evidence_requirement_map.csv", Content: csvBytes(append([][]string{findingEvidenceRequirementMapHeader()}, findingRequirementRows...))},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
 		{Name: "logic.csv", Content: csvBytes(logicRows())},
 	}
@@ -482,18 +551,45 @@ func loadEvidenceCapabilities(root string) ([]evidenceCapabilitySource, error) {
 	return catalog.Sources, nil
 }
 
-func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
+func loadControlEvidenceRequirements(root string) (controlEvidenceRequirementCatalog, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(controlEvidenceRequirementsPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return controlEvidenceRequirementCatalog{}, nil
+		}
+		return controlEvidenceRequirementCatalog{}, fmt.Errorf("read %s: %w", controlEvidenceRequirementsPath, err)
+	}
+	var catalog controlEvidenceRequirementCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return controlEvidenceRequirementCatalog{}, fmt.Errorf("decode %s: %w", controlEvidenceRequirementsPath, err)
+	}
+	return catalog, nil
+}
+
+func loadControlCatalog(root string) (complianceControlCatalog, error) {
 	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(controlFamiliesPath)))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return controlFamilyIndex{}, nil
+			return complianceControlCatalog{}, nil
 		}
-		return nil, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
+		return complianceControlCatalog{}, fmt.Errorf("read %s: %w", controlFamiliesPath, err)
 	}
 	var catalog complianceControlCatalog
 	if err := yaml.Unmarshal(content, &catalog); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", controlFamiliesPath, err)
+		return complianceControlCatalog{}, fmt.Errorf("decode %s: %w", controlFamiliesPath, err)
 	}
+	return catalog, nil
+}
+
+func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
+	catalog, err := loadControlCatalog(root)
+	if err != nil {
+		return nil, err
+	}
+	return controlFamilyIndexFromCatalog(catalog), nil
+}
+
+func controlFamilyIndexFromCatalog(catalog complianceControlCatalog) controlFamilyIndex {
 	index := controlFamilyIndex{}
 	for _, framework := range catalog.Frameworks {
 		frameworkName := strings.TrimSpace(framework.Name)
@@ -517,7 +613,40 @@ func loadControlFamilyIndex(root string) (controlFamilyIndex, error) {
 			}
 		}
 	}
-	return index, nil
+	return index
+}
+
+func controlCatalogRefs(catalog complianceControlCatalog) []controlRef {
+	var refs []controlRef
+	for _, framework := range catalog.Frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
+			continue
+		}
+		for _, family := range framework.Families {
+			familyID := strings.TrimSpace(family.ID)
+			if familyID == "" {
+				continue
+			}
+			familyLabel := frameworkName + " " + familyID
+			if familyName := strings.TrimSpace(family.Name); familyName != "" {
+				familyLabel += " " + familyName
+			}
+			for _, control := range family.Controls {
+				controlID := strings.TrimSpace(control.ID)
+				if controlID == "" {
+					continue
+				}
+				refs = append(refs, controlRef{
+					Framework: frameworkName,
+					ControlID: controlID,
+					Family:    familyLabel,
+					Title:     strings.TrimSpace(control.Title),
+				})
+			}
+		}
+	}
+	return uniqueControlRefs(refs)
 }
 
 func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) error {
@@ -644,6 +773,101 @@ func validateMappingCatalogs(index controlFamilyIndex, reviewAreas []frameworkRe
 	return nil
 }
 
+func validateControlEvidenceRequirements(catalog controlEvidenceRequirementCatalog) error {
+	var issues []string
+	if len(catalog.Profiles) == 0 {
+		issues = append(issues, controlEvidenceRequirementsPath+": profiles is empty")
+	}
+	profileIDs := map[string]struct{}{}
+	hasFallback := false
+	for _, profile := range catalog.Profiles {
+		profileID := strings.TrimSpace(profile.ProfileID)
+		if profileID == "" {
+			issues = append(issues, controlEvidenceRequirementsPath+": profile missing profile_id")
+		} else if _, ok := profileIDs[profileID]; ok {
+			issues = append(issues, controlEvidenceRequirementsPath+": duplicate profile "+profileID)
+		}
+		profileIDs[profileID] = struct{}{}
+		if strings.TrimSpace(profile.Name) == "" {
+			issues = append(issues, controlEvidenceRequirementsPath+": profile "+profileID+" missing name")
+		}
+		if profile.Fallback {
+			hasFallback = true
+		} else if selectorIsEmpty(profile.AppliesTo) {
+			issues = append(issues, controlEvidenceRequirementsPath+": profile "+profileID+" has no selector")
+		}
+		if len(profile.SourceRequirements) == 0 {
+			issues = append(issues, controlEvidenceRequirementsPath+": profile "+profileID+" missing source_requirements")
+		}
+		for _, requirement := range profile.SourceRequirements {
+			merged := mergeControlEvidenceRequirementDefaults(catalog.Defaults, requirement)
+			label := profileID + "/" + firstNonEmpty(requirement.SourceID, catalog.Defaults.SourceID)
+			if strings.TrimSpace(merged.SourceID) == "" {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing source_id")
+			}
+			if strings.TrimSpace(merged.EntityType) == "" {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing entity_type")
+			}
+			if len(trimStrings(merged.RequiredFields)) == 0 {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing required_fields")
+			}
+			if strings.TrimSpace(merged.FreshnessWindow) == "" {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing freshness_window")
+			}
+			if len(trimStrings(merged.AssessmentMethods)) == 0 {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing assessment_methods")
+			}
+			if strings.TrimSpace(merged.AuditorGradeEvidence) == "" {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing auditor_grade_evidence")
+			}
+		}
+	}
+	if !hasFallback {
+		issues = append(issues, controlEvidenceRequirementsPath+": at least one fallback profile is required")
+	}
+	if len(issues) != 0 {
+		sort.Strings(issues)
+		return fmt.Errorf("control evidence requirement validation failed: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func selectorIsEmpty(selector controlEvidenceRequirementSelector) bool {
+	return len(trimStrings(selector.Frameworks)) == 0 &&
+		len(trimStrings(selector.FamilyKeywords)) == 0 &&
+		len(trimStrings(selector.ControlIDPrefixes)) == 0
+}
+
+func mergeControlEvidenceRequirementDefaults(defaults controlEvidenceRequirementDefaults, requirement controlEvidenceSourceRequirement) controlEvidenceSourceRequirement {
+	merged := controlEvidenceSourceRequirement{
+		SourceID:             strings.TrimSpace(defaults.SourceID),
+		EntityType:           strings.TrimSpace(defaults.EntityType),
+		RequiredFields:       uniqueSorted(defaults.RequiredFields),
+		FreshnessWindow:      strings.TrimSpace(defaults.FreshnessWindow),
+		AssessmentMethods:    uniqueSorted(defaults.AssessmentMethods),
+		AuditorGradeEvidence: strings.TrimSpace(defaults.AuditorGradeEvidence),
+	}
+	if value := strings.TrimSpace(requirement.SourceID); value != "" {
+		merged.SourceID = value
+	}
+	if value := strings.TrimSpace(requirement.EntityType); value != "" {
+		merged.EntityType = value
+	}
+	if values := uniqueSorted(requirement.RequiredFields); len(values) != 0 {
+		merged.RequiredFields = values
+	}
+	if value := strings.TrimSpace(requirement.FreshnessWindow); value != "" {
+		merged.FreshnessWindow = value
+	}
+	if values := uniqueSorted(requirement.AssessmentMethods); len(values) != 0 {
+		merged.AssessmentMethods = values
+	}
+	if value := strings.TrimSpace(requirement.AuditorGradeEvidence); value != "" {
+		merged.AuditorGradeEvidence = value
+	}
+	return merged
+}
+
 func knownControlRef(index controlFamilyIndex, ref controlRef) bool {
 	_, ok := index[controlRefKey(ref)]
 	return ok
@@ -697,6 +921,7 @@ type controlRef struct {
 	Framework string
 	ControlID string
 	Family    string
+	Title     string
 }
 
 func (ref controlRef) Label() string {
@@ -730,6 +955,16 @@ type controlRelationshipEdge struct {
 	Relationship string
 	EvidenceUse  string
 	Rationale    string
+}
+
+type expandedControlEvidenceRequirement struct {
+	Ref                  controlRef
+	ProfileID            string
+	ProfileName          string
+	SourceRequirement    controlEvidenceSourceRequirement
+	SourceCapabilityRefs []string
+	CatalogEvidenceRefs  []string
+	CoverageStatus       string
 }
 
 func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []controlRef {
@@ -1979,6 +2214,214 @@ func frameworkControlNextAction(status string) string {
 	}
 }
 
+func expandedControlEvidenceRequirements(controlCatalog complianceControlCatalog, requirements controlEvidenceRequirementCatalog, catalog publicDetectionCatalog, index controlFamilyIndex, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilitySources []evidenceCapabilitySource) []expandedControlEvidenceRequirement {
+	refs := controlCatalogRefs(controlCatalog)
+	enrichments := frameworkControlEnrichments(catalog, index, reviewAreas, relationships, capabilitySources)
+	catalogEvidenceRefs := catalogEvidenceRefsByControl(controlCatalog)
+	items := make([]expandedControlEvidenceRequirement, 0, len(refs))
+	for _, ref := range refs {
+		profiles := controlEvidenceProfilesForRef(requirements.Profiles, ref)
+		enrichment := enrichments[controlRefKey(ref)]
+		for _, profile := range profiles {
+			for _, sourceRequirement := range profile.SourceRequirements {
+				items = append(items, expandedControlEvidenceRequirement{
+					Ref:                  ref,
+					ProfileID:            strings.TrimSpace(profile.ProfileID),
+					ProfileName:          strings.TrimSpace(profile.Name),
+					SourceRequirement:    mergeControlEvidenceRequirementDefaults(requirements.Defaults, sourceRequirement),
+					SourceCapabilityRefs: uniqueSorted(enrichment.SourceCapabilityRefs),
+					CatalogEvidenceRefs:  catalogEvidenceRefs[controlRefKey(ref)],
+					CoverageStatus:       frameworkControlEnrichmentStatus(enrichment),
+				})
+			}
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := []string{items[i].Ref.Framework, items[i].Ref.ControlID, items[i].ProfileID, items[i].SourceRequirement.SourceID, items[i].SourceRequirement.EntityType}
+		right := []string{items[j].Ref.Framework, items[j].Ref.ControlID, items[j].ProfileID, items[j].SourceRequirement.SourceID, items[j].SourceRequirement.EntityType}
+		return strings.Join(left, "\x00") < strings.Join(right, "\x00")
+	})
+	return items
+}
+
+func controlEvidenceProfilesForRef(profiles []controlEvidenceRequirementProfile, ref controlRef) []controlEvidenceRequirementProfile {
+	var matched []controlEvidenceRequirementProfile
+	var fallback []controlEvidenceRequirementProfile
+	for _, profile := range profiles {
+		if profile.Fallback {
+			fallback = append(fallback, profile)
+			continue
+		}
+		if controlEvidenceProfileApplies(profile, ref) {
+			matched = append(matched, profile)
+		}
+	}
+	if len(matched) != 0 {
+		return matched
+	}
+	return fallback
+}
+
+func controlEvidenceProfileApplies(profile controlEvidenceRequirementProfile, ref controlRef) bool {
+	selector := profile.AppliesTo
+	searchText := strings.TrimSpace(ref.Family + " " + ref.Title)
+	if selectorIsEmpty(selector) {
+		return false
+	}
+	if values := trimStrings(selector.Frameworks); len(values) != 0 && containsFold(values, ref.Framework) {
+		return true
+	}
+	if values := trimStrings(selector.FamilyKeywords); len(values) != 0 && containsAnyFold(searchText, values) {
+		return true
+	}
+	if values := trimStrings(selector.ControlIDPrefixes); len(values) != 0 && hasAnyPrefixFold(ref.ControlID, values) {
+		return true
+	}
+	return false
+}
+
+func catalogEvidenceRefsByControl(catalog complianceControlCatalog) map[string][]string {
+	out := map[string][]string{}
+	for _, framework := range catalog.Frameworks {
+		frameworkName := strings.TrimSpace(framework.Name)
+		if frameworkName == "" {
+			continue
+		}
+		for _, family := range framework.Families {
+			for _, control := range family.Controls {
+				controlID := strings.TrimSpace(control.ID)
+				if controlID == "" {
+					continue
+				}
+				ref := controlRef{Framework: frameworkName, ControlID: controlID}
+				for _, expectation := range control.EvidenceExpectations {
+					if label := catalogEvidenceExpectationLabel(expectation, control); label != "" {
+						out[controlRefKey(ref)] = append(out[controlRefKey(ref)], label)
+					}
+				}
+			}
+		}
+	}
+	for key, labels := range out {
+		out[key] = uniqueSorted(labels)
+	}
+	return out
+}
+
+func catalogEvidenceExpectationLabel(expectation complianceControlEvidenceExpectation, control complianceControlCatalogControl) string {
+	id := firstNonEmpty(expectation.ID, expectation.Type, strings.TrimSpace(control.ID))
+	if id == "" {
+		return ""
+	}
+	parts := []string{id}
+	if value := strings.TrimSpace(expectation.Type); value != "" && value != id {
+		parts = append(parts, "type="+value)
+	}
+	if value := firstNonEmpty(expectation.FreshnessSLA, control.FreshnessSLA); value != "" {
+		parts = append(parts, "freshness="+value)
+	}
+	if methods := firstNonEmptyList(expectation.AssessmentMethods, control.AssessmentMethods); len(methods) != 0 {
+		parts = append(parts, "methods="+joinList(methods))
+	}
+	return strings.Join(parts, " ")
+}
+
+func controlEvidenceRequirementRows(items []expandedControlEvidenceRequirement) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			item.Ref.Framework,
+			item.Ref.ControlID,
+			item.Ref.Label(),
+			item.Ref.Family,
+			item.ProfileID,
+			item.ProfileName,
+			item.SourceRequirement.SourceID,
+			item.SourceRequirement.EntityType,
+			joinList(item.SourceRequirement.RequiredFields),
+			item.SourceRequirement.FreshnessWindow,
+			joinList(item.SourceRequirement.AssessmentMethods),
+			item.SourceRequirement.AuditorGradeEvidence,
+			joinList(item.SourceCapabilityRefs),
+			joinList(item.CatalogEvidenceRefs),
+			item.CoverageStatus,
+		})
+	}
+	sortRows(rows)
+	return rows
+}
+
+func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement) [][]string {
+	byControl := map[string][]expandedControlEvidenceRequirement{}
+	for _, item := range items {
+		byControl[controlRefKey(item.Ref)] = append(byControl[controlRefKey(item.Ref)], item)
+	}
+	var rows [][]string
+	for _, detection := range catalog.Detections {
+		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
+		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
+		sourceCapabilityStatus := sourceCapabilityStatusForDetection(detection, capabilitySources)
+		for _, ref := range controlRefs {
+			for _, item := range byControl[controlRefKey(ref)] {
+				rows = append(rows, []string{
+					detection.ID,
+					detection.Name,
+					detection.PackID,
+					detection.SourceID,
+					detection.EvaluationMode,
+					ref.Framework,
+					ref.ControlID,
+					ref.Label(),
+					ref.Family,
+					item.ProfileID,
+					item.ProfileName,
+					item.SourceRequirement.SourceID,
+					item.SourceRequirement.EntityType,
+					item.SourceRequirement.FreshnessWindow,
+					sourceCapabilityStatus,
+					complianceReview.ComplianceEvidenceStatus,
+					findingRequirementMatchStatus(detection, item),
+				})
+			}
+		}
+	}
+	sortRows(rows)
+	return rows
+}
+
+func findingRequirementMatchStatus(detection publicDetection, item expandedControlEvidenceRequirement) string {
+	requiredSource := strings.TrimSpace(item.SourceRequirement.SourceID)
+	if requiredSource == "" {
+		return "requirement_unkeyed"
+	}
+	if strings.EqualFold(strings.TrimSpace(detection.SourceID), requiredSource) {
+		return "finding_source_matches_requirement"
+	}
+	for _, coverageRef := range detection.SourceCoverageRefs {
+		if strings.EqualFold(strings.TrimSpace(coverageRef.SourceID), requiredSource) {
+			return "source_coverage_matches_requirement"
+		}
+	}
+	return "requirement_defined"
+}
+
+func validateControlEvidenceRequirementCoverage(refs []controlRef, items []expandedControlEvidenceRequirement) error {
+	covered := map[string]struct{}{}
+	for _, item := range items {
+		covered[controlRefKey(item.Ref)] = struct{}{}
+	}
+	var missing []string
+	for _, ref := range refs {
+		if _, ok := covered[controlRefKey(ref)]; !ok {
+			missing = append(missing, ref.Label())
+		}
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf("control evidence requirements missing %d control(s): %s", len(missing), joinLimitedStrings(missing, 10))
+	}
+	return nil
+}
+
 func controlRelationshipRows(relationships []controlRelationship, index controlFamilyIndex) [][]string {
 	var rows [][]string
 	for _, edge := range controlRelationshipEdges(relationships, index) {
@@ -2508,7 +2951,8 @@ func logicRows() [][]string {
 		{"11", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
 		{"12", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
 		{"13", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
-		{"14", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"14", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."},
+		{"15", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -2655,6 +3099,26 @@ func frameworkControlGapMapHeader() []string {
 	}
 }
 
+func controlEvidenceRequirementsHeader() []string {
+	return []string{
+		"framework", "control_id", "control_ref", "control_family",
+		"requirement_profile", "requirement_name", "requirement_source_id",
+		"entity_type", "required_fields", "freshness_window", "assessment_methods",
+		"auditor_grade_evidence", "source_capability_refs", "catalog_evidence_refs",
+		"coverage_status",
+	}
+}
+
+func findingEvidenceRequirementMapHeader() []string {
+	return []string{
+		"finding_id", "name", "pack_id", "source_id", "evaluation_mode",
+		"framework", "control_id", "control_ref", "control_family",
+		"requirement_profile", "requirement_name", "requirement_source_id",
+		"entity_type", "freshness_window", "source_capability_status",
+		"compliance_evidence_status", "requirement_match_status",
+	}
+}
+
 func enforceComplianceQuality(qualityIssueRows [][]string, controlGapRows [][]string) error {
 	if len(qualityIssueRows) != 0 {
 		var samples []string
@@ -2776,6 +3240,35 @@ func stringSet(values []string) map[string]struct{} {
 		}
 	}
 	return out
+}
+
+func containsFold(values []string, want string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyFold(value string, needles []string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, needle := range needles {
+		if needle = strings.ToLower(strings.TrimSpace(needle)); needle != "" && strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyPrefixFold(value string, prefixes []string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, prefix := range prefixes {
+		if prefix = strings.ToLower(strings.TrimSpace(prefix)); prefix != "" && strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func trimStrings(values []string) []string {
