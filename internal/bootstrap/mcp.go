@@ -26,10 +26,8 @@ import (
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/riskplan"
 	"github.com/writer/cerebro/internal/sourcecdk"
-	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -718,23 +716,13 @@ func mcpSourceArgs(ctx context.Context, args map[string]any) (string, map[string
 	if config == nil {
 		config = map[string]string{}
 	}
-	if err := validateMCPSourceConfig(config); err != nil {
+	if err := sourceops.ValidatePreviewConfig(sourceID, config); err != nil {
 		return "", nil, err
 	}
 	if err := authorizeSourceConfigTenant(ctx, config); err != nil {
 		return "", nil, err
 	}
 	return sourceID, config, nil
-}
-
-func validateMCPSourceConfig(config map[string]string) error {
-	for key := range config {
-		trimmedKey := strings.TrimSpace(key)
-		if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
-			return fmt.Errorf("%w: source config %q is reserved", sourceops.ErrInvalidRequest, trimmedKey)
-		}
-	}
-	return nil
 }
 
 func (app *App) mcpListSourceRuntimes(r *http.Request, args map[string]any) (any, error) {

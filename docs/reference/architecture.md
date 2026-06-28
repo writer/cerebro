@@ -81,6 +81,10 @@ Production Go under `internal/bootstrap` is ratcheted by `tools/archtests` so
 new routes and handlers do not quietly grow the bootstrap surface. If a PR must
 increase that budget, the PR should explain why the behavior cannot move behind
 a domain package yet and update this architecture note alongside the test.
+Stateless source MCP tools stay limited to request/response mapping over
+`internal/sourceops`; sourceops owns preview-config validation, including
+reserved runtime key rejection, while bootstrap invokes that guard at the MCP
+transport boundary.
 
 The current budget includes a narrow transport-boundary exception for graph
 reasoning: HTTP and MCP handlers clear the server write deadline before entering

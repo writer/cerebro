@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -164,20 +165,37 @@ func sourceOperationError(err error) error {
 	return err
 }
 
+func ValidatePreviewConfig(sourceID string, values map[string]string) error {
+	for key := range values {
+		if err := validatePreviewConfigKey(sourceID, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) previewConfig(sourceID string, values map[string]string) (map[string]string, error) {
 	config := make(map[string]string, len(values))
 	for key, value := range values {
 		if !s.allowInternalConfig {
-			if sourceconfig.InternalKey(key) {
-				return nil, fmt.Errorf("%w: source config %q is reserved", ErrInvalidRequest, strings.TrimSpace(key))
-			}
-			if serverLocalPreviewConfigKey(sourceID, key) {
-				return nil, fmt.Errorf("%w: source config %q is not allowed for %s preview", ErrInvalidRequest, strings.TrimSpace(key), strings.TrimSpace(sourceID))
+			if err := validatePreviewConfigKey(sourceID, key); err != nil {
+				return nil, err
 			}
 		}
 		config[key] = value
 	}
 	return config, nil
+}
+
+func validatePreviewConfigKey(sourceID string, key string) error {
+	trimmedKey := strings.TrimSpace(key)
+	if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
+		return fmt.Errorf("%w: source config %q is reserved", ErrInvalidRequest, trimmedKey)
+	}
+	if serverLocalPreviewConfigKey(sourceID, trimmedKey) {
+		return fmt.Errorf("%w: source config %q is not allowed for %s preview", ErrInvalidRequest, trimmedKey, strings.TrimSpace(sourceID))
+	}
+	return nil
 }
 
 func serverLocalPreviewConfigKey(sourceID string, key string) bool {

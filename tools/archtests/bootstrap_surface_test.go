@@ -68,8 +68,10 @@ import (
 // MCP tools add request/response mapping over the existing sourceops preview
 // service so agents can check/discover/read live sources without durable stores;
 // the read tool also trims event and preview-event arrays at the response
-// boundary so MCP clients cannot receive an unbounded source page.
-const bootstrapProductionGoLineBudget = 26624
+// boundary so MCP clients cannot receive an unbounded source page. The same MCP
+// source boundary calls sourceops preview-config validation before tenant checks
+// so reserved runtime keys cannot cross the MCP transport layer.
+const bootstrapProductionGoLineBudget = 26627
 
 type bootstrapFileLineCount struct {
 	path  string
