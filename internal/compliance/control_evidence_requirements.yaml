@@ -369,6 +369,7 @@ profiles:
         - ISO 27701:2025
       family_keywords:
         - Privacy
+        - PII
         - Personal
         - Data Subject
         - PII
