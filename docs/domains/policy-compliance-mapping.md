@@ -139,7 +139,7 @@ Use `control_refs_without_source_match` as a review queue. It does not mean the 
 
 `framework_review_areas.yaml` groups related controls into reviewer queues such as access authorization, technical safeguards, privacy incident response, payment-card authentication, and AI management planning. A finding enters `finding_review_area_map.csv` when one of its direct control refs is in the YAML area.
 
-`control_relationships.yaml` adds explicit links such as aliases, child requirements, sibling scope, evidence dependencies, and corrective-action follow-up. A finding enters `finding_control_relationship_map.csv` when it has the direct control ref. These rows are review hints only; they do not change `source_backed`, `partial_source_backed`, or `control_only` status.
+`control_relationships.yaml` adds explicit links such as child requirements, sibling scope, evidence dependencies, corrective-action follow-up, and operating context. A finding enters `finding_control_relationship_map.csv` when it has the direct control ref. These rows are review hints only; they do not change `source_backed`, `partial_source_backed`, or `control_only` status.
 
 `evidence_capabilities.yaml` declares what a source/dimension can support when source coverage is available. `source_capability_review_map.csv` compares those YAML declarations with the public detection catalog so capability gaps are visible without treating review context as evidence.
 
