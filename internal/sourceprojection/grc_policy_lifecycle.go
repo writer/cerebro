@@ -267,11 +267,85 @@ func grcPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	return entities, links, nil
 }
 
+func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	recordType := firstNonEmpty(firstAttribute(ctx.attrs, "record_type"), "policy.lifecycle.event")
+	recordID := firstAttribute(ctx.attrs, "record_id", "gap_id", "external_id")
+	if recordID == "" && firstAttribute(ctx.attrs, "record_urn") != "" {
+		recordID = firstAttribute(ctx.attrs, "record_urn")
+	}
+	gapURNs := grcPolicyLifecycleEventGapURNs(ctx.attrs)
+	if recordID == "" && len(gapURNs) != 0 {
+		recordID = grcDerivedID(strings.Join(gapURNs, ","), firstAttribute(ctx.attrs, "action", "lifecycle_action"), ctx.event.GetId())
+	}
+	if recordID == "" {
+		recordID = ctx.event.GetId()
+	}
+	recordURN := firstAttribute(ctx.attrs, "record_urn", "gap_id")
+	if recordType == "governance.gap" && len(gapURNs) > 0 && !strings.Contains(recordURN, ":gap:") {
+		recordURN = gapURNs[0]
+	}
+	if recordURN == "" {
+		recordURN = ctx.resourceURN("policy_lifecycle_subject", recordID)
+	}
+	policyID := firstAttribute(ctx.attrs, "policy_id")
+	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
+	eventURN := addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
+	addGRCPolicyLifecycleGapLinks(ctx, eventURN, recordURN, gapURNs)
+	addGRCPolicyLifecycleTargetPolicyLink(ctx, eventURN, policyID)
+	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
+	addGRCPolicyRiskScenarioReferenceLinks(ctx, recordURN)
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
+	entities, links := ctx.done()
+	return entities, links, nil
+}
+
+func grcPolicyLifecycleEventGapURNs(attrs map[string]string) []string {
+	gapURNs := []string{}
+	seen := map[string]struct{}{}
+	addGapURN := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" || !strings.Contains(value, ":gap:") {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		gapURNs = append(gapURNs, value)
+		seen[value] = struct{}{}
+	}
+	for _, value := range grcAttributeSequence(attrs["gap_ids"]) {
+		addGapURN(value)
+	}
+	addGapURN(firstAttribute(attrs, "record_urn"))
+	addGapURN(firstAttribute(attrs, "gap_id"))
+	return gapURNs
+}
+
+func addGRCPolicyLifecycleGapLinks(ctx *grcProjectionContext, eventURN string, primaryURN string, gapURNs []string) {
+	if ctx == nil || eventURN == "" {
+		return
+	}
+	for _, gapURN := range gapURNs {
+		if gapURN != "" && gapURN != primaryURN {
+			ctx.addEventLink(eventURN, gapURN, relationAssociatedWith)
+		}
+	}
+}
+
 func grcPolicyURN(tenantID string, provider string, policyID string) string {
 	return projectionURN(tenantID, "policy", provider, "policy", policyID)
 }
 
 func addGRCPolicyReference(ctx *grcProjectionContext, policyID string) string {
+	return addGRCPolicyReferenceWithLabel(ctx, policyID, firstAttribute(ctx.attrs, "policy_name", "name", "title", "policy_id"))
+}
+
+func addGRCPolicyReferenceWithLabel(ctx *grcProjectionContext, policyID string, label string) string {
 	policyID = strings.TrimSpace(policyID)
 	if policyID == "" {
 		return ""
@@ -280,7 +354,7 @@ func addGRCPolicyReference(ctx *grcProjectionContext, policyID string) string {
 	ctx.addReferenceEntity(
 		policyURN,
 		"policy",
-		firstAttribute(ctx.attrs, "policy_name", "name", "title", "policy_id"),
+		firstNonEmptyString(label, policyID),
 		map[string]string{"policy_id": policyID, "policy_type": "policy", "source_system": ctx.provider},
 	)
 	return policyURN
@@ -302,16 +376,16 @@ func addGRCPolicyLifecycleSubjectLinks(ctx *grcProjectionContext, fromURN string
 	}
 }
 
-func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, recordType string, recordID string, policyID string, versionID string) {
+func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, recordType string, recordID string, policyID string, versionID string) string {
 	if ctx == nil || subjectURN == "" {
-		return
+		return ""
 	}
 	eventID := firstAttribute(ctx.attrs, "lifecycle_event_id", "source_event_id")
 	if eventID == "" {
 		eventID = ctx.event.GetId()
 	}
 	if eventID == "" {
-		return
+		return ""
 	}
 	eventURN := ctx.resourceURN("policy_lifecycle_event", eventID)
 	action := firstAttribute(ctx.attrs, "action", "lifecycle_action")
@@ -354,6 +428,23 @@ func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, re
 		ctx.addEventLink(eventURN, policyURN, relationAssociatedWith)
 	}
 	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "actor_user_id", "created_by_user_id", "updated_by_user_id", "author_user_id", "requested_by_user_id", "approver_user_id", "reviewer_user_id", "sent_by_user_id"), eventURN, action)
+	return eventURN
+}
+
+func addGRCPolicyLifecycleTargetPolicyLink(ctx *grcProjectionContext, eventURN string, contextPolicyID string) {
+	targetPolicyID := strings.TrimSpace(firstAttribute(ctx.attrs, "target_policy_id"))
+	if eventURN == "" || targetPolicyID == "" || targetPolicyID == strings.TrimSpace(contextPolicyID) {
+		return
+	}
+	targetPolicyURN := addGRCPolicyReferenceWithLabel(ctx, targetPolicyID, firstAttribute(ctx.attrs, "target_policy_name", "target_policy_title", "target_policy_id"))
+	if targetPolicyURN == "" {
+		return
+	}
+	addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, eventURN, targetPolicyURN, relationAssociatedWith, map[string]string{
+		"event_id":         ctx.event.GetId(),
+		"match_type":       "grc_target_policy_reference",
+		"target_policy_id": targetPolicyID,
+	}))
 }
 
 func sourceProjectionTimestampString(value *timestamppb.Timestamp) string {
