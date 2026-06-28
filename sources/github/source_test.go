@@ -251,14 +251,15 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 
 	for _, tc := range []struct {
 		family string
+		urns   []string
 		kinds  []string
 	}{
-		{family: familyAudit, kinds: []string{"github.audit"}},
-		{family: familyDependabot, kinds: []string{"github.dependabot_alert"}},
-		{family: familyOrgInventory, kinds: []string{"github.org_member", "github.org_installation"}},
-		{family: familyPullRequest, kinds: []string{"github.pull_request", "github.pull_request"}},
-		{family: familyRepository, kinds: []string{"github.code.repository"}},
-		{family: familySecretScanning, kinds: []string{"github.secret_scanning_alert"}},
+		{family: familyAudit, urns: []string{"urn:cerebro:writer:org:writer"}, kinds: []string{"github.audit"}},
+		{family: familyDependabot, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.dependabot_alert"}},
+		{family: familyOrgInventory, urns: []string{"urn:cerebro:writer:org_inventory"}, kinds: []string{"github.org_member", "github.org_installation"}},
+		{family: familyPullRequest, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.pull_request", "github.pull_request"}},
+		{family: familyRepository, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.code.repository"}},
+		{family: familySecretScanning, urns: []string{"urn:cerebro:writer:secret_scanning"}, kinds: []string{"github.secret_scanning_alert"}},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
 			cfg := sourcecdk.NewConfig(map[string]string{"family": tc.family, "token": "test"})
@@ -268,6 +269,14 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 			}
 			if len(urns) == 0 {
 				t.Fatalf("Discover(%s) returned no URNs", tc.family)
+			}
+			if len(urns) != len(tc.urns) {
+				t.Fatalf("len(Discover(%s)) = %d, want %d", tc.family, len(urns), len(tc.urns))
+			}
+			for index, wantURN := range tc.urns {
+				if got := urns[index].String(); got != wantURN {
+					t.Fatalf("Discover(%s)[%d] = %q, want %q", tc.family, index, got, wantURN)
+				}
 			}
 
 			for index, wantKind := range tc.kinds {

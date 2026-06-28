@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -33,7 +34,7 @@ func NewFixture() (sourcecdk.Source, error) {
 func loadFixtureFamilies(names ...string) ([]sourcecdk.FixtureFamily, error) {
 	families := make([]sourcecdk.FixtureFamily, 0, len(names))
 	for _, name := range names {
-		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+name+".json")
+		urns, err := loadFixtureURNs(name)
 		if err != nil {
 			return nil, err
 		}
@@ -48,6 +49,26 @@ func loadFixtureFamilies(names ...string) ([]sourcecdk.FixtureFamily, error) {
 		})
 	}
 	return families, nil
+}
+
+func loadFixtureURNs(family string) ([]sourcecdk.URN, error) {
+	path := "testdata/discover_" + family + ".json"
+	if family != familyOrgInventory && family != familySecretScanning {
+		return sourcecdk.LoadFixtureURNs(fixtureFS, path)
+	}
+	urnBytes, err := fixtureFS.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var rawURNs []string
+	if err := json.Unmarshal(urnBytes, &rawURNs); err != nil {
+		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
+	}
+	urns := make([]sourcecdk.URN, 0, len(rawURNs))
+	for _, rawURN := range rawURNs {
+		urns = append(urns, sourcecdk.URN(rawURN))
+	}
+	return urns, nil
 }
 
 func checkFixtureToken(_ context.Context, cfg sourcecdk.Config) error {
