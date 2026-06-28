@@ -62,8 +62,8 @@ var generatedPciRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "SOC 2", ControlID: "A1.1"},
 				{FrameworkName: "SOC 2", ControlID: "A1.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},
@@ -114,8 +114,8 @@ var generatedPciRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.16"},
 				{FrameworkName: "NIST 800-53 r5", ControlID: "AU-2"},
@@ -407,10 +407,10 @@ var generatedPciRules = []policyRuleConfig{
 			Runbook:           "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Replace shared accounts with unique individual user accounts. Assign unique user IDs to all users. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
-				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
+				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.17"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.5"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},

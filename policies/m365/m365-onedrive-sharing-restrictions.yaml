@@ -21,7 +21,7 @@ spec:
     frameworks:
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.6
         - name: NIST 800-53 r5
           controls:
             - AC-3

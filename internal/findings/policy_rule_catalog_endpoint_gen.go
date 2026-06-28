@@ -436,9 +436,8 @@ var generatedEndpointRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
-				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.8"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.16"},
@@ -630,9 +629,8 @@ var generatedEndpointRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
-				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 				{FrameworkName: "SOC 2", ControlID: "CC6.8"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.16"},

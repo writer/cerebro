@@ -21,8 +21,8 @@ spec:
         - name: SOC 2
           controls:
             - CC4
-            - CC7
             - CC7.2
+            - CC7.3
         - name: ISO 27001:2022
           controls:
             - A.8.15

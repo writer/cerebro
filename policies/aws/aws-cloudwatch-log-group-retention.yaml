@@ -34,7 +34,9 @@ spec:
         - name: SOC 2
           controls:
             - CC4
-            - CC7
+            - CC7.2
+            - A1.1
+            - A1.3
         - name: CIS Controls v8
           controls:
             - "8"

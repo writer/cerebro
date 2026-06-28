@@ -37,7 +37,9 @@ spec:
             - "16"
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.1
+            - CC6.2
+            - C1.1
     mitreAttack:
         - tactic: Credential Access
           technique: T1552

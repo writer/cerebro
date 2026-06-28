@@ -106,10 +106,10 @@ var generatedNetworkRules = []policyRuleConfig{
 			Runbook:           "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Review each returned query row as an exception candidate, validate row-level scope, and retain the query result as audit evidence. Deploy IDS/IPS to monitor all critical network segments. Ensure signatures are updated regularly. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
-				{FrameworkName: "SOC 2", ControlID: "CC6.6"},
 				{FrameworkName: "SOC 2", ControlID: "CC4"},
-				{FrameworkName: "SOC 2", ControlID: "CC7"},
+				{FrameworkName: "SOC 2", ControlID: "CC6.6"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.3"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.20"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.22"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.15"},
