@@ -1,0 +1,26 @@
+sheet_order,worksheet_name,csv_file,row_grain,primary_key,review_question,source_authority,include_by_default
+1,Overview,overview.csv,metric,metric,What changed and where should review start?,generated summary,true
+2,Logic,logic.csv,generation step,step,What logic produced these review tables?,tools/policymappingexport,true
+3,Quality Issues,compliance_quality_issues.csv,blocking quality issue,scope; scope_id; quality_gate,What must be fixed before claiming mapping quality?,tools/policymappingexport,true
+4,Framework Sources,framework_sources.csv,framework source,framework,"Which authority, version, and evidence model governs each framework?",internal/compliance/framework_sources.yaml,true
+5,Framework Gaps,framework_control_gap_map.csv,framework control,framework; control_id,"Which controls are direct, indirect, or uncovered?",internal/compliance/control_families.yaml plus framework_sources.yaml,true
+6,Coverage Candidates,framework_coverage_candidates.csv,framework control work item,framework; control_id; candidate_type,What author or evidence work should happen next?,derived from framework control enrichment,true
+7,Control Requirements,control_evidence_requirements.csv,control evidence requirement,framework; control_id; requirement_profile; requirement_source_id,What evidence does each control require?,internal/compliance/control_evidence_requirements.yaml plus framework_sources.yaml,true
+8,Finding Requirements,finding_evidence_requirement_map.csv,finding-control-requirement link,finding_id; framework; control_id; requirement_profile; requirement_source_id,Which requirement source does each mapped finding point toward?,public catalog plus control evidence requirements,true
+9,Finding Map,finding_map.csv,public finding,finding_id,"What controls, tags, evidence, and review signals attach to each finding?",internal/findings/public_detection_catalog.json,true
+10,Finding Controls,finding_control_map.csv,finding-control link,finding_id; framework; control_id,"Which control links are source-backed, direct-only, or review-needed?",public catalog source coverage refs,true
+11,Finding Review,finding_compliance_review_map.csv,public finding review row,finding_id,"Which findings need audit-language, source, or control review?",policy_rule_extensions.yaml plus public catalog,true
+12,Source Coverage,source_coverage_map.csv,finding source coverage ref,finding_id; coverage_source_id; coverage_dimension_id,Which source coverage refs support or extend finding controls?,public catalog source coverage refs,true
+13,Source Capability Review,source_capability_review_map.csv,source capability,source_id; dimension_id,Where do YAML capabilities and catalog coverage differ?,internal/compliance/evidence_capabilities.yaml,true
+14,Evidence Capabilities,evidence_capabilities.csv,YAML source capability,source_id; dimension_id,What can each source and dimension support?,internal/compliance/evidence_capabilities.yaml,true
+15,Framework Enrichment,framework_control_enrichment_map.csv,framework control,framework; control_id,"What direct findings, source capabilities, and review context enrich each control?",derived from all mapping layers,true
+16,Review Areas,framework_review_areas.csv,framework review area,framework; area_id,How should controls be grouped for reviewer queues?,internal/compliance/framework_review_areas.yaml,false
+17,Control Relationships,control_relationships.csv,control relationship,framework; control_id; related_framework; related_control_id,Which controls should be reviewed together?,internal/compliance/control_relationships.yaml,false
+18,Finding Review Areas,finding_review_area_map.csv,finding review-area link,finding_id; framework; area_id,Which findings enter each framework review queue?,review areas plus direct control refs,false
+19,Finding Relationships,finding_control_relationship_map.csv,finding control relationship link,finding_id; framework; control_id; related_control_id,Which related controls should be inspected with each finding?,control relationships plus direct control refs,false
+20,Policy Map,policy_map.csv,policy rule,rule_id,"What YAML policy metadata, controls, tags, and audit language exist?",policies/**/*.yaml,false
+21,Policy Controls,control_map.csv,policy-control link,rule_id; framework; control_id,Which policy rules map to each framework control?,policies/**/*.yaml,false
+22,Policy Tags,tag_map.csv,policy-tag link,rule_id; tag,Which metadata and derived tags route each policy?,policies/**/*.yaml,false
+23,Finding Tags,finding_tag_map.csv,finding-tag link,finding_id; tag,Which catalog and derived review tags attach to each finding?,public catalog plus control refs,false
+24,Domain Aliases,finding_domain_aliases.csv,finding domain alias,match_type; match_value,How are non-policy findings assigned audit domains?,internal/compliance/policy_rule_extensions.yaml,false
+25,YAML Layers,yaml_layers.csv,audit language layer,scope_type; scope,Which YAML layer supplied default audit language?,internal/compliance/policy_rule_extensions.yaml,false

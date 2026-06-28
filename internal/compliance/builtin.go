@@ -14,6 +14,9 @@ var builtinControlCoverageIndexYAML []byte
 //go:embed control_archetypes.yaml
 var builtinControlArchetypesYAML []byte
 
+//go:embed control_evidence_requirements.yaml
+var builtinControlEvidenceRequirementsYAML []byte
+
 func LoadBuiltinControlCatalog() (ControlCatalog, error) {
 	return LoadControlCatalog(builtinControlCatalogYAML)
 }
@@ -28,4 +31,8 @@ func LoadBuiltinControlCoverageIndex() (ControlCoverageIndex, error) {
 
 func LoadBuiltinControlArchetypeSet() (ControlArchetypeSet, error) {
 	return LoadControlArchetypeSet(builtinControlArchetypesYAML)
+}
+
+func LoadBuiltinControlEvidenceRequirementCatalog() (ControlEvidenceRequirementCatalog, error) {
+	return LoadControlEvidenceRequirementCatalog(builtinControlEvidenceRequirementsYAML)
 }
