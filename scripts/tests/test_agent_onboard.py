@@ -154,9 +154,9 @@ class AgentOnboardTests(unittest.TestCase):
             if parsed == "/source-runtimes/local-sdk-demo" and method == "PUT":
                 payload = json.loads(body.decode("utf-8"))
                 self.assertEqual(payload["runtime"]["id"], "local-sdk-demo")
-                self.assertEqual(payload["runtime"]["config"]["owner"], "writer")
-                self.assertEqual(payload["runtime"]["config"]["token"], "ghp_test")
-                self.assertNotIn("env:GITHUB", json.dumps(payload))
+                self.assertEqual(payload["runtime"]["config"]["owner"], "env:GITHUB_OWNER")
+                self.assertEqual(payload["runtime"]["config"]["token"], "env:GITHUB_TOKEN")
+                self.assertNotIn("ghp_test", json.dumps(payload))
                 return 200, json.dumps({"runtime": payload["runtime"]})
             if parsed == "/source-runtimes/local-sdk-demo/claims" and method == "POST":
                 return 200, json.dumps({"claims": [{}]})
