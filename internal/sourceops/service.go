@@ -10,7 +10,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -189,7 +188,7 @@ func (s *Service) previewConfig(sourceID string, values map[string]string) (map[
 
 func validatePreviewConfigKey(sourceID string, key string) error {
 	trimmedKey := strings.TrimSpace(key)
-	if sourceconfig.InternalKey(trimmedKey) || trimmedKey == resourcescope.ConfigKey {
+	if sourceconfig.InternalKey(trimmedKey) {
 		return fmt.Errorf("%w: source config %q is reserved", ErrInvalidRequest, trimmedKey)
 	}
 	if serverLocalPreviewConfigKey(sourceID, trimmedKey) {

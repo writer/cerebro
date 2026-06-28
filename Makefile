@@ -67,10 +67,11 @@ AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
 AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
 AGENT_ONBOARD_GITHUB_RECEIPT ?= tmp/onboarding/github-receipt.json
 CEREBRO_ONBOARD_BASE_URL ?=
-# Local Docker Compose defaults for agent onboarding smoke tests. Override these
-# values for any non-local Postgres instance.
+# Local Docker Compose defaults for agent onboarding smoke tests. The password
+# is generated under tmp/ so each worktree keeps its own local database secret.
 CEREBRO_LOCAL_POSTGRES_USER ?= cerebro
-CEREBRO_LOCAL_POSTGRES_PASSWORD ?= cerebro
+CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE ?= tmp/local-postgres-password
+CEREBRO_LOCAL_POSTGRES_PASSWORD ?= $(shell umask 077; mkdir -p "$$(dirname "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")"; if [ ! -s "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)" ]; then $(PYTHON) -c 'import pathlib, secrets; pathlib.Path("$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)").write_text(secrets.token_urlsafe(24) + "\n", encoding="utf-8")'; fi; cat "$(CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE)")
 CEREBRO_LOCAL_POSTGRES_DSN ?= postgres://$(CEREBRO_LOCAL_POSTGRES_USER):$(CEREBRO_LOCAL_POSTGRES_PASSWORD)@127.0.0.1:5432/cerebro?sslmode=disable
 GITHUB_OWNER ?=
 GITHUB_REPO ?=
@@ -419,6 +420,8 @@ agent-onboard-test: ## Run agent onboarding workflow unit tests.
 
 agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflow.
 	@command -v docker >/dev/null || { echo "docker is required for agent-onboard-e2e" >&2; exit 2; }
+	@CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)" \
 	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 	@CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
@@ -443,6 +446,8 @@ github-business-demo: github-business-demo-env build ## Connect a GitHub repo, s
 	@CEREBRO_SOURCE_GITHUB_OWNER="$(CEREBRO_SOURCE_GITHUB_OWNER)" \
 	CEREBRO_SOURCE_GITHUB_REPO="$(CEREBRO_SOURCE_GITHUB_REPO)" \
 	CEREBRO_SOURCE_GITHUB_TOKEN="$(CEREBRO_SOURCE_GITHUB_TOKEN)" \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$(CEREBRO_LOCAL_POSTGRES_PASSWORD)" \
 	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 	@CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \

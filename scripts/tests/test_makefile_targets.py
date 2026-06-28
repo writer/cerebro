@@ -8,6 +8,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class MakefileTargetTests(unittest.TestCase):
+    def makefile_text(self):
+        return (ROOT / "Makefile").read_text(encoding="utf-8")
+
     def make_env(self, **overrides):
         env = os.environ.copy()
         for key in (
@@ -47,6 +50,12 @@ class MakefileTargetTests(unittest.TestCase):
             )
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_local_postgres_password_default_is_generated(self):
+        makefile = self.makefile_text()
+        self.assertIn("CEREBRO_LOCAL_POSTGRES_PASSWORD_FILE ?= tmp/local-postgres-password", makefile)
+        self.assertIn("secrets.token_urlsafe", makefile)
+        self.assertNotIn("CEREBRO_LOCAL_POSTGRES_PASSWORD ?= cerebro", makefile)
 
 
 if __name__ == "__main__":

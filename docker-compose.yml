@@ -35,15 +35,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: cerebro
-      POSTGRES_PASSWORD: cerebro
+      POSTGRES_USER: ${CEREBRO_LOCAL_POSTGRES_USER:-cerebro}
+      POSTGRES_PASSWORD: ${CEREBRO_LOCAL_POSTGRES_PASSWORD:-cerebro}
       POSTGRES_DB: cerebro
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cerebro -d cerebro"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d cerebro"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -71,7 +71,7 @@ services:
       CEREBRO_APPEND_LOG_DRIVER: jetstream
       CEREBRO_JETSTREAM_URL: nats://nats:4222
       CEREBRO_STATE_STORE_DRIVER: postgres
-      CEREBRO_POSTGRES_DSN: postgres://cerebro:cerebro@postgres:5432/cerebro?sslmode=disable
+      CEREBRO_POSTGRES_DSN: postgres://${CEREBRO_LOCAL_POSTGRES_USER:-cerebro}:${CEREBRO_LOCAL_POSTGRES_PASSWORD:-cerebro}@postgres:5432/cerebro?sslmode=disable
       CEREBRO_GRAPH_STORE_DRIVER: neo4j
       CEREBRO_NEO4J_URI: bolt://neo4j:7687
       CEREBRO_NEO4J_USERNAME: neo4j
