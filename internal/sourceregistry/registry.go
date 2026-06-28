@@ -1,6 +1,7 @@
 package sourceregistry
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
@@ -54,6 +55,8 @@ import (
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
 )
+
+type DefinitionFixtureReadResult = catalogruntimesource.FixtureReadResult
 
 type builtinSourceLoader struct {
 	name string
@@ -353,6 +356,10 @@ func DynamicDefinitionSource(definition connectordefinitions.Definition) (source
 		return newDepositDefinitionSource(normalized), nil
 	}
 	return catalogruntimesource.NewDefinition(normalized)
+}
+
+func ReadDynamicDefinitionFixture(ctx context.Context, definition connectordefinitions.Definition, familyID string, body []byte) (DefinitionFixtureReadResult, error) {
+	return catalogruntimesource.ReadDefinitionFixture(ctx, definition, familyID, body)
 }
 
 // Builtin constructs the in-process source registry for the rewrite skeleton.

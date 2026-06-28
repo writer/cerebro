@@ -20,6 +20,11 @@ type Source struct {
 	verificationStatus []int
 }
 
+// ValidationOptions narrows test-only source behavior for contract validation.
+type ValidationOptions struct {
+	AllowLoopbackBaseURL bool
+}
+
 // New creates a runnable source from a connector catalog entry.
 func New(entry connectorcatalog.Entry) (*Source, error) {
 	return NewDefinition(entry.Definition)
@@ -27,6 +32,11 @@ func New(entry connectorcatalog.Entry) (*Source, error) {
 
 // NewDefinition creates a runnable source from a connector definition.
 func NewDefinition(definition connectordefinitions.Definition) (*Source, error) {
+	return NewDefinitionWithValidationOptions(definition, ValidationOptions{})
+}
+
+// NewDefinitionWithValidationOptions creates a runnable source for contract validation.
+func NewDefinitionWithValidationOptions(definition connectordefinitions.Definition, validationOptions ValidationOptions) (*Source, error) {
 	definition, err := connectordefinitions.Normalize(definition)
 	if err != nil {
 		return nil, err
@@ -72,6 +82,7 @@ func NewDefinition(definition connectordefinitions.Definition) (*Source, error) 
 	if err != nil {
 		return nil, err
 	}
+	inner.AllowLoopbackBaseURL = validationOptions.AllowLoopbackBaseURL
 	source := &Source{inner: inner}
 	if definition.Transport.Verification != nil {
 		source.verificationPath = strings.TrimSpace(definition.Transport.Verification.Path)

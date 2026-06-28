@@ -4,6 +4,8 @@ Cerebro sources live under `sources/<id>` and expose their capabilities through 
 
 Source-specific configuration is passed as `key=value` pairs in CLI calls or query parameters in HTTP calls. Required keys vary by source and family.
 
+Declarative connector catalog entries are cataloged when a spec exists. They are callable only when the connector has wired auth and an earned validation grade of `fixture_validated` or higher in `internal/connectorvalidation/registry.yaml`; entries without evidence remain `generated_from_docs`.
+
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
 | `akeyless` | Akeyless secrets management source | items, auth methods, roles, audit events |

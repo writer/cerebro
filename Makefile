@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -279,6 +279,9 @@ control-index-check: ## Verify compliance control coverage index is current.
 sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
 
+connector-contract-check: ## Validate declarative connector evidence, fixtures, and security lint.
+	go run ./tools/connectorcontractcheck
+
 connector-import: ## Generate candidate connector definitions from the provider manifest into staging (no catalog writes).
 	go run ./tools/connectorimport -manifest tools/connectorimport/targets.yaml -out tmp/connector-candidates
 
@@ -517,7 +520,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check connector-contract-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -533,4 +536,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
