@@ -686,6 +686,27 @@ func TestBuildActionEventRejectsLinkPolicyWithoutTarget(t *testing.T) {
 	}
 }
 
+func TestBuildActionEventRejectsGapIDAndGapIDsTogether(t *testing.T) {
+	_, _, err := BuildActionEvent(ActionRequest{
+		Action: "governance_gap.assign_owner",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:    "writer",
+			SourceID:    "grc",
+			ActorUserID: "operator@example.com",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			GapID:  "urn:document:gap:owner",
+			GapIDs: []string{"urn:document:gap:owner", "urn:document:gap:controls"},
+		},
+		ActionRequestAssignments: ActionRequestAssignments{
+			Assignees: []string{"owner@example.com"},
+		},
+	}, time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC))
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("BuildActionEvent() error = %v, want invalid request", err)
+	}
+}
+
 func TestAuditExportRowsUseGovernanceGapColumns(t *testing.T) {
 	response := Response{
 		Policies: []grcPolicyLifecyclePolicy{{

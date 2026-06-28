@@ -167,6 +167,9 @@ func BuildActionEvent(request ActionRequest, now time.Time) (*cerebrov1.EventEnv
 	if definition.RequiresGapID && request.GapID == "" && request.RecordID == "" && request.RecordURN == "" && len(request.GapIDs) == 0 {
 		return nil, ActionResponse{}, fmt.Errorf("%w: gap_id is required for %s", ErrInvalidRequest, definition.ID)
 	}
+	if definition.RequiresGapID && request.GapID != "" && len(request.GapIDs) > 0 {
+		return nil, ActionResponse{}, fmt.Errorf("%w: gap_id and gap_ids cannot both be set for %s", ErrInvalidRequest, definition.ID)
+	}
 	if definition.ID == "governance_gap.link_policy" && policyLifecycleActionAttribute(request, "target_policy_id") == "" {
 		return nil, ActionResponse{}, fmt.Errorf("%w: target_policy_id is required for %s", ErrInvalidRequest, definition.ID)
 	}
