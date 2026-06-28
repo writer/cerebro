@@ -55,6 +55,36 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	if !foundLifecycleEvent {
 		t.Fatalf("entity types = %#v, want policy.lifecycle.event", entityRequest.Params["entity_types"])
 	}
+	if entityRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
+		t.Fatalf("entity params = %#v, want risk scenario filter", entityRequest.Params)
+	}
+	documentFragments, ok := entityRequest.Params["document_attr_fragments"].([]string)
+	if !ok || !stringSliceContains(documentFragments, `"policy_id":"`) || !stringSliceContains(documentFragments, `"risk_scenario_id":"`) {
+		t.Fatalf("entity params = %#v, want document attr filters", entityRequest.Params)
+	}
+	if !strings.Contains(entityRequest.Query, "entity_type <> 'claim'") || !strings.Contains(entityRequest.Query, "entity_type <> 'document'") {
+		t.Fatalf("entity query %q does not filter broad claim/document types", entityRequest.Query)
+	}
+	relationRequest := store.requests[1]
+	if relationRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
+		t.Fatalf("relation params = %#v, want risk scenario filter", relationRequest.Params)
+	}
+	anchorTypes, ok := relationRequest.Params["policy_anchor_entity_types"].([]string)
+	if !ok || !stringSliceContains(anchorTypes, "policy.version") {
+		t.Fatalf("relation params = %#v, want policy anchor types", relationRequest.Params)
+	}
+	if !strings.Contains(relationRequest.Query, "left.entity_type <> 'claim'") || !strings.Contains(relationRequest.Query, "right.entity_type <> 'document'") {
+		t.Fatalf("relation query %q does not filter broad claim/document types", relationRequest.Query)
+	}
+}
+
+func stringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEntityTypeLimitStaysWithinGraphRowCeiling(t *testing.T) {

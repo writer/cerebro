@@ -39,6 +39,46 @@ var grcPolicyLifecycleEntityTypes = []string{
 	"policy.lifecycle.event",
 }
 
+var grcPolicyLifecycleAnchorEntityTypes = []string{
+	"policy",
+	"policy.template",
+	"policy.version",
+	"policy.approval",
+	"policy.acceptance",
+	"policy.review",
+	"policy.exception",
+	"policy.reminder",
+}
+
+const grcPolicyLifecycleRiskScenarioAttrFragment = `"claim_type":"risk_scenario"`
+
+var grcPolicyLifecycleDocumentAttrFragments = []string{
+	`"category":"policy"`,
+	`"category":"procedure"`,
+	`"category":"risk_register"`,
+	`"category":"standard"`,
+	`"control_id":"`,
+	`"control_ids":`,
+	`"document_class":"policy"`,
+	`"document_class":"procedure"`,
+	`"document_class":"risk_register"`,
+	`"document_class":"standard"`,
+	`"document_type":"policy`,
+	`"document_type":"procedure`,
+	`"document_type":"risk_assessment`,
+	`"document_type":"risk_register`,
+	`"document_type":"standard`,
+	`"evidence_id":"`,
+	`"evidence_ids":`,
+	`"policy_document_type":"`,
+	`"policy_id":"`,
+	`"policy_ids":`,
+	`"policy_urn":"`,
+	`"risk_id":"`,
+	`"risk_ids":`,
+	`"risk_scenario_id":"`,
+}
+
 const grcPolicyLifecycleEntitiesQuery = `UNWIND $entity_types AS entity_type
 CALL {
   WITH entity_type
@@ -47,6 +87,9 @@ CALL {
     AND ($source_id = '' OR e.source_id = $source_id)
     AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
     AND e.entity_type = entity_type
+  WITH entity_type, e, toLower(coalesce(e.attributes_json, '')) AS attrs
+  WHERE (entity_type <> 'claim' OR attrs CONTAINS $risk_scenario_attr_fragment)
+    AND (entity_type <> 'document' OR ANY(fragment IN $document_attr_fragments WHERE attrs CONTAINS fragment))
   RETURN e
   ORDER BY coalesce(e.label, e.urn), e.urn
   LIMIT $type_limit
@@ -74,6 +117,21 @@ WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
     (right.entity_type IN $entity_types AND coalesce(right.runtime_id, '') = $runtime_id)
   )
   AND (left.entity_type IN $entity_types OR right.entity_type IN $entity_types)
+WITH left, r, right,
+     toLower(coalesce(left.attributes_json, '')) AS left_attrs,
+     toLower(coalesce(right.attributes_json, '')) AS right_attrs
+WHERE (left.entity_type <> 'claim' OR left_attrs CONTAINS $risk_scenario_attr_fragment)
+  AND (right.entity_type <> 'claim' OR right_attrs CONTAINS $risk_scenario_attr_fragment)
+  AND (
+    left.entity_type <> 'document' OR
+    ANY(fragment IN $document_attr_fragments WHERE left_attrs CONTAINS fragment) OR
+    right.entity_type IN $policy_anchor_entity_types
+  )
+  AND (
+    right.entity_type <> 'document' OR
+    ANY(fragment IN $document_attr_fragments WHERE right_attrs CONTAINS fragment) OR
+    left.entity_type IN $policy_anchor_entity_types
+  )
 RETURN left.urn AS left_urn,
        left.tenant_id AS left_tenant_id,
        left.source_id AS left_source_id,
@@ -489,11 +547,13 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 	entityRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: grcPolicyLifecycleEntitiesQuery,
 		Params: map[string]any{
-			"tenant_id":    scope.TenantID,
-			"source_id":    scope.SourceID,
-			"runtime_id":   scope.RuntimeID,
-			"entity_types": grcPolicyLifecycleEntityTypes,
-			"type_limit":   entityTypeLimit,
+			"tenant_id":                   scope.TenantID,
+			"source_id":                   scope.SourceID,
+			"runtime_id":                  scope.RuntimeID,
+			"entity_types":                grcPolicyLifecycleEntityTypes,
+			"type_limit":                  entityTypeLimit,
+			"risk_scenario_attr_fragment": grcPolicyLifecycleRiskScenarioAttrFragment,
+			"document_attr_fragments":     grcPolicyLifecycleDocumentAttrFragments,
 		},
 		RowLimit: entityRowLimit,
 	})
@@ -510,11 +570,14 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 	relationRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: grcPolicyLifecycleRelationsQuery,
 		Params: map[string]any{
-			"tenant_id":    scope.TenantID,
-			"source_id":    scope.SourceID,
-			"runtime_id":   scope.RuntimeID,
-			"entity_types": grcPolicyLifecycleEntityTypes,
-			"limit":        relationLimit,
+			"tenant_id":                   scope.TenantID,
+			"source_id":                   scope.SourceID,
+			"runtime_id":                  scope.RuntimeID,
+			"entity_types":                grcPolicyLifecycleEntityTypes,
+			"limit":                       relationLimit,
+			"risk_scenario_attr_fragment": grcPolicyLifecycleRiskScenarioAttrFragment,
+			"document_attr_fragments":     grcPolicyLifecycleDocumentAttrFragments,
+			"policy_anchor_entity_types":  grcPolicyLifecycleAnchorEntityTypes,
 		},
 		RowLimit: relationLimit,
 	})
