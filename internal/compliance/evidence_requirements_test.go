@@ -71,6 +71,126 @@ profiles:
 	}
 }
 
+func TestResolveControlEvidenceRequirementsClonesManualEvidenceAllowed(t *testing.T) {
+	manualAllowed := true
+	catalog := loadTestCatalog(t, `
+version: "2026-06-28"
+frameworks:
+  - name: SOC 2
+    families:
+      - id: CC6
+        name: Logical and Physical Access
+        controls:
+          - id: CC6.1
+          - id: CC6.2
+`)
+	index, catalogIssues := BuildCatalogIndex(catalog)
+	if len(catalogIssues) != 0 {
+		t.Fatalf("BuildCatalogIndex() issues = %#v, want none", catalogIssues)
+	}
+	requirements := ControlEvidenceRequirementCatalog{
+		Version: "2026-06-28",
+		Defaults: ControlEvidenceRequirementDefaults{
+			SourceID:              "control_owner_review",
+			EntityType:            "control_evidence_packet",
+			RequiredFields:        []string{"control_ref"},
+			FreshnessWindow:       "90d",
+			AssessmentMethods:     []string{"examine"},
+			AuditorGradeEvidence:  "Evidence identifies the control and observed state.",
+			ManualEvidenceAllowed: &manualAllowed,
+		},
+		Profiles: []ControlEvidenceRequirementProfile{{
+			ID:       "baseline-control-review",
+			Name:     "Baseline Control Review Evidence",
+			Fallback: true,
+			SourceRequirements: []ControlEvidenceSourceRequirement{{
+				SourceID:             "control_owner_review",
+				EntityType:           "control_evidence_packet",
+				RequiredFields:       []string{"control_ref"},
+				FreshnessWindow:      "90d",
+				AssessmentMethods:    []string{"examine"},
+				AuditorGradeEvidence: "Baseline evidence shows reviewer action.",
+			}},
+		}},
+	}
+	resolution, issues := ResolveControlEvidenceRequirements(index, requirements)
+	if len(issues) != 0 {
+		t.Fatalf("ResolveControlEvidenceRequirements() issues = %#v, want none", issues)
+	}
+	if len(resolution.Requirements) != 2 {
+		t.Fatalf("requirements = %d, want 2", len(resolution.Requirements))
+	}
+	first := resolution.Requirements[0].ManualEvidenceAllowed
+	second := resolution.Requirements[1].ManualEvidenceAllowed
+	if first == nil || second == nil {
+		t.Fatalf("manual evidence pointers = %#v, %#v; want non-nil", first, second)
+	}
+	if first == second || first == requirements.Defaults.ManualEvidenceAllowed || second == requirements.Defaults.ManualEvidenceAllowed {
+		t.Fatalf("manual evidence pointers share storage")
+	}
+	*first = false
+	if *second != true || *requirements.Defaults.ManualEvidenceAllowed != true {
+		t.Fatalf("manual evidence mutation leaked: second=%v default=%v", *second, *requirements.Defaults.ManualEvidenceAllowed)
+	}
+}
+
+func TestControlEvidenceRequirementFrameworksGateKeywords(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "privacy-rights",
+		Name: "Privacy Rights Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			Frameworks:     []string{"CCPA"},
+			FamilyKeywords: []string{"Privacy"},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "CCPA",
+		FamilyName:    "Consumer Privacy Rights",
+		Control:       Control{ID: "1798.100", Title: "Privacy notice"},
+	}) {
+		t.Fatal("profile did not match CCPA privacy control")
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Privacy",
+		Control:       Control{ID: "PI1.1", Title: "Privacy notice"},
+	}) {
+		t.Fatal("profile matched privacy keyword outside the selected framework")
+	}
+}
+
+func TestControlEvidenceRequirementKeywordMatchingUsesWholeTerms(t *testing.T) {
+	loggingProfile := ControlEvidenceRequirementProfile{
+		ID:   "logging-monitoring",
+		Name: "Logging and Monitoring Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			FamilyKeywords: []string{"Log"},
+		},
+	}
+	if controlEvidenceRequirementProfileApplies(loggingProfile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Logical and Physical Access",
+		Control:       Control{ID: "CC6.1", Title: "Logical access is restricted"},
+	}) {
+		t.Fatal("short keyword matched inside an unrelated word")
+	}
+
+	aiProfile := ControlEvidenceRequirementProfile{
+		ID:   "ai-governance",
+		Name: "AI Governance Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			FamilyKeywords: []string{"AI"},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(aiProfile, ResolvedControl{
+		FrameworkName: "ISO 42001",
+		FamilyName:    "AI Governance",
+		Control:       Control{ID: "AI-1", Title: "AI system inventory"},
+	}) {
+		t.Fatal("short keyword did not match a standalone term")
+	}
+}
+
 func TestValidateControlEvidenceRequirementCatalogRejectsIncompleteProfiles(t *testing.T) {
 	catalog, err := LoadControlEvidenceRequirementCatalog([]byte(`
 version: "2026-06-28"
@@ -127,16 +247,16 @@ func TestBuiltinControlEvidenceRequirementsCoverCatalog(t *testing.T) {
 }
 
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) {
-	if containsAnySubstringFold("SOC 2 A1 Availability", []string{"AI"}) {
+	if containsAnyKeywordFold("SOC 2 A1 Availability", []string{"AI"}) {
 		t.Fatal("AI keyword matched Availability")
 	}
-	if containsAnySubstringFold("SOC 2 CC6 Logical and Physical Access", []string{"Log"}) {
+	if containsAnyKeywordFold("SOC 2 CC6 Logical and Physical Access", []string{"Log"}) {
 		t.Fatal("Log keyword matched Logical")
 	}
-	if !containsAnySubstringFold("SOC 2 CC6 Logical and Physical Access", []string{"Access"}) {
+	if !containsAnyKeywordFold("SOC 2 CC6 Logical and Physical Access", []string{"Access"}) {
 		t.Fatal("Access keyword did not match access token")
 	}
-	if !containsAnySubstringFold("ISO 27001:2022 A.8 Information Protection", []string{"Information Protection"}) {
+	if !containsAnyKeywordFold("ISO 27001:2022 A.8 Information Protection", []string{"Information Protection"}) {
 		t.Fatal("Information Protection keyword did not match phrase")
 	}
 }
