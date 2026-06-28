@@ -34,6 +34,8 @@ docker compose up -d
 
 The stack exposes Cerebro on `http://127.0.0.1:8080` with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key` configured by the compose file.
 
+Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. Before switching from plain Compose to `make agent-onboard-e2e` or `make github-business-demo`, run `docker compose down -v` to recreate local volumes, or run the Make target with `CEREBRO_LOCAL_POSTGRES_PASSWORD=cerebro` to reuse that volume. `docker compose down -v` deletes local stack data.
+
 Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when you need the durable stack to run the current checkout instead of the published image.
 
 In another shell, check readiness and the source catalog:

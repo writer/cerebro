@@ -45,6 +45,8 @@ docker compose pull
 docker compose up -d
 ```
 
+Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. Before switching from plain Compose to `make agent-onboard-e2e` or `make github-business-demo`, run `docker compose down -v` to recreate local volumes, or run the Make target with `CEREBRO_LOCAL_POSTGRES_PASSWORD=cerebro` to reuse that volume. `docker compose down -v` deletes local stack data.
+
 ## Agent Compliance Quickstart
 
 Start Cerebro and connect it to your coding agent over MCP:
