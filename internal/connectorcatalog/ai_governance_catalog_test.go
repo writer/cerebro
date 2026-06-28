@@ -23,6 +23,16 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 		"together_ai":  {"api_keys", "fine_tuning_jobs", "projects", "usage_reports"},
 		"xai":          {"api_keys", "audit_logs", "model_access", "usage_reports"},
 	}
+	directProviders := map[string]struct{}{
+		"cerebras":     {},
+		"fireworks_ai": {},
+		"huggingface":  {},
+		"mistral":      {},
+		"openrouter":   {},
+		"perplexity":   {},
+		"together_ai":  {},
+		"xai":          {},
+	}
 	for sourceID, families := range expected {
 		entry, ok := entries[sourceID]
 		if !ok {
@@ -40,5 +50,20 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 				t.Fatalf("source %q missing family %q; have %v", sourceID, family, entry.ResourceFamilyIDs)
 			}
 		}
+		if _, ok := directProviders[sourceID]; ok {
+			for _, family := range entry.Definition.ResourceFamilies {
+				if family.Pagination == nil || family.Pagination.Type != "none" || !family.Pagination.DisablePageSize {
+					t.Fatalf("source %q family %q pagination = %#v, want none with disabled page size", sourceID, family.ID, family.Pagination)
+				}
+			}
+		}
+	}
+	huggingFace := entries["huggingface"]
+	repositories := catalogFamily(t, huggingFace.Definition.ResourceFamilies, "repositories")
+	if repositories.Path != "/models" {
+		t.Fatalf("huggingface repositories path = %q, want /models", repositories.Path)
+	}
+	if got := repositories.ConfigQuery["author"]; got != "organization" {
+		t.Fatalf("huggingface repositories author config query = %q, want organization", got)
 	}
 }

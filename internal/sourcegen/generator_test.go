@@ -625,6 +625,72 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-huggingface",
+			TenantID:    "tenant",
+			SourceID:    "huggingface",
+			DisplayName: "Hugging Face",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			ConfigFields: []connectordefinitions.Field{{
+				Key:      "organization",
+				Required: true,
+			}},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://huggingface.co/api",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/whoami-v2",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "repositories",
+				Path:           "/models",
+				RecordSelector: "$[*]",
+				IDField:        "id",
+				StaticQuery:    map[string]string{"full": "true"},
+				ConfigQuery:    map[string]string{"author": "organization"},
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "huggingface.repositories",
+					SchemaRef: "huggingface/repositories/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "repository",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+				Pagination: &connectordefinitions.PaginationSpec{
+					Type:            "none",
+					DisablePageSize: true,
+				},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/huggingface/source.go")
+	for _, want := range []string{
+		`Path:             "/models"`,
+		`DisablePageSize:  true`,
+		`Config: jsonapi.FamilyConfig{`,
+		`StaticQuery: map[string]string{"full": "true"}`,
+		`ConfigQuery: map[string]string{"author": "organization"}`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+}
+
 func TestGenerateRejectsMissingSchemas(t *testing.T) {
 	_, err := Generate(Request{SourceID: "demo_source"})
 	if err == nil {

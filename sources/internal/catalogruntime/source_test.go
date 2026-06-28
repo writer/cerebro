@@ -203,6 +203,67 @@ func TestSourceDefinitionDoesNotSynthesizeCursorWithoutPageParam(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/models" {
+			t.Fatalf("path = %q, want /models", got)
+		}
+		if got := r.URL.Query().Get("author"); got != "writer" {
+			t.Fatalf("author query = %q, want writer", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Fatalf("limit query = %q, want empty", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "" {
+			t.Fatalf("per_page query = %q, want empty", got)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "writer/model"}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-huggingface",
+		TenantID:    "tenant",
+		SourceID:    "huggingface",
+		DisplayName: "Hugging Face",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ConfigFields: []connectordefinitions.Field{{
+			Key:      "organization",
+			Required: true,
+		}},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "repositories",
+			Path:           "/models",
+			RecordSelector: "$[*]",
+			IDField:        "id",
+			ConfigQuery:    map[string]string{"author": "organization"},
+			Event:          connectordefinitions.EventMappingSpec{Kind: "huggingface.repositories", SchemaRef: "huggingface/repositories/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "repository"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:            "none",
+				DisablePageSize: true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":    "tenant",
+		"token":        "token",
+		"organization": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "huggingface.repositories" {
+		t.Fatalf("events = %#v, want huggingface.repositories event", pull.Events)
+	}
+}
+
 func TestSourceAuthModels(t *testing.T) {
 	tests := []struct {
 		name           string

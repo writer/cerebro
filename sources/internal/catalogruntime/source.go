@@ -130,7 +130,12 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Attributes:       attributePaths(resource, class),
 		StaticAttributes: staticAttributes(sourceID, name, class),
 		PageSizeParams:   pageSizeParams(resource.Pagination),
+		DisablePageSize:  disablePageSize(resource.Pagination),
 		ListKeys:         listKeys(resource),
+		Config: jsonapi.FamilyConfig{
+			StaticQuery: resource.StaticQuery,
+			ConfigQuery: resource.ConfigQuery,
+		},
 	}, nil
 }
 
@@ -157,6 +162,10 @@ func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
 		return nil
 	}
 	return values
+}
+
+func disablePageSize(pagination *connectordefinitions.PaginationSpec) bool {
+	return pagination != nil && pagination.DisablePageSize
 }
 
 func listKeys(resource connectordefinitions.ResourceFamily) []string {

@@ -115,6 +115,9 @@ type familyData struct {
 	ListKeys              []string
 	CursorParam           string
 	PageSizeParams        []string
+	DisablePageSize       bool
+	StaticQuery           map[string]string
+	ConfigQuery           map[string]string
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
 	Projection            *connectordefinitions.ProjectionSpec
@@ -654,6 +657,9 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			ListKeys:              listKeysForResource(resource),
 			CursorParam:           cursorParamForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
+			DisablePageSize:       disablePageSizeForResource(resource),
+			StaticQuery:           resource.StaticQuery,
+			ConfigQuery:           resource.ConfigQuery,
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 			Projection:            resource.Projection,
@@ -715,6 +721,10 @@ func pageSizeParamsForResource(resource connectordefinitions.ResourceFamily) []s
 		params = append(params, param)
 	}
 	return uniqueStrings(params)
+}
+
+func disablePageSizeForResource(resource connectordefinitions.ResourceFamily) bool {
+	return resource.Pagination != nil && resource.Pagination.DisablePageSize
 }
 
 func uniqueStrings(values []string) []string {
@@ -1028,12 +1038,25 @@ func renderSourceGo(request normalizedRequest) string {
 		if len(family.PageSizeParams) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tPageSizeParams: []string{%s},\n", quotedStrings(family.PageSizeParams))
 		}
+		if family.DisablePageSize {
+			fmt.Fprintf(&b, "\t\t\t\tDisablePageSize: true,\n")
+		}
 		if len(family.ListKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tListKeys: []string{%s},\n", quotedStrings(family.ListKeys))
 		}
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
+		if len(family.StaticQuery) != 0 || len(family.ConfigQuery) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
+			if len(family.StaticQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.StaticQuery))
+			}
+			if len(family.ConfigQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.ConfigQuery))
+			}
+			fmt.Fprintf(&b, "\t\t\t\t},\n")
+		}
 		fmt.Fprintf(&b, "\t\t\t},\n")
 	}
 	fmt.Fprintf(&b, "\t\t},\n\t})\n")

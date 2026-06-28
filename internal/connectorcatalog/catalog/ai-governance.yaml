@@ -47,11 +47,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: api_keys
           label: API keys
           path: /v1/api-keys
@@ -74,11 +71,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /v1/usage
@@ -100,11 +94,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: model_deployments
           label: Model deployments
           path: /v1/deployments
@@ -127,11 +118,8 @@ entries:
               evidence_types: [change_management]
               control_domains: [secure_delivery]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -183,11 +171,8 @@ entries:
               evidence_types: [change_management]
               control_domains: [secure_delivery]
           pagination:
-            type: cursor
-            cursor_param: page_token
-            cursor_json_path: "$.next_page_token"
-            page_size_param: page_size
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: service_accounts
           label: Service accounts
           path: /v1/accounts/${config.account_id}/serviceAccounts
@@ -210,11 +195,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: page_token
-            cursor_json_path: "$.next_page_token"
-            page_size_param: page_size
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: audit_logs
           label: Audit logs
           path: /v1/accounts/${config.account_id}/auditLogs
@@ -236,11 +218,8 @@ entries:
               evidence_types: [logging_configuration]
               control_domains: [logging_monitoring]
           pagination:
-            type: cursor
-            cursor_param: page_token
-            cursor_json_path: "$.next_page_token"
-            page_size_param: page_size
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: billing_metrics
           label: Billing metrics
           path: /v1/accounts/${config.account_id}/billing/metrics
@@ -262,11 +241,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: page_token
-            cursor_json_path: "$.next_page_token"
-            page_size_param: page_size
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -318,11 +294,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: resource_groups
           label: Resource groups
           path: /organizations/${config.organization}/resource-groups
@@ -345,11 +318,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: audit_logs
           label: Audit logs
           path: /organizations/${config.organization}/audit-logs
@@ -371,15 +341,14 @@ entries:
               evidence_types: [logging_configuration]
               control_domains: [logging_monitoring]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: repositories
           label: Repositories
-          path: /models?author=${config.organization}
+          path: /models
           method: GET
+          config_query:
+            author: organization
           record_selector: "$[*]"
           id_field: id
           name_field: id
@@ -398,11 +367,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -450,11 +416,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: api_keys
           label: API keys
           path: /v1/organization/api-keys
@@ -477,11 +440,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: audit_logs
           label: Audit logs
           path: /v1/organization/audit-logs
@@ -503,11 +463,8 @@ entries:
               evidence_types: [logging_configuration]
               control_domains: [logging_monitoring]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /v1/organization/usage
@@ -529,11 +486,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -581,11 +535,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: api_keys
           label: API keys
           path: /v1/auth/keys
@@ -608,11 +559,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: provider_keys
           label: Provider keys
           path: /v1/provider-keys
@@ -635,11 +583,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /v1/usage
@@ -661,11 +606,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -713,11 +655,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: api_keys
           label: API keys
           path: /api-keys
@@ -740,11 +679,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: team_members
           label: Team members
           path: /team/members
@@ -767,11 +703,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /usage
@@ -793,11 +726,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -845,11 +775,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: api_keys
           label: API keys
           path: /v1/api-keys
@@ -872,11 +799,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /v1/usage
@@ -898,11 +822,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: fine_tuning_jobs
           label: Fine-tuning jobs
           path: /v1/fine-tunes
@@ -925,11 +846,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
 
   - classifier_output: supported
     definition:
@@ -977,11 +895,8 @@ entries:
               evidence_types: [identity_configuration]
               control_domains: [identity_access]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: audit_logs
           label: Audit logs
           path: /management/audit-logs
@@ -1003,11 +918,8 @@ entries:
               evidence_types: [logging_configuration]
               control_domains: [logging_monitoring]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: usage_reports
           label: Usage reports
           path: /management/usage
@@ -1029,11 +941,8 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
         - id: model_access
           label: Model access
           path: /management/model-access
@@ -1056,8 +965,5 @@ entries:
               evidence_types: [configuration_state]
               control_domains: [security_operations]
           pagination:
-            type: cursor
-            cursor_param: cursor
-            cursor_json_path: "$.next_cursor"
-            page_size_param: limit
-            page_size: 100
+            type: none
+            disable_page_size: true
