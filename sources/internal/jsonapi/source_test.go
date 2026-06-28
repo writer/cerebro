@@ -856,6 +856,60 @@ func TestReadUsesLinkHeaderCursor(t *testing.T) {
 	}
 }
 
+func TestReadUsesNextURLCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value":    []map[string]any{{"id": "item-1"}},
+				"nextLink": "http://" + r.Host + "/items?page=2",
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value": []map[string]any{{"id": "item-2"}},
+			})
+		default:
+			t.Fatalf("page = %q, want empty or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		NextURLKey:      "nextLink",
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"value"},
+		PageSizeParams:  []string{"limit"},
+		DisablePageSize: true,
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if want := "http://" + requests[0].Host + "/items?page=2"; first.NextCursor.GetOpaque() != want {
+		t.Fatalf("first NextCursor = %q, want %q", first.NextCursor.GetOpaque(), want)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" || requests[1].URL.Query().Has("limit") {
+		t.Fatalf("requests = %#v, want second request to follow nextLink without page-size query", requests)
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

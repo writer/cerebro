@@ -96,6 +96,12 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 	if got := deployments.StaticQuery["api-version"]; got != "2024-10-01" {
 		t.Fatalf("azure_openai deployments api-version = %q, want 2024-10-01", got)
 	}
+	for _, familyID := range []string{"deployments", "model_catalog", "rai_policies", "rai_blocklists", "private_endpoint_connections"} {
+		family := catalogFamily(t, azureOpenAI.Definition.ResourceFamilies, familyID)
+		if family.Pagination == nil || family.Pagination.Type != "next_url" || family.Pagination.NextURLJSONPath != "$.nextLink" || !family.Pagination.DisablePageSize {
+			t.Fatalf("azure_openai %s pagination = %#v, want nextLink next_url pagination", familyID, family.Pagination)
+		}
+	}
 	googleGemini := entries["google_gemini"]
 	if googleGemini.Definition.Auth.TokenHeader != "x-goog-api-key" {
 		t.Fatalf("google_gemini token header = %q, want x-goog-api-key", googleGemini.Definition.Auth.TokenHeader)

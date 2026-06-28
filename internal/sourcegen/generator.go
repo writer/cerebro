@@ -118,6 +118,7 @@ type familyData struct {
 	Singleton             bool
 	CursorParam           string
 	NextCursorKeys        []string
+	NextURLKey            string
 	LinkHeader            string
 	PageSizeParams        []string
 	DisablePageSize       bool
@@ -675,6 +676,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			Singleton:             resource.Singleton,
 			CursorParam:           cursorParamForResource(resource),
 			NextCursorKeys:        nextCursorKeysForResource(resource),
+			NextURLKey:            nextURLKeyForResource(resource),
 			LinkHeader:            linkHeaderForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			DisablePageSize:       disablePageSizeForResource(resource),
@@ -738,6 +740,17 @@ func nextCursorKeysForResource(resource connectordefinitions.ResourceFamily) []s
 		return nil
 	}
 	return []string{key}
+}
+
+func nextURLKeyForResource(resource connectordefinitions.ResourceFamily) string {
+	if resource.Pagination == nil || strings.TrimSpace(resource.Pagination.Type) != "next_url" {
+		return ""
+	}
+	key := cursorJSONPathKey(resource.Pagination.NextURLJSONPath)
+	if key == "" {
+		key = "nextLink"
+	}
+	return key
 }
 
 func cursorJSONPathKey(path string) string {
@@ -1120,6 +1133,9 @@ func renderSourceGo(request normalizedRequest) string {
 		}
 		if len(family.NextCursorKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tNextCursorKeys: []string{%s},\n", quotedStrings(family.NextCursorKeys))
+		}
+		if strings.TrimSpace(family.NextURLKey) != "" {
+			fmt.Fprintf(&b, "\t\t\t\tNextURLKey:     %s,\n", strconv.Quote(family.NextURLKey))
 		}
 		if strings.TrimSpace(family.LinkHeader) != "" {
 			fmt.Fprintf(&b, "\t\t\t\tLinkHeader: %s,\n", strconv.Quote(family.LinkHeader))
