@@ -5,6 +5,8 @@ This guide explains how to deploy Cerebro on AWS, Google Cloud, or Azure without
 Use it with:
 
 - [`docs/operations/hosting.md`](hosting.md) for the runtime hosting contract.
+- [`docs/operations/runtime-profiles.md`](runtime-profiles.md) for profile-specific dependencies, config, and checks.
+- [`docs/operations/deployment-readiness.md`](deployment-readiness.md) for rollout gates and the preflight receipt.
 - [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for all supported environment variables.
 - [`docs/operations/operations-runbook.md`](operations-runbook.md) for health checks, rollout, rollback, and incident handling.
 - [`deploy/pulumi`](../../deploy/pulumi) for validated Pulumi templates.
@@ -338,6 +340,7 @@ The templates should be validated with `pulumi preview --refresh=false` for all 
 After deploying to a real environment, verify:
 
 ```bash
+cerebro deploy preflight
 curl -fsS https://cerebro.example.com/livez
 curl -fsS https://cerebro.example.com/health
 curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \

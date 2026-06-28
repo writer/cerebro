@@ -1,0 +1,198 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects IP blocklist, host reputation, bin lookup, and geocode address from Neutrino API and projects them into the Cerebro graph as assets for alert, incident, service health, and response context."
+    display_name: Neutrino API
+    id: builtin_catalog-neutrinoapi
+    resource_families:
+    - coverage:
+      - families:
+        - ip_blocklist
+        id: ip_blocklist
+        support: partial
+        title: Ip Blocklist
+        type: entity_family
+      event:
+        kind: neutrinoapi.ip_blocklist
+        required_payload_fields:
+        - id
+        schema_ref: neutrinoapi/ip_blocklist/v1
+        urn_kind: neutrinoapi_ip_blocklist
+      event_kind: ip_blocklist
+      id: ip_blocklist
+      id_field: id
+      label: Ip Blocklist
+      list_key: blocklists
+      method: GET
+      pagination:
+        type: none
+      path: "/ip-blocklist"
+      permissions_needed:
+      - api-key
+      - user-id
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: ip_blocklist
+        template: asset
+      record_selector: "$.blocklists[*]"
+    - coverage:
+      - families:
+        - host_reputation
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: host_reputation
+        support: partial
+        title: Host Reputation
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: neutrinoapi.host_reputation
+        required_payload_fields:
+        - is-listed
+        schema_ref: neutrinoapi/host_reputation/v1
+        urn_kind: neutrinoapi_host_reputation
+      event_kind: host_reputation
+      id: host_reputation
+      id_field: is-listed
+      label: Host Reputation
+      list_key: lists
+      method: GET
+      name_field: is-listed
+      pagination:
+        type: none
+      path: "/host-reputation"
+      permissions_needed:
+      - api-key
+      - user-id
+      projection:
+        fields:
+          id: is-listed
+          name: is-listed
+          resource_id: is-listed
+          resource_name: is-listed
+          resource_type: host_reputation
+        template: asset
+      record_selector: "$.lists[*]"
+    - coverage:
+      - families:
+        - bin_lookup
+        id: bin_lookup
+        support: partial
+        title: Bin Lookup
+        type: entity_family
+      event:
+        kind: neutrinoapi.bin_lookup
+        required_payload_fields:
+        - id
+        schema_ref: neutrinoapi/bin_lookup/v1
+        urn_kind: neutrinoapi_bin_lookup
+      event_kind: bin_lookup
+      id: bin_lookup
+      id_field: id
+      label: Bin Lookup
+      list_key: ip-blocklists
+      method: GET
+      pagination:
+        type: none
+      path: "/bin-lookup"
+      permissions_needed:
+      - api-key
+      - user-id
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: bin_lookup
+        template: asset
+      record_selector: "$.ip-blocklists[*]"
+    - coverage:
+      - families:
+        - geocode_address
+        id: geocode_address
+        support: partial
+        title: Geocode Address
+        type: entity_family
+      event:
+        kind: neutrinoapi.geocode_address
+        required_payload_fields:
+        - address
+        schema_ref: neutrinoapi/geocode_address/v1
+        urn_kind: neutrinoapi_geocode_address
+      event_kind: geocode_address
+      id: geocode_address
+      id_field: address
+      label: Geocode Address
+      list_key: locations
+      method: GET
+      name_field: address
+      pagination:
+        type: none
+      path: "/geocode-address"
+      permissions_needed:
+      - api-key
+      - user-id
+      projection:
+        fields:
+          id: address
+          name: address
+          resource_id: address
+          resource_name: address
+          resource_type: geocode_address
+        template: asset
+      record_selector: "$.locations[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - families:
+      - ip_blocklist
+      id: ip_blocklist
+      label: Ip Blocklist
+    - default_enabled: true
+      families:
+      - host_reputation
+      id: host_reputation
+      label: Host Reputation
+    - families:
+      - bin_lookup
+      id: bin_lookup
+      label: Bin Lookup
+    - families:
+      - geocode_address
+      id: geocode_address
+      label: Geocode Address
+    source_id: neutrinoapi
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://neutrinoapi.net
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/ip-blocklist"

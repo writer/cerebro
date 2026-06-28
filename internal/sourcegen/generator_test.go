@@ -625,6 +625,268 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-huggingface",
+			TenantID:    "tenant",
+			SourceID:    "huggingface",
+			DisplayName: "Hugging Face",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			ConfigFields: []connectordefinitions.Field{{
+				Key:      "organization",
+				Required: true,
+			}},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://huggingface.co/api",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/whoami-v2",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "repositories",
+				Path:           "/models",
+				RecordSelector: "$[*]",
+				IDField:        "id",
+				StaticQuery:    map[string]string{"full": "true"},
+				ConfigQuery:    map[string]string{"author": "organization"},
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "huggingface.repositories",
+					SchemaRef: "huggingface/repositories/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "repository",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+				Pagination: &connectordefinitions.PaginationSpec{
+					Type:            "cursor",
+					CursorParam:     "after",
+					CursorJSONPath:  "$.paging.continuation",
+					DisablePageSize: true,
+				},
+			}, {
+				ID:             "files",
+				Path:           "/files",
+				RecordSelector: "$[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "huggingface.files",
+					SchemaRef: "huggingface/files/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+				Pagination: &connectordefinitions.PaginationSpec{
+					Type:          "link",
+					CursorParam:   "cursor",
+					LinkHeader:    "Link",
+					PageSizeParam: "limit",
+				},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/huggingface/source.go")
+	for _, want := range []string{
+		`Path:             "/models"`,
+		`CursorParam:      "after"`,
+		`NextCursorKeys:   []string{"paging.continuation"}`,
+		`LinkHeader:       "Link"`,
+		`DisablePageSize:  true`,
+		`Config: jsonapi.FamilyConfig{`,
+		`StaticQuery: map[string]string{"full": "true"}`,
+		`ConfigQuery: map[string]string{"author": "organization"}`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+}
+
+func TestGenerateDefinitionSupportsCustomTokenHeader(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-anthropic",
+			TenantID:    "tenant",
+			SourceID:    "anthropic",
+			DisplayName: "Anthropic",
+			Auth: connectordefinitions.AuthSpec{
+				Model:       "api_key",
+				TokenHeader: "x-api-key",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "api_key",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.anthropic.com",
+				Headers: map[string]string{
+					"anthropic-version": "2023-06-01",
+				},
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/organizations/users",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "organization_members",
+				Path:           "/v1/organizations/users",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "anthropic.organization_members",
+					SchemaRef: "anthropic/organization_members/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/anthropic/source.go")
+	for _, want := range []string{`tokenHeader`, `"x-api-key"`, `TokenHeader:`, `tokenHeader`, `StaticHeaders:`, `"anthropic-version": "2023-06-01"`} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("source.go missing %q:\n%s", want, source)
+		}
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/anthropic/source_test.go")
+	if !strings.Contains(sourceTest, `r.Header.Get("x-api-key")`) {
+		t.Fatalf("source_test.go missing custom header assertion:\n%s", sourceTest)
+	}
+}
+
+func TestGenerateDefinitionSupportsAWSSigV4Auth(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-aws-bedrock",
+			TenantID:    "tenant",
+			SourceID:    "aws_bedrock",
+			DisplayName: "AWS Bedrock",
+			ConfigFields: []connectordefinitions.Field{{
+				Key:      "region",
+				Required: true,
+			}, {
+				Key:      "service",
+				Required: true,
+			}},
+			Auth: connectordefinitions.AuthSpec{ //nolint:gosec // Test auth descriptor only; no credential value is stored.
+				Model: "aws_sigv4",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "access_key",
+					Secret:        true,
+					ReferenceOnly: true,
+				}, {
+					Key:           "secret_key",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://bedrock.${config.region}.amazonaws.com",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/foundation-models",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "foundation_models",
+				Path:           "/foundation-models",
+				RecordSelector: "$.modelSummaries[*]",
+				IDField:        "modelId",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "aws_bedrock.foundation_models",
+					SchemaRef: "aws_bedrock/foundation_models/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/aws_bedrock/source_test.go")
+	for _, want := range []string{`strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ")`, `strings.Contains(auth, "Credential=test-access-key/")`, `"access_key": "test-access-key"`, `"secret_key": "test-secret-key"`} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+	if strings.Contains(sourceTest, `"AWS4-HMAC-SHA256 test-token"`) {
+		t.Fatalf("source_test.go contains static SigV4 authorization assertion:\n%s", sourceTest)
+	}
+	deploy := readGeneratedFile(t, outputDir, "sources/aws_bedrock/deploy.yaml")
+	for _, want := range []string{`access_key: env:AWS_BEDROCK_ACCESS_KEY`, `secret_key: env:AWS_BEDROCK_SECRET_KEY`} {
+		if !strings.Contains(deploy, want) {
+			t.Fatalf("deploy.yaml missing %q:\n%s", want, deploy)
+		}
+	}
+}
+
+func TestGenerateDefinitionSupportsSingletonFamily(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-stability",
+			TenantID:    "tenant",
+			SourceID:    "stability_ai",
+			DisplayName: "Stability AI",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL:      "https://api.stability.ai",
+				Verification: &connectordefinitions.VerificationSpec{Path: "/v1/user/account"},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:        "account",
+				Path:      "/v1/user/account",
+				IDField:   "id",
+				Singleton: true,
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "stability_ai.account",
+					SchemaRef: "stability_ai/account/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+				Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	source := readGeneratedFile(t, outputDir, "sources/stability_ai/source.go")
+	if !strings.Contains(source, `Singleton:`) || !strings.Contains(source, `true`) {
+		t.Fatalf("source.go missing singleton family:\n%s", source)
+	}
+}
+
 func TestGenerateRejectsMissingSchemas(t *testing.T) {
 	_, err := Generate(Request{SourceID: "demo_source"})
 	if err == nil {

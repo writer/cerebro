@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -60,6 +60,11 @@ LOAD_SMOKE_MAX_ERROR_RATE ?= 0.01
 LOAD_SMOKE_MAX_5XX_RATE ?= 0
 LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
 LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
+AGENT_ONBOARD_PLAN ?= examples/onboarding/cerebro-onboarding.yaml
+AGENT_ONBOARD_EFFECTIVE_PLAN = $(if $(PLAN),$(PLAN),$(AGENT_ONBOARD_PLAN))
+AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
+AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
+CEREBRO_ONBOARD_BASE_URL ?=
 MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
 MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
 MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
@@ -274,6 +279,9 @@ control-index-check: ## Verify compliance control coverage index is current.
 sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true
 
+connector-contract-check: ## Validate declarative connector evidence, fixtures, and security lint.
+	go run ./tools/connectorcontractcheck
+
 connector-import: ## Generate candidate connector definitions from the provider manifest into staging (no catalog writes).
 	go run ./tools/connectorimport -manifest tools/connectorimport/targets.yaml -out tmp/connector-candidates
 
@@ -311,6 +319,12 @@ policy-rule-generate: ## Regenerate generated policy rule catalog.
 policy-rule-check: finding-dsl-check ## Verify generated policy rule catalog is current.
 	go run ./tools/policyrulegen --check
 
+policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.
+	go run ./tools/policymappingexport --write
+
+policy-mapping-check: policy-rule-check detection-catalog-check ## Verify policy compliance mapping CSVs are current.
+	go run ./tools/policymappingexport --check
+
 detection-catalog-generate: ## Regenerate public detection catalog.
 	go run ./tools/detectioncatalog --write
 
@@ -344,7 +358,7 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate control-index-generate detection-catalog-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	python3 scripts/docs_drift_check.py
@@ -370,6 +384,32 @@ contracts-check: ## Run contract and compatibility checks with a final summary.
 
 changed-check: ## Run validation selected from changed paths.
 	python3 scripts/changed_checks.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --run
+
+secure-business-demo: agent-onboard-e2e ## Start Cerebro locally and write a security onboarding receipt.
+
+agent-onboard: build ## Run an agent onboarding plan and write a redacted receipt.
+	python3 scripts/agent_onboard.py \
+		--plan "$(AGENT_ONBOARD_EFFECTIVE_PLAN)" \
+		--receipt "$(AGENT_ONBOARD_RECEIPT)" \
+		$(if $(CEREBRO_ONBOARD_BASE_URL),--base-url "$(CEREBRO_ONBOARD_BASE_URL)",)
+
+agent-onboard-test: ## Run agent onboarding workflow unit tests.
+	python3 -m unittest scripts.tests.test_agent_onboard
+
+agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflow.
+	@command -v docker >/dev/null || { echo "docker is required for agent-onboard-e2e" >&2; exit 2; }
+	docker compose up --build -d
+	@CEREBRO_API_KEY="local-dev-key" \
+	CEREBRO_API_KEYS="local-dev-key:local:local" \
+	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
+	CEREBRO_POSTGRES_DSN="postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable" \
+	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
+	CEREBRO_NEO4J_USERNAME="neo4j" \
+	CEREBRO_NEO4J_PASSWORD="local-password" \
+	python3 scripts/agent_onboard.py \
+		--plan "$(AGENT_ONBOARD_EFFECTIVE_PLAN)" \
+		--receipt "$(AGENT_ONBOARD_E2E_RECEIPT)" \
+		--wait
 
 # ==== Release and Environment ====
 ##@ Release and Environment
@@ -480,7 +520,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check connector-contract-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -496,4 +536,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check graph-action-check finding-dsl-check policy-rule-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check graph-action-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

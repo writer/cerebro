@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-lastpass_business
+    tenant_id: builtin_catalog
+    source_id: lastpass_business
+    display_name: LastPass Business
+    description: "Collects users, secrets, and audit events from LastPass Business and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context."
+    categories:
+    - identity
+    - secrets
+    auth:
+      model: api_key
+      credential_fields:
+      - key: api_key
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://lastpass.com
+      verification:
+        method: GET
+        path: "/enterpriseapi.php"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/v1/users"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: lastpass_business.users
+        schema_ref: lastpass_business/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Identity users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: secrets
+      label: Secrets
+      path: "/v1/secrets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: lastpass_business.secrets
+        schema_ref: lastpass_business/secrets/v1
+      projection:
+        template: secret
+      coverage:
+      - id: secrets
+        type: entity_family
+        title: Secrets
+        families:
+        - secrets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: lastpass_business.audit_events
+        schema_ref: lastpass_business/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

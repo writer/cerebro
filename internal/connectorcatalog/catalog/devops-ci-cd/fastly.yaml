@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-fastly
+    tenant_id: builtin_catalog
+    source_id: fastly
+    display_name: Fastly
+    description: "Collects services, acl entries, and audit events from Fastly and projects them into the Cerebro graph as assets and audit events for repository, build, deployment, and release context."
+    categories:
+    - devops
+    - cdn
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.fastly.com
+      verification:
+        method: GET
+        path: "/current_customer"
+        expect_status:
+        - 200
+    resource_families:
+    - id: services
+      label: Services
+      path: "/service"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: fastly.services
+        schema_ref: fastly/services/v1
+      projection:
+        template: asset
+      coverage:
+      - id: services
+        type: entity_family
+        title: Services
+        families:
+        - services
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: acl_entries
+      label: ACL entries
+      path: "/acl"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: fastly.acl_entries
+        schema_ref: fastly/acl_entries/v1
+      projection:
+        template: asset
+      coverage:
+      - id: acl_entries
+        type: entity_family
+        title: ACL entries
+        families:
+        - acl_entries
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: fastly.audit_events
+        schema_ref: fastly/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

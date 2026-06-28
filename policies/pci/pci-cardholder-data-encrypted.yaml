@@ -18,7 +18,22 @@ spec:
     remediation:
         summary: Enable encryption at rest for all databases containing cardholder data. Use AES-256 or stronger encryption.
     frameworks:
-        - name: PCI DSS v4.0
+        - name: SOC 2
           controls:
-            - "1.1"
+            - C1.1
+        - name: ISO 27001:2022
+          controls:
+            - A.8.24
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+        - name: CIS Controls v8
+          controls:
+            - "3"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
     enabled: true

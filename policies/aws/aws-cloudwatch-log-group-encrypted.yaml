@@ -43,7 +43,7 @@ spec:
         - name: SOC 2
           controls:
             - CC4
-            - CC7
+            - CC7.2
     mitreAttack:
         - tactic: Defense Evasion
           technique: T1562

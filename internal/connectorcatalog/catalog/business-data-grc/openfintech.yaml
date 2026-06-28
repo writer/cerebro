@@ -1,0 +1,188 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects organization, bank, country, and currency from OpenFinTech and projects them into the Cerebro graph as groups and assets for owner, account, evidence, and compliance context."
+    display_name: OpenFinTech
+    id: builtin_catalog-openfintech
+    resource_families:
+    - coverage:
+      - families:
+        - organization
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: organization
+        support: partial
+        title: Organization
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: openfintech.organization
+        required_payload_fields:
+        - id
+        schema_ref: openfintech/organization/v1
+        urn_kind: openfintech_organization
+      event_kind: organization
+      id: organization
+      id_field: id
+      label: Organization
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        type: none
+      path: "/organizations"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          provider_id: id
+        template: identity_group
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - bank
+        id: bank
+        support: partial
+        title: Bank
+        type: entity_family
+      event:
+        kind: openfintech.bank
+        required_payload_fields:
+        - id
+        schema_ref: openfintech/bank/v1
+        urn_kind: openfintech_bank
+      event_kind: bank
+      id: bank
+      id_field: id
+      label: Bank
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        type: none
+      path: "/banks"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          resource_id: id
+          resource_name: attributes
+          resource_type: bank
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - country
+        id: country
+        support: partial
+        title: Country
+        type: entity_family
+      event:
+        kind: openfintech.country
+        required_payload_fields:
+        - id
+        schema_ref: openfintech/country/v1
+        urn_kind: openfintech_country
+      event_kind: country
+      id: country
+      id_field: id
+      label: Country
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        type: none
+      path: "/countries"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          resource_id: id
+          resource_name: attributes
+          resource_type: country
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - currency
+        id: currency
+        support: partial
+        title: Currency
+        type: entity_family
+      event:
+        kind: openfintech.currency
+        required_payload_fields:
+        - id
+        schema_ref: openfintech/currency/v1
+        urn_kind: openfintech_currency
+      event_kind: currency
+      id: currency
+      id_field: id
+      label: Currency
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        type: none
+      path: "/currencies"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          resource_id: id
+          resource_name: attributes
+          resource_type: currency
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - organization
+      id: organization
+      label: Organization
+    - families:
+      - bank
+      id: bank
+      label: Bank
+    - families:
+      - country
+      id: country
+      label: Country
+    - families:
+      - currency
+      id: currency
+      label: Currency
+    source_id: openfintech
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.openfintech.io/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/organizations"

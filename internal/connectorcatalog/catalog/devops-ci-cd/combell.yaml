@@ -1,0 +1,210 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: databasename
+      label: Databasename
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: accountid
+      label: Accountid
+      required: true
+    description: "Collects account, ssh, user, and account 2 from Combell and projects them into the Cerebro graph as users and assets for repository, build, deployment, and release context."
+    display_name: Combell
+    id: builtin_catalog-combell
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: combell.account
+        required_payload_fields:
+        - id
+        schema_ref: combell/account/v1
+        urn_kind: combell_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: take
+        offset_param: skip
+        page_size: 100
+        type: offset
+      path: "/accounts"
+      projection:
+        fields:
+          id: id
+          name: id
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - ssh
+        id: ssh
+        support: partial
+        title: Ssh
+        type: entity_family
+      event:
+        kind: combell.ssh
+        required_payload_fields:
+        - fingerprint
+        schema_ref: combell/ssh/v1
+        urn_kind: combell_ssh
+      event_kind: ssh
+      id: ssh
+      id_field: fingerprint
+      label: Ssh
+      method: GET
+      name_field: fingerprint
+      pagination:
+        limit_param: take
+        offset_param: skip
+        page_size: 100
+        type: offset
+      path: "/ssh"
+      projection:
+        fields:
+          id: fingerprint
+          name: fingerprint
+          resource_id: fingerprint
+          resource_name: fingerprint
+          resource_type: ssh
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: combell.user
+        required_payload_fields:
+        - name
+        schema_ref: combell/user/v1
+        urn_kind: combell_user
+      event_kind: user
+      id: user
+      id_field: name
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/mysqldatabases/${config.databasename}/users"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - account_2
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account_2
+        support: partial
+        title: Account 2
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: combell.account_2
+        required_payload_fields:
+        - id
+        schema_ref: combell/account_2/v1
+        urn_kind: combell_account_2
+      event_kind: account_2
+      id: account_2
+      id_field: id
+      label: Account 2
+      list_key: addons
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/accounts/${config.accountid}"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.addons[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - families:
+      - ssh
+      id: ssh
+      label: Ssh
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - account_2
+      id: account_2
+      label: Account 2
+    source_id: combell
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "/v2"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/accounts"

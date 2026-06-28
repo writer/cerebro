@@ -1,0 +1,185 @@
+metric,value
+policy finding rules,1500
+policy-control rows,10012
+tag rows,14986
+unique tags,1021
+domains,36
+frameworks,23
+
+all finding metric,value
+public detections,1586
+non-policy detections,86
+finding-control rows,10196
+finding-tag rows,38434
+source-coverage rows,3415
+unique finding review tags,1569
+detections missing catalog tags,0
+detections missing control refs,0
+detections missing audit depth,86
+detections missing source coverage refs,586
+
+evidence mode,rules
+cel,992
+query,507
+graph,1
+
+domain,rules
+identity,427
+github,346
+aws,135
+cerebro,122
+gcp,67
+kubernetes,57
+azure,55
+ai,52
+m365,26
+api,21
+cicd,18
+runtime,18
+vulnerability,17
+compliance,15
+endpoint,15
+container,14
+pci,11
+org,8
+certificate,7
+salesforce,7
+database,6
+dspm,6
+hipaa,6
+backup,5
+network,5
+okta,5
+vendor,5
+secrets,4
+sentinelone,4
+slack,4
+hubspot,3
+stripe,3
+cross-provider,2
+zendesk,2
+graph,1
+telemetry,1
+
+framework,rules
+SOC 2,1406
+NIST 800-53 r5,1029
+ISO 27001:2022,964
+CIS Controls v8,513
+PCI DSS v4.0.1,428
+CIS AWS Foundations Benchmark v2.0,50
+CIS Kubernetes Benchmark,42
+ISO 42001,39
+EU AI Act,32
+HIPAA,26
+Cerebro Revenue Operations,10
+CIS GKE Benchmark v1.4,9
+Cerebro Organizational Resilience,8
+Cerebro Operational Resilience,7
+GDPR,6
+Cerebro Financial Controls,4
+CIS Benchmarks,3
+CIS GitHub Benchmark,3
+Cerebro AI Governance,2
+ISO 27701,2
+CCPA,1
+CIS EKS Benchmark v1.3,1
+CIS Google Workspace Benchmark,1
+
+finding evaluation mode,detections
+event,1555
+graph,31
+
+finding pack,detections
+policy,1500
+github,15
+grc,15
+identity,15
+sentinelone,9
+cloud,6
+vulnview,2
+anthropic,1
+archetype,1
+aurelius,1
+backstage,1
+cerebro,1
+cloudflare,1
+cosmo,1
+data,1
+duo,1
+email_domain,1
+evidence_cas,1
+kandji,1
+kolide,1
+openai,1
+pagerduty,1
+panopticon,1
+runtime,1
+sdk,1
+security_reviewer,1
+security_tooling_map,1
+slack,1
+tailscale,1
+trivy,1
+trusted_endpoint,1
+
+finding source,detections
+policy,1499
+github,16
+grc,12
+sentinelone,9
+identity,8
+cloud,6
+okta,6
+graph,4
+vulnview,2
+anthropic,1
+archetype,1
+asset,1
+aurelius,1
+backstage,1
+cerebro,1
+cloudflare,1
+cosmo,1
+duo,1
+email_domain_health,1
+evidence_cas,1
+kandji,1
+kolide,1
+openai,1
+pagerduty,1
+panopticon,1
+runtime,1
+sdk,1
+security_reviewer,1
+security_tooling_map,1
+slack,1
+tailscale,1
+trivy,1
+trusted_endpoint,1
+
+finding framework,control rows
+NIST 800-53 r5,3014
+SOC 2,2738
+ISO 27001:2022,1855
+CIS Controls v8,1136
+PCI DSS v4.0.1,962
+ISO 42001,139
+CIS Kubernetes Benchmark,133
+EU AI Act,62
+CIS AWS Foundations Benchmark v2.0,54
+HIPAA,27
+GDPR,16
+Cerebro Revenue Operations,13
+Cerebro Organizational Resilience,11
+CIS GKE Benchmark v1.4,9
+Cerebro Operational Resilience,7
+Cerebro Financial Controls,4
+CIS Benchmarks,3
+CIS GitHub Benchmark,3
+Cerebro AI Governance,3
+ISO 27701,3
+CCPA,1
+CIS EKS Benchmark v1.3,1
+CIS Google Workspace Benchmark,1
+NIST SP 800-177,1

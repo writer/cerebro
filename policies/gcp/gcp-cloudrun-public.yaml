@@ -35,7 +35,7 @@ spec:
             - "13"
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.6
     mitreAttack:
         - tactic: Initial Access
           technique: T1190

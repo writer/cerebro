@@ -1,0 +1,207 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects account, feature, user, and search from Pendo and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+    display_name: Pendo
+    id: builtin_catalog-pendo
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: pendo.account
+        required_payload_fields:
+        - id
+        schema_ref: pendo/account/v1
+        urn_kind: pendo_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/accounts"
+      permissions_needed:
+      - userApiKey (query parameter)
+      - userApiKey (request header)
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - feature
+        id: feature
+        support: partial
+        title: Feature
+        type: entity_family
+      event:
+        kind: pendo.feature
+        required_payload_fields:
+        - id
+        schema_ref: pendo/feature/v1
+        urn_kind: pendo_feature
+      event_kind: feature
+      id: feature
+      id_field: id
+      label: Feature
+      method: GET
+      name_field: title
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/features"
+      permissions_needed:
+      - userApiKey (query parameter)
+      - userApiKey (request header)
+      projection:
+        fields:
+          id: id
+          name: title
+          resource_id: id
+          resource_name: title
+          resource_type: feature
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: pendo.user
+        required_payload_fields:
+        - id
+        schema_ref: pendo/user/v1
+        urn_kind: pendo_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/users"
+      permissions_needed:
+      - userApiKey (query parameter)
+      - userApiKey (request header)
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - search
+        id: search
+        support: partial
+        title: Search
+        type: entity_family
+      event:
+        kind: pendo.search
+        required_payload_fields:
+        - id
+        schema_ref: pendo/search/v1
+        urn_kind: pendo_search
+      event_kind: search
+      id: search
+      id_field: id
+      label: Search
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/search"
+      permissions_needed:
+      - userApiKey (query parameter)
+      - userApiKey (request header)
+      projection:
+        fields:
+          id: id
+          name: title
+          resource_id: id
+          resource_name: title
+          resource_type: search
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - families:
+      - feature
+      id: feature
+      label: Feature
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - families:
+      - search
+      id: search
+      label: Search
+    source_id: pendo
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.feedback.eu.pendo.io
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/accounts"

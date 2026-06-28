@@ -1,0 +1,216 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects bank account, document, document block, and partner from Billingo and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+    display_name: Billingo
+    id: builtin_catalog-billingo
+    resource_families:
+    - coverage:
+      - families:
+        - bank_account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: bank_account
+        support: partial
+        title: Bank Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: billingo.bank_account
+        required_payload_fields:
+        - id
+        schema_ref: billingo/bank_account/v1
+        urn_kind: billingo_bank_account
+      event_kind: bank_account
+      id: bank_account
+      id_field: id
+      label: Bank Account
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: per_page
+        start_page: 1
+        type: page
+      path: "/bank-accounts"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - document
+        id: document
+        support: partial
+        title: Document
+        type: entity_family
+      event:
+        kind: billingo.document
+        required_payload_fields:
+        - id
+        schema_ref: billingo/document/v1
+        urn_kind: billingo_document
+      event_kind: document
+      id: document
+      id_field: id
+      label: Document
+      list_key: data
+      method: GET
+      name_field: summary
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: per_page
+        start_page: 1
+        type: page
+      path: "/documents"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: summary
+          resource_id: id
+          resource_name: summary
+          resource_type: document
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - document_block
+        id: document_block
+        support: partial
+        title: Document Block
+        type: entity_family
+      event:
+        kind: billingo.document_block
+        required_payload_fields:
+        - id
+        schema_ref: billingo/document_block/v1
+        urn_kind: billingo_document_block
+      event_kind: document_block
+      id: document_block
+      id_field: id
+      label: Document Block
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: per_page
+        start_page: 1
+        type: page
+      path: "/document-blocks"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: document_block
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - partner
+        id: partner
+        support: partial
+        title: Partner
+        type: entity_family
+      event:
+        kind: billingo.partner
+        required_payload_fields:
+        - id
+        schema_ref: billingo/partner/v1
+        urn_kind: billingo_partner
+      event_kind: partner
+      id: partner
+      id_field: id
+      label: Partner
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: per_page
+        start_page: 1
+        type: page
+      path: "/partners"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: partner
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - bank_account
+      id: bank_account
+      label: Bank Account
+    - families:
+      - document
+      id: document
+      label: Document
+    - families:
+      - document_block
+      id: document_block
+      label: Document Block
+    - families:
+      - partner
+      id: partner
+      label: Partner
+    source_id: billingo
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.billingo.hu/v3
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/bank-accounts"

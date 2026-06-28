@@ -16,7 +16,35 @@ func grcControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 }
 
 func grcPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return grcPolicyLikeProjections(event, "policy", "policy_id", []string{"name", "policy_id"})
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	policyID := firstAttribute(ctx.attrs, "policy_id", "external_id")
+	if policyID == "" {
+		return nil, nil, nil
+	}
+	policyURN := grcPolicyURN(ctx.tenantID, ctx.provider, policyID)
+	ctx.addResourceEntity(
+		policyURN,
+		"policy",
+		firstAttribute(ctx.attrs, "name", "title", "policy_name", "policy_id"),
+		map[string]string{
+			"policy_id":     policyID,
+			"policy_type":   "policy",
+			"source_system": ctx.provider,
+			"status":        firstAttribute(ctx.attrs, "status", "policy_status", "lifecycle_state"),
+		},
+	)
+	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "policy_owner_user_id"))
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, ctx.provider)
+	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, ctx.provider, ctx.attrs)
+	addGRCPolicyAssignmentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, ctx.provider, ctx.attrs)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, ctx.provider, ctx.attrs)
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, "policy_framework", firstAttribute(ctx.attrs, "frameworks", "framework"))
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, policyURN, "policy_status", firstAttribute(ctx.attrs, "status", "policy_status", "lifecycle_state"))
+	entities, links := ctx.done()
+	return entities, links, nil
 }
 
 func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

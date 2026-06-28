@@ -1,0 +1,220 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects customer timeline custom event, authentication token, bank account, and aml from Rebilly and projects them into the Cerebro graph as audit events, secrets, users, and assets for owner, account, evidence, and compliance context."
+    display_name: Rebilly
+    id: builtin_catalog-rebilly
+    resource_families:
+    - coverage:
+      - families:
+        - customer_timeline_custom_event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Customer Timeline Custom Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: rebilly.customer_timeline_custom_event
+        required_payload_fields:
+        - id
+        schema_ref: rebilly/customer_timeline_custom_event/v1
+        urn_kind: rebilly_customer_timeline_custom_event
+      event_kind: customer_timeline_custom_event
+      id: customer_timeline_custom_event
+      id_field: id
+      label: Customer Timeline Custom Event
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/customer-timeline-custom-events"
+      permissions_needed:
+      - JWT
+      - SecretApiKey
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - authentication_token
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Authentication Token
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: rebilly.authentication_token
+        required_payload_fields:
+        - credentialId
+        schema_ref: rebilly/authentication_token/v1
+        urn_kind: rebilly_authentication_token
+      event_kind: authentication_token
+      id: authentication_token
+      id_field: credentialId
+      label: Authentication Token
+      method: GET
+      name_field: credentialId
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/authentication-tokens"
+      permissions_needed:
+      - JWT
+      - SecretApiKey
+      projection:
+        fields:
+          id: credentialId
+          name: credentialId
+          secret_id: credentialId
+          secret_name: credentialId
+          secret_type: authentication_token
+        template: secret
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - credentialId
+      - token
+    - coverage:
+      - families:
+        - bank_account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: bank_account
+        support: partial
+        title: Bank Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: rebilly.bank_account
+        required_payload_fields:
+        - id
+        schema_ref: rebilly/bank_account/v1
+        urn_kind: rebilly_bank_account
+      event_kind: bank_account
+      id: bank_account
+      id_field: id
+      label: Bank Account
+      method: GET
+      name_field: _embedded
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/bank-accounts"
+      permissions_needed:
+      - JWT
+      - SecretApiKey
+      projection:
+        fields:
+          id: id
+          name: _embedded
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - aml
+        id: aml
+        support: partial
+        title: Aml
+        type: entity_family
+      event:
+        kind: rebilly.aml
+        required_payload_fields:
+        - _links
+        schema_ref: rebilly/aml/v1
+        urn_kind: rebilly_aml
+      event_kind: aml
+      id: aml
+      id_field: _links
+      label: Aml
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/aml"
+      permissions_needed:
+      - JWT
+      - SecretApiKey
+      projection:
+        fields:
+          id: _links
+          name: title
+          resource_id: _links
+          resource_name: title
+          resource_type: aml
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - customer_timeline_custom_event
+      id: customer_timeline_custom_event
+      label: Customer Timeline Custom Event
+    - default_enabled: true
+      families:
+      - authentication_token
+      id: authentication_token
+      label: Authentication Token
+    - default_enabled: true
+      families:
+      - bank_account
+      id: bank_account
+      label: Bank Account
+    - families:
+      - aml
+      id: aml
+      label: Aml
+    source_id: rebilly
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api-sandbox.rebilly.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/customer-timeline-custom-events"

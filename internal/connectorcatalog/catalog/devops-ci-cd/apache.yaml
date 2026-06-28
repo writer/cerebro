@@ -1,0 +1,221 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects eventlog, role, user, and permission from Apache Airflow and projects them into the Cerebro graph as audit events, groups, users, and assets for repository, build, deployment, and release context."
+    display_name: Apache Airflow
+    id: builtin_catalog-apache
+    resource_families:
+    - coverage:
+      - families:
+        - eventlog
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Eventlog
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: apache.eventlog
+        required_payload_fields:
+        - dag_id
+        schema_ref: apache/eventlog/v1
+        urn_kind: apache_eventlog
+      event_kind: eventlog
+      id: eventlog
+      id_field: dag_id
+      label: Eventlog
+      list_key: event_logs
+      method: GET
+      name_field: dag_id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/eventLogs"
+      projection:
+        fields:
+          id: dag_id
+          name: dag_id
+          provider_id: dag_id
+        template: audit_event
+      record_selector: "$.event_logs[*]"
+    - coverage:
+      - families:
+        - role
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: role
+        support: partial
+        title: Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: apache.role
+        required_payload_fields:
+        - name
+        schema_ref: apache/role/v1
+        urn_kind: apache_role
+      event_kind: role
+      id: role
+      id_field: name
+      label: Role
+      list_key: roles
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/roles"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_group
+      record_selector: "$.roles[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: apache.user
+        required_payload_fields:
+        - email
+        schema_ref: apache/user/v1
+        urn_kind: apache_user
+      event_kind: user
+      id: user
+      id_field: email
+      label: User
+      list_key: users
+      method: GET
+      name_field: username
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/users"
+      projection:
+        fields:
+          id: email
+          name: username
+          provider_id: email
+        template: identity_user
+      record_selector: "$.users[*]"
+    - coverage:
+      - families:
+        - permission
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: permission
+        support: partial
+        title: Permission
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: apache.permission
+        required_payload_fields:
+        - name
+        schema_ref: apache/permission/v1
+        urn_kind: apache_permission
+      event_kind: permission
+      id: permission
+      id_field: name
+      label: Permission
+      list_key: actions
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/permissions"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: permission
+        template: asset
+      record_selector: "$.actions[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - eventlog
+      id: eventlog
+      label: Eventlog
+    - default_enabled: true
+      families:
+      - role
+      id: role
+      label: Role
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - permission
+      id: permission
+      label: Permission
+    source_id: apache
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "/api/v1"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/eventLogs"

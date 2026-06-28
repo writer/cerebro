@@ -1,0 +1,161 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: token
+      label: Token
+      required: true
+    description: "Collects name, attributes name, and export from SlideRoom API V2 and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
+    display_name: SlideRoom API V2
+    id: builtin_catalog-slideroom_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - name
+        id: name
+        support: partial
+        title: Name
+        type: entity_family
+      event:
+        kind: slideroom_com.name
+        required_payload_fields:
+        - id
+        schema_ref: slideroom_com/name/v1
+        urn_kind: slideroom_name
+      event_kind: name
+      id: name
+      id_field: id
+      label: Name
+      method: GET
+      pagination:
+        type: none
+      path: "/api/v2/applicant/attributes/names"
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: name
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - attributes_name
+        id: attributes_name
+        support: partial
+        title: Attributes Name
+        type: entity_family
+      event:
+        kind: slideroom_com.attributes_name
+        required_payload_fields:
+        - id
+        schema_ref: slideroom_com/attributes_name/v1
+        urn_kind: slideroom_attributes_name
+      event_kind: attributes_name
+      id: attributes_name
+      id_field: id
+      label: Attributes Name
+      method: GET
+      pagination:
+        type: none
+      path: "/api/v2/application/attributes/names"
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: name
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - export
+        high_value: true
+        id: export
+        support: partial
+        title: Export
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: slideroom_com.export
+        required_payload_fields:
+        - id
+        schema_ref: slideroom_com/export/v1
+        urn_kind: slideroom_export
+      event_kind: export
+      id: export
+      id_field: id
+      label: Export
+      list_key: file_urls
+      method: GET
+      pagination:
+        type: none
+      path: "/api/v2/export/${config.token}"
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: export
+        template: asset
+      record_selector: "$.file_urls[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - families:
+      - name
+      id: name
+      label: Name
+    - families:
+      - attributes_name
+      id: attributes_name
+      label: Attributes Name
+    - default_enabled: true
+      families:
+      - export
+      id: export
+      label: Export
+    source_id: slideroom_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.slideroom.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v2/applicant/attributes/names"

@@ -72,6 +72,33 @@ runtimes:
 	if contract.ImageTag != "v2.1.60" {
 		t.Fatalf("image tag = %q", contract.ImageTag)
 	}
+	if !contractHasProfile(contract.RuntimeProfiles, "graph-enabled") {
+		t.Fatalf("runtime profiles = %#v, want graph-enabled", contract.RuntimeProfiles)
+	}
+	if !contractHasEnvVar(contract.RequiredEnvVars, "CEREBRO_POSTGRES_DSN", true) {
+		t.Fatalf("required env vars = %#v, want secret CEREBRO_POSTGRES_DSN", contract.RequiredEnvVars)
+	}
+	if !contractHasEnvVar(contract.RequiredEnvVars, "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", true) {
+		t.Fatalf("required env vars = %#v, want secret CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", contract.RequiredEnvVars)
+	}
+	if !contractHasEnvVar(contract.RequiredEnvVars, "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", true) {
+		t.Fatalf("required env vars = %#v, want secret CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", contract.RequiredEnvVars)
+	}
+	if !contractHasBackingService(contract.RequiredBackingServices, "nats-jetstream") {
+		t.Fatalf("required backing services = %#v, want nats-jetstream", contract.RequiredBackingServices)
+	}
+	if !contractHasBackingService(contract.RequiredBackingServices, "upstream-oauth-provider") {
+		t.Fatalf("required backing services = %#v, want upstream-oauth-provider", contract.RequiredBackingServices)
+	}
+	if !contractHasCapability(contract.OptionalCapabilities, "mcp-oauth") {
+		t.Fatalf("optional capabilities = %#v, want mcp-oauth", contract.OptionalCapabilities)
+	}
+	if !contractHasHealthCheck(contract.PostDeployHealthChecks, "deploy preflight") {
+		t.Fatalf("post deploy checks = %#v, want deploy preflight", contract.PostDeployHealthChecks)
+	}
+	if len(contract.CompatibilityNotes) == 0 {
+		t.Fatal("compatibility notes are empty")
+	}
 	if len(contract.Sources) != 2 {
 		t.Fatalf("sources = %d, want 2", len(contract.Sources))
 	}
@@ -376,4 +403,49 @@ func mkSource(t *testing.T, root string, name string, catalog string, deploy str
 			t.Fatalf("WriteFile(deploy): %v", err)
 		}
 	}
+}
+
+func contractHasProfile(profiles []ContractRuntimeProfile, name string) bool {
+	for _, profile := range profiles {
+		if profile.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func contractHasEnvVar(vars []ContractEnvVar, name string, secret bool) bool {
+	for _, variable := range vars {
+		if variable.Name == name && variable.Secret == secret {
+			return true
+		}
+	}
+	return false
+}
+
+func contractHasBackingService(services []ContractBackingService, name string) bool {
+	for _, service := range services {
+		if service.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func contractHasCapability(capabilities []ContractCapability, name string) bool {
+	for _, capability := range capabilities {
+		if capability.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func contractHasHealthCheck(checks []ContractHealthCheck, name string) bool {
+	for _, check := range checks {
+		if check.Name == name {
+			return true
+		}
+	}
+	return false
 }

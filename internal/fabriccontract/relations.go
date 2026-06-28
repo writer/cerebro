@@ -25,6 +25,7 @@ const (
 	RelationDependsOn          = "depends_on"
 	RelationGrantsEntitlement  = "grants_entitlement"
 	RelationHasClassification  = "has_classification"
+	RelationHasContext         = "has_context"
 	RelationHasDNSRecord       = "has_dns_record"
 	RelationHasEvidence        = "has_evidence"
 	RelationHasFinding         = "has_finding"
@@ -62,6 +63,7 @@ var relationSet = map[string]struct{}{
 	RelationDependsOn:          {},
 	RelationGrantsEntitlement:  {},
 	RelationHasClassification:  {},
+	RelationHasContext:         {},
 	RelationHasDNSRecord:       {},
 	RelationHasEvidence:        {},
 	RelationHasFinding:         {},

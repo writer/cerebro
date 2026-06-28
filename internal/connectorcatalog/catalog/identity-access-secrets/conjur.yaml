@@ -1,0 +1,237 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: account
+      label: Account
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: kind
+      label: Kind
+      required: true
+    description: "Collects authenticator, resource 2, and resource 3 from CyberArk Conjur and projects them into the Cerebro graph as assets for identity, access, device, and secret context."
+    display_name: CyberArk Conjur
+    id: builtin_catalog-conjur
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - resource
+        id: resource
+        support: partial
+        title: Resource
+        type: entity_family
+      event:
+        kind: conjur.resource
+        required_payload_fields:
+        - id
+        schema_ref: conjur/resource/v1
+        urn_kind: conjur_resource
+      event_kind: resource
+      id: resource
+      id_field: id
+      label: Resource
+      method: GET
+      name_field: annotations
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/resources"
+      permissions_needed:
+      - conjurAuth
+      projection:
+        fields:
+          id: id
+          name: annotations
+          resource_id: id
+          resource_name: annotations
+          resource_type: resource
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - secrets
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - authenticator
+        high_value: true
+        id: authenticator
+        support: partial
+        title: Authenticator
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: conjur.authenticator
+        required_payload_fields:
+        - id
+        schema_ref: conjur/authenticator/v1
+        urn_kind: conjur_authenticator
+      event_kind: authenticator
+      id: authenticator
+      id_field: id
+      label: Authenticator
+      list_key: configured
+      method: GET
+      pagination:
+        type: none
+      path: "/authenticators"
+      permissions_needed:
+      - basicAuth
+      - conjurAuth
+      - conjurKubernetesMutualTls
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: authenticator
+        template: asset
+      record_selector: "$.configured[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - resource_2
+        id: resource_2
+        support: partial
+        title: Resource 2
+        type: entity_family
+      event:
+        kind: conjur.resource_2
+        required_payload_fields:
+        - id
+        schema_ref: conjur/resource_2/v1
+        urn_kind: conjur_resource_2
+      event_kind: resource_2
+      id: resource_2
+      id_field: id
+      label: Resource 2
+      method: GET
+      name_field: annotations
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/resources/${config.account}"
+      permissions_needed:
+      - conjurAuth
+      projection:
+        fields:
+          id: id
+          name: annotations
+          resource_id: id
+          resource_name: annotations
+          resource_type: resource
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - secrets
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - resource_3
+        id: resource_3
+        support: partial
+        title: Resource 3
+        type: entity_family
+      event:
+        kind: conjur.resource_3
+        required_payload_fields:
+        - id
+        schema_ref: conjur/resource_3/v1
+        urn_kind: conjur_resource_3
+      event_kind: resource_3
+      id: resource_3
+      id_field: id
+      label: Resource 3
+      method: GET
+      name_field: annotations
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/resources/${config.account}/${config.kind}"
+      permissions_needed:
+      - conjurAuth
+      projection:
+        fields:
+          id: id
+          name: annotations
+          resource_id: id
+          resource_name: annotations
+          resource_type: resource
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - secrets
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - families:
+      - resource
+      id: resource
+      label: Resource
+    - default_enabled: true
+      families:
+      - authenticator
+      id: authenticator
+      label: Authenticator
+    - families:
+      - resource_2
+      id: resource_2
+      label: Resource 2
+    - families:
+      - resource_3
+      id: resource_3
+      label: Resource 3
+    source_id: conjur
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://conjur.local
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/resources"

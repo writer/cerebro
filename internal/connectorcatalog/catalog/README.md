@@ -2,17 +2,18 @@
 
 This directory contains built-in connector definitions for integrations that
 are available to users before they are promoted into hand-written Source CDK
-packages. Each YAML file groups entries by stable product domain:
+packages. Catalog entries are split one source per file under stable product
+domain directories:
 
-- `identity-access-secrets.yaml`
-- `collaboration-productivity.yaml`
-- `devops-ci-cd.yaml`
-- `security-posture-vulnerability.yaml`
-- `observability-soar-threat-intel.yaml`
-- `business-data-grc.yaml`
+- `identity-access-secrets/<source_id>.yaml`
+- `collaboration-productivity/<source_id>.yaml`
+- `devops-ci-cd/<source_id>.yaml`
+- `security-posture-vulnerability/<source_id>.yaml`
+- `observability-soar-threat-intel/<source_id>.yaml`
+- `business-data-grc/<source_id>.yaml`
 
-Keep entries sorted by `source_id` within each file. Add a new integration to
-the smallest matching domain file, and create a new domain file only when the
+Keep each file scoped to one `source_id`. Add a new integration to the smallest
+matching domain directory, and create a new domain directory only when the
 existing groups would make the catalog harder to review.
 
 Every entry must include a committed `classifier_output` and a normalized
@@ -20,7 +21,7 @@ Every entry must include a committed `classifier_output` and a normalized
 
 - auth model and reference-only credential fields
 - verification endpoint
-- 2-4 high-value resource families
+- 2-12 high-value resource families
 - projection templates
 - coverage dimensions with evidence types and control domains for supported or partial high-value dimensions
 
@@ -41,12 +42,7 @@ Drop `dry_run=true` when the generated files are ready to review, then wire the
 new source loader and projection registry entries called out in the generator
 receipt.
 
-External open-source catalogs can inform naming and resource-family choices only
-when their licenses are permissive enough for this repository. Useful references
-found during the initial pass:
-
-- APIs.guru/openapi-directory: CC0 OpenAPI definitions.
-- turbot/steampipe-plugin-* repositories: Apache-2.0 source table taxonomy.
-- apache/camel: Apache-2.0 integration taxonomy.
-
-Do not import source-available connector manifests into this catalog.
+Do not import source-available connector manifests into this catalog. Keep any
+new broad catalog wave limited to source-level enterprise SaaS products, and
+reject public data feeds, government datasets, consumer media APIs, local
+self-hosted endpoints, and provider API surface shards.

@@ -1,0 +1,216 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: team
+      label: Team
+      required: true
+    description: "Collects log, team, user, and incident from VictorOps and projects them into the Cerebro graph as audit events, groups, users, and alerts for alert, incident, service health, and response context."
+    display_name: VictorOps
+    id: builtin_catalog-victorops
+    resource_families:
+    - coverage:
+      - families:
+        - log
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: victorops.log
+        required_payload_fields:
+        - adjustedTotal
+        schema_ref: victorops/log/v1
+        urn_kind: victorops_log
+      event_kind: log
+      id: log
+      id_field: adjustedTotal
+      label: Log
+      list_key: userLogs
+      method: GET
+      name_field: adjustedTotal
+      pagination:
+        type: none
+      path: "/api-reporting/v1/team/${config.team}/oncall/log"
+      projection:
+        fields:
+          id: adjustedTotal
+          name: adjustedTotal
+          provider_id: adjustedTotal
+        template: audit_event
+      record_selector: "$.userLogs[*]"
+    - coverage:
+      - families:
+        - team
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: team
+        support: partial
+        title: Team
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: victorops.team
+        required_payload_fields:
+        - slug
+        schema_ref: victorops/team/v1
+        urn_kind: victorops_team
+      event_kind: team
+      id: team
+      id_field: slug
+      label: Team
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api-public/v1/team"
+      projection:
+        fields:
+          id: slug
+          name: name
+          provider_id: slug
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: victorops.user
+        required_payload_fields:
+        - email
+        schema_ref: victorops/user/v1
+        urn_kind: victorops_user
+      event_kind: user
+      id: user
+      id_field: email
+      label: User
+      list_key: users
+      method: GET
+      name_field: username
+      pagination:
+        type: none
+      path: "/api-public/v1/user"
+      projection:
+        fields:
+          id: email
+          name: username
+          provider_id: email
+        template: identity_user
+      record_selector: "$.users[*]"
+      sensitive_payload_paths:
+      - passwordLastUpdated
+    - coverage:
+      - families:
+        - incident
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Incident
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: victorops.incident
+        required_payload_fields:
+        - alertCount
+        schema_ref: victorops/incident/v1
+        urn_kind: victorops_incident
+      event_kind: incident
+      id: incident
+      id_field: alertCount
+      label: Incident
+      list_key: incidents
+      method: GET
+      name_field: alertCount
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/api-reporting/v2/incidents"
+      projection:
+        fields:
+          alert_id: alertCount
+          alert_name: alertCount
+          alert_severity: alertCount
+          alert_status: alertCount
+          id: alertCount
+          name: alertCount
+        template: alert
+      record_selector: "$.incidents[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - log
+      id: log
+      label: Log
+    - default_enabled: true
+      families:
+      - team
+      id: team
+      label: Team
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - incident
+      id: incident
+      label: Incident
+    source_id: victorops
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.victorops.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api-reporting/v1/team/${config.team}/oncall/log"

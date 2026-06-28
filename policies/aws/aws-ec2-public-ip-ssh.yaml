@@ -40,7 +40,7 @@ spec:
             - "1.4"
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.6
         - name: CIS Controls v8
           controls:
             - "12"

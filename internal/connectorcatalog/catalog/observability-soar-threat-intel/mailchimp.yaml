@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-mailchimp
+    tenant_id: builtin_catalog
+    source_id: mailchimp
+    display_name: Mailchimp
+    description: "Collects lists, members, and audit events from Mailchimp and projects them into the Cerebro graph as groups, users, and audit events for alert, incident, service health, and response context."
+    categories:
+    - identity
+    - communications
+    auth:
+      model: api_key
+      credential_fields:
+      - key: api_key
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.dc}.api.mailchimp.com/3.0
+      verification:
+        method: GET
+        path: "/ping"
+        expect_status:
+        - 200
+    resource_families:
+    - id: lists
+      label: Lists
+      path: "/lists"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: mailchimp.lists
+        schema_ref: mailchimp/lists/v1
+      projection:
+        template: identity_group
+      coverage:
+      - id: lists
+        type: entity_family
+        title: Lists
+        families:
+        - lists
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: members
+      label: Members
+      path: "/lists/${config.list_id}/members"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: mailchimp.members
+        schema_ref: mailchimp/members/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: members
+        type: entity_family
+        title: Members
+        families:
+        - members
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/activity-feed"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: mailchimp.audit_events
+        schema_ref: mailchimp/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

@@ -1,0 +1,205 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    description: "Collects webhook, relatedreceivedmessage, message, and send from BulkSMS and projects them into the Cerebro graph as assets for workspace, document, message, and collaboration context."
+    display_name: BulkSMS
+    id: builtin_catalog-bulksms
+    resource_families:
+    - coverage:
+      - families:
+        - webhook
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: webhook
+        support: partial
+        title: Webhook
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bulksms.webhook
+        required_payload_fields:
+        - id
+        schema_ref: bulksms/webhook/v1
+        urn_kind: bulksms_webhook
+      event_kind: webhook
+      id: webhook
+      id_field: id
+      label: Webhook
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/webhooks"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: webhook
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - relatedreceivedmessage
+        id: relatedreceivedmessage
+        support: partial
+        title: Relatedreceivedmessage
+        type: entity_family
+      event:
+        kind: bulksms.relatedreceivedmessage
+        required_payload_fields:
+        - id
+        schema_ref: bulksms/relatedreceivedmessage/v1
+        urn_kind: bulksms_relatedreceivedmessage
+      event_kind: relatedreceivedmessage
+      id: relatedreceivedmessage
+      id_field: id
+      label: Relatedreceivedmessage
+      method: GET
+      name_field: body
+      pagination:
+        type: none
+      path: "/messages/${config.id}/relatedReceivedMessages"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: body
+          resource_id: id
+          resource_name: body
+          resource_type: relatedreceivedmessage
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - message
+        id: message
+        support: partial
+        title: Message
+        type: entity_family
+      event:
+        kind: bulksms.message
+        required_payload_fields:
+        - id
+        schema_ref: bulksms/message/v1
+        urn_kind: bulksms_message
+      event_kind: message
+      id: message
+      id_field: id
+      label: Message
+      method: GET
+      name_field: body
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/messages"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: body
+          resource_id: id
+          resource_name: body
+          resource_type: message
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - send
+        id: send
+        support: partial
+        title: Send
+        type: entity_family
+      event:
+        kind: bulksms.send
+        required_payload_fields:
+        - id
+        schema_ref: bulksms/send/v1
+        urn_kind: bulksms_send
+      event_kind: send
+      id: send
+      id_field: id
+      label: Send
+      method: GET
+      name_field: body
+      pagination:
+        type: none
+      path: "/messages/send"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: id
+          name: body
+          resource_id: id
+          resource_name: body
+          resource_type: send
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - webhook
+      id: webhook
+      label: Webhook
+    - families:
+      - relatedreceivedmessage
+      id: relatedreceivedmessage
+      label: Relatedreceivedmessage
+    - families:
+      - message
+      id: message
+      label: Message
+    - families:
+      - send
+      id: send
+      label: Send
+    source_id: bulksms
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.bulksms.com/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/webhooks"

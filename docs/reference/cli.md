@@ -9,6 +9,13 @@ make build
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
+Agent onboarding is a Makefile workflow around the CLI and HTTP API:
+
+```bash
+make agent-onboard PLAN=examples/onboarding/cerebro-onboarding.yaml
+make agent-onboard-e2e
+```
+
 ## Server And Version
 
 ```bash
@@ -20,7 +27,10 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 
 ```bash
 ./bin/cerebro deploy preflight
+./bin/cerebro deploy preflight --format text
 ```
+
+`deploy preflight` emits a redacted readiness receipt. The JSON output includes the selected runtime profile, enabled capabilities, required backing services, required secret variable names, operator actions, and pass/fail checks. Store the receipt with deployment records; keep concrete secret values, hostnames, schedules, and tenant assignments in the deployment system.
 
 ## Source Catalog And Previews
 

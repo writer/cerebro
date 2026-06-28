@@ -145,6 +145,8 @@ type Field struct {
 type AuthSpec struct {
 	Model                         string            `json:"model"`
 	CredentialFields              []Field           `json:"credential_fields,omitempty"`
+	TokenHeader                   string            `json:"token_header,omitempty"`
+	TokenScheme                   string            `json:"token_scheme,omitempty"`
 	SupportedStoreIDs             []string          `json:"supported_store_ids,omitempty"`
 	RequiresReferences            bool              `json:"requires_references,omitempty"`
 	AuthorizationURL              string            `json:"authorization_url,omitempty"`
@@ -203,6 +205,7 @@ type PaginationSpec struct {
 	StartPage       int      `json:"start_page,omitempty"`
 	PageSize        int      `json:"page_size,omitempty"`
 	InjectFirstPage bool     `json:"inject_first_page,omitempty"`
+	DisablePageSize bool     `json:"disable_page_size,omitempty"`
 }
 
 // IncrementalSpec describes durable state for changed-record reads.
@@ -284,11 +287,14 @@ type ResourceFamily struct {
 	RecordSelector        string                  `json:"record_selector,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
 	Read                  *ResourceReadSpec       `json:"read,omitempty"`
+	Singleton             bool                    `json:"singleton,omitempty"`
 	IDField               string                  `json:"id_field"`
 	NameField             string                  `json:"name_field,omitempty"`
 	UpdatedAtField        string                  `json:"updated_at_field,omitempty"`
 	EventKind             string                  `json:"event_kind,omitempty"`
 	Event                 EventMappingSpec        `json:"event,omitempty"`
+	StaticQuery           map[string]string       `json:"static_query,omitempty"`
+	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
 	Config                *FamilyConfigSpec       `json:"config,omitempty"`
@@ -413,6 +419,8 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.ScopeSeparator = strings.TrimSpace(definition.Auth.ScopeSeparator)
 	definition.Auth.TokenRequestAuthMethod = strings.TrimSpace(definition.Auth.TokenRequestAuthMethod)
 	definition.Auth.PKCE = strings.TrimSpace(definition.Auth.PKCE)
+	definition.Auth.TokenHeader = strings.TrimSpace(definition.Auth.TokenHeader)
+	definition.Auth.TokenScheme = strings.TrimSpace(definition.Auth.TokenScheme)
 	definition.Auth.AlternateAccessTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateAccessTokenJSONPath)
 	definition.Auth.AlternateRefreshTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateRefreshTokenJSONPath)
 	definition.Auth.Scopes = normalizeStringList(definition.Auth.Scopes)
@@ -493,11 +501,11 @@ func Validate(definition Definition) ValidationResult {
 		}
 		path := strings.TrimSpace(family.Path)
 		depositFamily := isDepositResourceFamily(definition, family.ID)
-		if !depositFamily && (path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
-			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths such as /v1/assets."))
+		if !depositFamily && (path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") || strings.ContainsAny(path, "?#")) {
+			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths without query or fragment such as /v1/assets."))
 		}
-		if depositFamily && path != "" && (!strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
-			add(blocking("path_"+family.ID, "Resource path", "Deposit resource paths may be omitted; when present they must be relative API paths."))
+		if depositFamily && path != "" && (!strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") || strings.ContainsAny(path, "?#")) {
+			add(blocking("path_"+family.ID, "Resource path", "Deposit resource paths may be omitted; when present they must be relative API paths without query or fragment."))
 		}
 		if method := strings.ToUpper(strings.TrimSpace(family.Method)); method != "" {
 			if _, ok := supportedMethods[method]; !ok {
@@ -708,6 +716,12 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	}
 	if auth.TokenExpirationBufferSeconds < 0 {
 		add(blocking("auth_token_expiration_buffer", "Token expiration buffer", "Token expiration buffer must not be negative."))
+	}
+	if header := strings.TrimSpace(auth.TokenHeader); header != "" && strings.ContainsAny(header, "\r\n\t :") {
+		add(blocking("auth_token_header", "Token header", "Token header must be an HTTP header name such as Authorization or x-api-key."))
+	}
+	if scheme := strings.TrimSpace(auth.TokenScheme); scheme != "" && strings.ContainsAny(scheme, "\r\n\t") {
+		add(blocking("auth_token_scheme", "Token scheme", "Token scheme must not contain whitespace or control characters."))
 	}
 }
 
@@ -1096,6 +1110,8 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 			family.EventKind = family.ID
 		}
 		family.Event = normalizeEventMapping(legacyEventKind, family.Event)
+		family.StaticQuery = normalizeStringMap(family.StaticQuery)
+		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
 		family.Config = normalizeFamilyConfigSpec(family.Config)

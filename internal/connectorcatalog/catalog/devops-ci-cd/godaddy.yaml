@@ -1,0 +1,196 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: customerid
+      label: Customerid
+      required: true
+    description: "Collects optin, domain, maintenance, and tld from GoDaddy and projects them into the Cerebro graph as alerts and assets for repository, build, deployment, and release context."
+    display_name: GoDaddy
+    id: builtin_catalog-godaddy
+    resource_families:
+    - coverage:
+      - families:
+        - optin
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Optin
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: godaddy.optin
+        required_payload_fields:
+        - addedAt
+        schema_ref: godaddy/optin/v1
+        urn_kind: godaddy_optin
+      event_kind: optin
+      id: optin
+      id_field: addedAt
+      label: Optin
+      method: GET
+      name_field: addedAt
+      pagination:
+        type: none
+      path: "/v2/customers/${config.customerid}/domains/notifications/optIn"
+      projection:
+        fields:
+          alert_id: addedAt
+          alert_name: addedAt
+          alert_severity: addedAt
+          alert_status: status
+          id: addedAt
+          name: addedAt
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - domain
+        id: domain
+        support: partial
+        title: Domain
+        type: entity_family
+      event:
+        kind: godaddy.domain
+        required_payload_fields:
+        - authCode
+        schema_ref: godaddy/domain/v1
+        urn_kind: godaddy_domain
+      event_kind: domain
+      id: domain
+      id_field: authCode
+      label: Domain
+      method: GET
+      name_field: authCode
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/v1/domains"
+      projection:
+        fields:
+          id: authCode
+          name: authCode
+          resource_id: authCode
+          resource_name: authCode
+          resource_type: domain
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - maintenance
+        id: maintenance
+        support: partial
+        title: Maintenance
+        type: entity_family
+      event:
+        kind: godaddy.maintenance
+        required_payload_fields:
+        - id
+        schema_ref: godaddy/maintenance/v1
+        urn_kind: godaddy_maintenance
+      event_kind: maintenance
+      id: maintenance
+      id_field: id
+      label: Maintenance
+      list_key: tlds
+      method: GET
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/v2/domains/maintenances"
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: maintenance
+        template: asset
+      record_selector: "$.tlds[*]"
+    - coverage:
+      - families:
+        - tld
+        id: tld
+        support: partial
+        title: Tld
+        type: entity_family
+      event:
+        kind: godaddy.tld
+        required_payload_fields:
+        - name
+        schema_ref: godaddy/tld/v1
+        urn_kind: godaddy_tld
+      event_kind: tld
+      id: tld
+      id_field: name
+      label: Tld
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/domains/tlds"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: tld
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - optin
+      id: optin
+      label: Optin
+    - families:
+      - domain
+      id: domain
+      label: Domain
+    - families:
+      - maintenance
+      id: maintenance
+      label: Maintenance
+    - families:
+      - tld
+      id: tld
+      label: Tld
+    source_id: godaddy
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "//api.ote-godaddy.com"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v2/customers/${config.customerid}/domains/notifications/optIn"

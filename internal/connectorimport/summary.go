@@ -14,6 +14,7 @@ type Summary struct {
 	BespokeNeeded      int            `json:"bespoke_required"`
 	RuntimeUnsupported int            `json:"runtime_unsupported"`
 	ProofGateFailed    int            `json:"proof_gate_failed"`
+	CatalogRejected    int            `json:"catalog_rejected"`
 	GenerationError    int            `json:"generation_error"`
 	YieldPercent       float64        `json:"yield_percent"`
 	ByAuthModel        map[string]int `json:"by_auth_model,omitempty"`
@@ -51,6 +52,9 @@ func Summarize(outcomes []Outcome) Summary {
 		case VerdictProofGate:
 			summary.ProofGateFailed++
 			summary.BlockingReasons["proofgate."+strings.TrimSpace(outcome.Error)]++
+		case VerdictCatalogRejected:
+			summary.CatalogRejected++
+			summary.BlockingReasons["catalog."+strings.TrimSpace(outcome.Error)]++
 		case VerdictGenerationError:
 			summary.GenerationError++
 			summary.BlockingReasons["generation."+generationReasonBucket(outcome.Error)]++

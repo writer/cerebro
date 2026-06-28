@@ -1,0 +1,147 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-databricks
+    tenant_id: builtin_catalog
+    source_id: databricks
+    display_name: Databricks
+    description: "Collects data assets, model serving endpoints, audit events, and vulnerabilities from Databricks and projects them into the Cerebro graph as assets, deployments, audit events, and vulnerabilities for owner, account, evidence, and compliance context."
+    categories:
+    - data
+    - warehouse
+    config_fields:
+    - key: workspace_url
+      label: Workspace URL
+      required: true
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.workspace_url}
+      verification:
+        method: GET
+        path: "/api/2.0/preview/scim/v2/Me"
+        expect_status:
+        - 200
+    resource_families:
+    - id: assets
+      label: Data assets
+      path: "/v1/assets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: databricks.assets
+        schema_ref: databricks/assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: assets
+        type: entity_family
+        title: Data assets
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: model_serving_endpoints
+      label: Model serving endpoints
+      path: "/v1/model-serving/endpoints"
+      method: GET
+      record_selector: "$.endpoints[*]"
+      id_field: name
+      name_field: name
+      event:
+        kind: databricks.model_serving_endpoints
+        schema_ref: databricks/model_serving_endpoints/v1
+      projection:
+        template: deployment
+      coverage:
+      - id: model_serving_endpoints
+        type: deployment_state
+        title: Model serving endpoints
+        families:
+        - model_serving_endpoints
+        support: partial
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - secure_delivery
+      pagination:
+        type: cursor
+        cursor_param: page_token
+        cursor_json_path: "$.next_page_token"
+        page_size_param: page_size
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/v1/audit/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: databricks.audit_events
+        schema_ref: databricks/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: vulnerabilities
+      label: Vulnerabilities
+      path: "/v1/vulnerabilities"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: databricks.vulnerabilities
+        schema_ref: databricks/vulnerabilities/v1
+      projection:
+        template: vulnerability
+      coverage:
+      - id: vulnerabilities
+        type: remediation_state
+        title: Vulnerabilities
+        families:
+        - vulnerabilities
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

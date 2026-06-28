@@ -181,7 +181,7 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 			check("incremental", state, contains(incremental, state), fmt.Sprintf("family %s", family.ID))
 		}
 		read := family.Read
-		if family.RecordSelector == "" && family.ListKey == "" && (read == nil || len(read.MapRecords) == 0) && (read == nil || !read.Singleton) {
+		if family.RecordSelector == "" && family.ListKey == "" && (read == nil || len(read.MapRecords) == 0) && !family.Singleton && (read == nil || !read.Singleton) {
 			check("record_selector", "jsonpath_or_list_key", false, fmt.Sprintf("family %s needs record_selector, list_key, map_records, or singleton", family.ID))
 		} else {
 			check("record_selector", "jsonpath_or_list_key", true, fmt.Sprintf("family %s", family.ID))

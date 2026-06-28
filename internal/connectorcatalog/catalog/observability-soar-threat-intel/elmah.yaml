@@ -1,0 +1,217 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - key: api_base_url
+      label: API base URL
+      placeholder: api.example.com
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: logid
+      label: Logid
+      required: true
+    description: "Collects log, deployment, uptimecheck, and message from elmah.io and projects them into the Cerebro graph as audit events, deployments, and assets for alert, incident, service health, and response context."
+    display_name: elmah.io
+    id: builtin_catalog-elmah
+    resource_families:
+    - coverage:
+      - families:
+        - log
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: elmah.log
+        required_payload_fields:
+        - id
+        schema_ref: elmah/log/v1
+        urn_kind: elmah_log
+      event_kind: log
+      id: log
+      id_field: id
+      label: Log
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v3/logs"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - deployment
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - secure_delivery
+        id: deployments
+        support: partial
+        title: Deployment
+        type: deployment_state
+      default_enabled: true
+      event:
+        kind: elmah.deployment
+        required_payload_fields:
+        - id
+        schema_ref: elmah/deployment/v1
+        urn_kind: elmah_deployment
+      event_kind: deployment
+      id: deployment
+      id_field: id
+      label: Deployment
+      method: GET
+      name_field: userName
+      pagination:
+        type: none
+      path: "/v3/deployments"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          deployment_environment: created
+          deployment_id: id
+          deployment_name: userName
+          deployment_status: created
+          id: id
+          name: userName
+        template: deployment
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - uptimecheck
+        id: uptimecheck
+        support: partial
+        title: Uptimecheck
+        type: entity_family
+      event:
+        kind: elmah.uptimecheck
+        required_payload_fields:
+        - id
+        schema_ref: elmah/uptimecheck/v1
+        urn_kind: elmah_uptimecheck
+      event_kind: uptimecheck
+      id: uptimecheck
+      id_field: id
+      label: Uptimecheck
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v3/uptimechecks"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: uptimecheck
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - message
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Message
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: elmah.message
+        required_payload_fields:
+        - id
+        schema_ref: elmah/message/v1
+        urn_kind: elmah_message
+      event_kind: message
+      id: message
+      id_field: id
+      label: Message
+      list_key: messages
+      method: GET
+      name_field: title
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v3/messages/${config.logid}"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: title
+          provider_id: id
+        template: audit_event
+      record_selector: "$.messages[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - log
+      id: log
+      label: Log
+    - default_enabled: true
+      families:
+      - deployment
+      id: deployment
+      label: Deployment
+    - families:
+      - uptimecheck
+      id: uptimecheck
+      label: Uptimecheck
+    - default_enabled: true
+      families:
+      - message
+      id: message
+      label: Message
+    source_id: elmah
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://${config.api_base_url}
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v3/logs"

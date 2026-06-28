@@ -1,0 +1,209 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects attribute, role, search, and coupons search from Magento and projects them into the Cerebro graph as audit events, groups, alerts, and policies for owner, account, evidence, and compliance context."
+    display_name: Magento
+    id: builtin_catalog-magento
+    resource_families:
+    - coverage:
+      - families:
+        - attribute
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Attribute
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: magento.attribute
+        required_payload_fields:
+        - apply_to
+        schema_ref: magento/attribute/v1
+        urn_kind: magento_attribute
+      event_kind: attribute
+      id: attribute
+      id_field: apply_to
+      label: Attribute
+      list_key: items
+      method: GET
+      name_field: apply_to
+      pagination:
+        type: none
+      path: "/V1/categories/attributes"
+      projection:
+        fields:
+          id: apply_to
+          name: apply_to
+          provider_id: apply_to
+        template: audit_event
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - role
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: role
+        support: partial
+        title: Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: magento.role
+        required_payload_fields:
+        - id
+        schema_ref: magento/role/v1
+        urn_kind: magento_role
+      event_kind: role
+      id: role
+      id_field: id
+      label: Role
+      list_key: items
+      method: GET
+      name_field: company_id
+      pagination:
+        type: none
+      path: "/V1/company/role/"
+      projection:
+        fields:
+          id: id
+          name: company_id
+          provider_id: id
+        template: identity_group
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - search
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Search
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: magento.search
+        required_payload_fields:
+        - id
+        schema_ref: magento/search/v1
+        urn_kind: magento_search
+      event_kind: search
+      id: search
+      id_field: id
+      label: Search
+      list_key: items
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/V1/cmsPage/search"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: title
+          alert_severity: active
+          alert_status: active
+          id: id
+          name: title
+        template: alert
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - coupons_search
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Coupons Search
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: magento.coupons_search
+        required_payload_fields:
+        - code
+        schema_ref: magento/coupons_search/v1
+        urn_kind: magento_coupons_search
+      event_kind: coupons_search
+      id: coupons_search
+      id_field: code
+      label: Coupons Search
+      list_key: items
+      method: GET
+      name_field: code
+      pagination:
+        type: none
+      path: "/V1/coupons/search"
+      projection:
+        fields:
+          id: code
+          name: code
+          policy_id: code
+          policy_name: code
+          policy_type: search
+        template: policy
+      record_selector: "$.items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - attribute
+      id: attribute
+      label: Attribute
+    - default_enabled: true
+      families:
+      - role
+      id: role
+      label: Role
+    - default_enabled: true
+      families:
+      - search
+      id: search
+      label: Search
+    - default_enabled: true
+      families:
+      - coupons_search
+      id: coupons_search
+      label: Coupons Search
+    source_id: magento
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://example.com/rest/default
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/V1/categories/attributes"

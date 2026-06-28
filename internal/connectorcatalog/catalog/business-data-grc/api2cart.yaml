@@ -1,0 +1,126 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects attribute group list json and attribute attributeset list json from API2Cart and projects them into the Cerebro graph as groups and assets for owner, account, evidence, and compliance context."
+    display_name: API2Cart
+    id: builtin_catalog-api2cart
+    resource_families:
+    - coverage:
+      - families:
+        - attribute_group_list_json
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: attribute_group_list_json
+        support: partial
+        title: Attribute Group List Json
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: api2cart.attribute_group_list_json
+        required_payload_fields:
+        - id
+        schema_ref: api2cart/attribute_group_list_json/v1
+        urn_kind: api2cart_attribute_group_list_json
+      event_kind: attribute_group_list_json
+      id: attribute_group_list_json
+      id_field: id
+      label: Attribute Group List Json
+      list_key: result
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: count
+        type: page
+      path: "/attribute.group.list.json"
+      permissions_needed:
+      - api_key
+      - store_key
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.result[*]"
+    - coverage:
+      - families:
+        - attribute_attributeset_list_json
+        id: attribute_attributeset_list_json
+        support: partial
+        title: Attribute Attributeset List Json
+        type: entity_family
+      event:
+        kind: api2cart.attribute_attributeset_list_json
+        required_payload_fields:
+        - id
+        schema_ref: api2cart/attribute_attributeset_list_json/v1
+        urn_kind: api2cart_attribute_attributeset_list_json
+      event_kind: attribute_attributeset_list_json
+      id: attribute_attributeset_list_json
+      id_field: id
+      label: Attribute Attributeset List Json
+      list_key: result
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: count
+        type: page
+      path: "/attribute.attributeset.list.json"
+      permissions_needed:
+      - api_key
+      - store_key
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: attribute_attributeset_list_json
+        template: asset
+      record_selector: "$.result[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - attribute_group_list_json
+      id: attribute_group_list_json
+      label: Attribute Group List Json
+    - families:
+      - attribute_attributeset_list_json
+      id: attribute_attributeset_list_json
+      label: Attribute Attributeset List Json
+    source_id: api2cart
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.api2cart.com/v1.1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/attribute.group.list.json"

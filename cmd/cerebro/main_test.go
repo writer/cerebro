@@ -99,11 +99,32 @@ func TestWritePreflightReceiptJSONRedactsToBoundedDetail(t *testing.T) {
 	}
 }
 
+func TestPreflightErrorDetailRedactsCredentialBearingDetails(t *testing.T) {
+	credential := "credential-" + "value"
+	detail := preflightErrorDetail(fmt.Errorf(
+		"connect nats://user:%[1]s@nats.example:4222?token=%[1]s failed; postgres://db:%[1]s@db.example/cerebro?password=%[1]s&sslmode=require; client_secret=%[1]s",
+		credential,
+	))
+
+	if strings.Contains(detail, credential) {
+		t.Fatalf("preflight detail leaked credential %q in %q", credential, detail)
+	}
+	for _, want := range []string{
+		"nats://nats.example:4222?token=<redacted>",
+		"postgres://db.example/cerebro?password=<redacted>&sslmode=require",
+		"client_secret=<redacted>",
+	} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("preflight detail = %q, want redacted fragment %q", detail, want)
+		}
+	}
+}
+
 func TestExecuteDeployPreflightReportsDependencyCloseFailure(t *testing.T) {
 	closeErr := errors.New("close failed")
 	receipt := executeDeployPreflightWith(context.Background(), preflightRuntime{
 		loadConfig: func() (appconfig.Config, error) {
-			return appconfig.Config{}, nil
+			return preflightReadyConfig(), nil
 		},
 		openDependencies: func(context.Context, appconfig.Config) (bootstrap.Dependencies, func() error, error) {
 			return bootstrap.Dependencies{}, func() error { return closeErr }, nil
@@ -116,13 +137,144 @@ func TestExecuteDeployPreflightReportsDependencyCloseFailure(t *testing.T) {
 	if receipt.Status != "fail" {
 		t.Fatalf("receipt status = %q, want fail", receipt.Status)
 	}
-	if got := len(receipt.Checks); got != 4 {
-		t.Fatalf("check count = %d, want 4: %#v", got, receipt.Checks)
+	if got := len(receipt.Checks); got != 5 {
+		t.Fatalf("check count = %d, want 5: %#v", got, receipt.Checks)
 	}
-	closeCheck := receipt.Checks[3]
+	closeCheck := receipt.Checks[4]
 	if closeCheck.Name != "dependencies.close" || closeCheck.Status != "fail" || closeCheck.Detail == "" {
 		t.Fatalf("close check = %#v, want failed dependencies.close detail", closeCheck)
 	}
+}
+
+func TestExecuteDeployPreflightAnnotatesReadinessReceipt(t *testing.T) {
+	receipt := executeDeployPreflightWith(context.Background(), preflightRuntime{
+		loadConfig: func() (appconfig.Config, error) {
+			cfg := preflightReadyConfig()
+			cfg.StateStore = appconfig.StateStoreConfig{Driver: appconfig.StateStoreDriverPostgres, PostgresDSN: "postgres://user@example.invalid/cerebro?sslmode=require"}
+			cfg.AppendLog = appconfig.AppendLogConfig{
+				Driver:                       appconfig.AppendLogDriverJetStream,
+				JetStreamURL:                 "nats://example.invalid:4222",
+				JetStreamRuntimeIndexEnabled: true,
+			}
+			cfg.GraphStore = appconfig.GraphStoreConfig{
+				Driver:        appconfig.GraphStoreDriverNeo4j,
+				Neo4jURI:      "neo4j+s://graph.example.invalid",
+				Neo4jUsername: "neo4j",
+				Neo4jPassword: "secret",
+			}
+			cfg.Auth.CapabilityTokenSecrets = []string{"capability-secret"}
+			cfg.Auth.MCPOAuth = appconfig.MCPOAuthConfig{
+				Enabled: true,
+				Clients: []appconfig.MCPOAuthClient{{
+					ClientID:     "mcp-client",
+					ClientSecret: "mcp-secret",
+				}},
+				Upstream: appconfig.MCPOAuthUpstreamConfig{
+					Issuer:       "https://identity.example.invalid",
+					ClientID:     "upstream-client",
+					ClientSecret: "upstream-secret",
+					RedirectURI:  "https://cerebro.example.com/oauth/callback",
+				},
+			}
+			cfg.Auth.DeviceAuth = appconfig.DeviceAuthConfig{
+				Enabled: true,
+				SigningKeys: []appconfig.DeviceAuthSigningKey{{
+					KID:        "current",
+					PublicPEM:  "public",
+					PrivatePEM: "private",
+				}},
+				CurrentKID: "current",
+			}
+			cfg.Auth.RequestOrigin.PublicOrigin = "https://cerebro.example.com"
+			cfg.Auth.RequestOrigin.TrustedProxyCIDRs = []string{"10.0.0.0/8"}
+			cfg.OTEL.Enabled = true
+			return cfg, nil
+		},
+		openDependencies: func(context.Context, appconfig.Config) (bootstrap.Dependencies, func() error, error) {
+			return bootstrap.Dependencies{}, func() error { return nil }, nil
+		},
+		probeLLM: func(context.Context, graphagent.LLMClient) error {
+			return nil
+		},
+	})
+
+	if receipt.Status != "pass" {
+		t.Fatalf("receipt status = %q, want pass: %#v", receipt.Status, receipt.Checks)
+	}
+	if receipt.RuntimeProfile != "graph-enabled" {
+		t.Fatalf("runtime profile = %q, want graph-enabled", receipt.RuntimeProfile)
+	}
+	for _, want := range []string{"api.auth", "append_log.jetstream", "append_log.runtime_index", "device_auth", "graph_store.neo4j", "mcp.oauth", "otel.export", "state_store.postgres"} {
+		if !containsString(receipt.EnabledCapabilities, want) {
+			t.Fatalf("enabled capabilities %v missing %q", receipt.EnabledCapabilities, want)
+		}
+	}
+	for _, want := range []string{"CEREBRO_API_KEYS", "CEREBRO_CAPABILITY_TOKEN_SECRETS", "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "CEREBRO_MCP_OAUTH_CLIENTS_JSON", "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "CEREBRO_POSTGRES_DSN", "CEREBRO_JETSTREAM_URL", "CEREBRO_NEO4J_PASSWORD"} {
+		if !containsString(receipt.RequiredSecretNames, want) {
+			t.Fatalf("required secret names %v missing %q", receipt.RequiredSecretNames, want)
+		}
+	}
+	if len(receipt.RequiredBackingServices) != 5 {
+		t.Fatalf("required backing services = %#v, want postgres, nats, neo4j, upstream oauth, otlp", receipt.RequiredBackingServices)
+	}
+	if !containsString(receipt.OperatorActions, "run graph health after rollout and before graph-dependent workflows") {
+		t.Fatalf("operator actions = %#v", receipt.OperatorActions)
+	}
+}
+
+func TestExecuteDeployPreflightFailsUnsafeServeConfigBeforeOpeningDependencies(t *testing.T) {
+	opened := false
+	receipt := executeDeployPreflightWith(context.Background(), preflightRuntime{
+		loadConfig: func() (appconfig.Config, error) {
+			return appconfig.Config{
+				Auth:      appconfig.AuthConfig{Enabled: true},
+				RateLimit: appconfig.RateLimitConfig{Enabled: true},
+			}, nil
+		},
+		openDependencies: func(context.Context, appconfig.Config) (bootstrap.Dependencies, func() error, error) {
+			opened = true
+			return bootstrap.Dependencies{}, func() error { return nil }, nil
+		},
+		probeLLM: func(context.Context, graphagent.LLMClient) error {
+			return nil
+		},
+	})
+
+	if receipt.Status != "fail" {
+		t.Fatalf("receipt status = %q, want fail", receipt.Status)
+	}
+	if opened {
+		t.Fatal("dependencies opened after serve config failed")
+	}
+	if got := receipt.Checks[len(receipt.Checks)-1].Name; got != "serve_config.validate" {
+		t.Fatalf("last check = %q, want serve_config.validate", got)
+	}
+	if !containsString(receipt.RequiredSecretNames, "one of CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS") {
+		t.Fatalf("required secret names = %#v", receipt.RequiredSecretNames)
+	}
+}
+
+func preflightReadyConfig() appconfig.Config {
+	return appconfig.Config{
+		Auth: appconfig.AuthConfig{
+			Enabled: true,
+			APIKeys: []appconfig.APIKey{{
+				Key:       "token",
+				Principal: "ci",
+				TenantID:  "example",
+			}},
+		},
+		RateLimit: appconfig.RateLimitConfig{Enabled: true},
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSourceRuntimeCommandSignalsIncludeSIGTERM(t *testing.T) {

@@ -1,6 +1,7 @@
 package sourceregistry
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
@@ -54,6 +55,8 @@ import (
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
 )
+
+type DefinitionFixtureReadResult = catalogruntimesource.FixtureReadResult
 
 type builtinSourceLoader struct {
 	name string
@@ -355,6 +358,10 @@ func DynamicDefinitionSource(definition connectordefinitions.Definition) (source
 	return catalogruntimesource.NewDefinition(normalized)
 }
 
+func ReadDynamicDefinitionFixture(ctx context.Context, definition connectordefinitions.Definition, familyID string, body []byte) (DefinitionFixtureReadResult, error) {
+	return catalogruntimesource.ReadDefinitionFixture(ctx, definition, familyID, body)
+}
+
 // Builtin constructs the in-process source registry for the rewrite skeleton.
 func Builtin() (*sourcecdk.Registry, error) {
 	sources := make([]sourcecdk.Source, 0, len(builtinSourceLoaders))
@@ -369,13 +376,13 @@ func Builtin() (*sourcecdk.Registry, error) {
 		}
 		sources = append(sources, source)
 	}
-	catalog, err := connectorcatalog.Builtin()
+	catalog, err := connectorcatalog.BuiltinRuntime()
 	if err != nil {
 		return nil, fmt.Errorf("load connector definition catalog: %w", err)
 	}
 	for _, entry := range catalog.Entries {
 		sourceID := entry.Definition.SourceID
-		if _, ok := registered[sourceID]; ok || entry.Status != connectorcatalog.StatusGenerateable {
+		if _, ok := registered[sourceID]; ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
 			continue
 		}
 		source, err := catalogruntimesource.New(entry)

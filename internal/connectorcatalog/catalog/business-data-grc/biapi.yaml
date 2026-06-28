@@ -1,0 +1,226 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id_connector
+      label: Id Connector
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id_user
+      label: Id User
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id_connection
+      label: Id Connection
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id_webhook
+      label: Id Webhook
+      required: true
+    description: "Collects logo, account, add to data, and alert from Powens (Budgea) and projects them into the Cerebro graph as audit events, users, assets, and alerts for owner, account, evidence, and compliance context."
+    display_name: Powens (Budgea)
+    id: builtin_catalog-biapi
+    resource_families:
+    - coverage:
+      - families:
+        - logo
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Logo
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: biapi.logo
+        required_payload_fields:
+        - id
+        schema_ref: biapi/logo/v1
+        urn_kind: biapi_logo
+      event_kind: logo
+      id: logo
+      id_field: id
+      label: Logo
+      list_key: connectorlogos
+      method: GET
+      name_field: id
+      pagination:
+        type: none
+      path: "/banks/${config.id_connector}/logos"
+      projection:
+        fields:
+          id: id
+          name: id
+          provider_id: id
+        template: audit_event
+      record_selector: "$.connectorlogos[*]"
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: biapi.account
+        required_payload_fields:
+        - id
+        schema_ref: biapi/account/v1
+        urn_kind: biapi_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: accounts
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/users/${config.id_user}/connections/${config.id_connection}/accounts"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.accounts[*]"
+    - coverage:
+      - families:
+        - add_to_data
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: add_to_data
+        support: partial
+        title: Add To Data
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: biapi.add_to_data
+        required_payload_fields:
+        - id
+        schema_ref: biapi/add_to_data/v1
+        urn_kind: biapi_add_to_data
+      event_kind: add_to_data
+      id: add_to_data
+      id_field: id
+      label: Add To Data
+      list_key: webhooks
+      method: GET
+      name_field: url
+      pagination:
+        type: none
+      path: "/webhooks/${config.id_webhook}/add_to_data"
+      projection:
+        fields:
+          id: id
+          name: url
+          resource_id: id
+          resource_name: url
+          resource_type: add_to_data
+        template: asset
+      record_selector: "$.webhooks[*]"
+    - coverage:
+      - families:
+        - alert
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Alert
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: biapi.alert
+        required_payload_fields:
+        - id
+        schema_ref: biapi/alert/v1
+        urn_kind: biapi_alert
+      event_kind: alert
+      id: alert
+      id_field: id
+      label: Alert
+      list_key: alerts
+      method: GET
+      name_field: id
+      pagination:
+        type: none
+      path: "/users/${config.id_user}/alerts"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: id
+          alert_severity: id
+          alert_status: id
+          id: id
+          name: id
+        template: alert
+      record_selector: "$.alerts[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - logo
+      id: logo
+      label: Logo
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - add_to_data
+      id: add_to_data
+      label: Add To Data
+    - default_enabled: true
+      families:
+      - alert
+      id: alert
+      label: Alert
+    source_id: biapi
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "//budgea.biapi.pro/2.0"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/banks/${config.id_connector}/logos"

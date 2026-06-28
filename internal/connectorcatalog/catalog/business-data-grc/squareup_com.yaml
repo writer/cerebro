@@ -1,0 +1,252 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: https://connect.squareup.com/oauth2/authorize
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      requires_references: true
+      scopes:
+      - APPOINTMENTS_BUSINESS_SETTINGS_READ
+      - APPOINTMENTS_READ
+      - BANK_ACCOUNTS_READ
+      - CASH_DRAWER_READ
+      - CUSTOMERS_READ
+      - DEVICE_CREDENTIAL_MANAGEMENT
+      - DISPUTES_READ
+      - EMPLOYEES_READ
+      - GIFTCARDS_READ
+      - INVENTORY_READ
+      - INVOICES_READ
+      - ITEMS_READ
+      - LOYALTY_READ
+      - MERCHANT_PROFILE_READ
+      - ONLINE_STORE_SITE_READ
+      - ONLINE_STORE_SNIPPETS_READ
+      - ORDERS_READ
+      - PAYMENTS_READ
+      - SETTLEMENTS_READ
+      - SUBSCRIPTIONS_READ
+      - TIMECARDS_READ
+      - TIMECARDS_SETTINGS_READ
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: https://connect.squareup.com/oauth2/token
+    categories:
+    - saas
+    description: "Collects activity, bank account, group, and team member booking profile from Square Connect API and projects them into the Cerebro graph as audit events, users, groups, and group memberships for owner, account, evidence, and compliance context."
+    display_name: Square Connect API
+    id: builtin_catalog-squareup_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - activity
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Activity
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: squareup_com.activity
+        required_payload_fields:
+        - category
+        schema_ref: squareup_com/activity/v1
+        urn_kind: squareup_activity
+      event_kind: activity
+      id: activity
+      id_field: category
+      label: Activity
+      list_key: errors
+      method: GET
+      name_field: category
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v2/gift-cards/activities"
+      permissions_needed:
+      - GIFTCARDS_READ
+      projection:
+        fields:
+          id: category
+          name: category
+          provider_id: category
+        template: audit_event
+      record_selector: "$.errors[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - bank_account
+        high_value: true
+        id: bank_account
+        support: partial
+        title: Bank Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: squareup_com.bank_account
+        required_payload_fields:
+        - id
+        schema_ref: squareup_com/bank_account/v1
+        urn_kind: squareup_bank_account
+      event_kind: bank_account
+      id: bank_account
+      id_field: id
+      label: Bank Account
+      list_key: bank_accounts
+      method: GET
+      name_field: account_number_suffix
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v2/bank-accounts"
+      permissions_needed:
+      - BANK_ACCOUNTS_READ
+      projection:
+        fields:
+          id: id
+          name: account_number_suffix
+          provider_id: id
+        template: identity_user
+      record_selector: "$.bank_accounts[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group
+        high_value: true
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: squareup_com.group
+        required_payload_fields:
+        - id
+        schema_ref: squareup_com/group/v1
+        urn_kind: squareup_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      list_key: groups
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v2/customers/groups"
+      permissions_needed:
+      - CUSTOMERS_READ
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.groups[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - team_member_booking_profile
+        high_value: true
+        id: team_member_booking_profile
+        support: partial
+        title: Team Member Booking Profile
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: squareup_com.team_member_booking_profile
+        required_payload_fields:
+        - description
+        schema_ref: squareup_com/team_member_booking_profile/v1
+        urn_kind: squareup_team_member_booking_profile
+      event_kind: team_member_booking_profile
+      id: team_member_booking_profile
+      id_field: description
+      label: Team Member Booking Profile
+      list_key: team_member_booking_profiles
+      method: GET
+      name_field: display_name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v2/bookings/team-member-booking-profiles"
+      permissions_needed:
+      - APPOINTMENTS_BUSINESS_SETTINGS_READ
+      projection:
+        fields:
+          id: description
+          name: display_name
+          provider_id: description
+        template: group_membership
+      record_selector: "$.team_member_booking_profiles[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - activity
+      id: activity
+      label: Activity
+    - default_enabled: true
+      families:
+      - bank_account
+      id: bank_account
+      label: Bank Account
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - team_member_booking_profile
+      id: team_member_booking_profile
+      label: Team Member Booking Profile
+    source_id: squareup_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://connect.squareup.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v2/gift-cards/activities"

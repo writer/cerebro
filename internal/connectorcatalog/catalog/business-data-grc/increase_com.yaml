@@ -1,0 +1,603 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects event, account, digital wallet token, ach prenotification, OAuth connection, and event subscription from Increase API and projects them into the Cerebro graph as audit events, users, secrets, alerts, and assets for owner, account, evidence, and compliance context."
+    display_name: Increase API
+    id: builtin_catalog-increase_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - event
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: increase_com.event
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/event/v1
+        urn_kind: increase_event
+      event_kind: event
+      id: event
+      id_field: id
+      label: Event
+      list_key: data
+      method: GET
+      name_field: associated_object_id
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/events"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: associated_object_id
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account
+        high_value: true
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.account
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/account/v1
+        urn_kind: increase_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/accounts"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - digital_wallet_token
+        high_value: true
+        id: secrets
+        support: partial
+        title: Digital Wallet Token
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.digital_wallet_token
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/digital_wallet_token/v1
+        urn_kind: increase_digital_wallet_token
+      event_kind: digital_wallet_token
+      id: digital_wallet_token
+      id_field: id
+      label: Digital Wallet Token
+      list_key: data
+      method: GET
+      name_field: card_id
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/digital_wallet_tokens"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: card_id
+          secret_id: id
+          secret_name: card_id
+          secret_type: digital_wallet_token
+        template: secret
+      record_selector: "$.data[*]"
+      sensitive_payload_paths:
+      - token_requestor
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - ach_prenotification
+        high_value: true
+        id: alerts
+        support: partial
+        title: Ach Prenotification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: increase_com.ach_prenotification
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/ach_prenotification/v1
+        urn_kind: increase_ach_prenotification
+      event_kind: ach_prenotification
+      id: ach_prenotification
+      id_field: id
+      label: Ach Prenotification
+      list_key: data
+      method: GET
+      name_field: account_number
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/ach_prenotifications"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          alert_id: id
+          alert_name: account_number
+          alert_severity: account_number
+          alert_status: status
+          id: id
+          name: account_number
+        template: alert
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - oauth_connection
+        high_value: true
+        id: oauth_connection
+        support: partial
+        title: Oauth Connection
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.oauth_connection
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/oauth_connection/v1
+        urn_kind: increase_oauth_connection
+      event_kind: oauth_connection
+      id: oauth_connection
+      id_field: id
+      label: Oauth Connection
+      list_key: data
+      method: GET
+      name_field: created_at
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/oauth_connections"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: created_at
+          resource_id: id
+          resource_name: created_at
+          resource_type: oauth_connection
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - event_subscription
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Event Subscription
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: increase_com.event_subscription
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/event_subscription/v1
+        urn_kind: increase_event_subscription
+      event_kind: event_subscription
+      id: event_subscription
+      id_field: id
+      label: Event Subscription
+      list_key: data
+      method: GET
+      name_field: url
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/event_subscriptions"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: url
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+      sensitive_payload_paths:
+      - shared_secret
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account_number
+        high_value: true
+        id: account_number
+        support: partial
+        title: Account Number
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.account_number
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/account_number/v1
+        urn_kind: increase_account_number
+      event_kind: account_number
+      id: account_number
+      id_field: id
+      label: Account Number
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/account_numbers"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account_statement
+        high_value: true
+        id: account_statement
+        support: partial
+        title: Account Statement
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.account_statement
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/account_statement/v1
+        urn_kind: increase_account_statement
+      event_kind: account_statement
+      id: account_statement
+      id_field: id
+      label: Account Statement
+      list_key: data
+      method: GET
+      name_field: account_id
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/account_statements"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: account_id
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account_transfer
+        high_value: true
+        id: account_transfer
+        support: partial
+        title: Account Transfer
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.account_transfer
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/account_transfer/v1
+        urn_kind: increase_account_transfer
+      event_kind: account_transfer
+      id: account_transfer
+      id_field: id
+      label: Account Transfer
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/account_transfers"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - external_account
+        high_value: true
+        id: external_account
+        support: partial
+        title: External Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: increase_com.external_account
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/external_account/v1
+        urn_kind: increase_external_account
+      event_kind: external_account
+      id: external_account
+      id_field: id
+      label: External Account
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/external_accounts"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - ach_transfer
+        id: ach_transfer
+        support: partial
+        title: Ach Transfer
+        type: entity_family
+      event:
+        kind: increase_com.ach_transfer
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/ach_transfer/v1
+        urn_kind: increase_ach_transfer
+      event_kind: ach_transfer
+      id: ach_transfer
+      id_field: id
+      label: Ach Transfer
+      list_key: data
+      method: GET
+      name_field: account_id
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/ach_transfers"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: account_id
+          resource_id: id
+          resource_name: account_id
+          resource_type: ach_transfer
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - card
+        id: card
+        support: partial
+        title: Card
+        type: entity_family
+      event:
+        kind: increase_com.card
+        required_payload_fields:
+        - id
+        schema_ref: increase_com/card/v1
+        urn_kind: increase_card
+      event_kind: card
+      id: card
+      id_field: id
+      label: Card
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/cards"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: card
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event
+      id: event
+      label: Event
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - digital_wallet_token
+      id: digital_wallet_token
+      label: Digital Wallet Token
+    - default_enabled: true
+      families:
+      - ach_prenotification
+      id: ach_prenotification
+      label: Ach Prenotification
+    - default_enabled: true
+      families:
+      - oauth_connection
+      id: oauth_connection
+      label: Oauth Connection
+    - default_enabled: true
+      families:
+      - event_subscription
+      id: event_subscription
+      label: Event Subscription
+    - default_enabled: true
+      families:
+      - account_number
+      id: account_number
+      label: Account Number
+    - default_enabled: true
+      families:
+      - account_statement
+      id: account_statement
+      label: Account Statement
+    - default_enabled: true
+      families:
+      - account_transfer
+      id: account_transfer
+      label: Account Transfer
+    - default_enabled: true
+      families:
+      - external_account
+      id: external_account
+      label: External Account
+    - families:
+      - ach_transfer
+      id: ach_transfer
+      label: Ach Transfer
+    - families:
+      - card
+      id: card
+      label: Card
+    source_id: increase_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.increase.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/events"

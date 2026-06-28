@@ -1,0 +1,495 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: groupid
+      label: Groupid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: orgid
+      label: Orgid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: projectid
+      label: Projectid
+      required: true
+    description: "Collects globalusergroup, coursedesign, user, member, usergroup, and usergroups member from Learnifier and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+    display_name: Learnifier
+    id: builtin_catalog-learnifier_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - globalusergroup
+        high_value: true
+        id: globalusergroup
+        support: partial
+        title: Globalusergroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.globalusergroup
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/globalusergroup/v1
+        urn_kind: learnifier_globalusergroup
+      event_kind: globalusergroup
+      id: globalusergroup
+      id_field: id
+      label: Globalusergroup
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/globalusergroups"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - coursedesign
+        id: coursedesign
+        support: partial
+        title: Coursedesign
+        type: entity_family
+      event:
+        kind: learnifier_com.coursedesign
+        required_payload_fields:
+        - name
+        schema_ref: learnifier_com/coursedesign/v1
+        urn_kind: learnifier_coursedesign
+      event_kind: coursedesign
+      id: coursedesign
+      id_field: name
+      label: Coursedesign
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/coursedesigns"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: coursedesign
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.user
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/user/v1
+        urn_kind: learnifier_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: displayName
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/users"
+      projection:
+        fields:
+          id: id
+          name: displayName
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - member
+        high_value: true
+        id: member
+        support: partial
+        title: Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.member
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/member/v1
+        urn_kind: learnifier_member
+      event_kind: member
+      id: member
+      id_field: id
+      label: Member
+      method: GET
+      name_field: displayName
+      pagination:
+        type: none
+      path: "/globalusergroups/${config.groupid}/members"
+      projection:
+        fields:
+          id: id
+          name: displayName
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - usergroup
+        high_value: true
+        id: usergroup
+        support: partial
+        title: Usergroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.usergroup
+        required_payload_fields:
+        - name
+        schema_ref: learnifier_com/usergroup/v1
+        urn_kind: learnifier_usergroup
+      event_kind: usergroup
+      id: usergroup
+      id_field: name
+      label: Usergroup
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/usergroups"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - usergroups_member
+        high_value: true
+        id: usergroups_member
+        support: partial
+        title: Usergroups Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.usergroups_member
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/usergroups_member/v1
+        urn_kind: learnifier_usergroups_member
+      event_kind: usergroups_member
+      id: usergroups_member
+      id_field: id
+      label: Usergroups Member
+      method: GET
+      name_field: displayName
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/usergroups/${config.groupid}/members"
+      projection:
+        fields:
+          id: id
+          name: displayName
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - teammember
+        high_value: true
+        id: teammember
+        support: partial
+        title: Teammember
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.teammember
+        required_payload_fields:
+        - roles
+        schema_ref: learnifier_com/teammember/v1
+        urn_kind: learnifier_teammember
+      event_kind: teammember
+      id: teammember
+      id_field: roles
+      label: Teammember
+      method: GET
+      name_field: roles
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/projects/${config.projectid}/teammembers"
+      projection:
+        fields:
+          id: roles
+          name: roles
+          provider_id: roles
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - orgunits_usergroup
+        high_value: true
+        id: orgunits_usergroup
+        support: partial
+        title: Orgunits Usergroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: learnifier_com.orgunits_usergroup
+        required_payload_fields:
+        - name
+        schema_ref: learnifier_com/orgunits_usergroup/v1
+        urn_kind: learnifier_orgunits_usergroup
+      event_kind: orgunits_usergroup
+      id: orgunits_usergroup
+      id_field: name
+      label: Orgunits Usergroup
+      list_key: children
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/usergroups/${config.groupid}"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.children[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - orgunit
+        id: orgunit
+        support: partial
+        title: Orgunit
+        type: entity_family
+      event:
+        kind: learnifier_com.orgunit
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/orgunit/v1
+        urn_kind: learnifier_orgunit
+      event_kind: orgunit
+      id: orgunit
+      id_field: id
+      label: Orgunit
+      list_key: orgUnits
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/orgunits"
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: orgunit
+        template: asset
+      record_selector: "$.orgUnits[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - project
+        id: project
+        support: partial
+        title: Project
+        type: entity_family
+      event:
+        kind: learnifier_com.project
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/project/v1
+        urn_kind: learnifier_project
+      event_kind: project
+      id: project
+      id_field: id
+      label: Project
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/projects"
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: project
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - participant
+        id: participant
+        support: partial
+        title: Participant
+        type: entity_family
+      event:
+        kind: learnifier_com.participant
+        required_payload_fields:
+        - id
+        schema_ref: learnifier_com/participant/v1
+        urn_kind: learnifier_participant
+      event_kind: participant
+      id: participant
+      id_field: id
+      label: Participant
+      method: GET
+      name_field: accessLink
+      pagination:
+        type: none
+      path: "/orgunits/${config.orgid}/projects/${config.projectid}/participants"
+      projection:
+        fields:
+          id: id
+          name: accessLink
+          resource_id: id
+          resource_name: accessLink
+          resource_type: participant
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - globalusergroup
+      id: globalusergroup
+      label: Globalusergroup
+    - families:
+      - coursedesign
+      id: coursedesign
+      label: Coursedesign
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - member
+      id: member
+      label: Member
+    - default_enabled: true
+      families:
+      - usergroup
+      id: usergroup
+      label: Usergroup
+    - default_enabled: true
+      families:
+      - usergroups_member
+      id: usergroups_member
+      label: Usergroups Member
+    - default_enabled: true
+      families:
+      - teammember
+      id: teammember
+      label: Teammember
+    - default_enabled: true
+      families:
+      - orgunits_usergroup
+      id: orgunits_usergroup
+      label: Orgunits Usergroup
+    - families:
+      - orgunit
+      id: orgunit
+      label: Orgunit
+    - families:
+      - project
+      id: project
+      label: Project
+    - families:
+      - participant
+      id: participant
+      label: Participant
+    source_id: learnifier_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://learnifier.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/globalusergroups"

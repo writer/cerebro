@@ -1,0 +1,205 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects account, creditor, enduser, and institution from Nordigen and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+    display_name: Nordigen
+    id: builtin_catalog-nordigen
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: nordigen.account
+        required_payload_fields:
+        - id
+        schema_ref: nordigen/account/v1
+        urn_kind: nordigen_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v2/payments/account/"
+      permissions_needed:
+      - jwtAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - creditor
+        id: creditor
+        support: partial
+        title: Creditor
+        type: entity_family
+      event:
+        kind: nordigen.creditor
+        required_payload_fields:
+        - id
+        schema_ref: nordigen/creditor/v1
+        urn_kind: nordigen_creditor
+      event_kind: creditor
+      id: creditor
+      id_field: id
+      label: Creditor
+      list_key: results
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/api/v2/payments/creditors/"
+      permissions_needed:
+      - jwtAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: creditor
+        template: asset
+      record_selector: "$.results[*]"
+    - coverage:
+      - families:
+        - enduser
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: enduser
+        support: partial
+        title: Enduser
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: nordigen.enduser
+        required_payload_fields:
+        - id
+        schema_ref: nordigen/enduser/v1
+        urn_kind: nordigen_enduser
+      event_kind: enduser
+      id: enduser
+      id_field: id
+      label: Enduser
+      list_key: results
+      method: GET
+      name_field: accepted
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/api/v2/agreements/enduser/"
+      permissions_needed:
+      - jwtAuth
+      projection:
+        fields:
+          id: id
+          name: accepted
+          provider_id: id
+        template: identity_user
+      record_selector: "$.results[*]"
+    - coverage:
+      - families:
+        - institution
+        id: institution
+        support: partial
+        title: Institution
+        type: entity_family
+      event:
+        kind: nordigen.institution
+        required_payload_fields:
+        - id
+        schema_ref: nordigen/institution/v1
+        urn_kind: nordigen_institution
+      event_kind: institution
+      id: institution
+      id_field: id
+      label: Institution
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/api/v2/institutions/"
+      permissions_needed:
+      - jwtAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: institution
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - families:
+      - creditor
+      id: creditor
+      label: Creditor
+    - default_enabled: true
+      families:
+      - enduser
+      id: enduser
+      label: Enduser
+    - families:
+      - institution
+      id: institution
+      label: Institution
+    source_id: nordigen
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://ob.nordigen.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v2/payments/account/"

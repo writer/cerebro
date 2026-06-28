@@ -35,7 +35,7 @@ spec:
             - "6"
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.2
     mitreAttack:
         - tactic: Persistence
           technique: T1078

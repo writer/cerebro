@@ -22,12 +22,18 @@ type ContractOptions struct {
 }
 
 type Contract struct {
-	SchemaVersion   string           `json:"schema_version"`
-	ImageTag        string           `json:"image_tag,omitempty"`
-	Environment     string           `json:"environment"`
-	TenantID        string           `json:"tenant_id"`
-	RequiredSecrets []string         `json:"required_secrets"`
-	Sources         []ContractSource `json:"sources"`
+	SchemaVersion           string                   `json:"schema_version"`
+	ImageTag                string                   `json:"image_tag,omitempty"`
+	Environment             string                   `json:"environment"`
+	TenantID                string                   `json:"tenant_id"`
+	RequiredSecrets         []string                 `json:"required_secrets"`
+	RuntimeProfiles         []ContractRuntimeProfile `json:"runtime_profiles"`
+	RequiredEnvVars         []ContractEnvVar         `json:"required_env_vars"`
+	RequiredBackingServices []ContractBackingService `json:"required_backing_services"`
+	OptionalCapabilities    []ContractCapability     `json:"optional_capabilities"`
+	PostDeployHealthChecks  []ContractHealthCheck    `json:"post_deploy_health_checks"`
+	CompatibilityNotes      []string                 `json:"compatibility_notes"`
+	Sources                 []ContractSource         `json:"sources"`
 }
 
 type ContractSource struct {
@@ -54,6 +60,38 @@ type ContractRuntime struct {
 type RoleAssumption struct {
 	ConfigKey string `json:"config_key"`
 	RoleARN   string `json:"role_arn"`
+}
+
+type ContractRuntimeProfile struct {
+	Name         string   `json:"name"`
+	Requires     []string `json:"requires,omitempty"`
+	Enables      []string `json:"enables,omitempty"`
+	NotEnoughFor []string `json:"not_enough_for,omitempty"`
+}
+
+type ContractEnvVar struct {
+	Name        string `json:"name"`
+	RequiredFor string `json:"required_for"`
+	Secret      bool   `json:"secret,omitempty"`
+}
+
+type ContractBackingService struct {
+	Name        string   `json:"name"`
+	RequiredFor string   `json:"required_for"`
+	ConfigVars  []string `json:"config_vars"`
+}
+
+type ContractCapability struct {
+	Name         string   `json:"name"`
+	EnabledWhen  string   `json:"enabled_when"`
+	Requires     []string `json:"requires,omitempty"`
+	HealthChecks []string `json:"health_checks,omitempty"`
+}
+
+type ContractHealthCheck struct {
+	Name        string `json:"name"`
+	Command     string `json:"command"`
+	RequiredFor string `json:"required_for"`
 }
 
 type contractCatalog struct {
@@ -116,12 +154,18 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 	sort.Slice(sources, func(i, j int) bool { return sources[i].SourceID < sources[j].SourceID })
 
 	return Contract{
-		SchemaVersion:   ContractSchemaVersion,
-		ImageTag:        strings.TrimSpace(opts.ImageTag),
-		Environment:     strings.TrimSpace(opts.Environment),
-		TenantID:        strings.TrimSpace(opts.TenantID),
-		RequiredSecrets: sortedStrings(fragment.SourceSecretKeys),
-		Sources:         sources,
+		SchemaVersion:           ContractSchemaVersion,
+		ImageTag:                strings.TrimSpace(opts.ImageTag),
+		Environment:             strings.TrimSpace(opts.Environment),
+		TenantID:                strings.TrimSpace(opts.TenantID),
+		RequiredSecrets:         sortedStrings(fragment.SourceSecretKeys),
+		RuntimeProfiles:         contractRuntimeProfiles(),
+		RequiredEnvVars:         contractRequiredEnvVars(),
+		RequiredBackingServices: contractRequiredBackingServices(),
+		OptionalCapabilities:    contractOptionalCapabilities(),
+		PostDeployHealthChecks:  contractPostDeployHealthChecks(),
+		CompatibilityNotes:      contractCompatibilityNotes(),
+		Sources:                 sources,
 	}, nil
 }
 
@@ -268,6 +312,146 @@ func roleAssumptionConfigKeys(sourceID string) []string {
 		return []string{"role_arn"}
 	}
 	return nil
+}
+
+func contractRuntimeProfiles() []ContractRuntimeProfile {
+	return []ContractRuntimeProfile{
+		{
+			Name:         "lightweight-api",
+			Enables:      []string{"liveness", "readiness", "OpenAPI metadata", "source catalog", "provider-free source previews"},
+			NotEnoughFor: []string{"durable runtimes", "claims", "findings", "reports", "workflow replay", "graph operations"},
+		},
+		{
+			Name:         "durable-api",
+			Requires:     []string{"postgres"},
+			Enables:      []string{"persisted source runtime state", "claims", "findings", "reports", "MCP OAuth", "device auth"},
+			NotEnoughFor: []string{"append-log replay", "source sync workflows", "graph projection"},
+		},
+		{
+			Name:         "durable-sync",
+			Requires:     []string{"postgres", "nats-jetstream"},
+			Enables:      []string{"source runtime sync", "append-log-backed workflow replay"},
+			NotEnoughFor: []string{"graph queries", "graph ingest", "graph-agent workflows"},
+		},
+		{
+			Name:     "graph-enabled",
+			Requires: []string{"postgres", "nats-jetstream", "neo4j"},
+			Enables:  []string{"graph projection", "graph queries", "graph health", "graph-agent workflows"},
+		},
+	}
+}
+
+func contractRequiredEnvVars() []ContractEnvVar {
+	return []ContractEnvVar{
+		{Name: "CEREBRO_HTTP_ADDR", RequiredFor: "all hosted profiles"},
+		{Name: "CEREBRO_API_AUTH_ENABLED", RequiredFor: "shared deployments"},
+		{Name: "CEREBRO_API_KEYS", RequiredFor: "API auth when simple bearer credentials are used", Secret: true},
+		{Name: "CEREBRO_API_CREDENTIALS_JSON", RequiredFor: "API auth when structured credentials are used", Secret: true},
+		{Name: "CEREBRO_PUBLIC_ORIGIN", RequiredFor: "shared deployments, MCP OAuth, and DPoP validation"},
+		{Name: "CEREBRO_TRUSTED_PROXY_CIDRS", RequiredFor: "hosted deployments behind a proxy or load balancer"},
+		{Name: "CEREBRO_TRUSTED_PROXY_COUNT", RequiredFor: "hosted deployments behind a proxy or load balancer"},
+		{Name: "CEREBRO_STATE_STORE_DRIVER", RequiredFor: "durable-api, durable-sync, graph-enabled"},
+		{Name: "CEREBRO_POSTGRES_DSN", RequiredFor: "durable-api, durable-sync, graph-enabled", Secret: true},
+		{Name: "CEREBRO_APPEND_LOG_DRIVER", RequiredFor: "durable-sync and graph-enabled"},
+		{Name: "CEREBRO_JETSTREAM_URL", RequiredFor: "durable-sync and graph-enabled", Secret: true},
+		{Name: "CEREBRO_GRAPH_STORE_DRIVER", RequiredFor: "graph-enabled"},
+		{Name: "CEREBRO_NEO4J_URI", RequiredFor: "graph-enabled", Secret: true},
+		{Name: "CEREBRO_NEO4J_USERNAME", RequiredFor: "graph-enabled", Secret: true},
+		{Name: "CEREBRO_NEO4J_PASSWORD", RequiredFor: "graph-enabled", Secret: true},
+		{Name: "CEREBRO_CAPABILITY_TOKEN_SECRETS", RequiredFor: "MCP OAuth and capability-token auth", Secret: true},
+		{Name: "CEREBRO_MCP_OAUTH_ENABLED", RequiredFor: "MCP OAuth"},
+		{Name: "CEREBRO_MCP_OAUTH_CLIENTS_JSON", RequiredFor: "MCP OAuth clients when dynamic registration is disabled", Secret: true},
+		{Name: "CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", RequiredFor: "MCP OAuth tenant, scope, and role entitlements"},
+		{Name: "CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", RequiredFor: "MCP OAuth upstream identity provider"},
+		{Name: "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", RequiredFor: "MCP OAuth upstream identity provider"},
+		{Name: "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", RequiredFor: "MCP OAuth upstream identity provider", Secret: true},
+		{Name: "CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", RequiredFor: "MCP OAuth upstream identity provider"},
+		{Name: "CEREBRO_MCP_OAUTH_SECURITY_GROUPS", RequiredFor: "MCP OAuth upstream entitlement filtering"},
+		{Name: "CEREBRO_DEVICE_AUTH_ENABLED", RequiredFor: "device auth"},
+		{Name: "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", RequiredFor: "device auth access and refresh tokens", Secret: true},
+		{Name: "CEREBRO_DEVICE_AUTH_CURRENT_KID", RequiredFor: "device auth signing key selection"},
+	}
+}
+
+func contractRequiredBackingServices() []ContractBackingService {
+	return []ContractBackingService{
+		{
+			Name:        "postgres",
+			RequiredFor: "durable runtime state, claims, findings, reports, OAuth, and device auth",
+			ConfigVars:  []string{"CEREBRO_STATE_STORE_DRIVER", "CEREBRO_POSTGRES_DSN"},
+		},
+		{
+			Name:        "nats-jetstream",
+			RequiredFor: "append-log sync, replay, source runtime workflows, and graph-enabled deployments",
+			ConfigVars:  []string{"CEREBRO_APPEND_LOG_DRIVER", "CEREBRO_JETSTREAM_URL"},
+		},
+		{
+			Name:        "neo4j",
+			RequiredFor: "graph projection, graph queries, graph health, and graph-agent workflows",
+			ConfigVars:  []string{"CEREBRO_GRAPH_STORE_DRIVER", "CEREBRO_NEO4J_URI", "CEREBRO_NEO4J_USERNAME", "CEREBRO_NEO4J_PASSWORD"},
+		},
+		{
+			Name:        "upstream-oauth-provider",
+			RequiredFor: "MCP OAuth authorization-code exchange and entitlement checks",
+			ConfigVars:  []string{"CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI"},
+		},
+	}
+}
+
+func contractOptionalCapabilities() []ContractCapability {
+	return []ContractCapability{
+		{
+			Name:         "mcp-oauth",
+			EnabledWhen:  "CEREBRO_MCP_OAUTH_ENABLED=true",
+			Requires:     []string{"api-auth", "postgres", "CEREBRO_PUBLIC_ORIGIN", "CEREBRO_CAPABILITY_TOKEN_SECRETS"},
+			HealthChecks: []string{"GET /health", "GET /.well-known/oauth-authorization-server"},
+		},
+		{
+			Name:         "device-auth",
+			EnabledWhen:  "CEREBRO_DEVICE_AUTH_ENABLED=true",
+			Requires:     []string{"api-auth", "postgres", "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "CEREBRO_DEVICE_AUTH_CURRENT_KID"},
+			HealthChecks: []string{"GET /health"},
+		},
+		{
+			Name:         "query-cache",
+			EnabledWhen:  "CEREBRO_CACHE_MODE=redis or CEREBRO_CACHE_MODE=valkey",
+			Requires:     []string{"Redis or Valkey URL"},
+			HealthChecks: []string{"GET /health", "cache dependency telemetry"},
+		},
+		{
+			Name:         "graph-agent-llm",
+			EnabledWhen:  "CEREBRO_GRAPH_AGENT_LLM_PROVIDER or provider credentials are set",
+			Requires:     []string{"graph-enabled profile", "configured LLM provider credentials"},
+			HealthChecks: []string{"cerebro deploy preflight", "graph-agent LLM probe"},
+		},
+		{
+			Name:         "otel-export",
+			EnabledWhen:  "CEREBRO_OTEL_ENABLED=true or an OTLP endpoint is set",
+			Requires:     []string{"OTLP collector endpoint"},
+			HealthChecks: []string{"trace and metric arrival in the collector"},
+		},
+	}
+}
+
+func contractPostDeployHealthChecks() []ContractHealthCheck {
+	return []ContractHealthCheck{
+		{Name: "liveness", Command: "curl -fsS https://cerebro.example.com/livez", RequiredFor: "all hosted profiles"},
+		{Name: "readiness", Command: "curl -fsS https://cerebro.example.com/health", RequiredFor: "all hosted profiles"},
+		{Name: "source catalog", Command: "curl -fsS -H 'Authorization: Bearer ${CEREBRO_API_KEY}' https://cerebro.example.com/sources", RequiredFor: "shared deployments with API auth"},
+		{Name: "source runtime health", Command: "cerebro source-runtime list tenant_id=<tenant-id> limit=20", RequiredFor: "durable-api, durable-sync, graph-enabled"},
+		{Name: "graph health", Command: "cerebro graph health", RequiredFor: "graph-enabled"},
+		{Name: "deploy preflight", Command: "cerebro deploy preflight", RequiredFor: "every rollout before traffic shift"},
+	}
+}
+
+func contractCompatibilityNotes() []string {
+	return []string{
+		"Deployment systems should ignore unknown JSON fields within this schema version.",
+		"Concrete secret values, secret manager paths, schedules, hostnames, account IDs, and approval gates are intentionally outside this public contract.",
+		"Postgres is the durable current-state store; NATS JetStream is the append log; Neo4j or Aura is a rebuildable graph projection, not a source of truth.",
+		"Routes that require a missing dependency fail closed instead of switching to in-memory or embedded production storage.",
+		"Source sync and graph ingest jobs should run separately from the API service with deployment-owned cadence, retries, and overlap prevention.",
+	}
 }
 
 func sortedStrings(values []string) []string {

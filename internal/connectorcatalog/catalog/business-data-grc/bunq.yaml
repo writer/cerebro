@@ -1,0 +1,212 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: userid
+      label: Userid
+      required: true
+    description: "Collects event, user, credential password IP, and notification filter push from bunq and projects them into the Cerebro graph as audit events, users, secrets, and alerts for owner, account, evidence, and compliance context."
+    display_name: bunq
+    id: builtin_catalog-bunq
+    resource_families:
+    - coverage:
+      - families:
+        - event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: bunq.event
+        required_payload_fields:
+        - id
+        schema_ref: bunq/event/v1
+        urn_kind: bunq_event
+      event_kind: event
+      id: event
+      id_field: id
+      label: Event
+      method: GET
+      name_field: action
+      pagination:
+        type: none
+      path: "/user/${config.userid}/event"
+      projection:
+        fields:
+          id: id
+          name: action
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bunq.user
+        required_payload_fields:
+        - UserApiKey
+        schema_ref: bunq/user/v1
+        urn_kind: bunq_user
+      event_kind: user
+      id: user
+      id_field: UserApiKey
+      label: User
+      method: GET
+      name_field: UserApiKey
+      pagination:
+        type: none
+      path: "/user"
+      projection:
+        fields:
+          id: UserApiKey
+          name: UserApiKey
+          provider_id: UserApiKey
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - credential_password_ip
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Credential Password Ip
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bunq.credential_password_ip
+        required_payload_fields:
+        - id
+        schema_ref: bunq/credential_password_ip/v1
+        urn_kind: bunq_credential_password_ip
+      event_kind: credential_password_ip
+      id: credential_password_ip
+      id_field: id
+      label: Credential Password Ip
+      method: GET
+      name_field: created
+      pagination:
+        type: none
+      path: "/user/${config.userid}/credential-password-ip"
+      projection:
+        fields:
+          id: id
+          name: created
+          secret_id: id
+          secret_name: created
+          secret_type: credential_password_ip
+        template: secret
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - token_value
+    - coverage:
+      - families:
+        - notification_filter_push
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Notification Filter Push
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: bunq.notification_filter_push
+        required_payload_fields:
+        - notification_filters
+        schema_ref: bunq/notification_filter_push/v1
+        urn_kind: bunq_notification_filter_push
+      event_kind: notification_filter_push
+      id: notification_filter_push
+      id_field: notification_filters
+      label: Notification Filter Push
+      method: GET
+      name_field: notification_filters
+      pagination:
+        type: none
+      path: "/user/${config.userid}/notification-filter-push"
+      projection:
+        fields:
+          alert_id: notification_filters
+          alert_name: notification_filters
+          alert_severity: notification_filters
+          alert_status: notification_filters
+          id: notification_filters
+          name: notification_filters
+        template: alert
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event
+      id: event
+      label: Event
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - credential_password_ip
+      id: credential_password_ip
+      label: Credential Password Ip
+    - default_enabled: true
+      families:
+      - notification_filter_push
+      id: notification_filter_push
+      label: Notification Filter Push
+    source_id: bunq
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://public-api.sandbox.bunq.com/%7BbasePath%7D
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/user/${config.userid}/event"

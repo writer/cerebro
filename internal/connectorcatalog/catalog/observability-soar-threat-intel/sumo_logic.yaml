@@ -1,0 +1,115 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-sumo_logic
+    tenant_id: builtin_catalog
+    source_id: sumo_logic
+    display_name: Sumo Logic
+    description: "Collects audit events, detections, and assets from Sumo Logic and projects them into the Cerebro graph as audit events, findings, and assets for alert, incident, service health, and response context."
+    categories:
+    - siem
+    - observability
+    auth:
+      model: basic
+      credential_fields:
+      - key: username
+        reference_only: true
+      - key: password
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.sumologic.com/api
+      verification:
+        method: GET
+        path: "/v1/collectors"
+        expect_status:
+        - 200
+    resource_families:
+    - id: audit_events
+      label: Audit events
+      path: "/v1/events"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: sumo_logic.audit_events
+        schema_ref: sumo_logic/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: findings
+      label: Detections
+      path: "/v1/detections"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: sumo_logic.findings
+        schema_ref: sumo_logic/findings/v1
+      projection:
+        template: finding
+      coverage:
+      - id: findings
+        type: remediation_state
+        title: Detections
+        families:
+        - findings
+        support: partial
+        high_value: true
+        evidence_types:
+        - remediation_state
+        control_domains:
+        - remediation
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: assets
+      label: Assets
+      path: "/v1/assets"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: id
+      event:
+        kind: sumo_logic.assets
+        schema_ref: sumo_logic/assets/v1
+      projection:
+        template: asset
+      coverage:
+      - id: assets
+        type: entity_family
+        title: Assets
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100

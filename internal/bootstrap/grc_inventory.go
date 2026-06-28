@@ -66,40 +66,10 @@ type grcInventoryAssetDetailResponse struct {
 	GeneratedAt     time.Time                              `json:"generated_at"`
 }
 
-type grcInventoryTimelineEvent struct {
-	At          *time.Time `json:"at,omitempty"`
-	Kind        string     `json:"kind"`
-	Title       string     `json:"title"`
-	Description string     `json:"description,omitempty"`
-	Status      string     `json:"status,omitempty"`
-}
-
-type grcInventoryAction struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Priority    string `json:"priority"`
-	Href        string `json:"href,omitempty"`
-}
-
-type grcInventoryTestItem struct {
-	Name         string     `json:"name"`
-	Owner        string     `json:"owner"`
-	Status       string     `json:"status"`
-	DueAt        *time.Time `json:"due_at,omitempty"`
-	ControlID    string     `json:"control_id,omitempty"`
-	Framework    string     `json:"framework,omitempty"`
-	FindingID    string     `json:"finding_id,omitempty"`
-	FindingTitle string     `json:"finding_title,omitempty"`
-}
-
-type grcInventoryVulnerability struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Severity  string `json:"severity"`
-	Status    string `json:"status"`
-	SourceID  string `json:"source_id,omitempty"`
-	FindingID string `json:"finding_id,omitempty"`
-}
+type grcInventoryTimelineEvent = grcinventory.TimelineEvent
+type grcInventoryAction = grcinventory.Action
+type grcInventoryTestItem = grcinventory.TestItem
+type grcInventoryVulnerability = grcinventory.Vulnerability
 
 type grcResourceScopeResponse struct {
 	SourceID    string                      `json:"source_id"`
@@ -847,84 +817,11 @@ func (a *App) handleUpdateGRCInventoryAssetReportTriage(w http.ResponseWriter, r
 }
 
 func grcInventoryTests(findings []grcFindingItem, controls []grcControlItem) []grcInventoryTestItem {
-	tests := []grcInventoryTestItem{}
-	seen := map[string]struct{}{}
-	for _, finding := range findings {
-		refs := finding.Controls
-		if len(refs) == 0 {
-			refs = []grcControlRef{{FrameworkName: "Unmapped", ControlID: fallbackString(finding.PolicyName, finding.RuleID, finding.ID)}}
-		}
-		for _, ref := range refs {
-			name := fallbackString(finding.PolicyName, finding.Title, ref.ControlID)
-			key := name + "\x00" + ref.FrameworkName + "\x00" + ref.ControlID + "\x00" + finding.ID
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			tests = append(tests, grcInventoryTestItem{
-				Name:         name,
-				Owner:        finding.Owner,
-				Status:       inventoryTestStatus(finding),
-				DueAt:        finding.DueAt,
-				ControlID:    ref.ControlID,
-				Framework:    ref.FrameworkName,
-				FindingID:    finding.ID,
-				FindingTitle: finding.Title,
-			})
-		}
-	}
-	if len(tests) == 0 {
-		for _, control := range controls {
-			key := control.FrameworkName + "\x00" + control.ControlID
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			tests = append(tests, grcInventoryTestItem{
-				Name:      control.ControlID,
-				Owner:     "Unassigned",
-				Status:    control.Status,
-				ControlID: control.ControlID,
-				Framework: control.FrameworkName,
-			})
-		}
-	}
-	sort.Slice(tests, func(i, j int) bool {
-		if tests[i].Status != tests[j].Status {
-			return tests[i].Status < tests[j].Status
-		}
-		return tests[i].Name < tests[j].Name
-	})
-	return tests
-}
-
-func inventoryTestStatus(finding grcFindingItem) string {
-	if finding.Status == "OPEN" || strings.EqualFold(finding.Status, "open") {
-		if finding.SLAStatus == "overdue" {
-			return "overdue"
-		}
-		return "failing"
-	}
-	return "ok"
+	return grcinventory.Tests(findings, controls)
 }
 
 func grcInventoryVulnerabilities(findings []grcFindingItem) []grcInventoryVulnerability {
-	vulnerabilities := []grcInventoryVulnerability{}
-	for _, finding := range findings {
-		text := strings.ToLower(strings.Join([]string{finding.Title, finding.Summary, finding.RuleID, finding.PolicyID}, " "))
-		if !strings.Contains(text, "vulnerab") && !strings.Contains(text, "cve-") && !strings.Contains(text, "package") {
-			continue
-		}
-		vulnerabilities = append(vulnerabilities, grcInventoryVulnerability{
-			ID:        fallbackString(finding.PolicyID, finding.RuleID, finding.ID),
-			Title:     finding.Title,
-			Severity:  finding.Severity,
-			Status:    finding.Status,
-			SourceID:  finding.SourceID,
-			FindingID: finding.ID,
-		})
-	}
-	return vulnerabilities
+	return grcinventory.Vulnerabilities(findings)
 }
 
 func (a *App) enrichGRCInventoryAssets(r *http.Request, scope grcScope, assets []graphquery.InventoryAsset) ([]graphquery.InventoryAsset, error) {
@@ -1020,146 +917,15 @@ func (a *App) listGRCInventoryAssetReportsForAsset(r *http.Request, scope grcSco
 }
 
 func applyFindingRiskToInventoryAsset(asset graphquery.InventoryAsset, findings []grcFindingItem, tests []grcInventoryTestItem, vulnerabilities []grcInventoryVulnerability) graphquery.InventoryAsset {
-	score := asset.RiskScore
-	reasons := append([]string{}, asset.RiskReasons...)
-	for _, finding := range findings {
-		if int(finding.RiskScore) > score {
-			score = int(finding.RiskScore)
-		}
-		if strings.EqualFold(finding.Status, "open") {
-			reasons = append(reasons, "open finding")
-		}
-	}
-	if failingGRCInventoryTests(tests) > 0 {
-		score += 10
-		reasons = append(reasons, "failing compliance tests")
-	}
-	if criticalHighGRCInventoryVulnerabilities(vulnerabilities) > 0 {
-		score += 15
-		reasons = append(reasons, "critical or high vulnerabilities")
-	}
-	if asset.ScopeState == grcinventory.ScopeStateOutScope {
-		reasons = append(reasons, "out of GRC purview")
-	}
-	asset.RiskScore = grcinventory.ClampRisk(score)
-	asset.RiskLevel = grcinventory.RiskLevel(asset.RiskScore)
-	asset.RiskReasons = grcinventory.UniqueStrings(reasons)
-	return asset
+	return grcinventory.ApplyFindingRisk(asset, findings, tests, vulnerabilities)
 }
 
 func grcInventoryTimeline(asset graphquery.InventoryAsset, findings []grcFindingItem, evidence []grcEvidenceItem, tests []grcInventoryTestItem, reports []*ports.GRCInventoryAssetReportRecord) []grcInventoryTimelineEvent {
-	events := []grcInventoryTimelineEvent{}
-	for _, key := range []string{"created_at", "first_seen_at"} {
-		if at := parseGRCInventoryTime(asset.Attributes[key]); at != nil {
-			events = append(events, grcInventoryTimelineEvent{At: at, Kind: "asset", Title: "Asset first observed", Status: "observed"})
-			break
-		}
-	}
-	for _, key := range []string{"updated_at", "last_seen_at", "last_synced_at"} {
-		if at := parseGRCInventoryTime(asset.Attributes[key]); at != nil {
-			events = append(events, grcInventoryTimelineEvent{At: at, Kind: "asset", Title: "Asset refreshed", Status: "observed"})
-			break
-		}
-	}
-	if asset.ScopeUpdatedAt != "" {
-		events = append(events, grcInventoryTimelineEvent{At: parseGRCInventoryTime(asset.ScopeUpdatedAt), Kind: "scope", Title: "GRC purview updated", Description: asset.ScopeReason, Status: asset.ScopeState})
-	}
-	for _, report := range reports {
-		if report == nil {
-			continue
-		}
-		createdAt := report.CreatedAt.UTC()
-		events = append(events, grcInventoryTimelineEvent{At: &createdAt, Kind: "asset_report", Title: "Asset reported for curation", Description: report.Reason, Status: report.TriageStatus})
-		if report.TriagedAt != nil {
-			events = append(events, grcInventoryTimelineEvent{At: report.TriagedAt, Kind: "asset_report", Title: "Asset report triaged", Description: report.TriageReason, Status: report.TriageStatus})
-		}
-	}
-	for _, finding := range findings {
-		events = append(events, grcInventoryTimelineEvent{At: finding.LastObservedAt, Kind: "finding", Title: finding.Title, Description: finding.ID, Status: finding.Status})
-	}
-	for _, item := range evidence {
-		events = append(events, grcInventoryTimelineEvent{At: timePtr(item.CreatedAt), Kind: "evidence", Title: "Evidence attached", Description: item.ID, Status: "collected"})
-	}
-	for _, test := range tests {
-		if test.DueAt != nil {
-			events = append(events, grcInventoryTimelineEvent{At: test.DueAt, Kind: "test", Title: test.Name, Description: test.ControlID, Status: test.Status})
-		}
-	}
-	sort.Slice(events, func(i, j int) bool {
-		left, right := events[i].At, events[j].At
-		if left == nil {
-			return false
-		}
-		if right == nil {
-			return true
-		}
-		return left.After(*right)
-	})
-	if len(events) > 25 {
-		return events[:25]
-	}
-	return events
+	return grcinventory.Timeline(asset, findings, evidence, tests, reports)
 }
 
 func grcInventoryActions(asset graphquery.InventoryAsset, findings []grcFindingItem, controls []grcControlItem, tests []grcInventoryTestItem, vulnerabilities []grcInventoryVulnerability) []grcInventoryAction {
-	grcinventory.ApplyReviewPosture(&asset)
-	actions := []grcInventoryAction{}
-	if asset.ScopeState == grcinventory.ScopeStateOutScope {
-		actions = append(actions, grcInventoryAction{Title: "Confirm GRC purview", Description: "This asset is scoped out. Scope it back in if it should participate in controls, tests, and evidence review.", Priority: "high"})
-	}
-	if asset.Accountability != nil && asset.Accountability.State == grcinventory.AccountabilityRequired {
-		actions = append(actions, grcInventoryAction{Title: "Assign accountable owner", Description: "Add ownership metadata for this GRC-relevant asset so evidence, findings, and remediation work have a responsible team.", Priority: "high"})
-	}
-	if criticalHighGRCInventoryVulnerabilities(vulnerabilities) > 0 {
-		actions = append(actions, grcInventoryAction{Title: "Remediate critical or high vulnerabilities", Description: "Review linked findings and confirm active remediation plans for severe vulnerability exposure.", Priority: "high"})
-	}
-	if failingGRCInventoryTests(tests) > 0 {
-		actions = append(actions, grcInventoryAction{Title: "Fix failing compliance tests", Description: "Prioritize failing or overdue tests mapped to this asset before audit evidence collection.", Priority: "medium"})
-	}
-	if len(controls) == 0 && len(findings) > 0 {
-		actions = append(actions, grcInventoryAction{Title: "Map framework scope", Description: "Attach affected findings to framework controls to make audit impact explicit.", Priority: "medium"})
-	}
-	if len(actions) == 0 {
-		actions = append(actions, grcInventoryAction{Title: "Keep monitoring", Description: "No immediate scope, accountability, vulnerability, or test gaps were detected for this asset.", Priority: "low"})
-	}
-	return actions
-}
-
-func failingGRCInventoryTests(tests []grcInventoryTestItem) int {
-	count := 0
-	for _, test := range tests {
-		switch strings.ToLower(test.Status) {
-		case "failing", "overdue", "open":
-			count++
-		}
-	}
-	return count
-}
-
-func criticalHighGRCInventoryVulnerabilities(items []grcInventoryVulnerability) int {
-	count := 0
-	for _, item := range items {
-		switch strings.ToUpper(item.Severity) {
-		case "CRITICAL", "HIGH":
-			count++
-		}
-	}
-	return count
-}
-
-func parseGRCInventoryTime(value string) *time.Time {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, time.DateOnly} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			parsed = parsed.UTC()
-			return &parsed
-		}
-	}
-	return nil
+	return grcinventory.Actions(asset, findings, controls, tests, vulnerabilities)
 }
 
 func grcInventoryUpdatedBy(r *http.Request) string {

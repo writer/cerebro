@@ -1,0 +1,206 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: networkid
+      label: Networkid
+      required: true
+    description: "Collects eventtype, organization, merakiauthuser, and accesspolicy from Cisco Meraki and projects them into the Cerebro graph as audit events, groups, users, and policies for repository, build, deployment, and release context."
+    display_name: Cisco Meraki
+    id: builtin_catalog-meraki
+    resource_families:
+    - coverage:
+      - families:
+        - eventtype
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Eventtype
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: meraki.eventtype
+        required_payload_fields:
+        - id
+        schema_ref: meraki/eventtype/v1
+        urn_kind: meraki_eventtype
+      event_kind: eventtype
+      id: eventtype
+      id_field: id
+      label: Eventtype
+      method: GET
+      pagination:
+        type: none
+      path: "/networks/${config.networkid}/events/eventTypes"
+      permissions_needed:
+      - meraki_api_key
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - organization
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: organization
+        support: partial
+        title: Organization
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: meraki.organization
+        required_payload_fields:
+        - id
+        schema_ref: meraki/organization/v1
+        urn_kind: meraki_organization
+      event_kind: organization
+      id: organization
+      id_field: id
+      label: Organization
+      method: GET
+      pagination:
+        type: none
+      path: "/organizations"
+      permissions_needed:
+      - meraki_api_key
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - merakiauthuser
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: merakiauthuser
+        support: partial
+        title: Merakiauthuser
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: meraki.merakiauthuser
+        required_payload_fields:
+        - id
+        schema_ref: meraki/merakiauthuser/v1
+        urn_kind: meraki_merakiauthuser
+      event_kind: merakiauthuser
+      id: merakiauthuser
+      id_field: id
+      label: Merakiauthuser
+      method: GET
+      pagination:
+        type: none
+      path: "/networks/${config.networkid}/merakiAuthUsers"
+      permissions_needed:
+      - meraki_api_key
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - accesspolicy
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Accesspolicy
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: meraki.accesspolicy
+        required_payload_fields:
+        - id
+        schema_ref: meraki/accesspolicy/v1
+        urn_kind: meraki_accesspolicy
+      event_kind: accesspolicy
+      id: accesspolicy
+      id_field: id
+      label: Accesspolicy
+      method: GET
+      pagination:
+        type: none
+      path: "/networks/${config.networkid}/accessPolicies"
+      permissions_needed:
+      - meraki_api_key
+      projection:
+        fields:
+          id: id
+          policy_id: id
+          policy_name: id
+          policy_type: accesspolicy
+        template: policy
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - eventtype
+      id: eventtype
+      label: Eventtype
+    - default_enabled: true
+      families:
+      - organization
+      id: organization
+      label: Organization
+    - default_enabled: true
+      families:
+      - merakiauthuser
+      id: merakiauthuser
+      label: Merakiauthuser
+    - default_enabled: true
+      families:
+      - accesspolicy
+      id: accesspolicy
+      label: Accesspolicy
+    source_id: meraki
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.meraki.com/api/v0
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/networks/${config.networkid}/events/eventTypes"

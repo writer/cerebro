@@ -35,7 +35,9 @@ spec:
             - "8"
         - name: SOC 2
           controls:
-            - CC7
+            - CC7.2
+            - CC7.3
+            - CC7.4
     mitreAttack:
         - tactic: Command and Control
           technique: T1071

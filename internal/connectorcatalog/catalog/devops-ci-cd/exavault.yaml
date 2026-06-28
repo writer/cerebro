@@ -1,0 +1,218 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects email list, notification, session, and ssh key from ExaVault and projects them into the Cerebro graph as users, alerts, audit events, and assets for repository, build, deployment, and release context."
+    display_name: ExaVault
+    id: builtin_catalog-exavault
+    resource_families:
+    - coverage:
+      - families:
+        - email_list
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: email_list
+        support: partial
+        title: Email List
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: exavault.email_list
+        required_payload_fields:
+        - id
+        schema_ref: exavault/email_list/v1
+        urn_kind: exavault_email_list
+      event_kind: email_list
+      id: email_list
+      id_field: id
+      label: Email List
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        type: none
+      path: "/email-lists"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - notification
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Notification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: exavault.notification
+        required_payload_fields:
+        - id
+        schema_ref: exavault/notification/v1
+        urn_kind: exavault_notification
+      event_kind: notification
+      id: notification
+      id_field: id
+      label: Notification
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/notifications"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: attributes
+          alert_severity: attributes
+          alert_status: attributes
+          id: id
+          name: attributes
+        template: alert
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - session
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Session
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: exavault.session
+        required_payload_fields:
+        - id
+        schema_ref: exavault/session/v1
+        urn_kind: exavault_session
+      event_kind: session
+      id: session
+      id_field: id
+      label: Session
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/activity/session"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - ssh_key
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: ssh_key
+        support: partial
+        title: Ssh Key
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: exavault.ssh_key
+        required_payload_fields:
+        - id
+        schema_ref: exavault/ssh_key/v1
+        urn_kind: exavault_ssh_key
+      event_kind: ssh_key
+      id: ssh_key
+      id_field: id
+      label: Ssh Key
+      list_key: data
+      method: GET
+      name_field: attributes
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/ssh-keys"
+      projection:
+        fields:
+          id: id
+          name: attributes
+          resource_id: id
+          resource_name: attributes
+          resource_type: ssh_key
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - email_list
+      id: email_list
+      label: Email List
+    - default_enabled: true
+      families:
+      - notification
+      id: notification
+      label: Notification
+    - default_enabled: true
+      families:
+      - session
+      id: session
+      label: Session
+    - default_enabled: true
+      families:
+      - ssh_key
+      id: ssh_key
+      label: Ssh Key
+    source_id: exavault
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://accountname.exavault.com/api/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/email-lists"

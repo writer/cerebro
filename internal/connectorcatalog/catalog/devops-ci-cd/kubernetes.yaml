@@ -1,0 +1,225 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects event, clusterrole, secret, and serviceaccount from Kubernetes and projects them into the Cerebro graph as audit events, groups, secrets, and users for repository, build, deployment, and release context."
+    display_name: Kubernetes
+    id: builtin_catalog-kubernetes
+    resource_families:
+    - coverage:
+      - families:
+        - event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: kubernetes.event
+        required_payload_fields:
+        - action
+        schema_ref: kubernetes/event/v1
+        urn_kind: kubernetes_event
+      event_kind: event
+      id: event
+      id_field: action
+      label: Event
+      list_key: items
+      method: GET
+      name_field: action
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/events"
+      permissions_needed:
+      - BearerToken
+      projection:
+        fields:
+          id: action
+          name: action
+          provider_id: action
+        template: audit_event
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - clusterrole
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: clusterrole
+        support: partial
+        title: Clusterrole
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: kubernetes.clusterrole
+        required_payload_fields:
+        - aggregationRule
+        schema_ref: kubernetes/clusterrole/v1
+        urn_kind: kubernetes_clusterrole
+      event_kind: clusterrole
+      id: clusterrole
+      id_field: aggregationRule
+      label: Clusterrole
+      list_key: items
+      method: GET
+      name_field: aggregationRule
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/apis/rbac.authorization.k8s.io/v1/clusterroles"
+      permissions_needed:
+      - BearerToken
+      projection:
+        fields:
+          id: aggregationRule
+          name: aggregationRule
+          provider_id: aggregationRule
+        template: identity_group
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - secret
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Secret
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: kubernetes.secret
+        required_payload_fields:
+        - apiVersion
+        schema_ref: kubernetes/secret/v1
+        urn_kind: kubernetes_secret
+      event_kind: secret
+      id: secret
+      id_field: apiVersion
+      label: Secret
+      list_key: items
+      method: GET
+      name_field: apiVersion
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/secrets"
+      permissions_needed:
+      - BearerToken
+      projection:
+        fields:
+          id: apiVersion
+          name: apiVersion
+          secret_id: apiVersion
+          secret_name: apiVersion
+          secret_type: secret
+        template: secret
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - serviceaccount
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: serviceaccount
+        support: partial
+        title: Serviceaccount
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: kubernetes.serviceaccount
+        required_payload_fields:
+        - apiVersion
+        schema_ref: kubernetes/serviceaccount/v1
+        urn_kind: kubernetes_serviceaccount
+      event_kind: serviceaccount
+      id: serviceaccount
+      id_field: apiVersion
+      label: Serviceaccount
+      list_key: items
+      method: GET
+      name_field: apiVersion
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/serviceaccounts"
+      permissions_needed:
+      - BearerToken
+      projection:
+        fields:
+          id: apiVersion
+          name: apiVersion
+          provider_id: apiVersion
+        template: identity_user
+      record_selector: "$.items[*]"
+      sensitive_payload_paths:
+      - automountServiceAccountToken
+      - imagePullSecrets
+      - secrets
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event
+      id: event
+      label: Event
+    - default_enabled: true
+      families:
+      - clusterrole
+      id: clusterrole
+      label: Clusterrole
+    - default_enabled: true
+      families:
+      - secret
+      id: secret
+      label: Secret
+    - default_enabled: true
+      families:
+      - serviceaccount
+      id: serviceaccount
+      label: Serviceaccount
+    source_id: kubernetes
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://kubernetes.local
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v1/events"

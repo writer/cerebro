@@ -1,0 +1,612 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: https://drchrono.com/o/authorize/
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      requires_references: true
+      scopes:
+      - billing:patient-payment:read
+      - billing:read
+      - calendar:read
+      - clinical:read
+      - labs:read
+      - messages:read
+      - patients:read
+      - patients:summary:read
+      - settings:read
+      - tasks:read
+      - user:read
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: https://drchrono.com/o/token/
+    categories:
+    - saas
+    description: "Collects patient risk assessment, comm log, care team member, user, implantable device, and patient payment log from Drchrono Com and projects them into the Cerebro graph as findings, audit events, group memberships, users, and assets for owner, account, evidence, and compliance context."
+    display_name: Drchrono Com
+    id: builtin_catalog-drchrono_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - remediation
+        evidence_types:
+        - remediation_state
+        families:
+        - patient_risk_assessment
+        high_value: true
+        id: findings
+        support: partial
+        title: Patient Risk Assessment
+        type: remediation_state
+      default_enabled: true
+      event:
+        kind: drchrono_com.patient_risk_assessment
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/patient_risk_assessment/v1
+        urn_kind: drchrono_patient_risk_assessment
+      event_kind: patient_risk_assessment
+      id: patient_risk_assessment
+      id_field: id
+      label: Patient Risk Assessment
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/patient_risk_assessments"
+      permissions_needed:
+      - clinical:read
+      projection:
+        fields:
+          finding_id: id
+          id: id
+          name: name
+          severity: code
+          status: code
+          title: name
+        template: finding
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - comm_log
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Comm Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: drchrono_com.comm_log
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/comm_log/v1
+        urn_kind: drchrono_comm_log
+      event_kind: comm_log
+      id: comm_log
+      id_field: id
+      label: Comm Log
+      list_key: data
+      method: GET
+      name_field: title
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/comm_logs"
+      permissions_needed:
+      - calendar:read
+      projection:
+        fields:
+          id: id
+          name: title
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - care_team_member
+        high_value: true
+        id: care_team_member
+        support: partial
+        title: Care Team Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: drchrono_com.care_team_member
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/care_team_member/v1
+        urn_kind: drchrono_care_team_member
+      event_kind: care_team_member
+      id: care_team_member
+      id_field: id
+      label: Care Team Member
+      list_key: data
+      method: GET
+      name_field: appointment
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/care_team_members"
+      permissions_needed:
+      - clinical:read
+      projection:
+        fields:
+          id: id
+          name: appointment
+          provider_id: id
+        template: group_membership
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: drchrono_com.user
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/user/v1
+        urn_kind: drchrono_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      list_key: data
+      method: GET
+      name_field: username
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/users"
+      permissions_needed:
+      - drchrono_oauth2
+      projection:
+        fields:
+          id: id
+          name: username
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - implantable_device
+        high_value: true
+        id: implantable_device
+        support: partial
+        title: Implantable Device
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: drchrono_com.implantable_device
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/implantable_device/v1
+        urn_kind: drchrono_implantable_device
+      event_kind: implantable_device
+      id: implantable_device
+      id_field: id
+      label: Implantable Device
+      list_key: data
+      method: GET
+      name_field: archived
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/implantable_devices"
+      permissions_needed:
+      - clinical:read
+      projection:
+        fields:
+          id: id
+          name: archived
+          resource_id: id
+          resource_name: archived
+          resource_type: implantable_device
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - patient_payment_log
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Patient Payment Log
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: drchrono_com.patient_payment_log
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/patient_payment_log/v1
+        urn_kind: drchrono_patient_payment_log
+      event_kind: patient_payment_log
+      id: patient_payment_log
+      id_field: id
+      label: Patient Payment Log
+      list_key: data
+      method: GET
+      name_field: action
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/patient_payment_log"
+      permissions_needed:
+      - billing:read
+      projection:
+        fields:
+          id: id
+          name: action
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user_group
+        high_value: true
+        id: user_group
+        support: partial
+        title: User Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: drchrono_com.user_group
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/user_group/v1
+        urn_kind: drchrono_user_group
+      event_kind: user_group
+      id: user_group
+      id_field: id
+      label: User Group
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/user_groups"
+      permissions_needed:
+      - drchrono_oauth2
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - allergy
+        id: allergy
+        support: partial
+        title: Allergy
+        type: entity_family
+      event:
+        kind: drchrono_com.allergy
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/allergy/v1
+        urn_kind: drchrono_allergy
+      event_kind: allergy
+      id: allergy
+      id_field: id
+      label: Allergy
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/allergies"
+      permissions_needed:
+      - clinical:read
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: allergy
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - amendment
+        id: amendment
+        support: partial
+        title: Amendment
+        type: entity_family
+      event:
+        kind: drchrono_com.amendment
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/amendment/v1
+        urn_kind: drchrono_amendment
+      event_kind: amendment
+      id: amendment
+      id_field: id
+      label: Amendment
+      list_key: data
+      method: GET
+      name_field: amendment_file
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/amendments"
+      permissions_needed:
+      - clinical:read
+      projection:
+        fields:
+          id: id
+          name: amendment_file
+          resource_id: id
+          resource_name: amendment_file
+          resource_type: amendment
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - appointment
+        id: appointment
+        support: partial
+        title: Appointment
+        type: entity_family
+      event:
+        kind: drchrono_com.appointment
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/appointment/v1
+        urn_kind: drchrono_appointment
+      event_kind: appointment
+      id: appointment
+      id_field: id
+      label: Appointment
+      list_key: data
+      method: GET
+      name_field: allow_overlapping
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/appointments"
+      permissions_needed:
+      - calendar:read
+      - clinical:read
+      projection:
+        fields:
+          id: id
+          name: allow_overlapping
+          resource_id: id
+          resource_name: allow_overlapping
+          resource_type: appointment
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - appointment_profile
+        id: appointment_profile
+        support: partial
+        title: Appointment Profile
+        type: entity_family
+      event:
+        kind: drchrono_com.appointment_profile
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/appointment_profile/v1
+        urn_kind: drchrono_appointment_profile
+      event_kind: appointment_profile
+      id: appointment_profile
+      id_field: id
+      label: Appointment Profile
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/appointment_profiles"
+      permissions_needed:
+      - calendar:read
+      - settings:read
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: appointment_profile
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - appointment_template
+        id: appointment_template
+        support: partial
+        title: Appointment Template
+        type: entity_family
+      event:
+        kind: drchrono_com.appointment_template
+        required_payload_fields:
+        - id
+        schema_ref: drchrono_com/appointment_template/v1
+        urn_kind: drchrono_appointment_template
+      event_kind: appointment_template
+      id: appointment_template
+      id_field: id
+      label: Appointment Template
+      list_key: data
+      method: GET
+      name_field: archived
+      pagination:
+        cursor_param: cursor
+        page_size: 100
+        page_size_param: page_size
+        type: cursor
+      path: "/api/appointment_templates"
+      permissions_needed:
+      - calendar:read
+      - settings:read
+      projection:
+        fields:
+          id: id
+          name: archived
+          resource_id: id
+          resource_name: archived
+          resource_type: appointment_template
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - patient_risk_assessment
+      id: patient_risk_assessment
+      label: Patient Risk Assessment
+    - default_enabled: true
+      families:
+      - comm_log
+      id: comm_log
+      label: Comm Log
+    - default_enabled: true
+      families:
+      - care_team_member
+      id: care_team_member
+      label: Care Team Member
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - implantable_device
+      id: implantable_device
+      label: Implantable Device
+    - default_enabled: true
+      families:
+      - patient_payment_log
+      id: patient_payment_log
+      label: Patient Payment Log
+    - default_enabled: true
+      families:
+      - user_group
+      id: user_group
+      label: User Group
+    - families:
+      - allergy
+      id: allergy
+      label: Allergy
+    - families:
+      - amendment
+      id: amendment
+      label: Amendment
+    - families:
+      - appointment
+      id: appointment
+      label: Appointment
+    - families:
+      - appointment_profile
+      id: appointment_profile
+      label: Appointment Profile
+    - families:
+      - appointment_template
+      id: appointment_template
+      label: Appointment Template
+    source_id: drchrono_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://app.drchrono.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/patient_risk_assessments"

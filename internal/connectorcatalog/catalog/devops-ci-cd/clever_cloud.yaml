@@ -1,0 +1,212 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: ownerid
+      label: Ownerid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    description: "Collects email, token, networkgroup, and deployment from Clever Cloud and projects them into the Cerebro graph as users, secrets, groups, and deployments for repository, build, deployment, and release context."
+    display_name: Clever Cloud
+    id: builtin_catalog-clever_cloud
+    resource_families:
+    - coverage:
+      - families:
+        - email
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: email
+        support: partial
+        title: Email
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clever_cloud.email
+        required_payload_fields:
+        - id
+        schema_ref: clever_cloud/email/v1
+        urn_kind: clever_email
+      event_kind: email
+      id: email
+      id_field: id
+      label: Email
+      method: GET
+      pagination:
+        type: none
+      path: "/github/emails"
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - token
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Token
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clever_cloud.token
+        required_payload_fields:
+        - consumer
+        schema_ref: clever_cloud/token/v1
+        urn_kind: clever_token
+      event_kind: token
+      id: token
+      id_field: consumer
+      label: Token
+      method: GET
+      name_field: consumer
+      pagination:
+        type: none
+      path: "/self/tokens"
+      projection:
+        fields:
+          id: consumer
+          name: consumer
+          secret_id: consumer
+          secret_name: consumer
+          secret_type: token
+        template: secret
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - token
+    - coverage:
+      - families:
+        - networkgroup
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: networkgroup
+        support: partial
+        title: Networkgroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clever_cloud.networkgroup
+        required_payload_fields:
+        - id
+        schema_ref: clever_cloud/networkgroup/v1
+        urn_kind: clever_networkgroup
+      event_kind: networkgroup
+      id: networkgroup
+      id_field: id
+      label: Networkgroup
+      method: GET
+      pagination:
+        type: none
+      path: "/v4/networkgroups/organisations/${config.ownerid}/networkgroups"
+      projection:
+        fields:
+          id: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - deployment
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - secure_delivery
+        id: deployments
+        support: partial
+        title: Deployment
+        type: deployment_state
+      default_enabled: true
+      event:
+        kind: clever_cloud.deployment
+        required_payload_fields:
+        - id
+        schema_ref: clever_cloud/deployment/v1
+        urn_kind: clever_deployment
+      event_kind: deployment
+      id: deployment
+      id_field: id
+      label: Deployment
+      list_key: "{app_id}"
+      method: GET
+      name_field: action
+      pagination:
+        type: none
+      path: "/organisations/${config.id}/deployments"
+      projection:
+        fields:
+          deployment_environment: action
+          deployment_id: id
+          deployment_name: action
+          deployment_status: state
+          id: id
+          name: action
+        template: deployment
+      record_selector: "$.{app_id}[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - email
+      id: email
+      label: Email
+    - default_enabled: true
+      families:
+      - token
+      id: token
+      label: Token
+    - default_enabled: true
+      families:
+      - networkgroup
+      id: networkgroup
+      label: Networkgroup
+    - default_enabled: true
+      families:
+      - deployment
+      id: deployment
+      label: Deployment
+    source_id: clever_cloud
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.clever-cloud.com/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/github/emails"

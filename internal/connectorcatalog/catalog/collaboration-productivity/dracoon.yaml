@@ -1,0 +1,228 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      authorization_url: "/oauth/authorize"
+      credential_fields:
+      - key: oauth_client_reference
+        label: OAuth client reference
+        reference_only: true
+        required: true
+        secret: true
+      model: oauth_authorization_code
+      requires_references: true
+      scopes:
+      - all
+      token_expiration_buffer_seconds: 300
+      token_request_auth_method: client_secret_basic
+      token_url: "/oauth/token"
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: customer_id
+      label: Customer Id
+      required: true
+    description: "Collects event type, group, user, and channel from DRACOON and projects them into the Cerebro graph as audit events, groups, users, and alerts for workspace, document, message, and collaboration context."
+    display_name: DRACOON
+    id: builtin_catalog-dracoon
+    resource_families:
+    - coverage:
+      - families:
+        - event_type
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Event Type
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: dracoon.event_type
+        required_payload_fields:
+        - id
+        schema_ref: dracoon/event_type/v1
+        urn_kind: dracoon_event_type
+      event_kind: event_type
+      id: event_type
+      id_field: id
+      label: Event Type
+      list_key: items
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v4/provisioning/webhooks/event_types"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - group
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: dracoon.group
+        required_payload_fields:
+        - id
+        schema_ref: dracoon/group/v1
+        urn_kind: dracoon_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      list_key: items
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v4/groups"
+      permissions_needed:
+      - oauth2
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: dracoon.user
+        required_payload_fields:
+        - id
+        schema_ref: dracoon/user/v1
+        urn_kind: dracoon_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      list_key: items
+      method: GET
+      name_field: title
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v4/provisioning/customers/${config.customer_id}/users"
+      projection:
+        fields:
+          id: id
+          name: title
+          provider_id: id
+        template: identity_user
+      record_selector: "$.items[*]"
+    - coverage:
+      - families:
+        - channel
+        high_value: true
+        evidence_types:
+        - security_monitoring
+        control_domains:
+        - logging_monitoring
+        - security_operations
+        id: alerts
+        support: partial
+        title: Channel
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: dracoon.channel
+        required_payload_fields:
+        - id
+        schema_ref: dracoon/channel/v1
+        urn_kind: dracoon_channel
+      event_kind: channel
+      id: channel
+      id_field: id
+      label: Channel
+      list_key: items
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v4/config/info/notifications/channels"
+      permissions_needed:
+      - oauth2
+      projection:
+        fields:
+          alert_id: id
+          alert_name: name
+          alert_severity: frequency
+          alert_status: frequency
+          id: id
+          name: name
+        template: alert
+      record_selector: "$.items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event_type
+      id: event_type
+      label: Event Type
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - channel
+      id: channel
+      label: Channel
+    source_id: dracoon
+    tenant_id: builtin_catalog
+    transport:
+      base_url: "/api"
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v4/provisioning/webhooks/event_types"

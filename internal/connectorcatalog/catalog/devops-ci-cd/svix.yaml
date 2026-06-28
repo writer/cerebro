@@ -1,0 +1,243 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - key: api_base_url
+      label: API base URL
+      placeholder: api.example.com
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: app_id
+      label: App Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: msg_id
+      label: Msg Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: endpoint_id
+      label: Endpoint Id
+      required: true
+    description: "Collects event type, endpoint, msg endpoint, and msg from Svix and projects them into the Cerebro graph as audit events and assets for repository, build, deployment, and release context."
+    display_name: Svix
+    id: builtin_catalog-svix
+    resource_families:
+    - coverage:
+      - families:
+        - event_type
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Event Type
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: svix.event_type
+        required_payload_fields:
+        - name
+        schema_ref: svix/event_type/v1
+        urn_kind: svix_event_type
+      event_kind: event_type
+      id: event_type
+      id_field: name
+      label: Event Type
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/event-type/"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - endpoint
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: endpoint
+        support: partial
+        title: Endpoint
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: svix.endpoint
+        required_payload_fields:
+        - id
+        schema_ref: svix/endpoint/v1
+        urn_kind: svix_endpoint
+      event_kind: endpoint
+      id: endpoint
+      id_field: id
+      label: Endpoint
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/app/${config.app_id}/endpoint/"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: endpoint
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - msg_endpoint
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: msg_endpoint
+        support: partial
+        title: Msg Endpoint
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: svix.msg_endpoint
+        required_payload_fields:
+        - id
+        schema_ref: svix/msg_endpoint/v1
+        urn_kind: svix_msg_endpoint
+      event_kind: msg_endpoint
+      id: msg_endpoint
+      id_field: id
+      label: Msg Endpoint
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/api/v1/app/${config.app_id}/msg/${config.msg_id}/endpoint/"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: endpoint
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - msg
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: msg
+        support: partial
+        title: Msg
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: svix.msg
+        required_payload_fields:
+        - id
+        schema_ref: svix/msg/v1
+        urn_kind: svix_msg
+      event_kind: msg
+      id: msg
+      id_field: id
+      label: Msg
+      list_key: data
+      method: GET
+      name_field: channels
+      pagination:
+        cursor_param: after
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/api/v1/app/${config.app_id}/endpoint/${config.endpoint_id}/msg/"
+      permissions_needed:
+      - HTTPBearer
+      projection:
+        fields:
+          id: id
+          name: channels
+          resource_id: id
+          resource_name: channels
+          resource_type: msg
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event_type
+      id: event_type
+      label: Event Type
+    - default_enabled: true
+      families:
+      - endpoint
+      id: endpoint
+      label: Endpoint
+    - default_enabled: true
+      families:
+      - msg_endpoint
+      id: msg_endpoint
+      label: Msg Endpoint
+    - default_enabled: true
+      families:
+      - msg
+      id: msg
+      label: Msg
+    source_id: svix
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://${config.api_base_url}
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/api/v1/event-type/"

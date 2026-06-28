@@ -1,0 +1,198 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects token, license, licensee, and licensetemplate from Labs64 NetLicensing and projects them into the Cerebro graph as secrets and assets for owner, account, evidence, and compliance context."
+    display_name: Labs64 NetLicensing
+    id: builtin_catalog-netlicensing
+    resource_families:
+    - coverage:
+      - families:
+        - token
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: secrets
+        support: partial
+        title: Token
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: netlicensing.token
+        required_payload_fields:
+        - infos
+        schema_ref: netlicensing/token/v1
+        urn_kind: netlicensing_token
+      event_kind: token
+      id: token
+      id_field: infos
+      label: Token
+      method: GET
+      name_field: infos
+      pagination:
+        type: none
+      path: "/token"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: infos
+          name: infos
+          secret_id: infos
+          secret_name: infos
+          secret_type: token
+        template: secret
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - license
+        id: license
+        support: partial
+        title: License
+        type: entity_family
+      event:
+        kind: netlicensing.license
+        required_payload_fields:
+        - infos
+        schema_ref: netlicensing/license/v1
+        urn_kind: netlicensing_license
+      event_kind: license
+      id: license
+      id_field: infos
+      label: License
+      method: GET
+      name_field: infos
+      pagination:
+        type: none
+      path: "/license"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: infos
+          name: infos
+          resource_id: infos
+          resource_name: infos
+          resource_type: license
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - licensee
+        id: licensee
+        support: partial
+        title: Licensee
+        type: entity_family
+      event:
+        kind: netlicensing.licensee
+        required_payload_fields:
+        - infos
+        schema_ref: netlicensing/licensee/v1
+        urn_kind: netlicensing_licensee
+      event_kind: licensee
+      id: licensee
+      id_field: infos
+      label: Licensee
+      method: GET
+      name_field: infos
+      pagination:
+        type: none
+      path: "/licensee"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: infos
+          name: infos
+          resource_id: infos
+          resource_name: infos
+          resource_type: licensee
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - licensetemplate
+        id: licensetemplate
+        support: partial
+        title: Licensetemplate
+        type: entity_family
+      event:
+        kind: netlicensing.licensetemplate
+        required_payload_fields:
+        - infos
+        schema_ref: netlicensing/licensetemplate/v1
+        urn_kind: netlicensing_licensetemplate
+      event_kind: licensetemplate
+      id: licensetemplate
+      id_field: infos
+      label: Licensetemplate
+      method: GET
+      name_field: infos
+      pagination:
+        type: none
+      path: "/licensetemplate"
+      permissions_needed:
+      - basicAuth
+      projection:
+        fields:
+          id: infos
+          name: infos
+          resource_id: infos
+          resource_name: infos
+          resource_type: licensetemplate
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - token
+      id: token
+      label: Token
+    - families:
+      - license
+      id: license
+      label: License
+    - families:
+      - licensee
+      id: licensee
+      label: Licensee
+    - families:
+      - licensetemplate
+      id: licensetemplate
+      label: Licensetemplate
+    source_id: netlicensing
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://go.netlicensing.io/core/v2/rest
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/token"

@@ -1,0 +1,198 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects account, ownertypegroup, analysiscategory, and bankaccount from Big Red Cloud and projects them into the Cerebro graph as users, groups, and assets for owner, account, evidence, and compliance context."
+    display_name: Big Red Cloud
+    id: builtin_catalog-bigredcloud
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bigredcloud.account
+        required_payload_fields:
+        - id
+        schema_ref: bigredcloud/account/v1
+        urn_kind: bigredcloud_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: Items
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/v1/accounts"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_user
+      record_selector: "$.Items[*]"
+    - coverage:
+      - families:
+        - ownertypegroup
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: ownertypegroup
+        support: partial
+        title: Ownertypegroup
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bigredcloud.ownertypegroup
+        required_payload_fields:
+        - id
+        schema_ref: bigredcloud/ownertypegroup/v1
+        urn_kind: bigredcloud_ownertypegroup
+      event_kind: ownertypegroup
+      id: ownertypegroup
+      id_field: id
+      label: Ownertypegroup
+      list_key: Items
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/v1/ownerTypeGroups"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: identity_group
+      record_selector: "$.Items[*]"
+    - coverage:
+      - families:
+        - analysiscategory
+        id: analysiscategory
+        support: partial
+        title: Analysiscategory
+        type: entity_family
+      event:
+        kind: bigredcloud.analysiscategory
+        required_payload_fields:
+        - id
+        schema_ref: bigredcloud/analysiscategory/v1
+        urn_kind: bigredcloud_analysiscategory
+      event_kind: analysiscategory
+      id: analysiscategory
+      id_field: id
+      label: Analysiscategory
+      list_key: Items
+      method: GET
+      name_field: description
+      pagination:
+        type: none
+      path: "/v1/analysisCategories"
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: analysiscategory
+        template: asset
+      record_selector: "$.Items[*]"
+    - coverage:
+      - families:
+        - bankaccount
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: bankaccount
+        support: partial
+        title: Bankaccount
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: bigredcloud.bankaccount
+        required_payload_fields:
+        - id
+        schema_ref: bigredcloud/bankaccount/v1
+        urn_kind: bigredcloud_bankaccount
+      event_kind: bankaccount
+      id: bankaccount
+      id_field: id
+      label: Bankaccount
+      list_key: Items
+      method: GET
+      name_field: acCode
+      pagination:
+        type: none
+      path: "/v1/bankAccounts"
+      projection:
+        fields:
+          id: id
+          name: acCode
+          provider_id: id
+        template: identity_user
+      record_selector: "$.Items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - ownertypegroup
+      id: ownertypegroup
+      label: Ownertypegroup
+    - families:
+      - analysiscategory
+      id: analysiscategory
+      label: Analysiscategory
+    - default_enabled: true
+      families:
+      - bankaccount
+      id: bankaccount
+      label: Bankaccount
+    source_id: bigredcloud
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://app.bigredcloud.com/api
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/accounts"

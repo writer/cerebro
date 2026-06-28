@@ -18,7 +18,25 @@ spec:
     remediation:
         summary: Configure all payment endpoints to use TLS 1.2 or higher. Disable TLS 1.0 and 1.1.
     frameworks:
-        - name: PCI DSS v4.0
+        - name: SOC 2
           controls:
-            - "1.1"
+            - C1.1
+            - CC6.7
+        - name: ISO 27001:2022
+          controls:
+            - A.8.24
+        - name: NIST 800-53 r5
+          controls:
+            - SC-12
+            - SC-13
+            - SC-28
+            - SC-8
+            - SC-23
+        - name: CIS Controls v8
+          controls:
+            - "3"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "3.5"
+            - "4.2"
     enabled: true

@@ -1,0 +1,223 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - identity
+    - networking
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: tailnet
+      label: Tailnet
+      required: true
+    description: "Collects configuration, user, integration, and device from Tailscale and projects them into the Cerebro graph as audit events, users, policies, and assets for identity, access, device, and secret context."
+    display_name: Tailscale
+    id: builtin_catalog-tailscale
+    resource_families:
+    - coverage:
+      - families:
+        - configuration
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Configuration
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: tailscale.configuration
+        required_payload_fields:
+        - action
+        schema_ref: tailscale/configuration/v1
+        urn_kind: tailscale_configuration
+      event_kind: configuration
+      id: configuration
+      id_field: action
+      label: Configuration
+      list_key: logs
+      method: GET
+      name_field: action
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/logging/configuration"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: action
+          name: action
+          provider_id: action
+        template: audit_event
+      record_selector: "$.logs[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: tailscale.user
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/user/v1
+        urn_kind: tailscale_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      list_key: users
+      method: GET
+      name_field: displayName
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/users"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: displayName
+          provider_id: id
+        template: identity_user
+      record_selector: "$.users[*]"
+    - coverage:
+      - families:
+        - integration
+        high_value: true
+        evidence_types:
+        - configuration_state
+        control_domains:
+        - security_operations
+        id: policies
+        support: partial
+        title: Integration
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: tailscale.integration
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/integration/v1
+        urn_kind: tailscale_integration
+      event_kind: integration
+      id: integration
+      id_field: id
+      label: Integration
+      list_key: integrations
+      method: GET
+      name_field: clientId
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/posture/integrations"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: clientId
+          policy_id: id
+          policy_name: clientId
+          policy_type: integration
+        template: policy
+      record_selector: "$.integrations[*]"
+      sensitive_payload_paths:
+      - clientSecret
+    - coverage:
+      - families:
+        - device
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: device
+        support: partial
+        title: Device
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: tailscale.device
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/device/v1
+        urn_kind: tailscale_device
+      event_kind: device
+      id: device
+      id_field: id
+      label: Device
+      list_key: devices
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/devices"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: device
+        template: asset
+      record_selector: "$.devices[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - configuration
+      id: configuration
+      label: Configuration
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - integration
+      id: integration
+      label: Integration
+    - default_enabled: true
+      families:
+      - device
+      id: device
+      label: Device
+    source_id: tailscale
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.tailscale.com/api/v2
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/tailnet/${config.tailnet}/logging/configuration"

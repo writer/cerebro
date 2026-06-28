@@ -40,7 +40,8 @@ spec:
             - "5"
         - name: SOC 2
           controls:
-            - CC6
+            - CC6.1
+            - CC6.2
     mitreAttack:
         - tactic: Execution
           technique: T1059

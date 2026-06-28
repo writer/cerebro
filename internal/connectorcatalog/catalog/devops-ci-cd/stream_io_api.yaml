@@ -1,0 +1,221 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects member, role, device, and query banned user from Stream and projects them into the Cerebro graph as users, groups, and assets for repository, build, deployment, and release context."
+    display_name: Stream
+    id: builtin_catalog-stream_io_api
+    resource_families:
+    - coverage:
+      - families:
+        - member
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: member
+        support: partial
+        title: Member
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: stream_io_api.member
+        required_payload_fields:
+        - ban_expires
+        schema_ref: stream_io_api/member/v1
+        urn_kind: stream_member
+      event_kind: member
+      id: member
+      id_field: ban_expires
+      label: Member
+      list_key: members
+      method: GET
+      name_field: ban_expires
+      pagination:
+        type: none
+      path: "/members"
+      permissions_needed:
+      - JWT
+      - api_key
+      - stream-auth-type
+      projection:
+        fields:
+          id: ban_expires
+          name: ban_expires
+          provider_id: ban_expires
+        template: identity_user
+      record_selector: "$.members[*]"
+    - coverage:
+      - families:
+        - role
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: role
+        support: partial
+        title: Role
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: stream_io_api.role
+        required_payload_fields:
+        - name
+        schema_ref: stream_io_api/role/v1
+        urn_kind: stream_role
+      event_kind: role
+      id: role
+      id_field: name
+      label: Role
+      list_key: roles
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/roles"
+      permissions_needed:
+      - JWT
+      - api_key
+      - stream-auth-type
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_group
+      record_selector: "$.roles[*]"
+    - coverage:
+      - families:
+        - device
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: device
+        support: partial
+        title: Device
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: stream_io_api.device
+        required_payload_fields:
+        - id
+        schema_ref: stream_io_api/device/v1
+        urn_kind: stream_device
+      event_kind: device
+      id: device
+      id_field: id
+      label: Device
+      list_key: devices
+      method: GET
+      name_field: created_at
+      pagination:
+        type: none
+      path: "/devices"
+      permissions_needed:
+      - JWT
+      - api_key
+      - stream-auth-type
+      projection:
+        fields:
+          id: id
+          name: created_at
+          resource_id: id
+          resource_name: created_at
+          resource_type: device
+        template: asset
+      record_selector: "$.devices[*]"
+    - coverage:
+      - families:
+        - query_banned_user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: query_banned_user
+        support: partial
+        title: Query Banned User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: stream_io_api.query_banned_user
+        required_payload_fields:
+        - banned_by
+        schema_ref: stream_io_api/query_banned_user/v1
+        urn_kind: stream_query_banned_user
+      event_kind: query_banned_user
+      id: query_banned_user
+      id_field: banned_by
+      label: Query Banned User
+      list_key: bans
+      method: GET
+      name_field: banned_by
+      pagination:
+        type: none
+      path: "/query_banned_users"
+      permissions_needed:
+      - JWT
+      - api_key
+      - stream-auth-type
+      projection:
+        fields:
+          id: banned_by
+          name: banned_by
+          provider_id: banned_by
+        template: identity_user
+      record_selector: "$.bans[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - member
+      id: member
+      label: Member
+    - default_enabled: true
+      families:
+      - role
+      id: role
+      label: Role
+    - default_enabled: true
+      families:
+      - device
+      id: device
+      label: Device
+    - default_enabled: true
+      families:
+      - query_banned_user
+      id: query_banned_user
+      label: Query Banned User
+    source_id: stream_io_api
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://chat.stream-io-api.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/members"

@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorpreflight"
 	"github.com/writer/cerebro/internal/connectorpreview"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
+	"github.com/writer/cerebro/internal/connectorvalidation"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -80,14 +81,12 @@ type connectorCatalogEntry struct {
 	connectorCatalogSetupState
 	connectorCatalogAccessState
 }
-
 type connectorCatalogIdentity struct {
 	SourceID    string `json:"source_id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Description string `json:"description"`
 }
-
 type connectorCatalogDefinitionState struct {
 	EmittedKinds          []string                      `json:"emitted_kinds"`
 	CatalogStatus         string                        `json:"catalog_status,omitempty"`
@@ -103,21 +102,21 @@ type connectorCatalogDefinitionState struct {
 	CatalogSourcePath     string                        `json:"catalog_source_path,omitempty"`
 	DefinitionOrigin      string                        `json:"definition_origin,omitempty"`
 	ReadinessStage        string                        `json:"readiness_stage,omitempty"`
+	ValidationGrade       string                        `json:"validation_grade,omitempty"`
+	Cataloged             bool                          `json:"cataloged"`
+	Callable              bool                          `json:"callable"`
 	IntegrationDepth      connectorIntegrationDepthView `json:"integration_depth,omitempty"`
 }
-
 type connectorCatalogRuntimeState struct {
 	Status                 string `json:"status"`
 	ConfiguredRuntimes     int    `json:"configured_runtimes"`
 	HealthyRuntimes        int    `json:"healthy_runtimes"`
 	NeedsAttentionRuntimes int    `json:"needs_attention_runtimes"`
 }
-
 type connectorCatalogSetupState struct {
 	ConnectionMethods []connectorConnectionMethodView `json:"connection_methods,omitempty"`
 	ScopeOptions      []connectorScopeOptionView      `json:"scope_options,omitempty"`
 }
-
 type connectorCatalogAccessState struct {
 	AccessStatus        string `json:"access_status,omitempty"`
 	AccessReason        string `json:"access_reason,omitempty"`
@@ -127,7 +126,6 @@ type connectorCatalogAccessState struct {
 	RequestAccessURL    string `json:"request_access_url,omitempty"`
 	RequestAccessAction string `json:"request_access_action,omitempty"`
 }
-
 type connectorIntegrationDepthView struct {
 	Level               string `json:"level,omitempty"`
 	Score               int    `json:"score"`
@@ -141,9 +139,9 @@ type connectorIntegrationDepthView struct {
 	RuntimeExecutable   bool   `json:"runtime_executable"`
 	SetupEnabled        bool   `json:"setup_enabled"`
 }
-
 type connectorLibraryResponse struct {
 	Connectors          []connectorCatalogEntry `json:"connectors"`
+	Counts              connectorLibraryCounts  `json:"counts"`
 	GeneratedAt         string                  `json:"generated_at"`
 	TenantID            string                  `json:"tenant_id,omitempty"`
 	RuntimeStore        string                  `json:"runtime_store"`
@@ -153,7 +151,13 @@ type connectorLibraryResponse struct {
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
 	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
 }
-
+type connectorLibraryCounts struct {
+	Total        int `json:"total"`
+	Cataloged    int `json:"cataloged"`
+	Callable     int `json:"callable"`
+	CatalogOnly  int `json:"catalog_only"`
+	SetupEnabled int `json:"setup_enabled"`
+}
 type connectorDetailResponse struct {
 	GeneratedAt        string                       `json:"generated_at"`
 	TenantID           string                       `json:"tenant_id,omitempty"`
@@ -163,7 +167,6 @@ type connectorDetailResponse struct {
 	Activity           []connectorActivityView      `json:"activity"`
 	DiagnosticTimeline []connectordiagnostics.Entry `json:"diagnostic_timeline,omitempty"`
 }
-
 type connectorActivityResponse struct {
 	GeneratedAt        string                       `json:"generated_at"`
 	TenantID           string                       `json:"tenant_id,omitempty"`
@@ -171,7 +174,6 @@ type connectorActivityResponse struct {
 	Activity           []connectorActivityView      `json:"activity"`
 	DiagnosticTimeline []connectordiagnostics.Entry `json:"diagnostic_timeline,omitempty"`
 }
-
 type connectorOperationsSummary struct {
 	Status               string `json:"status"`
 	StatusReason         string `json:"status_reason"`
@@ -184,7 +186,6 @@ type connectorOperationsSummary struct {
 	ResourceTypes        int    `json:"resource_types"`
 	EmittedKinds         int    `json:"emitted_kinds"`
 }
-
 type connectorConnectionView struct {
 	RuntimeID               string                `json:"runtime_id"`
 	SourceID                string                `json:"source_id"`
@@ -205,7 +206,6 @@ type connectorConnectionView struct {
 	NextAction              string                `json:"next_action"`
 	ScopePolicy             *resourcescope.Policy `json:"scope_policy,omitempty"`
 }
-
 type connectorActivityView struct {
 	ID                string `json:"id"`
 	RuntimeID         string `json:"runtime_id"`
@@ -224,18 +224,15 @@ type connectorActivityView struct {
 	LinksProjected    int64  `json:"links_projected,omitempty"`
 	FailureClass      string `json:"failure_class,omitempty"`
 }
-
 type connectorTransportView struct {
 	Available bool   `json:"available"`
 	Algorithm string `json:"algorithm"`
 	KeyURL    string `json:"key_url"`
 }
-
 type connectorVaultView struct {
 	Available bool   `json:"available"`
 	Detail    string `json:"detail,omitempty"`
 }
-
 type connectorStoreView struct {
 	ID                         string                          `json:"id"`
 	Label                      string                          `json:"label"`
@@ -254,21 +251,18 @@ type connectorStoreView struct {
 	SetupSteps                 []connectorStoreSetupStepView   `json:"setup_steps,omitempty"`
 	RequiredConfig             []connectorStoreConfigFieldView `json:"required_config,omitempty"`
 }
-
 type connectorStoreSetupStepView struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
 	Command     string `json:"command,omitempty"`
 }
-
 type connectorStoreConfigFieldView struct {
 	Env         string `json:"env"`
 	Label       string `json:"label"`
 	Required    bool   `json:"required,omitempty"`
 	Description string `json:"description,omitempty"`
 }
-
 type connectorFieldView struct {
 	Key           string `json:"key"`
 	Label         string `json:"label"`
@@ -278,7 +272,6 @@ type connectorFieldView struct {
 	Placeholder   string `json:"placeholder,omitempty"`
 	Help          string `json:"help,omitempty"`
 }
-
 type connectorConnectionMethodView struct {
 	ID                string                         `json:"id"`
 	Label             string                         `json:"label"`
@@ -300,21 +293,18 @@ type connectorConnectionMethodView struct {
 	RegionGuidance    *connectorRegionGuidanceView   `json:"region_guidance,omitempty"`
 	SecurityNotes     []string                       `json:"security_notes,omitempty"`
 }
-
 type connectorPrerequisiteView struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
 	Required    bool   `json:"required,omitempty"`
 }
-
 type connectorSetupStepView struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
 	Description string   `json:"description,omitempty"`
 	Commands    []string `json:"commands,omitempty"`
 }
-
 type connectorProductGroupView struct {
 	ID             string   `json:"id"`
 	Label          string   `json:"label"`
@@ -600,6 +590,8 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 				CatalogCurrentVersion: definition.CurrentVersion,
 				DefinitionOrigin:      connectorDefinitionOriginTenant,
 				ResourceFamilies:      connectorDefinitionResourceFamilies(definition),
+				ValidationGrade:       string(connectorvalidation.GradeGeneratedFromDocs),
+				Cataloged:             true,
 			},
 			connectorCatalogRuntimeState: connectorCatalogRuntimeState{
 				Status: "available",
@@ -667,6 +659,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 	})
 	return connectorLibraryResponse{
 		Connectors:          entries,
+		Counts:              connectorLibraryCountsFor(entries),
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
@@ -1860,6 +1853,8 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	entry.ClassifierOutput = catalogEntry.ClassifierOutput
 	entry.AuthModel = catalogEntry.Definition.Auth.Model
 	entry.RuntimeExecutable = catalogEntry.Generateable
+	entry.ValidationGrade = string(connectorvalidation.BuiltinValidationForSource(catalogEntry.Definition.SourceID).Grade)
+	entry.Cataloged = true
 	entry.CatalogSchemaVersion = catalogEntry.Definition.SchemaVersion
 	entry.CatalogCurrentVersion = catalogEntry.Definition.CurrentVersion
 	entry.CatalogSourcePath = catalogEntry.Path
@@ -1919,8 +1914,29 @@ func (a *App) applyConnectorAccess(entry *connectorCatalogEntry, tenantID string
 		entry.RequestAccessURL = connectorRequestAccessURL(a.cfg.ConnectorAccess.RequestAccessURL, entry, tenantID)
 	}
 	entry.ReadinessStage = connectorReadinessStage(*entry)
+	entry.Callable = entry.RuntimeExecutable && strings.TrimSpace(entry.AuthModel) != "" &&
+		connectorvalidation.GradeAtLeast(connectorvalidation.Grade(entry.ValidationGrade), connectorvalidation.GradeFixtureValidated)
 	entry.IntegrationDepth = connectorIntegrationDepth(*entry)
 	return true
+}
+
+func connectorLibraryCountsFor(entries []connectorCatalogEntry) connectorLibraryCounts {
+	counts := connectorLibraryCounts{Total: len(entries)}
+	for _, entry := range entries {
+		if entry.Cataloged {
+			counts.Cataloged++
+		}
+		if entry.Callable {
+			counts.Callable++
+		}
+		if entry.AccessStatus == connectorAccessCatalogOnly {
+			counts.CatalogOnly++
+		}
+		if entry.SetupAllowed {
+			counts.SetupEnabled++
+		}
+	}
+	return counts
 }
 
 func (a *App) requireConnectorSetupAccess(sourceID string) error {

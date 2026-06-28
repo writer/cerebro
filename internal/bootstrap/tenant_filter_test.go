@@ -100,6 +100,7 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 		{method: http.MethodPost, path: "/grc/inventory/accountability"},
 		{method: http.MethodPost, path: "/grc/inventory/asset-reports"},
 		{method: http.MethodPatch, path: "/grc/inventory/asset-reports/report-1/triage"},
+		{method: http.MethodPost, path: "/grc/vendor-discoveries/urn:cerebro:writer:vendor_discovery:grc:shadow/decision"},
 	} {
 		request, err := http.NewRequest(tc.method, tc.path, nil)
 		if err != nil {
@@ -113,6 +114,21 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
 	if err := authorizePrincipalScope(readOnly, scopeGRCInventoryWrite); err == nil {
 		t.Fatal("read-only scoped principal authorized for GRC inventory write scope")
+	}
+}
+
+func TestGRCPolicyLifecycleActionRequiresWriteScope(t *testing.T) {
+	request, err := http.NewRequest(http.MethodPost, "/grc/policy-lifecycle/actions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error = %v", err)
+	}
+	if got := httpRoutePolicyForRequest(request).Scope; got != scopeGRCPolicyLifecycleWrite {
+		t.Fatalf("scopeForHTTPRequest(policy action) = %q, want %q", got, scopeGRCPolicyLifecycleWrite)
+	}
+
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalScope(readOnly, scopeGRCPolicyLifecycleWrite); err == nil {
+		t.Fatal("read-only scoped principal authorized for policy lifecycle write scope")
 	}
 }
 

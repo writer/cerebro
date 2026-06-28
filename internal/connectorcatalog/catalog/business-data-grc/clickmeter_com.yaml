@@ -1,0 +1,605 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: conversionid
+      label: Conversionid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: id
+      label: Id
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: tagid
+      label: Tagid
+      required: true
+    description: "Collects clickstream, group, list, hit, ipblacklist, and conversions hit from ClickMeter API and projects them into the Cerebro graph as audit events, groups, and assets for owner, account, evidence, and compliance context."
+    display_name: ClickMeter API
+    id: builtin_catalog-clickmeter_com
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - clickstream
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Clickstream
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.clickstream
+        required_payload_fields:
+        - accessTime
+        schema_ref: clickmeter_com/clickstream/v1
+        urn_kind: clickmeter_clickstream
+      event_kind: clickstream
+      id: clickstream
+      id_field: accessTime
+      label: Clickstream
+      list_key: entities
+      method: GET
+      name_field: accessTime
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/clickstream"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: accessTime
+          name: accessTime
+          provider_id: accessTime
+        template: audit_event
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group
+        high_value: true
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.group
+        required_payload_fields:
+        - id
+        schema_ref: clickmeter_com/group/v1
+        urn_kind: clickmeter_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      list_key: entities
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/groups"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - list
+        high_value: true
+        id: list
+        support: partial
+        title: List
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.list
+        required_payload_fields:
+        - activityDay
+        schema_ref: clickmeter_com/list/v1
+        urn_kind: clickmeter_list
+      event_kind: list
+      id: list
+      id_field: activityDay
+      label: List
+      list_key: entities
+      method: GET
+      name_field: activityDay
+      pagination:
+        type: none
+      path: "/groups/aggregated/list"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: activityDay
+          name: activityDay
+          resource_id: activityDay
+          resource_name: activityDay
+          resource_type: list
+        template: asset
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - hit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Hit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.hit
+        required_payload_fields:
+        - accessTime
+        schema_ref: clickmeter_com/hit/v1
+        urn_kind: clickmeter_hit
+      event_kind: hit
+      id: hit
+      id_field: accessTime
+      label: Hit
+      list_key: hits
+      method: GET
+      name_field: accessTime
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/hits"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: accessTime
+          name: accessTime
+          provider_id: accessTime
+        template: audit_event
+      record_selector: "$.hits[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - ipblacklist
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Ipblacklist
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.ipblacklist
+        required_payload_fields:
+        - id
+        schema_ref: clickmeter_com/ipblacklist/v1
+        urn_kind: clickmeter_ipblacklist
+      event_kind: ipblacklist
+      id: ipblacklist
+      id_field: id
+      label: Ipblacklist
+      list_key: entities
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/account/ipblacklist"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: id
+          provider_id: id
+        template: audit_event
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - conversions_hit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Conversions Hit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.conversions_hit
+        required_payload_fields:
+        - accessTime
+        schema_ref: clickmeter_com/conversions_hit/v1
+        urn_kind: clickmeter_conversions_hit
+      event_kind: conversions_hit
+      id: conversions_hit
+      id_field: accessTime
+      label: Conversions Hit
+      list_key: hits
+      method: GET
+      name_field: accessTime
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/conversions/${config.conversionid}/hits"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: accessTime
+          name: accessTime
+          provider_id: accessTime
+        template: audit_event
+      record_selector: "$.hits[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - datapoints_hit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Datapoints Hit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.datapoints_hit
+        required_payload_fields:
+        - accessTime
+        schema_ref: clickmeter_com/datapoints_hit/v1
+        urn_kind: clickmeter_datapoints_hit
+      event_kind: datapoints_hit
+      id: datapoints_hit
+      id_field: accessTime
+      label: Datapoints Hit
+      list_key: hits
+      method: GET
+      name_field: accessTime
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/datapoints/${config.id}/hits"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: accessTime
+          name: accessTime
+          provider_id: accessTime
+        template: audit_event
+      record_selector: "$.hits[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - groups_hit
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Groups Hit
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: clickmeter_com.groups_hit
+        required_payload_fields:
+        - accessTime
+        schema_ref: clickmeter_com/groups_hit/v1
+        urn_kind: clickmeter_groups_hit
+      event_kind: groups_hit
+      id: groups_hit
+      id_field: accessTime
+      label: Groups Hit
+      list_key: hits
+      method: GET
+      name_field: accessTime
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/groups/${config.id}/hits"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: accessTime
+          name: accessTime
+          provider_id: accessTime
+        template: audit_event
+      record_selector: "$.hits[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - tags_group
+        high_value: true
+        id: tags_group
+        support: partial
+        title: Tags Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.tags_group
+        required_payload_fields:
+        - id
+        schema_ref: clickmeter_com/tags_group/v1
+        urn_kind: clickmeter_tags_group
+      event_kind: tags_group
+      id: tags_group
+      id_field: id
+      label: Tags Group
+      list_key: entities
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/tags/${config.tagid}/groups"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: id
+          provider_id: id
+        template: identity_group
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - summary_group
+        high_value: true
+        id: summary_group
+        support: partial
+        title: Summary Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.summary_group
+        required_payload_fields:
+        - activityDay
+        schema_ref: clickmeter_com/summary_group/v1
+        urn_kind: clickmeter_summary_group
+      event_kind: summary_group
+      id: summary_group
+      id_field: activityDay
+      label: Summary Group
+      list_key: result
+      method: GET
+      name_field: activityDay
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/aggregated/summary/groups"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: activityDay
+          name: activityDay
+          provider_id: activityDay
+        template: identity_group
+      record_selector: "$.result[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - datapoint
+        high_value: true
+        id: datapoint
+        support: partial
+        title: Datapoint
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.datapoint
+        required_payload_fields:
+        - id
+        schema_ref: clickmeter_com/datapoint/v1
+        urn_kind: clickmeter_datapoint
+      event_kind: datapoint
+      id: datapoint
+      id_field: id
+      label: Datapoint
+      list_key: entities
+      method: GET
+      name_field: id
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/groups/${config.id}/datapoints"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: id
+          name: id
+          resource_id: id
+          resource_name: id
+          resource_type: datapoint
+        template: asset
+      record_selector: "$.entities[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - aggregated_list
+        high_value: true
+        id: aggregated_list
+        support: partial
+        title: Aggregated List
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: clickmeter_com.aggregated_list
+        required_payload_fields:
+        - activityDay
+        schema_ref: clickmeter_com/aggregated_list/v1
+        urn_kind: clickmeter_aggregated_list
+      event_kind: aggregated_list
+      id: aggregated_list
+      id_field: activityDay
+      label: Aggregated List
+      list_key: entities
+      method: GET
+      name_field: activityDay
+      pagination:
+        type: none
+      path: "/groups/${config.id}/aggregated/list"
+      permissions_needed:
+      - api_key
+      projection:
+        fields:
+          id: activityDay
+          name: activityDay
+          resource_id: activityDay
+          resource_name: activityDay
+          resource_type: list
+        template: asset
+      record_selector: "$.entities[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - clickstream
+      id: clickstream
+      label: Clickstream
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - list
+      id: list
+      label: List
+    - default_enabled: true
+      families:
+      - hit
+      id: hit
+      label: Hit
+    - default_enabled: true
+      families:
+      - ipblacklist
+      id: ipblacklist
+      label: Ipblacklist
+    - default_enabled: true
+      families:
+      - conversions_hit
+      id: conversions_hit
+      label: Conversions Hit
+    - default_enabled: true
+      families:
+      - datapoints_hit
+      id: datapoints_hit
+      label: Datapoints Hit
+    - default_enabled: true
+      families:
+      - groups_hit
+      id: groups_hit
+      label: Groups Hit
+    - default_enabled: true
+      families:
+      - tags_group
+      id: tags_group
+      label: Tags Group
+    - default_enabled: true
+      families:
+      - summary_group
+      id: summary_group
+      label: Summary Group
+    - default_enabled: true
+      families:
+      - datapoint
+      id: datapoint
+      label: Datapoint
+    - default_enabled: true
+      families:
+      - aggregated_list
+      id: aggregated_list
+      label: Aggregated List
+    source_id: clickmeter_com
+    tenant_id: builtin_catalog
+    transport:
+      base_url: http://apiv2.clickmeter.com:80
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/clickstream"

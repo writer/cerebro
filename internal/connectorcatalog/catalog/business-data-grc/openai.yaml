@@ -1,0 +1,193 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: fine_tune_id
+      label: Fine Tune Id
+      required: true
+    description: "Collects event, file, fine tune, and model from OpenAI and projects them into the Cerebro graph as audit events and assets for owner, account, evidence, and compliance context."
+    display_name: OpenAI
+    id: builtin_catalog-openai
+    resource_families:
+    - coverage:
+      - families:
+        - event
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+        id: audit_events
+        support: partial
+        title: Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: openai.event
+        required_payload_fields:
+        - created_at
+        schema_ref: openai/event/v1
+        urn_kind: openai_event
+      event_kind: event
+      id: event
+      id_field: created_at
+      label: Event
+      list_key: data
+      method: GET
+      name_field: created_at
+      pagination:
+        type: none
+      path: "/fine-tunes/${config.fine_tune_id}/events"
+      projection:
+        fields:
+          id: created_at
+          name: created_at
+          provider_id: created_at
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - file
+        id: file
+        support: partial
+        title: File
+        type: entity_family
+      event:
+        kind: openai.file
+        required_payload_fields:
+        - id
+        schema_ref: openai/file/v1
+        urn_kind: openai_file
+      event_kind: file
+      id: file
+      id_field: id
+      label: File
+      list_key: data
+      method: GET
+      name_field: bytes
+      pagination:
+        type: none
+      path: "/files"
+      projection:
+        fields:
+          id: id
+          name: bytes
+          resource_id: id
+          resource_name: bytes
+          resource_type: file
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - fine_tune
+        id: fine_tune
+        support: partial
+        title: Fine Tune
+        type: entity_family
+      event:
+        kind: openai.fine_tune
+        required_payload_fields:
+        - id
+        schema_ref: openai/fine_tune/v1
+        urn_kind: openai_fine_tune
+      event_kind: fine_tune
+      id: fine_tune
+      id_field: id
+      label: Fine Tune
+      list_key: data
+      method: GET
+      name_field: created_at
+      pagination:
+        type: none
+      path: "/fine-tunes"
+      projection:
+        fields:
+          id: id
+          name: created_at
+          resource_id: id
+          resource_name: created_at
+          resource_type: fine_tune
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - families:
+        - model
+        id: model
+        support: partial
+        title: Model
+        type: entity_family
+      event:
+        kind: openai.model
+        required_payload_fields:
+        - id
+        schema_ref: openai/model/v1
+        urn_kind: openai_model
+      event_kind: model
+      id: model
+      id_field: id
+      label: Model
+      list_key: data
+      method: GET
+      name_field: created
+      pagination:
+        type: none
+      path: "/models"
+      projection:
+        fields:
+          id: id
+          name: created
+          resource_id: id
+          resource_name: created
+          resource_type: model
+        template: asset
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event
+      id: event
+      label: Event
+    - families:
+      - file
+      id: file
+      label: File
+    - families:
+      - fine_tune
+      id: fine_tune
+      label: Fine Tune
+    - families:
+      - model
+      id: model
+      label: Model
+    source_id: openai
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.openai.com/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/fine-tunes/${config.fine_tune_id}/events"

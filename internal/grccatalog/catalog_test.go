@@ -75,6 +75,8 @@ func TestCatalogAdvertisesOnlyHonoredParams(t *testing.T) {
 		{name: "control-coverage profile", query: WidgetQuery{SourceID: "control-coverage", Params: map[string]string{"profile": "soc2"}}},
 		{name: "inventory-categories source_id", query: WidgetQuery{SourceID: "inventory-categories", Params: map[string]string{"source_id": "aws"}}},
 		{name: "inventory-assets filters", query: WidgetQuery{SourceID: "inventory-assets", Params: map[string]string{"source_id": "aws", "category_id": "compute", "q": "db", "scope_state": "in_scope"}}},
+		{name: "policy-lifecycle runtime scope", query: WidgetQuery{SourceID: "policy-lifecycle", Params: map[string]string{"source_id": "grc", "runtime_id": "rt-1"}}},
+		{name: "vendor queue filters", query: WidgetQuery{SourceID: "vendor-risk-queue", Params: map[string]string{"queue": "true", "lifecycle_state": "restricted"}}},
 	}
 	for _, tc := range accepted {
 		t.Run("accepts "+tc.name, func(t *testing.T) {
@@ -92,6 +94,7 @@ func TestCatalogAdvertisesOnlyHonoredParams(t *testing.T) {
 		{name: "control-coverage runtime scope", query: WidgetQuery{SourceID: "control-coverage", Params: map[string]string{"runtime_id": "rt-1"}}},
 		{name: "inventory-categories runtime scope", query: WidgetQuery{SourceID: "inventory-categories", Params: map[string]string{"runtime_id": "rt-1"}}},
 		{name: "inventory-assets runtime scope", query: WidgetQuery{SourceID: "inventory-assets", Params: map[string]string{"runtime_ids": "rt-1,rt-2"}}},
+		{name: "policy-lifecycle runtime set", query: WidgetQuery{SourceID: "policy-lifecycle", Params: map[string]string{"runtime_ids": "rt-1,rt-2"}}},
 	}
 	for _, tc := range rejected {
 		t.Run("rejects "+tc.name, func(t *testing.T) {

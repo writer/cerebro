@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestMCPRequiresAuth(t *testing.T) {
@@ -205,7 +206,10 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.graph.facts.list",
 		"cerebro.graph.facts.explain",
 		"cerebro.graph.facts.trace",
+		"cerebro.agent.control_plane",
 		"cerebro.agent.preflight",
+		"cerebro.agent.claims.verify",
+		"cerebro.agent.work.contract",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
@@ -269,7 +273,10 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.graph.facts.list":                {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.graph.facts.explain":             {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
 	"cerebro.graph.facts.trace":               {Markers: []string{"GET /source-runtimes/{runtimeID}/claims"}},
+	"cerebro.agent.control_plane":             {Markers: []string{"GET /api/v1/agent-platform/security-control-plane"}},
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
+	"cerebro.agent.claims.verify":             {Markers: []string{"agent-claim-verification"}},
+	"cerebro.agent.work.contract":             {Markers: []string{"agent-work-ledger"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
@@ -285,6 +292,7 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		"proto/cerebro/v1/bootstrap.proto",
 		"api/openapi.yaml",
 		"docs/domains/mcp-droid-setup.md",
+		"docs/domains/agent-platform-contract.md",
 		"docs/domains/findings-platform-architecture.md",
 	} {
 		// #nosec G304 -- rel comes from this fixed test corpus allowlist.
@@ -1344,6 +1352,7 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 					"permission_label":       "admin",
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
+					"relation_chain":         []any{"runs_as"},
 				},
 			}},
 		},
@@ -2316,6 +2325,160 @@ func TestMCPAgentPreflight(t *testing.T) {
 	}
 }
 
+func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
+	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
+	defer server.Close()
+
+	controlPlaneResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.control_plane",
+			"arguments": map[string]any{},
+		},
+	})
+	if controlPlaneResp["error"] != nil {
+		t.Fatalf("agent.control_plane error = %#v", controlPlaneResp["error"])
+	}
+	controlPlane := controlPlaneResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil {
+		t.Fatalf("control plane missing claim/work contracts: %#v", controlPlane)
+	}
+
+	workResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.work.contract",
+			"arguments": map[string]any{},
+		},
+	})
+	if workResp["error"] != nil {
+		t.Fatalf("agent.work.contract error = %#v", workResp["error"])
+	}
+	work := workResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if work["id"] != "agent-work-ledger" || len(work["state_model"].([]any)) == 0 {
+		t.Fatalf("work contract = %#v", work)
+	}
+}
+
+func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	server := newMCPTestServerWithGraphReasoningAndSources(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient(), registry)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Prod app is externally reachable through an unmanaged identity path.",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"missing_evidence":         []any{"fresh Okta group membership"},
+				"freshness_state":          "stale",
+				"requested_action_stage":   "dry_run",
+				"coverage_context": map[string]any{
+					"version":          "2026-06-17.cerebro-agent-platform",
+					"tenant_id":        "writer",
+					"blind_spot_count": 1,
+					"stale_count":      1,
+				},
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("agent.claims.verify error = %#v", response["error"])
+	}
+	content := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if content["tenant_id"] != "writer" {
+		t.Fatalf("tenant_id = %#v, want authenticated tenant writer", content["tenant_id"])
+	}
+	if content["verdict"] != "weakly_supported" || content["allowed_next_stage"] != "explain" {
+		t.Fatalf("claim verification verdict/stage = %#v", content)
+	}
+	blockers := content["blockers"].([]any)
+	if len(blockers) == 0 || blockers[0].(map[string]any)["code"] != "stage_skip" {
+		t.Fatalf("claim verification blockers = %#v, want stage_skip", blockers)
+	}
+	warnings := content["warnings"].([]any)
+	if len(warnings) == 0 {
+		t.Fatalf("claim verification warnings = %#v, want stale/coverage warnings", warnings)
+	}
+
+	serverCoverageResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Finding finding-1 is supported by current evidence.",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"freshness_state":          "fresh",
+				"requested_action_stage":   "recommend",
+			},
+		},
+	})
+	serverCoverageContent := serverCoverageResponse["result"].(map[string]any)["structuredContent"].(map[string]any)
+	serverCoverageVerifiers := serverCoverageContent["verifier_results"].([]any)
+	var coverageEvidence []any
+	for _, raw := range serverCoverageVerifiers {
+		verifier := raw.(map[string]any)
+		if verifier["id"] == "coverage" {
+			coverageEvidence, _ = verifier["evidence"].([]any)
+		}
+	}
+	if len(coverageEvidence) == 0 || coverageEvidence[0] != "writer" {
+		t.Fatalf("coverage verifier = %#v, want server-computed tenant evidence", serverCoverageVerifiers)
+	}
+
+	crossTenantMissingResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Cross-tenant missing evidence",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"missing_evidence":         []any{"urn:cerebro:other:evidence:evidence-2"},
+			},
+		},
+	})
+	crossTenantMissingResult := crossTenantMissingResponse["result"].(map[string]any)
+	crossTenantMissingError := crossTenantMissingResult["structuredContent"].(map[string]any)["error"].(map[string]any)
+	if crossTenantMissingResult["isError"] != true || crossTenantMissingError["kind"] != "not_found" {
+		t.Fatalf("agent.claims.verify cross-tenant missing evidence response = %#v", crossTenantMissingResponse)
+	}
+
+	overrideResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"tenant_id": "other",
+				"claim":     "Cross-tenant claim",
+			},
+		},
+	})
+	overrideResult := overrideResponse["result"].(map[string]any)
+	if overrideResult["isError"] != true || !strings.Contains(overrideResult["content"].([]any)[0].(map[string]any)["text"].(string), "tenant forbidden") {
+		t.Fatalf("agent.claims.verify tenant override response = %#v", overrideResponse)
+	}
+}
+
 func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 	graph := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
@@ -2352,6 +2515,7 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 					"permission_label":       "admin",
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
+					"relation_chain":         []any{"runs_as"},
 				},
 			}},
 		},
@@ -2563,6 +2727,11 @@ func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stu
 
 func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient) *httptest.Server {
 	t.Helper()
+	return newMCPTestServerWithGraphReasoningAndSources(t, store, graph, llm, nil)
+}
+
+func newMCPTestServerWithGraphReasoningAndSources(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient, sources *sourcecdk.Registry) *httptest.Server {
+	t.Helper()
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -2574,7 +2743,7 @@ func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, g
 				TenantID:  "writer",
 			}},
 		},
-	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, nil)
+	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, sources)
 	return httptest.NewServer(app.Handler())
 }
 

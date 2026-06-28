@@ -1,0 +1,200 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects account, aspsp, user, and batche from Fire and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+    display_name: Fire
+    id: builtin_catalog-fire
+    resource_families:
+    - coverage:
+      - families:
+        - account
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: fire.account
+        required_payload_fields:
+        - name
+        schema_ref: fire/account/v1
+        urn_kind: fire_account
+      event_kind: account
+      id: account
+      id_field: name
+      label: Account
+      list_key: accounts
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/v1/accounts"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.accounts[*]"
+    - coverage:
+      - families:
+        - aspsp
+        id: aspsp
+        support: partial
+        title: Aspsp
+        type: entity_family
+      event:
+        kind: fire.aspsp
+        required_payload_fields:
+        - alias
+        schema_ref: fire/aspsp/v1
+        urn_kind: fire_aspsp
+      event_kind: aspsp
+      id: aspsp
+      id_field: alias
+      label: Aspsp
+      list_key: aspsps
+      method: GET
+      name_field: alias
+      pagination:
+        type: none
+      path: "/v1/aspsps"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: alias
+          name: alias
+          resource_id: alias
+          resource_name: alias
+          resource_type: aspsp
+        template: asset
+      record_selector: "$.aspsps[*]"
+    - coverage:
+      - families:
+        - user
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: fire.user
+        required_payload_fields:
+        - id
+        schema_ref: fire/user/v1
+        urn_kind: fire_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: emailAddress
+      pagination:
+        type: none
+      path: "/v1/users"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: id
+          name: emailAddress
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - families:
+        - batche
+        id: batche
+        support: partial
+        title: Batche
+        type: entity_family
+      event:
+        kind: fire.batche
+        required_payload_fields:
+        - ref
+        schema_ref: fire/batche/v1
+        urn_kind: fire_batche
+      event_kind: batche
+      id: batche
+      id_field: ref
+      label: Batche
+      list_key: items
+      method: GET
+      name_field: amount
+      pagination:
+        type: none
+      path: "/v1/batches"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          id: ref
+          name: amount
+          resource_id: ref
+          resource_name: amount
+          resource_type: batche
+        template: asset
+      record_selector: "$.items[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - families:
+      - aspsp
+      id: aspsp
+      label: Aspsp
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - families:
+      - batche
+      id: batche
+      label: Batche
+    source_id: fire
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.fire.com/business
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/accounts"

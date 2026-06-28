@@ -1,0 +1,151 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-knowbe4
+    tenant_id: builtin_catalog
+    source_id: knowbe4
+    display_name: KnowBe4
+    description: "Collects learners, groups, training enrollments, and phishing campaigns from KnowBe4 and projects them into the Cerebro graph as users, groups, audit events, and assets for owner, account, evidence, and compliance context."
+    categories:
+    - security_training
+    - grc
+    config_fields:
+    - key: region
+      label: API region
+      required: true
+      help: KnowBe4 Reporting API region host prefix, such as us, eu, ca, uk, or de.
+      placeholder: us
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.region}.api.knowbe4.com/v1
+      verification:
+        method: GET
+        path: "/users"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Learners
+      path: "/users"
+      method: GET
+      record_selector: "$[*]"
+      id_field: id
+      name_field: email
+      event:
+        kind: knowbe4.users
+        schema_ref: knowbe4/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Learners
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 1
+        page_size: 100
+    - id: groups
+      label: Groups
+      path: "/groups"
+      method: GET
+      record_selector: "$[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: knowbe4.groups
+        schema_ref: knowbe4/groups/v1
+      projection:
+        template: identity_group
+      coverage:
+      - id: groups
+        type: entity_family
+        title: Groups
+        families:
+        - groups
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 1
+        page_size: 100
+    - id: training_enrollments
+      label: Training enrollments
+      path: "/training/enrollments"
+      method: GET
+      record_selector: "$[*]"
+      id_field: id
+      event:
+        kind: knowbe4.training_enrollments
+        schema_ref: knowbe4/training_enrollments/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: training_enrollments
+        type: audit_event
+        title: Training enrollments
+        families:
+        - training_enrollments
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 1
+        page_size: 100
+    - id: phishing_campaigns
+      label: Phishing campaigns
+      path: "/phishing/campaigns"
+      method: GET
+      record_selector: "$[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: knowbe4.phishing_campaigns
+        schema_ref: knowbe4/phishing_campaigns/v1
+      projection:
+        template: asset
+      coverage:
+      - id: phishing_campaigns
+        type: entity_family
+        title: Phishing campaigns
+        families:
+        - phishing_campaigns
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 1
+        page_size: 100

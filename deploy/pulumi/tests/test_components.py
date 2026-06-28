@@ -138,6 +138,22 @@ def test_azure_key_vault_secret_ref_enables_system_identity() -> None:
     assert len(secrets) == 1
 
 
+def test_checked_in_example_stacks_stay_preview_safe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expectations = {
+        "Pulumi.aws.yaml": "cerebro:cloud: aws",
+        "Pulumi.gcp.yaml": "cerebro:cloud: gcp",
+        "Pulumi.azure.yaml": "cerebro:cloud: azure",
+    }
+
+    for filename, cloud_marker in expectations.items():
+        body = (root / filename).read_text(encoding="utf-8")
+        assert cloud_marker in body
+        assert "cerebro:deploymentProfile: preview" in body
+        assert 'cerebro:apiAuthEnabled: "false"' in body
+        assert "cerebro:publicOrigin: https://cerebro.example.com" in body
+
+
 def _scheduled_job(schedule: str = "rate(15 minutes)") -> ScheduledJob:
     return ScheduledJob(
         name="sync-example",

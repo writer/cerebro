@@ -1,0 +1,246 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    description: "Collects event, account, segments account, user, and segments user from Developer documentation and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context."
+    display_name: Developer documentation
+    id: builtin_catalog-journy_io
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - event
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: journy_io.event
+        required_payload_fields:
+        - id
+        schema_ref: journy_io/event/v1
+        urn_kind: journy_event
+      event_kind: event
+      id: event
+      id_field: id
+      label: Event
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/events"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account
+        high_value: true
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: journy_io.account
+        required_payload_fields:
+        - name
+        schema_ref: journy_io/account/v1
+        urn_kind: journy_account
+      event_kind: account
+      id: account
+      id_field: name
+      label: Account
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/properties/accounts"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - segments_account
+        high_value: true
+        id: segments_account
+        support: partial
+        title: Segments Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: journy_io.segments_account
+        required_payload_fields:
+        - id
+        schema_ref: journy_io/segments_account/v1
+        urn_kind: journy_segments_account
+      event_kind: segments_account
+      id: segments_account
+      id_field: id
+      label: Segments Account
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/segments/accounts"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: journy_io.user
+        required_payload_fields:
+        - name
+        schema_ref: journy_io/user/v1
+        urn_kind: journy_user
+      event_kind: user
+      id: user
+      id_field: name
+      label: User
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/properties/users"
+      projection:
+        fields:
+          id: name
+          name: name
+          provider_id: name
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - segments_user
+        high_value: true
+        id: segments_user
+        support: partial
+        title: Segments User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: journy_io.segments_user
+        required_payload_fields:
+        - id
+        schema_ref: journy_io/segments_user/v1
+        urn_kind: journy_segments_user
+      event_kind: segments_user
+      id: segments_user
+      id_field: id
+      label: Segments User
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/segments/users"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event
+      id: event
+      label: Event
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - segments_account
+      id: segments_account
+      label: Segments Account
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - default_enabled: true
+      families:
+      - segments_user
+      id: segments_user
+      label: Segments User
+    source_id: journy_io
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.journy.io
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/events"

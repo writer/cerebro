@@ -32,11 +32,16 @@ func (a *App) grcQuerySources() map[string]http.HandlerFunc {
 		"findings":             a.handleGRCFindings,
 		"controls":             a.handleGRCControls,
 		"evidence":             a.handleGRCEvidence,
+		"policy-lifecycle":     a.handleGRCPolicyLifecycle,
 		"trends":               a.handleGRCTrends,
 		"frameworks":           a.handleGRCFrameworks,
 		"control-coverage":     a.handleGRCControlCoverage,
 		"inventory-assets":     a.handleGRCInventoryAssets,
 		"inventory-categories": a.handleGRCInventoryCategories,
+		"vendors":              a.handleGRCVendors,
+		"vendor-detail":        a.handleGRCVendorDetail,
+		"vendor-discoveries":   a.handleGRCVendorDiscoveries,
+		"vendor-risk-queue":    a.handleGRCVendors,
 	}
 }
 
@@ -74,15 +79,20 @@ func (a *App) handleGRCQuery(w http.ResponseWriter, r *http.Request) {
 // allowlisted parameters and the clamped limit are forwarded.
 func dispatchGRCQuery(handler http.HandlerFunc, r *http.Request, source grccatalog.Source, query grccatalog.WidgetQuery) *capturedHTTPResponse {
 	values := url.Values{}
+	path := source.Path
 	for key, value := range query.Params {
-		values.Set(strings.TrimSpace(key), value)
+		key = strings.TrimSpace(key)
+		if bindGRCQueryPathParam(&path, key, value) {
+			continue
+		}
+		values.Set(key, value)
 	}
 	if query.Limit > 0 {
 		values.Set("limit", strconv.FormatUint(uint64(query.Limit), 10))
 	}
 	proxy := r.Clone(r.Context())
 	proxy.Method = http.MethodGet
-	proxy.URL = &url.URL{Path: source.Path, RawQuery: values.Encode()}
+	proxy.URL = &url.URL{Path: path, RawQuery: values.Encode()}
 	proxy.RequestURI = ""
 	proxy.Body = http.NoBody
 	proxy.ContentLength = 0
@@ -91,6 +101,22 @@ func dispatchGRCQuery(handler http.HandlerFunc, r *http.Request, source grccatal
 		proxy.Header.Del("Content-Length")
 	}
 	return captureHTTPResponse(handler, proxy)
+}
+
+func bindGRCQueryPathParam(path *string, key string, value string) bool {
+	if path == nil {
+		return false
+	}
+	token := "{" + key + "}"
+	switch key {
+	case "vendor_id":
+		token = "{vendorID}"
+	}
+	if !strings.Contains(*path, token) {
+		return false
+	}
+	*path = strings.ReplaceAll(*path, token, url.PathEscape(strings.TrimSpace(value)))
+	return true
 }
 
 // writeGRCQueryResponse wraps a successful source response in a query envelope

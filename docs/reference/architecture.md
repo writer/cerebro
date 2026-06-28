@@ -101,8 +101,8 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
-The GRC domain packages (grccatalog, grccontrol, grcinventory, grcprogram,
-grctrends, and compliance) are documented in
+The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
+grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in
 [docs/domains/grc-architecture.md](../domains/grc-architecture.md). The
 bootstrap-budget paragraphs below describe only the transport-boundary adapters
 that wire those domain packages into HTTP routes.
@@ -114,6 +114,14 @@ metadata, and markdown rendering to `internal/grccontrol`. Profile resolution,
 rule coverage, evidence freshness, control status behavior, custom profile
 resolution, report metadata construction, and export rendering stay behind that
 domain package.
+
+The GRC policy lifecycle routes add small HTTP adapters that resolve request
+scope, check graph-query or append-log availability, and pass graph reads or
+action events into `internal/grcpolicylifecycle`. Policy template aggregation,
+version and approval state, attestation coverage, exception queues, reminder
+shaping, audit export rows, action event construction, and explicit
+policy-to-control/evidence mappings stay behind that domain package. Lifecycle
+mutations append normalized events and project graph state from those events.
 
 The GRC finding-trends route adds a small HTTP adapter that resolves request
 scope, parses the interval and window parameters, fans out per-tenant runtime
@@ -204,6 +212,12 @@ only public Agent Card serving and authenticated request/response mapping for
 the JSON-RPC contract, event subscription contract, and idempotency contract.
 Outbound webhook delivery remains a governed event contract until backed by a
 source/runtime adapter and durable delivery store.
+
+Agent claim verification and agent work ledger semantics also live in
+`internal/agentplatform`. The bootstrap budget includes only authenticated HTTP
+and MCP request/response mapping for the control-plane snapshot, claim
+verification request shape, tenant/URN authorization boundary, and durable work
+contract response.
 
 The append-log runtime replay index is populated by a global maintenance job
 whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap

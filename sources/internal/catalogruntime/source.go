@@ -21,6 +21,11 @@ type Source struct {
 	verificationStatus []int
 }
 
+// ValidationOptions narrows test-only source behavior for contract validation.
+type ValidationOptions struct {
+	AllowLoopbackBaseURL bool
+}
+
 // New creates a runnable source from a connector catalog entry.
 func New(entry connectorcatalog.Entry) (*Source, error) {
 	return NewDefinition(entry.Definition)
@@ -28,6 +33,11 @@ func New(entry connectorcatalog.Entry) (*Source, error) {
 
 // NewDefinition creates a runnable source from a connector definition.
 func NewDefinition(definition connectordefinitions.Definition) (*Source, error) {
+	return NewDefinitionWithValidationOptions(definition, ValidationOptions{})
+}
+
+// NewDefinitionWithValidationOptions creates a runnable source for contract validation.
+func NewDefinitionWithValidationOptions(definition connectordefinitions.Definition, validationOptions ValidationOptions) (*Source, error) {
 	definition, err := connectordefinitions.Normalize(definition)
 	if err != nil {
 		return nil, err
@@ -60,6 +70,8 @@ func NewDefinition(definition connectordefinitions.Definition) (*Source, error) 
 		DefaultFamily:               families[0].Name,
 		RequireTenantID:             true,
 		AuthModel:                   definition.Auth.Model,
+		TokenHeader:                 definition.Auth.TokenHeader,
+		TokenScheme:                 definition.Auth.TokenScheme,
 		OAuthTokenURL:               definition.Auth.TokenURL,
 		OAuthScopes:                 definition.Auth.Scopes,
 		OAuthTokenParams:            definition.Auth.TokenParams,
@@ -71,6 +83,7 @@ func NewDefinition(definition connectordefinitions.Definition) (*Source, error) 
 	if err != nil {
 		return nil, err
 	}
+	inner.AllowLoopbackBaseURL = validationOptions.AllowLoopbackBaseURL
 	source := &Source{inner: inner}
 	if definition.Transport.Verification != nil {
 		source.verificationPath = strings.TrimSpace(definition.Transport.Verification.Path)
@@ -141,18 +154,19 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		CursorParam:           cursorParam(resource.Pagination),
 		NextCursorKeys:        nextCursorKeys(resource.Pagination),
 		HasMoreKey:            hasMoreKey(resource.Pagination),
+		LinkHeader:            linkHeader(resource.Pagination),
 		PageFirstCursor:       pageFirstCursor(resource.Pagination),
 		URNKind:               firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
 		IDKeys:                idKeys(resource, class),
 		TimestampKeys:         timestampKeys(resource),
 		Attributes:            attributePaths(resource, class),
 		StaticAttributes:      staticAttributes(sourceID, name, class),
-		Config:                familyConfig(resource.Config),
+		Config:                familyConfig(resource),
 		PageSizeParams:        pageSizeParams(resource.Pagination),
-		DisablePageSize:       read.DisablePageSize,
+		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
 		ListKeys:              listKeys(resource),
 		MapRecords:            cloneStringMap(read.MapRecords),
-		Singleton:             read.Singleton,
+		Singleton:             read.Singleton || resource.Singleton,
 		IncrementalWatermark:  resource.Incremental != nil && strings.TrimSpace(resource.Incremental.State) == "high_watermark",
 		Method:                method,
 	}, nil
@@ -165,18 +179,45 @@ func cursorParam(pagination *connectordefinitions.PaginationSpec) string {
 	return firstNonEmpty(pagination.CursorParam, pagination.PageParam, pagination.OffsetParam)
 }
 
+func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
+	if pagination == nil {
+		return nil
+	}
+	if len(pagination.NextCursorKeys) > 0 {
+		return append([]string(nil), pagination.NextCursorKeys...)
+	}
+	key := cursorJSONPathKey(pagination.CursorJSONPath)
+	if key == "" {
+		return nil
+	}
+	return []string{key}
+}
+
+func cursorJSONPathKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "$" {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "$.")
+	path = strings.TrimPrefix(path, ".")
+	if path == "" || strings.ContainsAny(path, "[]*") {
+		return ""
+	}
+	return path
+}
+
+func linkHeader(pagination *connectordefinitions.PaginationSpec) string {
+	if pagination == nil || strings.TrimSpace(pagination.Type) != "link" {
+		return ""
+	}
+	return firstNonEmpty(pagination.LinkHeader, "Link")
+}
+
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
 	if pagination == nil || strings.TrimSpace(pagination.Type) != "page" || strings.TrimSpace(pagination.PageParam) == "" {
 		return ""
 	}
 	return strconv.Itoa(pagination.StartPage)
-}
-
-func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
-	if pagination == nil {
-		return nil
-	}
-	return append([]string(nil), pagination.NextCursorKeys...)
 }
 
 func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
@@ -186,15 +227,17 @@ func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
 	return strings.TrimSpace(pagination.HasMoreKey)
 }
 
-func familyConfig(config *connectordefinitions.FamilyConfigSpec) jsonapi.FamilyConfig {
-	if config == nil {
-		return jsonapi.FamilyConfig{}
+func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyConfig {
+	out := jsonapi.FamilyConfig{
+		StaticQuery: cloneStringMap(resource.StaticQuery),
+		ConfigQuery: cloneStringMap(resource.ConfigQuery),
 	}
-	return jsonapi.FamilyConfig{
-		StaticQuery:      cloneStringMap(config.StaticQuery),
-		ConfigQuery:      cloneStringMap(config.ConfigQuery),
-		ConfigAttributes: cloneStringMap(config.ConfigAttributes),
+	if resource.Config != nil {
+		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
+		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
+		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 	}
+	return out
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
@@ -202,6 +245,20 @@ func cloneStringMap(values map[string]string) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func mergeStringMaps(base map[string]string, values map[string]string) map[string]string {
+	out := cloneStringMap(base)
+	if len(values) == 0 {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]string, len(values))
+	}
 	for key, value := range values {
 		out[key] = value
 	}
@@ -217,6 +274,10 @@ func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
 		return nil
 	}
 	return values
+}
+
+func disablePageSize(pagination *connectordefinitions.PaginationSpec) bool {
+	return pagination != nil && pagination.DisablePageSize
 }
 
 func listKeys(resource connectordefinitions.ResourceFamily) []string {

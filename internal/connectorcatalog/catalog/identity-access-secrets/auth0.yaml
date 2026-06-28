@@ -1,0 +1,130 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-auth0
+    tenant_id: builtin_catalog
+    source_id: auth0
+    display_name: Auth0
+    description: "Collects users, roles, and audit events from Auth0 and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
+    categories:
+    - identity
+    - access
+    config_fields:
+    - key: domain
+      label: Tenant domain
+      required: true
+      placeholder: example.us.auth0.com
+      help: Auth0 tenant domain used for Management API requests.
+    auth:
+      model: oauth_client_credentials
+      token_url: https://${config.domain}/oauth/token
+      scopes:
+      - read:users
+      - read:roles
+      - read:logs
+      token_params:
+        audience: https://${config.domain}/api/v2/
+      credential_fields:
+      - key: client_id
+        reference_only: true
+      - key: client_secret
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://${config.domain}/api/v2
+      verification:
+        method: GET
+        path: "/users"
+        expect_status:
+        - 200
+    resource_families:
+    - id: users
+      label: Users
+      path: "/users"
+      method: GET
+      record_selector: "$[*]"
+      id_field: user_id
+      name_field: name
+      event:
+        kind: auth0.users
+        schema_ref: auth0/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: Identity users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 0
+        page_size: 100
+    - id: roles
+      label: Roles
+      path: "/roles"
+      method: GET
+      record_selector: "$[*]"
+      id_field: id
+      name_field: name
+      event:
+        kind: auth0.roles
+        schema_ref: auth0/roles/v1
+      projection:
+        template: identity_group
+      coverage:
+      - id: roles
+        type: entity_family
+        title: Identity roles
+        families:
+        - roles
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: page
+        page_param: page
+        page_size_param: per_page
+        start_page: 0
+        page_size: 100
+    - id: audit_events
+      label: Audit events
+      path: "/logs"
+      method: GET
+      record_selector: "$[*]"
+      id_field: log_id
+      event:
+        kind: auth0.audit_events
+        schema_ref: auth0/audit_events/v1
+      projection:
+        template: audit_event
+      coverage:
+      - id: audit_events
+        type: audit_event
+        title: Audit events
+        families:
+        - audit_events
+        support: partial
+        high_value: true
+        evidence_types:
+        - logging_configuration
+        control_domains:
+        - logging_monitoring
+      pagination:
+        type: cursor
+        cursor_param: from
+        cursor_json_path: "$[-1].log_id"
+        page_size_param: take
+        page_size: 100

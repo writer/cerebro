@@ -5,6 +5,8 @@ This guide describes how to host the Cerebro bootstrap service using public, env
 Use it with:
 
 - [`README.md`](../../README.md) for the current runtime overview and quick start.
+- [`docs/operations/runtime-profiles.md`](runtime-profiles.md) for profile-specific dependencies, config, and checks.
+- [`docs/operations/deployment-readiness.md`](deployment-readiness.md) for the operator journey and readiness receipt.
 - [`docs/operations/cloud-deployment.md`](cloud-deployment.md) for AWS, GCP, Azure, and Pulumi templates.
 - [`docs/reference/configuration.md`](../reference/configuration.md) for a short configuration baseline.
 - [`docs/reference/config-env-vars.md`](../reference/config-env-vars.md) for the current environment variable reference.
@@ -35,7 +37,7 @@ By default the service listens on `:8080`. Override that with `CEREBRO_HTTP_ADDR
 
 ## Hosting profiles
 
-Choose the smallest profile that matches the operations you need.
+Choose the smallest profile that matches the operations you need. See [Runtime profiles](runtime-profiles.md) for profile recipes and post-deploy checks.
 
 | Profile | Dependencies | Good for | Not enough for |
 | --- | --- | --- | --- |
@@ -148,6 +150,23 @@ spec:
 ```
 
 Use your orchestrator's equivalent primitives if you run on ECS, Nomad, systemd, a PaaS, or another scheduler. The hosting contract is the same: run the container, inject configuration, attach backing stores, expose HTTP through a trusted TLS boundary, and monitor health.
+
+## Infrastructure responsibilities
+
+This repository defines the runtime contract. Your deployment system owns the concrete infrastructure values.
+
+| Area | Cerebro release provides | Deployment system owns |
+| --- | --- | --- |
+| Runtime artifact | Container image, binary behavior, CLI/API contracts, source catalog, and release contract | Immutable tag selection, registry mirror, rollout record, and rollback tag |
+| API service | HTTP listen address, health routes, auth behavior, proxy-aware origin settings, and metrics | Load balancer, TLS certificate, DNS, ingress rules, replica count, CPU and memory sizing |
+| Backing stores | Supported Postgres, NATS JetStream, Neo4j/Aura, and optional cache configuration | Store provisioning, network access, backups, retention, maintenance windows, and capacity limits |
+| Secrets | Environment variable names, `env:` source config references, and file-backed secret support | Secret values, secret manager paths, rotation, and service-identity access |
+| Source runtimes | Source capabilities, deploy manifests, required secret names, and runtime commands | Runtime IDs, tenant bindings, schedules, concurrency, provider credentials, and provider rate-limit policy |
+| Scheduled jobs | CLI commands for sync, ingest, rebuild, and health checks | Scheduler type, cadence, retry policy, job resources, overlap prevention, and failure routing |
+| Observability | Metrics, structured events, trace attributes, and portable alert examples | Collector configuration, dashboards, alert thresholds, paging routes, and log retention |
+| Approvals | Public release and contract shape | Change review, production gates, emergency procedure, and environment-specific deploy notes |
+
+Do not publish live account IDs, hostnames, tenant IDs, secret paths, provider credentials, source schedules, or rollout steps in this repository. Keep those values in the deployment repository or platform records that operate the environment.
 
 ## Required network shape
 
@@ -449,6 +468,7 @@ Before first traffic:
 13. Run a low-risk source preview or source runtime check.
 14. Verify logs and metrics reach your observability platform.
 15. Document rollback as image tag revert plus config revert.
+16. Run `cerebro deploy preflight` and store the redacted receipt with deployment records.
 
 During rollout:
 

@@ -40,6 +40,7 @@ type grcTablesReady struct {
 	inventoryAssetReport bool
 	findingDisposition   bool
 	customDashboards     bool
+	vendorDiscovery      bool
 }
 
 // Store is the Postgres-backed current-state store implementation.

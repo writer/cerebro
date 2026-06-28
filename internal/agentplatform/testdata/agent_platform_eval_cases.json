@@ -151,5 +151,28 @@
       "required_provenance_surfaces": ["defensive-simulation", "graph-neighborhood"],
       "required_integration_strategy_ids": ["defensive-simulation-harness", "security-memory"]
     }
+  },
+  {
+    "id": "claim-verification-platform-contract",
+    "scenario_id": "claim-verification",
+    "description": "Agent conclusions are typed claims with supporting evidence, counterevidence, freshness, coverage caveats, and a stage ceiling.",
+    "expect": {
+      "required_capability_ids": ["agent-claim-verification"],
+      "required_runtime_events": ["claim.verification.completed", "verifier.completed"],
+      "required_provenance_surfaces": ["claim-verification", "verifier-result", "evidence-record", "source-coverage"],
+      "required_rubric_verifier_ids": ["claim-verification"],
+      "required_integration_strategy_ids": ["claim-verification", "verifier-layer"]
+    }
+  },
+  {
+    "id": "agent-work-ledger-platform-contract",
+    "scenario_id": "agent-work-ledger",
+    "description": "Agent investigations persist objectives, hypotheses, claim checks, verifier results, action proposals, traces, and closure state.",
+    "expect": {
+      "required_capability_ids": ["agent-work-ledger"],
+      "required_runtime_events": ["agent.work.created", "agent.work.updated", "claim.verification.completed", "agent.work.closed"],
+      "required_provenance_surfaces": ["agent-work", "claim-verification", "replay-record", "security-memory"],
+      "required_integration_strategy_ids": ["agent-work-ledger", "security-memory"]
+    }
   }
 ]

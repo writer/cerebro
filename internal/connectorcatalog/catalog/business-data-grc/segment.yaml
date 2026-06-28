@@ -1,0 +1,113 @@
+entries:
+- classifier_output: supported
+  definition:
+    schema_version: cerebro.integration/v1
+    id: builtin-segment
+    tenant_id: builtin_catalog
+    source_id: segment
+    display_name: Segment
+    description: "Collects workspaces, IAM users, and sources from Segment and projects them into the Cerebro graph as assets and users for owner, account, evidence, and compliance context."
+    categories:
+    - data
+    - customer_data
+    auth:
+      model: bearer_token
+      credential_fields:
+      - key: token
+        secret: true
+        reference_only: true
+    transport:
+      base_url: https://api.segmentapis.com
+      verification:
+        method: GET
+        path: "/workspaces"
+        expect_status:
+        - 200
+    resource_families:
+    - id: workspaces
+      label: Workspaces
+      path: "/workspaces"
+      method: GET
+      record_selector: "$.workspaces[*]"
+      id_field: id
+      event:
+        kind: segment.workspaces
+        schema_ref: segment/workspaces/v1
+      projection:
+        template: asset
+      coverage:
+      - id: workspaces
+        type: entity_family
+        title: Workspaces
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.pagination.next"
+        page_size_param: count
+        page_size: 100
+    - id: users
+      label: IAM users
+      path: "/users"
+      method: GET
+      record_selector: "$.users[*]"
+      id_field: id
+      event:
+        kind: segment.users
+        schema_ref: segment/users/v1
+      projection:
+        template: identity_user
+      coverage:
+      - id: users
+        type: entity_family
+        title: IAM users
+        families:
+        - users
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.pagination.next"
+        page_size_param: count
+        page_size: 100
+    - id: sources
+      label: Sources
+      path: "/sources"
+      method: GET
+      record_selector: "$.sources[*]"
+      id_field: id
+      event:
+        kind: segment.sources
+        schema_ref: segment/sources/v1
+      projection:
+        template: asset
+      coverage:
+      - id: sources
+        type: entity_family
+        title: Sources
+        families:
+        - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.pagination.next"
+        page_size_param: count
+        page_size: 100

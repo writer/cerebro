@@ -23,7 +23,7 @@ var generatedOktaRules = []policyRuleConfig{
 				{FrameworkName: "NIST 800-53 r5", ControlID: "AC-2"},
 				{FrameworkName: "NIST 800-53 r5", ControlID: "AC-6"},
 				{FrameworkName: "PCI DSS v4.0.1", ControlID: "7.2"},
-				{FrameworkName: "SOC 2", ControlID: "CC6"},
+				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 				{FrameworkName: "CIS Controls v8", ControlID: "5"},
 				{FrameworkName: "CIS Controls v8", ControlID: "6"},
 			},

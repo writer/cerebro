@@ -1,0 +1,66 @@
+entries:
+  - source_id: asana
+    grade: fixture_validated
+    last_validated_at: "2026-06-28T00:00:00Z"
+    evidence:
+      - type: fixture
+        ref: internal/connectorvalidation/testdata/cassettes/asana/users.json
+        resource_family: users
+        test: connector-contract-check
+    resource_families:
+      - id: users
+        grade: fixture_validated
+        evidence_refs:
+          - internal/connectorvalidation/testdata/cassettes/asana/users.json
+  - source_id: box
+    grade: fixture_validated
+    last_validated_at: "2026-06-28T00:00:00Z"
+    evidence:
+      - type: fixture
+        ref: internal/connectorvalidation/testdata/cassettes/box/users.json
+        resource_family: users
+        test: connector-contract-check
+    resource_families:
+      - id: users
+        grade: fixture_validated
+        evidence_refs:
+          - internal/connectorvalidation/testdata/cassettes/box/users.json
+  - source_id: duo_security
+    grade: fixture_validated
+    last_validated_at: "2026-06-28T00:00:00Z"
+    evidence:
+      - type: fixture
+        ref: internal/connectorvalidation/testdata/cassettes/duo_security/users.json
+        resource_family: users
+        test: connector-contract-check
+    resource_families:
+      - id: users
+        grade: fixture_validated
+        evidence_refs:
+          - internal/connectorvalidation/testdata/cassettes/duo_security/users.json
+  - source_id: jamf_pro
+    grade: fixture_validated
+    last_validated_at: "2026-06-28T00:00:00Z"
+    evidence:
+      - type: fixture
+        ref: internal/connectorvalidation/testdata/cassettes/jamf_pro/users.json
+        resource_family: users
+        test: connector-contract-check
+    resource_families:
+      - id: users
+        grade: fixture_validated
+        evidence_refs:
+          - internal/connectorvalidation/testdata/cassettes/jamf_pro/users.json
+  - source_id: okta
+    grade: fixture_validated
+    last_validated_at: "2026-06-28T00:00:00Z"
+    evidence:
+      - type: fixture
+        ref: internal/connectorvalidation/testdata/cassettes/okta/users.json
+        resource_family: users
+        test: connector-contract-check
+    resource_families:
+      - id: users
+        grade: fixture_validated
+        evidence_refs:
+          - internal/connectorvalidation/testdata/cassettes/okta/users.json

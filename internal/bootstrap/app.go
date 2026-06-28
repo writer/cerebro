@@ -2119,6 +2119,14 @@ func grcInventoryAssetReportStore(store ports.StateStore) ports.GRCInventoryAsse
 	return reportStore
 }
 
+func grcVendorDiscoveryDecisionStore(store ports.StateStore) ports.GRCVendorDiscoveryDecisionStore {
+	decisionStore, ok := store.(ports.GRCVendorDiscoveryDecisionStore)
+	if !ok || isNilInterface(decisionStore) {
+		return nil
+	}
+	return decisionStore
+}
+
 func grcFindingDispositionStore(store ports.StateStore) ports.GRCFindingDispositionStore {
 	dispositionStore, ok := store.(ports.GRCFindingDispositionStore)
 	if !ok || isNilInterface(dispositionStore) {

@@ -6,7 +6,7 @@ The `policies/` tree is the checked-in authoring catalog for generated policy fi
 
 Policies are generated into Go rule definitions in `internal/findings/policy_rule_catalog_gen.go` with `make policy-rule-generate`. The generated policy rules register in the built-in `policy` rule pack, publish auditor-facing control refs in `internal/findings/public_detection_catalog.json`, and evaluate either dedicated `policy.evidence` / `policy.result` events that identify a failed `policy_id`, `check_id`, or `rule_id`, or bounded graph queries that emit graph-anchored policy findings.
 
-Generated rule copy, evidence type, assessment methods, false-positive guidance, and auditor notes are enriched from `internal/compliance/policy_rule_extensions.yaml`; see `docs/domains/policy-rule-extensions.md`. Control pack authoring, custom frameworks, and selected control coverage are documented in `docs/domains/compliance-controls.md`.
+Generated rule copy, evidence type, assessment methods, false-positive guidance, and auditor notes are enriched from `internal/compliance/policy_rule_extensions.yaml`; see `docs/domains/policy-rule-extensions.md`. Control pack authoring, custom frameworks, and selected control coverage are documented in `docs/domains/compliance-controls.md`. Spreadsheet-ready mapping tables are generated from the same YAML sources; see `docs/domains/policy-compliance-mapping.md`.
 
 Editor integrations can use the generated JSON Schema at `schemas/policy-finding-rule.schema.json`.
 
@@ -304,6 +304,7 @@ Run focused checks after editing policy DSL files:
 make finding-dsl-check
 make policy-rule-generate
 make detection-catalog-generate
+make policy-mapping-export
 ```
 
 Before opening a PR, run:

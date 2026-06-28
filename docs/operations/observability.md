@@ -180,7 +180,7 @@ Cerebro enables OTEL export when `CEREBRO_OTEL_ENABLED=true` or when an OTLP end
 | `CEREBRO_OTEL_EXPORTER_OTLP_INSECURE` | Allow insecure transport only for loopback HTTP collectors, and only when a loopback OTLP endpoint is set |
 | `CEREBRO_OTEL_TRACES_SAMPLE_RATE` | Float from `0` to `1` |
 | `CEREBRO_OTEL_METRICS_EXPORT_INTERVAL` | Duration such as `30s` or `1m` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=sec-dev` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Standard resource attributes, for example `deployment.environment.name=production` |
 | `CEREBRO_ENVIRONMENT` / `CEREBRO_DEPLOYMENT_ENVIRONMENT` | Environment value used by structured wide events |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | AWS region used by structured wide events when running on ECS |
 | `ECS_CLUSTER` / `ECS_SERVICE_NAME` / `ECS_TASK_FAMILY` / `ECS_TASK_REVISION` | Optional ECS identity used by structured wide events |
