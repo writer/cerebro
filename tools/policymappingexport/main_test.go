@@ -560,6 +560,22 @@ func TestGenerateFilesIncludesWorkbookManifest(t *testing.T) {
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "workbook_manifest.csv"))
 	header := rows[0]
 	csvFileCol := columnIndex(t, header, "csv_file")
+	manifestFiles := map[string]struct{}{}
+	for _, row := range rows[1:] {
+		csvFile := row[csvFileCol]
+		if _, ok := manifestFiles[csvFile]; ok {
+			t.Fatalf("workbook_manifest.csv contains duplicate csv_file %s", csvFile)
+		}
+		manifestFiles[csvFile] = struct{}{}
+	}
+	for _, file := range files {
+		if file.Name == "workbook_manifest.csv" {
+			continue
+		}
+		if _, ok := manifestFiles[file.Name]; !ok {
+			t.Fatalf("workbook_manifest.csv missing generated file %s", file.Name)
+		}
+	}
 
 	overviewRow := findRow(t, rows, csvFileCol, "overview.csv")
 	assertCellContains(t, header, overviewRow, "sheet_order", "1")
