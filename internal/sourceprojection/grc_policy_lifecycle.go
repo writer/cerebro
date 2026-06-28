@@ -280,13 +280,18 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	if recordID == "" {
 		recordID = ctx.event.GetId()
 	}
+	gapURNs := grcPolicyLifecycleEventGapURNs(ctx.attrs)
 	recordURN := firstAttribute(ctx.attrs, "record_urn", "gap_id")
+	if recordType == "governance.gap" && len(gapURNs) > 0 && !strings.Contains(recordURN, ":gap:") {
+		recordURN = gapURNs[0]
+	}
 	if recordURN == "" {
 		recordURN = ctx.resourceURN("policy_lifecycle_subject", recordID)
 	}
 	policyID := firstAttribute(ctx.attrs, "policy_id")
 	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
 	eventURN := addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
+	addGRCPolicyLifecycleGapLinks(ctx, eventURN, recordURN, gapURNs)
 	addGRCPolicyLifecycleTargetPolicyLink(ctx, eventURN, policyID)
 	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
 	addGRCPolicyRiskScenarioReferenceLinks(ctx, recordURN)
@@ -294,6 +299,39 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
 	entities, links := ctx.done()
 	return entities, links, nil
+}
+
+func grcPolicyLifecycleEventGapURNs(attrs map[string]string) []string {
+	gapURNs := []string{}
+	seen := map[string]struct{}{}
+	addGapURN := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" || !strings.Contains(value, ":gap:") {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		gapURNs = append(gapURNs, value)
+		seen[value] = struct{}{}
+	}
+	for _, value := range grcAttributeSequence(attrs["gap_ids"]) {
+		addGapURN(value)
+	}
+	addGapURN(firstAttribute(attrs, "record_urn"))
+	addGapURN(firstAttribute(attrs, "gap_id"))
+	return gapURNs
+}
+
+func addGRCPolicyLifecycleGapLinks(ctx *grcProjectionContext, eventURN string, primaryURN string, gapURNs []string) {
+	if ctx == nil || eventURN == "" {
+		return
+	}
+	for _, gapURN := range gapURNs {
+		if gapURN != "" && gapURN != primaryURN {
+			ctx.addEventLink(eventURN, gapURN, relationAssociatedWith)
+		}
+	}
 }
 
 func grcPolicyURN(tenantID string, provider string, policyID string) string {

@@ -338,7 +338,13 @@ func policyLifecycleActionAttributes(request ActionRequest, definition policyLif
 	attrs["action"] = definition.ID
 	attrs["record_type"] = definition.RecordType
 	attrs["status"] = firstNonEmpty(request.Status, definition.Status)
-	attrs[definition.idAttribute] = firstNonEmpty(recordID, attrs[definition.idAttribute])
+	bulkGapAction := definition.idAttribute == "gap_id" && len(request.GapIDs) > 0
+	if bulkGapAction {
+		attrs["record_id"] = firstNonEmpty(attrs["record_id"], recordID)
+		delete(attrs, "gap_id")
+	} else {
+		attrs[definition.idAttribute] = firstNonEmpty(recordID, attrs[definition.idAttribute])
+	}
 	if request.PolicyID != "" {
 		attrs["policy_id"] = request.PolicyID
 	}
@@ -416,8 +422,10 @@ func policyLifecycleActionSpecificAttributes(attrs map[string]string, request Ac
 	case "governance_gap.assign_owner", "governance_gap.set_review_date", "governance_gap.link_policy", "governance_gap.map_controls", "governance_gap.add_treatment", "governance_gap.set_treatment_date", "governance_gap.link_source_document", "governance_gap.attach_evidence", "governance_gap.acknowledge", "governance_gap.snooze", "governance_gap.accept", "governance_gap.resolve":
 		attrs["gap_state"] = firstNonEmpty(attrs["gap_state"], definition.Status)
 		attrs["state_updated_at"] = firstNonEmpty(attrs["state_updated_at"], now.Format(time.RFC3339))
-		attrs["record_urn"] = firstNonEmpty(attrs["record_urn"], attrs["gap_id"])
-		attrs["record_id"] = firstNonEmpty(attrs["record_id"], attrs["gap_id"])
+		if len(request.GapIDs) == 0 {
+			attrs["record_urn"] = firstNonEmpty(attrs["record_urn"], attrs["gap_id"])
+			attrs["record_id"] = firstNonEmpty(attrs["record_id"], attrs["gap_id"])
+		}
 		if definition.ID == "governance_gap.set_review_date" {
 			attrs["review_due_at"] = firstNonEmpty(attrs["review_due_at"], request.DueAt)
 		}

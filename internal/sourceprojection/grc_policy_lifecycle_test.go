@@ -214,6 +214,43 @@ func TestProjectGRCPolicyLifecycleEventPreservesGovernanceGapState(t *testing.T)
 	assertProjectedLink(t, state, operatorURN, relationActedOn, lifecycleEventURN)
 }
 
+func TestProjectGRCPolicyLifecycleEventLinksBulkGapIDs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "bulk-gap-event",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_lifecycle_event",
+		Attributes: map[string]string{
+			"provider":        "policyops",
+			"source_event_id": "bulk-gap-event",
+			"record_type":     "governance.gap",
+			"record_id":       "bulk-gap-owner-controls",
+			"gap_ids":         "urn:document:secure-development:gap:owner,urn:document:secure-development:gap:controls",
+			"action":          "governance_gap.assign_owner",
+			"status":          "in_progress",
+			"actor_user_id":   "operator-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	lifecycleEventURN := "urn:cerebro:writer:policy_lifecycle_event:policyops:bulk-gap-event"
+	firstGapURN := "urn:document:secure-development:gap:owner"
+	secondGapURN := "urn:document:secure-development:gap:controls"
+	syntheticURN := "urn:cerebro:writer:policy_lifecycle_subject:policyops:bulk-gap-owner-controls"
+	eventEntity := state.entities[lifecycleEventURN]
+	if eventEntity == nil || eventEntity.Attributes["record_id"] != "bulk-gap-owner-controls" || eventEntity.Attributes["record_urn"] != firstGapURN {
+		t.Fatalf("lifecycle event entity = %#v, want batch record id and first gap subject", eventEntity)
+	}
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, firstGapURN)
+	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, secondGapURN)
+	assertProjectedLinkMissing(t, state, lifecycleEventURN, relationAssociatedWith, syntheticURN)
+}
+
 func TestProjectGRCPolicyLifecycleEventLinksTargetPolicy(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

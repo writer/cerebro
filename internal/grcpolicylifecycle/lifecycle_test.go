@@ -416,6 +416,51 @@ func TestGovernanceGapEventsApplyStateTraceAndRollups(t *testing.T) {
 	}
 }
 
+func TestGovernanceGapAssignOwnerEventsReassignOwner(t *testing.T) {
+	document := grcPolicyDocumentItem{
+		ID:            "secure-development",
+		URN:           "urn:document:secure-development",
+		Title:         "Secure Development Policy",
+		DocumentClass: "policy",
+		Status:        "approved",
+	}
+	gapID := document.URN + ":gap:owner"
+	events := []grcPolicyLifecycleEventItem{
+		{
+			ID:         "event-1",
+			RecordURN:  gapID,
+			RecordType: "governance.gap",
+			Action:     "governance_gap.assign_owner",
+			Status:     "in_progress",
+			Actor:      "first@example.com",
+			OccurredAt: "2026-02-02T12:00:00Z",
+			Attributes: map[string]string{
+				"gap_id":            gapID,
+				"assigned_user_ids": "first@example.com",
+			},
+		},
+		{
+			ID:         "event-2",
+			RecordURN:  gapID,
+			RecordType: "governance.gap",
+			Action:     "governance_gap.assign_owner",
+			Status:     "in_progress",
+			Actor:      "second@example.com",
+			OccurredAt: "2026-02-03T12:00:00Z",
+			Attributes: map[string]string{
+				"gap_id":            gapID,
+				"assigned_user_ids": "second@example.com",
+			},
+		},
+	}
+
+	gaps := grcPolicyGovernanceGapsFor([]grcPolicyDocumentItem{document}, nil, grcPolicyGovernanceRules("baseline"), events, time.Date(2026, 2, 3, 12, 0, 0, 0, time.UTC))
+	ownerGap, ok := grcPolicyGapFor(gaps, "document", "secure-development", "Missing owner")
+	if !ok || ownerGap.Owner != "second@example.com" || len(ownerGap.Trace) != 2 {
+		t.Fatalf("owner gap = %+v, want reassigned owner with both trace events", ownerGap)
+	}
+}
+
 func TestStrictGovernanceRulesRequireDocumentEvidence(t *testing.T) {
 	document := grcPolicyDocumentItem{
 		ID:              "secure-development",
@@ -712,6 +757,34 @@ func TestBuildActionEventRejectsGapIDAndGapIDsTogether(t *testing.T) {
 	}, time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC))
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("BuildActionEvent() error = %v, want invalid request", err)
+	}
+}
+
+func TestBuildActionEventKeepsBulkGapIDsSeparate(t *testing.T) {
+	gapIDs := []string{"urn:document:gap:owner", "urn:document:gap:controls"}
+	event, _, err := BuildActionEvent(ActionRequest{
+		Action: "governance_gap.assign_owner",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:    "writer",
+			SourceID:    "grc",
+			ActorUserID: "operator@example.com",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			GapIDs: gapIDs,
+		},
+		ActionRequestAssignments: ActionRequestAssignments{
+			Assignees: []string{"owner@example.com"},
+		},
+	}, time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("BuildActionEvent() error = %v", err)
+	}
+	attrs := event.GetAttributes()
+	if attrs["gap_ids"] != strings.Join(gapIDs, ",") || attrs["gap_id"] != "" || attrs["record_urn"] != "" {
+		t.Fatalf("gap attrs = %#v, want real gap_ids without single gap_id or record_urn", attrs)
+	}
+	if attrs["record_id"] == "" || strings.Contains(attrs["record_id"], ":gap:") {
+		t.Fatalf("record_id = %q, want batch record id", attrs["record_id"])
 	}
 }
 
