@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/grcpolicylifecycle"
 	"github.com/writer/cerebro/internal/grcproductareas"
 	"github.com/writer/cerebro/internal/grctrends"
+	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/grcvendor"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
@@ -784,16 +785,20 @@ func grcTelemetryErrorKind(err error) string {
 		return "llm_authentication_failed"
 	case errors.Is(err, graphagent.ErrLLMAccessDenied):
 		return "llm_access_denied"
+	case errors.Is(err, grcupload.ErrRemote):
+		return "parser_remote_error"
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
-		errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, graphquery.ErrRuntimeUnavailable), errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
+		errors.Is(err, grcupload.ErrRuntimeUnavailable),
 		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
-		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, grcpolicylifecycle.ErrInvalidRequest),
+		errors.Is(err, grcupload.ErrInvalidRequest),
 		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		return "invalid_request"
@@ -1454,13 +1459,17 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable),
 		errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
+		errors.Is(err, grcupload.ErrRuntimeUnavailable),
 		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, grcupload.ErrRemote):
+		statusCode = http.StatusBadGateway
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, grcpolicylifecycle.ErrInvalidRequest),
+		errors.Is(err, grcupload.ErrInvalidRequest),
 		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest

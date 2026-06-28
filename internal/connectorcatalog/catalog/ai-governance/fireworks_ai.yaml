@@ -1,0 +1,168 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: account_id
+          label: Account ID
+          required: true
+      description: Collects model deployments, service accounts, audit logs, and billing metrics from Fireworks AI and projects them into the Cerebro graph as deployments, users, audit events, and assets for model access, API key, usage, and workspace governance context.
+      display_name: Fireworks AI
+      id: builtin-fireworks-ai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - model_deployments
+              high_value: true
+              id: model_deployments
+              support: partial
+              title: Model deployments
+              type: deployment_state
+          event:
+            kind: fireworks_ai.model_deployments
+            required_payload_fields:
+              - id
+            schema_ref: fireworks_ai/model_deployments/v1
+            urn_kind: fireworks_ai_model_deployments
+          id: model_deployments
+          id_field: id
+          label: Model deployments
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/accounts/${config.account_id}/deployments
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.deployments[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - service_accounts
+              high_value: true
+              id: service_accounts
+              support: partial
+              title: Service accounts
+              type: app_entitlement
+          event:
+            kind: fireworks_ai.service_accounts
+            required_payload_fields:
+              - id
+            schema_ref: fireworks_ai/service_accounts/v1
+            urn_kind: fireworks_ai_service_accounts
+          id: service_accounts
+          id_field: id
+          label: Service accounts
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/accounts/${config.account_id}/serviceAccounts
+          projection:
+            fields:
+              display_name: name
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.serviceAccounts[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_logs
+              high_value: true
+              id: audit_logs
+              support: partial
+              title: Audit logs
+              type: audit_event
+          event:
+            kind: fireworks_ai.audit_logs
+            required_payload_fields:
+              - id
+            schema_ref: fireworks_ai/audit_logs/v1
+            urn_kind: fireworks_ai_audit_logs
+          id: audit_logs
+          id_field: id
+          label: Audit logs
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/accounts/${config.account_id}/auditLogs
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.auditLogs[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - billing_metrics
+              high_value: true
+              id: billing_metrics
+              support: partial
+              title: Billing metrics
+              type: entity_family
+          event:
+            kind: fireworks_ai.billing_metrics
+            required_payload_fields:
+              - id
+            schema_ref: fireworks_ai/billing_metrics/v1
+            urn_kind: fireworks_ai_billing_metrics
+          id: billing_metrics
+          id_field: id
+          label: Billing metrics
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/accounts/${config.account_id}/billing/metrics
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: fireworks_ai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.fireworks.ai
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-heroku
-    tenant_id: builtin_catalog
-    source_id: heroku
-    display_name: Heroku
-    description: "Collects apps, collaborators, and audit events from Heroku and projects them into the Cerebro graph as assets, users, and audit events for repository, build, deployment, and release context."
-    categories:
-    - devops
-    - paas
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.heroku.com
-      verification:
-        method: GET
-        path: "/apps"
-        expect_status:
-        - 200
-    resource_families:
-    - id: apps
-      label: Apps
-      path: "/apps"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: heroku.apps
-        schema_ref: heroku/apps/v1
-      projection:
-        template: asset
-      coverage:
-      - id: apps
-        type: entity_family
-        title: Apps
-        families:
-        - apps
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: collaborators
-      label: Collaborators
-      path: "/collaborators"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: heroku.collaborators
-        schema_ref: heroku/collaborators/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: collaborators
-        type: entity_family
-        title: Collaborators
-        families:
-        - collaborators
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/audit-events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: heroku.audit_events
-        schema_ref: heroku/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - devops
+        - paas
+      description: Collects apps, collaborators, and audit events from Heroku and projects them into the Cerebro graph as assets, users, and audit events for repository, build, deployment, and release context.
+      display_name: Heroku
+      id: builtin-heroku
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - apps
+              high_value: true
+              id: apps
+              support: partial
+              title: Apps
+              type: entity_family
+          event:
+            kind: heroku.apps
+            required_payload_fields:
+              - id
+            schema_ref: heroku/apps/v1
+            urn_kind: heroku_apps
+          id: apps
+          id_field: id
+          label: Apps
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /apps
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - collaborators
+              high_value: true
+              id: collaborators
+              support: partial
+              title: Collaborators
+              type: entity_family
+          event:
+            kind: heroku.collaborators
+            required_payload_fields:
+              - id
+            schema_ref: heroku/collaborators/v1
+            urn_kind: heroku_collaborators
+          id: collaborators
+          id_field: id
+          label: Collaborators
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /collaborators
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: heroku.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: heroku/audit_events/v1
+            urn_kind: heroku_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /audit-events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: heroku
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.heroku.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /apps

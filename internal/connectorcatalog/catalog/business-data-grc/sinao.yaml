@@ -1,0 +1,567 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: username
+        label: Username
+        reference_only: true
+        required: true
+      - key: password
+        label: Password
+        reference_only: true
+        required: true
+        secret: true
+      model: basic
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: appid
+      label: Appid
+      required: true
+    description: Collects product, account, organization, rule, access, and productcategory from Sinao and projects them into the Cerebro graph as assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context.
+    display_name: Sinao
+    id: builtin_catalog-sinao
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - product
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Product
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: sinao.product
+        required_payload_fields:
+        - id
+        schema_ref: sinao/product/v1
+        urn_kind: sinao_product
+      event_kind: product
+      id: product
+      id_field: id
+      label: Product
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/products"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account
+        high_value: true
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.account
+        required_payload_fields:
+        - id
+        schema_ref: sinao/account/v1
+        urn_kind: sinao_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/accounts/"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - organization
+        high_value: true
+        id: organization
+        support: partial
+        title: Organization
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.organization
+        required_payload_fields:
+        - id
+        schema_ref: sinao/organization/v1
+        urn_kind: sinao_organization
+      event_kind: organization
+      id: organization
+      id_field: id
+      label: Organization
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/apps/${config.appid}/organizations"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - rule
+        high_value: true
+        id: policies
+        support: partial
+        title: Rule
+        type: lifecycle_state
+      default_enabled: true
+      event:
+        kind: sinao.rule
+        required_payload_fields:
+        - id
+        schema_ref: sinao/rule/v1
+        urn_kind: sinao_rule
+      event_kind: rule
+      id: rule
+      id_field: id
+      label: Rule
+      method: GET
+      name_field: conditions
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/rules/"
+      projection:
+        fields:
+          id: id
+          name: conditions
+          policy_id: id
+          policy_name: conditions
+          policy_type: rule
+        template: policy
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - access
+        high_value: true
+        id: access
+        support: partial
+        title: Access
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.access
+        required_payload_fields:
+        - name
+        schema_ref: sinao/access/v1
+        urn_kind: sinao_access
+      event_kind: access
+      id: access
+      id_field: name
+      label: Access
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/apps/${config.appid}/access"
+      projection:
+        fields:
+          id: name
+          name: name
+          resource_id: name
+          resource_name: name
+          resource_type: access
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - productcategory
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Productcategory
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: sinao.productcategory
+        required_payload_fields:
+        - id
+        schema_ref: sinao/productcategory/v1
+        urn_kind: sinao_productcategory
+      event_kind: productcategory
+      id: productcategory
+      id_field: id
+      label: Productcategory
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/productcategory"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - productstock
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Productstock
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: sinao.productstock
+        required_payload_fields:
+        - id
+        schema_ref: sinao/productstock/v1
+        urn_kind: sinao_productstock
+      event_kind: productstock
+      id: productstock
+      id_field: id
+      label: Productstock
+      method: GET
+      name_field: bar_code
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/productstocks"
+      projection:
+        fields:
+          id: id
+          name: bar_code
+          provider_id: id
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - accountcategory
+        high_value: true
+        id: accountcategory
+        support: partial
+        title: Accountcategory
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.accountcategory
+        required_payload_fields:
+        - id
+        schema_ref: sinao/accountcategory/v1
+        urn_kind: sinao_accountcategory
+      event_kind: accountcategory
+      id: accountcategory
+      id_field: id
+      label: Accountcategory
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/accountcategories/"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - accounting_entry
+        high_value: true
+        id: accounting_entry
+        support: partial
+        title: Accounting Entry
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.accounting_entry
+        required_payload_fields:
+        - id
+        schema_ref: sinao/accounting_entry/v1
+        urn_kind: sinao_accounting_entry
+      event_kind: accounting_entry
+      id: accounting_entry
+      id_field: id
+      label: Accounting Entry
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/apps/${config.appid}/accounting_entries/"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - person
+        high_value: true
+        id: person
+        support: partial
+        title: Person
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.person
+        required_payload_fields:
+        - id
+        schema_ref: sinao/person/v1
+        urn_kind: sinao_person
+      event_kind: person
+      id: person
+      id_field: id
+      label: Person
+      method: GET
+      name_field: civility
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/apps/${config.appid}/persons"
+      projection:
+        fields:
+          id: id
+          name: civility
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - invite
+        high_value: true
+        id: invite
+        support: partial
+        title: Invite
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.invite
+        required_payload_fields:
+        - id
+        schema_ref: sinao/invite/v1
+        urn_kind: sinao_invite
+      event_kind: invite
+      id: invite
+      id_field: id
+      label: Invite
+      method: GET
+      name_field: app
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/apps/${config.appid}/access/invite"
+      projection:
+        fields:
+          id: id
+          name: app
+          resource_id: id
+          resource_name: app
+          resource_type: invite
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - apps_organization
+        high_value: true
+        id: apps_organization
+        support: partial
+        title: Apps Organization
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: sinao.apps_organization
+        required_payload_fields:
+        - id
+        schema_ref: sinao/apps_organization/v1
+        urn_kind: sinaos_organization
+      event_kind: apps_organization
+      id: apps_organization
+      id_field: id
+      label: Apps Organization
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/apps/${config.appid}/organization"
+      permissions_needed:
+      - always_allowed
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - product
+      id: product
+      label: Product
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    - default_enabled: true
+      families:
+      - organization
+      id: organization
+      label: Organization
+    - default_enabled: true
+      families:
+      - rule
+      id: rule
+      label: Rule
+    - default_enabled: true
+      families:
+      - access
+      id: access
+      label: Access
+    - default_enabled: true
+      families:
+      - productcategory
+      id: productcategory
+      label: Productcategory
+    - default_enabled: true
+      families:
+      - productstock
+      id: productstock
+      label: Productstock
+    - default_enabled: true
+      families:
+      - accountcategory
+      id: accountcategory
+      label: Accountcategory
+    - default_enabled: true
+      families:
+      - accounting_entry
+      id: accounting_entry
+      label: Accounting Entry
+    - default_enabled: true
+      families:
+      - person
+      id: person
+      label: Person
+    - default_enabled: true
+      families:
+      - invite
+      id: invite
+      label: Invite
+    - default_enabled: true
+      families:
+      - apps_organization
+      id: apps_organization
+      label: Apps Organization
+    source_id: sinao
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.sinao.app/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/apps/${config.appid}/products"

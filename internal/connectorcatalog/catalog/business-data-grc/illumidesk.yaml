@@ -1,0 +1,616 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: user
+      label: User
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: namespace
+      label: Namespace
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: project
+      label: Project
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: team
+      label: Team
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: entity
+      label: Entity
+      required: true
+    description: Collects team, email, notification, deployment, application, and group from IllumiDesk and projects them into the Cerebro graph as alerts, assets, deployments, groups, and users for inventory, access review, audit, risk, and operational context.
+    display_name: IllumiDesk
+    id: builtin_catalog-illumidesk
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - team
+        high_value: true
+        id: team
+        support: partial
+        title: Team
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: illumidesk.team
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/team/v1
+        urn_kind: illumidesk_team
+      event_kind: team
+      id: team
+      id_field: id
+      label: Team
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/teams/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - email
+        high_value: true
+        id: email
+        support: partial
+        title: Email
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: illumidesk.email
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/email/v1
+        urn_kind: illumidesk_email
+      event_kind: email
+      id: email
+      id_field: id
+      label: Email
+      method: GET
+      name_field: address
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/users/${config.user}/emails/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: address
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notification
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notification
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: illumidesk.notification
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/notification/v1
+        urn_kind: illumidesk_notification
+      event_kind: notification
+      id: notification
+      id_field: id
+      label: Notification
+      method: GET
+      name_field: actor
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/${config.namespace}/notifications/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          alert_id: id
+          alert_name: actor
+          alert_severity: actor
+          alert_status: actor
+          id: id
+          name: actor
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - secure_delivery
+        evidence_types:
+        - change_management
+        families:
+        - deployment
+        high_value: true
+        id: deployments
+        support: partial
+        title: Deployment
+        type: deployment_state
+      default_enabled: true
+      event:
+        kind: illumidesk.deployment
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/deployment/v1
+        urn_kind: illumidesk_deployment
+      event_kind: deployment
+      id: deployment
+      id_field: id
+      label: Deployment
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/${config.namespace}/projects/${config.project}/deployments/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          deployment_environment: config
+          deployment_id: id
+          deployment_name: name
+          deployment_status: config
+          id: id
+          name: name
+        template: deployment
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - application
+        high_value: true
+        id: application
+        support: partial
+        title: Application
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: illumidesk.application
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/application/v1
+        urn_kind: illumidesk_application
+      event_kind: application
+      id: application
+      id_field: id
+      label: Application
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/${config.namespace}/oauth/applications/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: application
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - client_secret
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group
+        high_value: true
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: illumidesk.group
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/group/v1
+        urn_kind: illumidesk_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/teams/${config.team}/groups/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - entity
+        high_value: true
+        id: alerts
+        support: partial
+        title: Entity
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: illumidesk.entity
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/entity/v1
+        urn_kind: illumidesk_entity
+      event_kind: entity
+      id: entity
+      id_field: id
+      label: Entity
+      method: GET
+      name_field: actor
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/${config.namespace}/notifications/entity/${config.entity}"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          alert_id: id
+          alert_name: actor
+          alert_severity: actor
+          alert_status: actor
+          id: id
+          name: actor
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - setting
+        high_value: true
+        id: alerts
+        support: partial
+        title: Setting
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: illumidesk.setting
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/setting/v1
+        urn_kind: illumidesk_setting
+      event_kind: setting
+      id: setting
+      id_field: id
+      label: Setting
+      method: GET
+      name_field: email_address
+      pagination:
+        type: none
+      path: "/v1/${config.namespace}/notifications/settings/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          alert_id: id
+          alert_name: email_address
+          alert_severity: email_address
+          alert_status: email_address
+          id: id
+          name: email_address
+        template: alert
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - profile
+        id: profile
+        support: partial
+        title: Profile
+        type: entity_family
+      event:
+        kind: illumidesk.profile
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/profile/v1
+        urn_kind: illumidesk_profile
+      event_kind: profile
+      id: profile
+      id_field: id
+      label: Profile
+      method: GET
+      name_field: username
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/users/profiles/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: username
+          resource_id: id
+          resource_name: username
+          resource_type: profile
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - server_size
+        id: server_size
+        support: partial
+        title: Server Size
+        type: entity_family
+      event:
+        kind: illumidesk.server_size
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/server_size/v1
+        urn_kind: illumidesk_server_size
+      event_kind: server_size
+      id: server_size
+      id_field: id
+      label: Server Size
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/servers/options/server-size/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: server_size
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - card
+        id: card
+        support: partial
+        title: Card
+        type: entity_family
+      event:
+        kind: illumidesk.card
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/card/v1
+        urn_kind: illumidesk_card
+      event_kind: card
+      id: card
+      id_field: id
+      label: Card
+      method: GET
+      name_field: name
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/${config.namespace}/billing/cards/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: card
+        template: asset
+      record_selector: "$[*]"
+      sensitive_payload_paths:
+      - token
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - invoice
+        id: invoice
+        support: partial
+        title: Invoice
+        type: entity_family
+      event:
+        kind: illumidesk.invoice
+        required_payload_fields:
+        - id
+        schema_ref: illumidesk/invoice/v1
+        urn_kind: illumidesk_invoice
+      event_kind: invoice
+      id: invoice
+      id_field: id
+      label: Invoice
+      method: GET
+      name_field: description
+      pagination:
+        limit_param: limit
+        offset_param: offset
+        page_size: 100
+        type: offset
+      path: "/v1/teams/${config.team}/billing/invoices/"
+      permissions_needed:
+      - jwt
+      projection:
+        fields:
+          id: id
+          name: description
+          resource_id: id
+          resource_name: description
+          resource_type: invoice
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - team
+      id: team
+      label: Team
+    - default_enabled: true
+      families:
+      - email
+      id: email
+      label: Email
+    - default_enabled: true
+      families:
+      - notification
+      id: notification
+      label: Notification
+    - default_enabled: true
+      families:
+      - deployment
+      id: deployment
+      label: Deployment
+    - default_enabled: true
+      families:
+      - application
+      id: application
+      label: Application
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - entity
+      id: entity
+      label: Entity
+    - default_enabled: true
+      families:
+      - setting
+      id: setting
+      label: Setting
+    - families:
+      - profile
+      id: profile
+      label: Profile
+    - families:
+      - server_size
+      id: server_size
+      label: Server Size
+    - families:
+      - card
+      id: card
+      label: Card
+    - families:
+      - invoice
+      id: invoice
+      label: Invoice
+    source_id: illumidesk
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.illumidesk.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/teams/"

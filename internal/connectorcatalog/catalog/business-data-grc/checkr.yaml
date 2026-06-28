@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-checkr
-    tenant_id: builtin_catalog
-    source_id: checkr
-    display_name: Checkr
-    description: "Collects access accounts, candidates, and background checks from Checkr and projects them into the Cerebro graph as users and audit events for owner, account, evidence, and compliance context."
-    categories:
-    - background_checks
-    - hr
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.checkr.com
-      verification:
-        method: GET
-        path: "/v1/account"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Access accounts
-      path: "/v1/users"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: checkr.users
-        schema_ref: checkr/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Access accounts
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_href"
-        page_size_param: per_page
-        page_size: 100
-    - id: candidates
-      label: Candidates
-      path: "/v1/candidates"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: checkr.candidates
-        schema_ref: checkr/candidates/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: candidates
-        type: entity_family
-        title: Candidates
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_href"
-        page_size_param: per_page
-        page_size: 100
-    - id: background_checks
-      label: Background checks
-      path: "/v1/reports"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: checkr.background_checks
-        schema_ref: checkr/background_checks/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: background_checks
-        type: audit_event
-        title: Background checks
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_href"
-        page_size_param: per_page
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - background_checks
+        - hr
+      description: Collects access accounts, candidates, and background checks from Checkr and projects them into the Cerebro graph as users and audit events for owner, account, evidence, and compliance context.
+      display_name: Checkr
+      id: builtin-checkr
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Access accounts
+              type: entity_family
+          event:
+            kind: checkr.users
+            required_payload_fields:
+              - id
+            schema_ref: checkr/users/v1
+            urn_kind: checkr_users
+          id: users
+          id_field: id
+          label: Access accounts
+          method: GET
+          pagination:
+            cursor_json_path: $.next_href
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: per_page
+            type: cursor
+          path: /v1/users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: candidates
+              support: partial
+              title: Candidates
+              type: entity_family
+          event:
+            kind: checkr.candidates
+            required_payload_fields:
+              - id
+            schema_ref: checkr/candidates/v1
+            urn_kind: checkr_candidates
+          id: candidates
+          id_field: id
+          label: Candidates
+          method: GET
+          pagination:
+            cursor_json_path: $.next_href
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: per_page
+            type: cursor
+          path: /v1/candidates
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: background_checks
+              support: partial
+              title: Background checks
+              type: audit_event
+          event:
+            kind: checkr.background_checks
+            required_payload_fields:
+              - id
+            schema_ref: checkr/background_checks/v1
+            urn_kind: checkr_background_checks
+          id: background_checks
+          id_field: id
+          label: Background checks
+          method: GET
+          pagination:
+            cursor_json_path: $.next_href
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: per_page
+            type: cursor
+          path: /v1/reports
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: checkr
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.checkr.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/account
