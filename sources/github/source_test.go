@@ -256,10 +256,10 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}{
 		{family: familyAudit, urns: []string{"urn:cerebro:writer:org:writer"}, kinds: []string{"github.audit"}},
 		{family: familyDependabot, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.dependabot_alert"}},
-		{family: familyOrgInventory, urns: []string{"urn:cerebro:writer:org_inventory"}, kinds: []string{"github.org_member", "github.org_installation"}},
+		{family: familyOrgInventory, urns: []string{"urn:cerebro:writer:github_org_inventory:writer"}, kinds: []string{"github.org_member", "github.org_installation"}},
 		{family: familyPullRequest, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.pull_request", "github.pull_request"}},
 		{family: familyRepository, urns: []string{"urn:cerebro:writer:repo:writer/cerebro"}, kinds: []string{"github.code.repository"}},
-		{family: familySecretScanning, urns: []string{"urn:cerebro:writer:secret_scanning"}, kinds: []string{"github.secret_scanning_alert"}},
+		{family: familySecretScanning, urns: []string{"urn:cerebro:writer:github_secret_scanning:writer"}, kinds: []string{"github.secret_scanning_alert"}},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
 			cfg := sourcecdk.NewConfig(map[string]string{"family": tc.family, "token": "test"})
