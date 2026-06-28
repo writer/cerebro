@@ -42,7 +42,7 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 			if string(body) != "policy body" {
 				t.Fatalf("uploaded body = %q, want policy body", string(body))
 			}
-			writeJSON(t, w, http.StatusOK, map[string]string{"file_id": "file-1"})
+			writeJSON(t, w, map[string]string{"file_id": "file-1"})
 		case "/parse":
 			sawParse = true
 			if r.Method != http.MethodPost {
@@ -55,7 +55,7 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 			if request["input"] != "file-1" {
 				t.Fatalf("parse input = %q, want file-1", request["input"])
 			}
-			writeJSON(t, w, http.StatusOK, map[string]any{
+			writeJSON(t, w, map[string]any{
 				"parse_id": "parse-1",
 				"status":   "completed",
 				"result": map[string]any{
@@ -104,9 +104,9 @@ func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/upload":
-			writeJSON(t, w, http.StatusOK, map[string]string{"file_id": "file-1"})
+			writeJSON(t, w, map[string]string{"file_id": "file-1"})
 		case "/parse":
-			writeJSON(t, w, http.StatusOK, map[string]any{
+			writeJSON(t, w, map[string]any{
 				"parse_id":   "parse-1",
 				"status":     "completed",
 				"result_url": serverURL + "/result",
@@ -116,7 +116,7 @@ func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
 			if r.Method != http.MethodGet {
 				t.Fatalf("result method = %s, want GET", r.Method)
 			}
-			writeJSON(t, w, http.StatusOK, map[string]any{
+			writeJSON(t, w, map[string]any{
 				"chunks": []map[string]string{
 					{"content": "Downloaded policy content"},
 				},
@@ -171,7 +171,7 @@ func TestReductoClientPreservesNumericIdentifiers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/upload":
-			writeJSON(t, w, http.StatusOK, map[string]any{"file_id": 12345})
+			writeJSON(t, w, map[string]any{"file_id": 12345})
 		case "/parse":
 			var request map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -180,7 +180,7 @@ func TestReductoClientPreservesNumericIdentifiers(t *testing.T) {
 			if request["input"] != "12345" {
 				t.Fatalf("parse input = %q, want 12345", request["input"])
 			}
-			writeJSON(t, w, http.StatusOK, map[string]any{
+			writeJSON(t, w, map[string]any{
 				"parse_id": 67890,
 				"status":   "completed",
 				"chunks": []map[string]string{
@@ -227,10 +227,10 @@ func TestReductoClientRejectsNonLoopbackHTTPBaseURL(t *testing.T) {
 	}
 }
 
-func writeJSON(t *testing.T, w http.ResponseWriter, status int, payload any) {
+func writeJSON(t *testing.T, w http.ResponseWriter, payload any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		t.Fatalf("write json: %v", err)
 	}
