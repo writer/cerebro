@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: Generated from an OpenAPI description.
+    description: "Collects member, role, device, and query banned user from Stream and projects them into the Cerebro graph as users, groups, and assets for repository, build, deployment, and release context."
     display_name: Stream
     id: builtin_catalog-stream_io_api
     resource_families:

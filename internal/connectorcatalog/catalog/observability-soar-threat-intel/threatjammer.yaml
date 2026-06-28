@@ -21,7 +21,7 @@ entries:
       key: ip_address
       label: Ip Address
       required: true
-    description: The public API open to the users. [Read the docs and learn more.](https://threatjammer.com/docs).
+    description: "Collects activity, all, IP, and reported IP from ThreatJammer and projects them into the Cerebro graph as audit events, assets, and findings for alert, incident, service health, and response context."
     display_name: ThreatJammer
     id: builtin_catalog-threatjammer
     resource_families:

@@ -38,7 +38,7 @@ entries:
       key: testid
       label: Testid
       required: true
-    description: Manage Runscope programmatically.
+    description: "Collects people, test, bucket, agent, integration, and environment from Runscope API and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
     display_name: Runscope API
     id: builtin_catalog-runscope_com
     ingest:

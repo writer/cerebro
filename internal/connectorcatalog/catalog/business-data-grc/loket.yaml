@@ -21,7 +21,7 @@ entries:
       key: employmentid
       label: Employmentid
       required: true
-    description: <span style="color:green">**Is this your first time here? Please check out our [introduction to Loket (API)](./Introduction)**</span>
+    description: "Collects integration, actualorganizationalentity, emailidentity, and customnotification from Loket and projects them into the Cerebro graph as audit events, groups, users, and alerts for owner, account, evidence, and compliance context."
     display_name: Loket
     id: builtin_catalog-loket
     resource_families:

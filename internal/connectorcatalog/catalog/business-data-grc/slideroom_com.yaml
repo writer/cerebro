@@ -17,7 +17,7 @@ entries:
       key: token
       label: Token
       required: true
-    description: SlideRoom provides a RESTful API for exporting data out of your organizations SlideRoom account.
+    description: "Collects name, attributes name, and export from SlideRoom API V2 and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: SlideRoom API V2
     id: builtin_catalog-slideroom_com
     ingest:

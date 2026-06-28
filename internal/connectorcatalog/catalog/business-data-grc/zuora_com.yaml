@@ -25,7 +25,7 @@ entries:
       key: account_key
       label: Account Key
       required: true
-    description: "# Introduction"
+    description: "Collects event trigger, accounting code, callout, hostedpage, product, and accounting period from API Reference: Billing and projects them into the Cerebro graph as audit events, users, alerts, and assets for owner, account, evidence, and compliance context."
     display_name: 'API Reference: Billing'
     id: builtin_catalog-zuora_com
     ingest:

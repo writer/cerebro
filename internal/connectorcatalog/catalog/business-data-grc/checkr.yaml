@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: checkr
     display_name: Checkr
-    description: Checkr connector definition catalog entry for high-value background-check and access resources.
+    description: "Collects access accounts, candidates, and background checks from Checkr and projects them into the Cerebro graph as users and audit events for owner, account, evidence, and compliance context."
     categories:
     - background_checks
     - hr

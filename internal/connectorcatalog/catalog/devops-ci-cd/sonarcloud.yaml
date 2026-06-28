@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: sonarcloud
     display_name: SonarCloud
-    description: SonarCloud connector definition catalog entry for high-value security and operations resources.
+    description: "Collects assets, findings, and vulnerabilities from SonarCloud and projects them into the Cerebro graph as assets, findings, and vulnerabilities for repository, build, deployment, and release context."
     categories:
     - dev
     - code_quality

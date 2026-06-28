@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: dropbox_business
     display_name: Dropbox Business
-    description: Dropbox Business connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, content assets, and audit events from Dropbox Business and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context."
     categories:
     - saas
     - collaboration

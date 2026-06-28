@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: braintree
     display_name: Braintree
-    description: Braintree connector definition catalog entry for high-value security and operations resources.
+    description: "Collects transactions, customers, and audit events from Braintree and projects them into the Cerebro graph as audit events and users for owner, account, evidence, and compliance context."
     categories:
     - business
     - billing

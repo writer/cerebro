@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: observe_platform
     display_name: Observe Platform
-    description: Observe Platform connector definition for high-value enterprise SaaS
-      records.
+    description: "Collects alerts, incidents, monitors, dashboards, and audit events from Observe Platform and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context."
     categories:
     - saas
     - observability_soar_threat_intel

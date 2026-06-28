@@ -17,7 +17,7 @@ entries:
       key: webid
       label: Webid
       required: true
-    description: Swagger Spec file that describes PI Web API
+    description: "Collects search, securityidentity, notificationcontacttemplates search, analysisruleplugin, baseelementtemplate, and assetserver from PI Web API 2018 SP1 Swagger Spec and projects them into the Cerebro graph as audit events, users, alerts, policies, and findings for owner, account, evidence, and compliance context."
     display_name: PI Web API 2018 SP1 Swagger Spec
     id: builtin_catalog-osisoft_com
     ingest:

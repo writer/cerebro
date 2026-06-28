@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "# Endpoint Structure"
+    description: "Collects hooks json, checkout custom fields json, countries json, custom fields json, customer categories json, and customers json from Jumpseller API and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: Jumpseller API
     id: builtin_catalog-jumpseller_com
     ingest:

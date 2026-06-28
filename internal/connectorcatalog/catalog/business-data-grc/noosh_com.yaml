@@ -33,7 +33,7 @@ entries:
       key: user_id
       label: User Id
       required: true
-    description: Full description of Noosh API
+    description: "Collects workgroup, projecthomeuserfield, automaticinvitation, clientworkgroup, supplierworkgroup, and teamtemplate from Noosh API application and projects them into the Cerebro graph as groups, users, and assets for owner, account, evidence, and compliance context."
     display_name: Noosh API application
     id: builtin_catalog-noosh_com
     ingest:

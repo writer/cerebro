@@ -7,7 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: customer_io
     display_name: Customer IO
-    description: Customer IO connector definition for high-value enterprise SaaS records.
+    description: "Collects users, accounts, records, policies, and audit events from Customer IO and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
     categories:
     - saas
     - business_data_grc

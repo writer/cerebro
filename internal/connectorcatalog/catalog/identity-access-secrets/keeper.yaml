@@ -6,7 +6,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: keeper
     display_name: Keeper
-    description: Keeper connector definition catalog entry for high-value security and operations resources.
+    description: "Collects users, secrets, and audit events from Keeper and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context."
     categories:
     - identity
     - secrets

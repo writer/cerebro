@@ -21,7 +21,7 @@ entries:
       key: productid
       label: Productid
       required: true
-    description: Documentation of the Billbee REST API to connect a Billbee account to external aplications.
+    description: "Collects webhook, cloudstorage, custom field, customer, customer addresses, and layout from Billbee API and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
     display_name: Billbee API
     id: builtin_catalog-billbee_io
     ingest:

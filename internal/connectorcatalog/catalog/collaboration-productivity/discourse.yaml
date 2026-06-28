@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: This page contains the documentation on how to use Discourse through API calls.
+    description: "Collects groups json, user actions json, notifications json, and backups json from Discourse and projects them into the Cerebro graph as groups, users, alerts, and assets for workspace, document, message, and collaboration context."
     display_name: Discourse
     id: builtin_catalog-discourse
     resource_families:

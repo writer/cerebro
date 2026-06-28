@@ -12,7 +12,7 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: Generated from an OpenAPI description.
+    description: "Collects event, clusterrole, secret, and serviceaccount from Kubernetes and projects them into the Cerebro graph as audit events, groups, secrets, and users for repository, build, deployment, and release context."
     display_name: Kubernetes
     id: builtin_catalog-kubernetes
     resource_families:

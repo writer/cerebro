@@ -7,8 +7,7 @@ entries:
     tenant_id: builtin_catalog
     source_id: cloudflare_zero_trust
     display_name: Cloudflare Zero Trust
-    description: Cloudflare Zero Trust connector definition for high-value enterprise
-      SaaS records.
+    description: "Collects users, groups, roles, applications, and audit events from Cloudflare Zero Trust and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
     categories:
     - saas
     - identity_access_secrets

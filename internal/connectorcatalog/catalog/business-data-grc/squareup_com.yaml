@@ -58,7 +58,7 @@ entries:
       token_url: https://connect.squareup.com/oauth2/token
     categories:
     - saas
-    description: Client library for accessing the Square Connect APIs
+    description: "Collects activity, bank account, group, and team member booking profile from Square Connect API and projects them into the Cerebro graph as audit events, users, groups, and group memberships for owner, account, evidence, and compliance context."
     display_name: Square Connect API
     id: builtin_catalog-squareup_com
     ingest:
