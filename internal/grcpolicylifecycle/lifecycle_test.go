@@ -639,6 +639,33 @@ func TestBuildActionEventCreatesGovernanceGapEvent(t *testing.T) {
 	}
 }
 
+func TestBuildActionEventKeepsLinkedPolicyTargetSeparate(t *testing.T) {
+	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
+	event, _, err := BuildActionEvent(ActionRequest{
+		Action: "governance_gap.link_policy",
+		ActionRequestScope: ActionRequestScope{
+			TenantID:    "writer",
+			SourceID:    "grc",
+			ActorUserID: "operator@example.com",
+		},
+		ActionRequestTarget: ActionRequestTarget{
+			PolicyID:  "context-policy",
+			GapID:     "urn:document:gap:policy",
+			RecordURN: "urn:document:gap:policy",
+		},
+		ActionRequestAssignments: ActionRequestAssignments{
+			Attributes: map[string]string{"target_policy_id": "linked-policy"},
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("BuildActionEvent() error = %v", err)
+	}
+	attrs := event.GetAttributes()
+	if attrs["policy_id"] != "context-policy" || attrs["target_policy_id"] != "linked-policy" {
+		t.Fatalf("policy attrs = %#v, want context policy and linked target", attrs)
+	}
+}
+
 func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:policy:access", "policy", "Access", map[string]string{
