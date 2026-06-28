@@ -286,7 +286,8 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	}
 	policyID := firstAttribute(ctx.attrs, "policy_id", "target_policy_id")
 	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
-	addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
+	eventURN := addGRCPolicyLifecycleEvent(ctx, recordURN, recordType, recordID, policyID, versionID)
+	addGRCPolicyLifecycleTargetPolicyLink(ctx, eventURN, policyID)
 	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider, ctx.attrs)
 	addGRCPolicyRiskScenarioReferenceLinks(ctx, recordURN)
 	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, recordURN, ctx.provider)
@@ -300,6 +301,10 @@ func grcPolicyURN(tenantID string, provider string, policyID string) string {
 }
 
 func addGRCPolicyReference(ctx *grcProjectionContext, policyID string) string {
+	return addGRCPolicyReferenceWithLabel(ctx, policyID, firstAttribute(ctx.attrs, "policy_name", "name", "title", "policy_id"))
+}
+
+func addGRCPolicyReferenceWithLabel(ctx *grcProjectionContext, policyID string, label string) string {
 	policyID = strings.TrimSpace(policyID)
 	if policyID == "" {
 		return ""
@@ -308,7 +313,7 @@ func addGRCPolicyReference(ctx *grcProjectionContext, policyID string) string {
 	ctx.addReferenceEntity(
 		policyURN,
 		"policy",
-		firstAttribute(ctx.attrs, "policy_name", "name", "title", "policy_id"),
+		firstNonEmptyString(label, policyID),
 		map[string]string{"policy_id": policyID, "policy_type": "policy", "source_system": ctx.provider},
 	)
 	return policyURN
@@ -330,16 +335,16 @@ func addGRCPolicyLifecycleSubjectLinks(ctx *grcProjectionContext, fromURN string
 	}
 }
 
-func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, recordType string, recordID string, policyID string, versionID string) {
+func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, recordType string, recordID string, policyID string, versionID string) string {
 	if ctx == nil || subjectURN == "" {
-		return
+		return ""
 	}
 	eventID := firstAttribute(ctx.attrs, "lifecycle_event_id", "source_event_id")
 	if eventID == "" {
 		eventID = ctx.event.GetId()
 	}
 	if eventID == "" {
-		return
+		return ""
 	}
 	eventURN := ctx.resourceURN("policy_lifecycle_event", eventID)
 	action := firstAttribute(ctx.attrs, "action", "lifecycle_action")
@@ -382,6 +387,23 @@ func addGRCPolicyLifecycleEvent(ctx *grcProjectionContext, subjectURN string, re
 		ctx.addEventLink(eventURN, policyURN, relationAssociatedWith)
 	}
 	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "actor_user_id", "created_by_user_id", "updated_by_user_id", "author_user_id", "requested_by_user_id", "approver_user_id", "reviewer_user_id", "sent_by_user_id"), eventURN, action)
+	return eventURN
+}
+
+func addGRCPolicyLifecycleTargetPolicyLink(ctx *grcProjectionContext, eventURN string, contextPolicyID string) {
+	targetPolicyID := strings.TrimSpace(firstAttribute(ctx.attrs, "target_policy_id"))
+	if eventURN == "" || targetPolicyID == "" || targetPolicyID == strings.TrimSpace(contextPolicyID) {
+		return
+	}
+	targetPolicyURN := addGRCPolicyReferenceWithLabel(ctx, targetPolicyID, firstAttribute(ctx.attrs, "target_policy_name", "target_policy_title", "target_policy_id"))
+	if targetPolicyURN == "" {
+		return
+	}
+	addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, eventURN, targetPolicyURN, relationAssociatedWith, map[string]string{
+		"event_id":         ctx.event.GetId(),
+		"match_type":       "grc_target_policy_reference",
+		"target_policy_id": targetPolicyID,
+	}))
 }
 
 func sourceProjectionTimestampString(value *timestamppb.Timestamp) string {
