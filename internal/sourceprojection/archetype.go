@@ -156,6 +156,7 @@ func archetypeLibraryNoteProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 			"context_kind":  contextKind,
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, noteURN, relationHasEvidence, linkAttrs))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, noteURN, relationHasContext, linkAttrs))
 	}
 	if scanID := strings.TrimSpace(attrs["scan_id"]); scanID != "" {
 		scanURN := projectionURN(tenantID, "archetype_scan", scanID)

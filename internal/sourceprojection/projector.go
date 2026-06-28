@@ -44,6 +44,7 @@ const (
 	relationDependsOn          = fabriccontract.RelationDependsOn
 	relationGrantsEntitlement  = fabriccontract.RelationGrantsEntitlement
 	relationHasClassification  = fabriccontract.RelationHasClassification
+	relationHasContext         = fabriccontract.RelationHasContext
 	relationHasDNSRecord       = fabriccontract.RelationHasDNSRecord
 	relationHasEvidence        = fabriccontract.RelationHasEvidence
 	relationMemberOf           = fabriccontract.RelationMemberOf

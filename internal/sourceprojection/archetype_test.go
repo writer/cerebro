@@ -143,6 +143,7 @@ func TestProjectArchetypeLibraryNoteLinksRepositoryContext(t *testing.T) {
 		t.Fatalf("scan entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, repoURN, relationHasEvidence, noteURN)
+	assertProjectedLink(t, state, repoURN, relationHasContext, noteURN)
 	assertProjectedLink(t, state, noteURN, relationBelongsTo, scanURN)
 }
 
@@ -173,7 +174,38 @@ func TestProjectArchetypeLibraryNoteWithoutScanIDDoesNotCreateScan(t *testing.T)
 		t.Fatalf("phantom scan entity = %#v, want none", entity)
 	}
 	assertProjectedLink(t, state, repoURN, relationHasEvidence, noteURN)
+	assertProjectedLink(t, state, repoURN, relationHasContext, noteURN)
 	assertProjectedLinkMissing(t, state, noteURN, relationBelongsTo, phantomScanURN)
+}
+
+func TestProjectArchetypeLibraryNoteUsesEntryRepositoryForContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "archetype-library-590-repository-commit-learning",
+		TenantId: "writer",
+		SourceId: "archetype",
+		Kind:     "archetype.library_note",
+		Attributes: map[string]string{
+			"knowledge_slug": "repository-commit-learning",
+			"repository_id":  "590",
+			"owner":          "WriterInternal",
+			"repo":           "context-service",
+		},
+		Payload: []byte(`{"slug":"repository-commit-learning","title":"Repository commit learning","summary":"Archetype learned the latest repository head."}`),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	targetRepoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/context-service"
+	archetypeRepoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/archetype"
+	noteURN := "urn:cerebro:writer:archetype_library_note:WriterInternal/context-service:repository-commit-learning"
+
+	assertProjectedLink(t, state, targetRepoURN, relationHasContext, noteURN)
+	assertProjectedLink(t, state, targetRepoURN, relationHasEvidence, noteURN)
+	assertProjectedLinkMissing(t, state, archetypeRepoURN, relationHasContext, noteURN)
+	assertProjectedLinkMissing(t, state, archetypeRepoURN, relationHasEvidence, noteURN)
 }
 
 func TestProjectArchetypeLibraryNoteEscapesSlugURNPart(t *testing.T) {

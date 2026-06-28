@@ -86,6 +86,13 @@ var canonicalGraphOntology = GraphOntology{
 			ToTypes:     []string{"*"},
 		},
 		{
+			Relation:    fabriccontract.RelationHasContext,
+			Description: "Context edge from a resource Entity to supporting repository, runtime, or library-note context.",
+			Aliases:     []string{"HAS_CONTEXT", "repository context", "library context"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"*"},
+		},
+		{
 			Relation:    fabriccontract.RelationHasIdentifier,
 			Description: "Edge from a concrete identity/resource node to a normalized identifier node.",
 			Aliases:     []string{"HAS_IDENTIFIER", "identity_email", "email", "identifier"},
