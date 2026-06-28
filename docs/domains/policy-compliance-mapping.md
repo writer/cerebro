@@ -69,6 +69,8 @@ Finding domains resolve from `finding_domains` by finding ID, pack, source, then
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
 | `logic.csv` | The generation contract in spreadsheet form. |
 
+`finding_map.csv` keeps its original columns in place and appends new enrichment columns after `review_flags`. Read generated CSVs by header name when possible; positional readers should treat appended columns as additive fields.
+
 ## Tags
 
 Metadata tags come from `metadata.tags` in policy YAML. Derived tags are added from stable rule properties:
