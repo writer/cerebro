@@ -1,116 +1,138 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-cyberark_identity
-    tenant_id: builtin_catalog
-    source_id: cyberark_identity
-    display_name: CyberArk Identity
-    description: "Collects users, groups, and audit events from CyberArk Identity and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
-    categories:
-    - identity
-    - access
-    auth:
-      model: oauth_client_credentials
-      token_url: https://${config.tenant_url}/oauth/token
-      credential_fields:
-      - key: client_id
-        reference_only: true
-      - key: client_secret
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.tenant_url}
-      verification:
-        method: GET
-        path: "/Security/Whoami"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Users
-      path: "/v1/users"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cyberark_identity.users
-        schema_ref: cyberark_identity/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Identity users
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: groups
-      label: Groups
-      path: "/v1/groups"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cyberark_identity.groups
-        schema_ref: cyberark_identity/groups/v1
-      projection:
-        template: identity_group
-      coverage:
-      - id: groups
-        type: entity_family
-        title: Identity groups
-        families:
-        - groups
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/v1/audit/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cyberark_identity.audit_events
-        schema_ref: cyberark_identity/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            reference_only: true
+            secret: true
+        model: oauth_client_credentials
+        token_url: https://${config.tenant_url}/oauth/token
+      categories:
+        - identity
+        - access
+      description: Collects users, groups, and audit events from CyberArk Identity and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context.
+      display_name: CyberArk Identity
+      id: builtin-cyberark_identity
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Identity users
+              type: entity_family
+          event:
+            kind: cyberark_identity.users
+            required_payload_fields:
+              - id
+            schema_ref: cyberark_identity/users/v1
+            urn_kind: cyberark_identity_users
+          id: users
+          id_field: id
+          label: Users
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/users
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - groups
+              high_value: true
+              id: groups
+              support: partial
+              title: Identity groups
+              type: entity_family
+          event:
+            kind: cyberark_identity.groups
+            required_payload_fields:
+              - id
+            schema_ref: cyberark_identity/groups/v1
+            urn_kind: cyberark_identity_groups
+          id: groups
+          id_field: id
+          label: Groups
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/groups
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+            template: identity_group
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: cyberark_identity.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: cyberark_identity/audit_events/v1
+            urn_kind: cyberark_identity_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/audit/events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: cyberark_identity
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.tenant_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /Security/Whoami

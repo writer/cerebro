@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-rippling
-    tenant_id: builtin_catalog
-    source_id: rippling
-    display_name: Rippling
-    description: "Collects workers, devices, and background checks from Rippling and projects them into the Cerebro graph as users, devices, and audit events for owner, account, evidence, and compliance context."
-    categories:
-    - hr
-    - endpoint
-    auth:
-      model: bearer_token
-      credential_fields:
-      - key: token
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://rest.ripplingapis.com
-      verification:
-        method: GET
-        path: "/companies"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Workers
-      path: "/workers"
-      method: GET
-      record_selector: "$.results[*]"
-      id_field: id
-      event:
-        kind: rippling.users
-        schema_ref: rippling/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Workers
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next"
-        page_size_param: limit
-        page_size: 100
-    - id: devices
-      label: Devices
-      path: "/devices"
-      method: GET
-      record_selector: "$.results[*]"
-      id_field: id
-      event:
-        kind: rippling.devices
-        schema_ref: rippling/devices/v1
-      projection:
-        template: endpoint_device
-      coverage:
-      - id: devices
-        type: entity_family
-        title: Devices
-        families:
-        - devices
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next"
-        page_size_param: limit
-        page_size: 100
-    - id: background_checks
-      label: Background checks
-      path: "/background-checks"
-      method: GET
-      record_selector: "$.results[*]"
-      id_field: id
-      event:
-        kind: rippling.background_checks
-        schema_ref: rippling/background_checks/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: background_checks
-        type: audit_event
-        title: Background checks
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - hr
+        - endpoint
+      description: Collects workers, devices, and background checks from Rippling and projects them into the Cerebro graph as users, devices, and audit events for owner, account, evidence, and compliance context.
+      display_name: Rippling
+      id: builtin-rippling
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Workers
+              type: entity_family
+          event:
+            kind: rippling.users
+            required_payload_fields:
+              - id
+            schema_ref: rippling/users/v1
+            urn_kind: rippling_users
+          id: users
+          id_field: id
+          label: Workers
+          method: GET
+          pagination:
+            cursor_json_path: $.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /workers
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - devices
+              high_value: true
+              id: devices
+              support: partial
+              title: Devices
+              type: entity_family
+          event:
+            kind: rippling.devices
+            required_payload_fields:
+              - id
+            schema_ref: rippling/devices/v1
+            urn_kind: rippling_devices
+          id: devices
+          id_field: id
+          label: Devices
+          method: GET
+          pagination:
+            cursor_json_path: $.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /devices
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: endpoint_device
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: background_checks
+              support: partial
+              title: Background checks
+              type: audit_event
+          event:
+            kind: rippling.background_checks
+            required_payload_fields:
+              - id
+            schema_ref: rippling/background_checks/v1
+            urn_kind: rippling_background_checks
+          id: background_checks
+          id_field: id
+          label: Background checks
+          method: GET
+          pagination:
+            cursor_json_path: $.next
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /background-checks
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.results[*]
+      schema_version: cerebro.integration/v1
+      source_id: rippling
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://rest.ripplingapis.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /companies

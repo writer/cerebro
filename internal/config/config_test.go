@@ -83,6 +83,11 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY", "")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY_FILE", "")
+	t.Setenv("REDUCTO_API_KEY", "")
+	t.Setenv("CEREBRO_REDUCTO_BASE_URL", "")
+	t.Setenv("CEREBRO_REDUCTO_TIMEOUT", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -119,6 +124,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.GraphActions.AccessApprovals.Timeout != 10*time.Second || cfg.GraphActions.AccessApprovals.BaseURL != "" || cfg.GraphActions.AccessApprovals.BearerToken != "" {
 		t.Fatalf("GraphActions.AccessApprovals defaults = %#v", cfg.GraphActions.AccessApprovals)
+	}
+	if cfg.DocumentParsing.Reducto.APIKey != "" || cfg.DocumentParsing.Reducto.BaseURL != "" || cfg.DocumentParsing.Reducto.Timeout != 30*time.Second {
+		t.Fatalf("DocumentParsing.Reducto defaults = %#v", cfg.DocumentParsing.Reducto)
 	}
 	if cfg.OTEL.Enabled || cfg.OTEL.Protocol != "http/protobuf" || cfg.OTEL.TraceSampleRate != 1 || cfg.OTEL.MetricInterval != time.Minute {
 		t.Fatalf("OTEL defaults = %#v", cfg.OTEL)
@@ -255,6 +263,11 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "graph-action-token")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "7s")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY", "reducto-token")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY_FILE", "")
+	t.Setenv("REDUCTO_API_KEY", "")
+	t.Setenv("CEREBRO_REDUCTO_BASE_URL", "https://platform.reducto.ai/")
+	t.Setenv("CEREBRO_REDUCTO_TIMEOUT", "11s")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES", "aws_secrets_manager,infisical")
 	t.Setenv("CEREBRO_CONNECTOR_SECRET_STORES_FILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "us-east-1")
@@ -406,6 +419,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.GraphActions.AccessApprovals.BaseURL != "https://access-approvals.example.com" || cfg.GraphActions.AccessApprovals.BearerToken != "graph-action-token" || cfg.GraphActions.AccessApprovals.Timeout != 7*time.Second {
 		t.Fatalf("GraphActions.AccessApprovals = %#v, want configured access-approvals target", cfg.GraphActions.AccessApprovals)
+	}
+	if cfg.DocumentParsing.Reducto.APIKey != "reducto-token" || cfg.DocumentParsing.Reducto.BaseURL != "https://platform.reducto.ai" || cfg.DocumentParsing.Reducto.Timeout != 11*time.Second {
+		t.Fatalf("DocumentParsing.Reducto = %#v, want configured Reducto target", cfg.DocumentParsing.Reducto)
 	}
 	if cfg.ConnectorSecretStores.AWSSecretsManager.Region != "us-east-1" ||
 		cfg.ConnectorSecretStores.AWSSecretsManager.Profile != "cerebro-security" ||
@@ -664,6 +680,11 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE", "")
 	t.Setenv("CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT", "")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY", "")
+	t.Setenv("CEREBRO_REDUCTO_API_KEY_FILE", "")
+	t.Setenv("REDUCTO_API_KEY", "")
+	t.Setenv("CEREBRO_REDUCTO_BASE_URL", "")
+	t.Setenv("CEREBRO_REDUCTO_TIMEOUT", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE", "")
 	t.Setenv("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN", "")
