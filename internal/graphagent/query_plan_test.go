@@ -16,6 +16,9 @@ func TestOntologyCanonicalizesAliases(t *testing.T) {
 	if got, ok := canonicalRelation("BELONGS_TO_SOURCE"); !ok || got != "belongs_to" {
 		t.Fatalf("canonicalRelation(BELONGS_TO_SOURCE) = %q, %v; want belongs_to, true", got, ok)
 	}
+	if got, ok := canonicalRelation("repository context"); !ok || got != "has_context" {
+		t.Fatalf("canonicalRelation(repository context) = %q, %v; want has_context, true", got, ok)
+	}
 }
 
 func TestOntologyAliasesRoundTripToCanonicalValues(t *testing.T) {
@@ -58,6 +61,7 @@ func TestOntologyPromptMentionsCanonicalRepositoryShape(t *testing.T) {
 		"Entity `github.code.repository`",
 		"GitHub repository metadata such as `owner_login`, `repository`, `visibility`, and `default_branch` is stored in `attributes_json`",
 		"urn:cerebro:writer:github_code_repository:1",
+		"Relation `has_context`",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)

@@ -5216,8 +5216,8 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	if got := ingestPayload["entities_projected"]; got != float64(4) {
 		t.Fatalf("entities_projected = %#v, want 4", got)
 	}
-	if got := ingestPayload["links_projected"]; got != float64(7) {
-		t.Fatalf("links_projected = %#v, want 7", got)
+	if got := ingestPayload["links_projected"]; got != float64(8) {
+		t.Fatalf("links_projected = %#v, want 8", got)
 	}
 	if !sawAuth.Load() {
 		t.Fatal("Archetype API did not receive bearer token")
@@ -5242,6 +5242,7 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", scanURN)
 	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", findingURN)
 	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_evidence", noteURN)
+	assertBootstrapProjectedLink(t, graphStore, repoURN, "has_context", noteURN)
 	assertBootstrapProjectedLink(t, graphStore, findingURN, "belongs_to", scanURN)
 	assertBootstrapProjectedLink(t, graphStore, findingURN, "affects", repoURN)
 	assertBootstrapProjectedLink(t, graphStore, noteURN, "belongs_to", scanURN)
