@@ -47,7 +47,7 @@ func HardenDefinitionFidelity(definition connectordefinitions.Definition) (conne
 			continue
 		}
 		if strings.TrimSpace(family.Event.Kind) == "" && sourceID != "" {
-			family.Event.Kind = sourceID + "." + familyID
+			family.Event.Kind = defaultEventKind(sourceID, familyID)
 			addChange(familyID, "resource_families.event.kind", fmt.Sprintf("set event kind to %s", family.Event.Kind))
 		}
 		if strings.TrimSpace(family.Event.SchemaRef) == "" && sourceID != "" {
@@ -313,6 +313,24 @@ func defaultURNKind(sourceID string, familyID string) string {
 	}
 	if value[0] < 'a' || value[0] > 'z' {
 		value = "runtime_" + value
+	}
+	return value
+}
+
+func defaultEventKind(sourceID string, familyID string) string {
+	return defaultEventKindPart(sourceID, "runtime") + "." + defaultEventKindPart(familyID, "resource")
+}
+
+func defaultEventKindPart(value string, fallback string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	value = urnKindSegment.ReplaceAllString(value, "_")
+	value = strings.Trim(value, "_")
+	if value == "" {
+		value = fallback
+	}
+	if value[0] < 'a' || value[0] > 'z' {
+		value = fallback + "_" + value
 	}
 	return value
 }

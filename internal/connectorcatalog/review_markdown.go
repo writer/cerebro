@@ -22,6 +22,14 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 	writeMetric(&b, "Needs bespoke runtime", report.Summary.NeedsBespokeRuntime)
 	writeMetric(&b, "Reference-depth sources", report.Summary.HighFidelitySources)
 	writeMetric(&b, "Needs fidelity review", report.Summary.NeedsFidelityReview)
+	if report.Summary.RuntimeDepth != nil {
+		writeMetric(&b, "Runtime-backed sources", report.Summary.RuntimeDepth.RuntimeBackedSources)
+		writeMetric(&b, "Reference-runtime sources", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
+		writeMetric(&b, "Needs runtime depth", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+		writeMetric(&b, "Sources with runtime fixtures", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
+		writeMetric(&b, "Sources with deploy manifest", report.Summary.RuntimeDepth.SourcesWithDeployManifest)
+		writeMetric(&b, "Sources with projector tests", report.Summary.RuntimeDepth.SourcesWithProjectorTests)
+	}
 	writeMetric(&b, "Resource families", report.Summary.ResourceFamilies)
 	writeMetric(&b, "Projected families", report.Summary.ProjectedFamilies)
 	writeMetric(&b, "Graph item types", report.Summary.ProjectionTemplates)
@@ -62,6 +70,28 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 			fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", escapeCell(candidate.SourceID), candidate.Score, escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")), escapeCell(candidate.NextAction))
 		}
 		b.WriteString("\n")
+	}
+
+	if report.Summary.RuntimeDepth != nil || len(report.RuntimeDepthQueue) > 0 {
+		b.WriteString("## Runtime Depth Queue\n\n")
+		if len(report.RuntimeDepthQueue) == 0 {
+			b.WriteString("No sources need runtime-depth review.\n\n")
+		} else {
+			baseline := runtimeDepthReviewThreshold
+			if report.Summary.RuntimeDepth != nil {
+				baseline = report.Summary.RuntimeDepth.BaselineScore
+			}
+			fmt.Fprintf(&b, "Reference runtime baseline: %d/100.\n\n", baseline)
+			b.WriteString("| Source | Score | Package | Missing | Next action |\n| --- | ---: | --- | --- | --- |\n")
+			for i, candidate := range report.RuntimeDepthQueue {
+				if i >= maxItems {
+					fmt.Fprintf(&b, "| ... | ... | ... | ... | %d more |\n", len(report.RuntimeDepthQueue)-maxItems)
+					break
+				}
+				fmt.Fprintf(&b, "| `%s` | %d | %s | %s | %s |\n", escapeCell(candidate.SourceID), candidate.Score, inlineCodeOrDash(candidate.PackagePath), escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")), escapeCell(candidate.NextAction))
+			}
+			b.WriteString("\n")
+		}
 	}
 
 	b.WriteString("## Graph Coverage\n\n")
@@ -120,6 +150,14 @@ func escapeCell(value string) string {
 	value = strings.ReplaceAll(value, "\n", " ")
 	value = strings.ReplaceAll(value, "|", "\\|")
 	return value
+}
+
+func inlineCodeOrDash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return "`" + escapeCell(value) + "`"
 }
 
 func escapeText(value string) string {
