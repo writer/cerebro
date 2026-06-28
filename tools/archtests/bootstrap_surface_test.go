@@ -64,8 +64,10 @@ import (
 // claim verdicts, gates, and work state live in internal/agentplatform. GRC
 // policy lifecycle adds route/scope/error mapping plus action and CSV export
 // adapters; graph aggregation, action event construction, audit row shaping,
-// and response shaping live in internal/grcpolicylifecycle.
-const bootstrapProductionGoLineBudget = 26425
+// and response shaping live in internal/grcpolicylifecycle. Stateless source
+// MCP tools add request/response mapping over the existing sourceops preview
+// service so agents can check/discover/read live sources without durable stores.
+const bootstrapProductionGoLineBudget = 26592
 
 type bootstrapFileLineCount struct {
 	path  string

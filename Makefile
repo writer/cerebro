@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
@@ -61,9 +61,11 @@ LOAD_SMOKE_MAX_5XX_RATE ?= 0
 LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
 LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
 AGENT_ONBOARD_PLAN ?= examples/onboarding/cerebro-onboarding.yaml
+AGENT_ONBOARD_GITHUB_PLAN ?= examples/onboarding/github-onboarding.yaml
 AGENT_ONBOARD_EFFECTIVE_PLAN = $(if $(PLAN),$(PLAN),$(AGENT_ONBOARD_PLAN))
 AGENT_ONBOARD_RECEIPT ?= tmp/onboarding/receipt.json
 AGENT_ONBOARD_E2E_RECEIPT ?= tmp/onboarding/e2e-receipt.json
+AGENT_ONBOARD_GITHUB_RECEIPT ?= tmp/onboarding/github-receipt.json
 CEREBRO_ONBOARD_BASE_URL ?=
 MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
 MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
@@ -398,7 +400,7 @@ agent-onboard-test: ## Run agent onboarding workflow unit tests.
 
 agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflow.
 	@command -v docker >/dev/null || { echo "docker is required for agent-onboard-e2e" >&2; exit 2; }
-	docker compose up --build -d
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
 	@CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
@@ -409,6 +411,24 @@ agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflo
 	python3 scripts/agent_onboard.py \
 		--plan "$(AGENT_ONBOARD_EFFECTIVE_PLAN)" \
 		--receipt "$(AGENT_ONBOARD_E2E_RECEIPT)" \
+		--wait
+
+github-business-demo: build ## Connect a GitHub repo, sync it, ingest graph data, and write a receipt.
+	@command -v docker >/dev/null || { echo "docker is required for github-business-demo" >&2; exit 2; }
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+	@CEREBRO_API_KEY="local-dev-key" \
+	CEREBRO_API_KEYS="local-dev-key:local:local" \
+	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
+	CEREBRO_POSTGRES_DSN="*****************************************/cerebro?sslmode=disable" \
+	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
+	CEREBRO_NEO4J_USERNAME="neo4j" \
+	CEREBRO_NEO4J_PASSWORD="local-password" \
+	GITHUB_OWNER="$(GITHUB_OWNER)" \
+	GITHUB_REPO="$(GITHUB_REPO)" \
+	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
+	python3 scripts/agent_onboard.py \
+		--plan "$(AGENT_ONBOARD_GITHUB_PLAN)" \
+		--receipt "$(AGENT_ONBOARD_GITHUB_RECEIPT)" \
 		--wait
 
 # ==== Release and Environment ====

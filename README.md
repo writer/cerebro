@@ -17,21 +17,26 @@ Use it to help agents answer:
 
 ## Give Your Coding Agent Compliance Context
 
-The fastest path is to run the local onboarding flow, then hand the receipt to your agent:
+The fastest path is to start Cerebro, add it to your agent over MCP, and let the agent read live source data before any stores are configured:
 
 ```bash
-make secure-business-demo
+make serve-dev
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
 ```
 
 ```text
-Use Cerebro as compliance context for this change.
-Read tmp/onboarding/e2e-receipt.json, then tell me which checks passed,
-which evidence exists, which controls apply, and what must happen before
-this can ship.
+Use Cerebro as compliance context for this repo.
+Call cerebro.sources.read with source_id=github and config
+{"owner":"<owner>","repo":"<repo>","per_page":"5"}, then tell me what
+evidence exists and what security or compliance context applies before this
+can ship.
 
 Do not commit provider credentials, customer names, tenant-specific hostnames,
 account IDs, or live secret values.
 ```
+
+The MCP source tools (`cerebro.sources.list/check/discover/read`) hit live providers through the existing source service and do not require Postgres, NATS, or Neo4j. For durable evidence and graph context, run `make github-business-demo` with `GITHUB_OWNER`, `GITHUB_REPO`, and `GITHUB_TOKEN`, then hand `tmp/onboarding/github-receipt.json` to the agent.
 
 For a live agent integration, connect your MCP client to `POST /api/v1/mcp` and expose Cerebro as the source for policy memory, compliance evidence, graph context, and safe action planning. See [Agent onboarding](docs/start/agent-onboarding.md), [MCP native Droid setup](docs/domains/mcp-droid-setup.md), and [Agent platform contract](docs/domains/agent-platform-contract.md).
 
@@ -62,7 +67,8 @@ make verify
 For a durable local stack with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key`:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
 
 ## What Is In This Repo
@@ -122,6 +128,7 @@ See [Non-goals](docs/engineering/non-goals.md) before changing storage shape, So
 make build          # compile ./bin/cerebro
 make serve-dev      # run the local server with acknowledged dev-mode opt-out
 make secure-business-demo  # run local security onboarding and write a receipt
+make github-business-demo  # seed durable graph context from a real GitHub repo
 make agent-onboard  # run an onboarding plan and write a redacted receipt
 make agent-onboard-e2e  # run the Docker-backed local onboarding workflow
 make test           # go test ./...

@@ -64,7 +64,7 @@ services:
       retries: 18
 
   cerebro:
-    build: .
+    image: ${CEREBRO_IMAGE:-ghcr.io/writer/cerebro:latest}
     environment:
       CEREBRO_HTTP_ADDR: :8080
       CEREBRO_API_KEYS: local-dev-key:local:local

@@ -1,14 +1,40 @@
 # Getting Started
 
-This guide walks through a local, durable Cerebro run and a small SDK-style claim write. It uses the current bootstrap HTTP API and avoids provider credentials.
+This guide walks through the fastest live-source preview, then a local durable Cerebro run. The live preview gives an agent real provider context before Postgres, NATS, or Neo4j are configured.
+
+## Get A Live Answer First
+
+Start the lightweight server:
+
+```bash
+make serve-dev
+```
+
+In another shell, read one page from a public GitHub repo:
+
+```bash
+./bin/cerebro source read github owner=writer repo=cerebro per_page=5
+```
+
+Connect the same server to Droid over MCP:
+
+```bash
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
+```
+
+Then ask your agent to call `cerebro.sources.read` with `source_id=github` and `config={"owner":"writer","repo":"cerebro","per_page":"5"}`. That call uses live source preview and does not require durable stores.
 
 ## Start The Durable Stack
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
 
 The stack exposes Cerebro on `http://127.0.0.1:8080` with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key` configured by the compose file.
+
+Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when you need the durable stack to run the current checkout instead of the published image.
 
 In another shell, check readiness and the source catalog:
 
@@ -96,6 +122,19 @@ npm run typecheck
 ```
 
 The TypeScript Jira posture example lives at `sdk/typescript/examples/jira_posture_onboarding.ts`. Run it with your preferred TypeScript runner, or use it as reference application code.
+
+## Seed A Real GitHub Repo
+
+Use this when the agent needs durable graph context from your own repo:
+
+```bash
+export GITHUB_OWNER=<owner>
+export GITHUB_REPO=<repo>
+export GITHUB_TOKEN=<token>
+make github-business-demo
+```
+
+The receipt is written to `tmp/onboarding/github-receipt.json` and records live source preview, runtime sync, graph ingest, and compliance coverage checks.
 
 ## Validate Your Change
 

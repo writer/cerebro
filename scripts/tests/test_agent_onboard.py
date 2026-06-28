@@ -97,6 +97,13 @@ class AgentOnboardTests(unittest.TestCase):
             "failed password=redacted token=redacted",
         )
 
+    def test_resolved_config_values_resolves_env_refs(self):
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_test"}, clear=True):
+            self.assertEqual(
+                onboard.resolved_config_values({"owner": "writer", "token": "env:GITHUB_TOKEN"}),
+                {"owner": "writer", "token": "ghp_test"},
+            )
+
     def test_runner_writes_passed_receipt(self):
         plan = valid_plan()
         requested = []
@@ -129,8 +136,12 @@ class AgentOnboardTests(unittest.TestCase):
                 self.assertEqual(headers["Authorization"], "Bearer local-dev-key")
                 return 200, json.dumps({"sources": [{"id": "sdk"}]})
             if parsed.startswith("/sources/sdk/check"):
+                source_config = json.loads(headers["X-Cerebro-Source-Config"])
+                self.assertEqual(source_config["inventory_urns"], "urn:cerebro:local:runtime:local-sdk-demo:service:example-api")
                 return 200, json.dumps({"status": "ok"})
             if parsed.startswith("/sources/sdk/discover"):
+                source_config = json.loads(headers["X-Cerebro-Source-Config"])
+                self.assertEqual(source_config["integration"], "demo")
                 return 200, json.dumps({"items": [{"urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api"}]})
             if parsed == "/source-runtimes/local-sdk-demo" and method == "PUT":
                 payload = json.loads(body.decode("utf-8"))

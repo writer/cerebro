@@ -2,18 +2,29 @@
 
 Use this when someone wants to give a coding agent compliance superpowers with Cerebro.
 
-The flow sets up local Cerebro context, proves the basic security and compliance path works, and returns a receipt the agent can use before it reviews, changes, or ships code.
+The flow starts with live source preview over MCP, then upgrades to durable evidence and graph context when you want receipts.
 
-The first run does not need provider credentials. It starts Cerebro locally, creates a demo runtime, writes two posture claims, checks graph ingest, checks compliance coverage, and saves a receipt.
+The first answer does not need durable stores. Start Cerebro, add the MCP server to your agent, and have the agent call `cerebro.sources.read`:
 
 ```bash
-make secure-business-demo
+make serve-dev
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
+```
+
+For a real durable receipt, set a GitHub repo and token, then run:
+
+```bash
+export GITHUB_OWNER=<owner>
+export GITHUB_REPO=<repo>
+export GITHUB_TOKEN=<token>
+make github-business-demo
 ```
 
 Receipt:
 
 ```text
-tmp/onboarding/e2e-receipt.json
+tmp/onboarding/github-receipt.json
 ```
 
 The receipt answers the first operator questions:
@@ -21,8 +32,9 @@ The receipt answers the first operator questions:
 - Is Cerebro running?
 - Is auth configured?
 - Are Postgres, NATS, and Neo4j reachable?
-- Can Cerebro create a source runtime?
-- Can Cerebro write and read posture claims?
+- Can Cerebro preview live source data?
+- Can Cerebro create a GitHub source runtime?
+- Can Cerebro sync real source events?
 - Can Cerebro run graph ingest?
 - Can Cerebro check a compliance profile?
 - Which secrets and next actions are still needed?
@@ -32,14 +44,21 @@ The receipt answers the first operator questions:
 ```text
 I want to use Cerebro as compliance context for my coding agent.
 
-Start with the local demo:
-make secure-business-demo
+Start with live MCP preview:
+make serve-dev
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http --header "Authorization: Bearer local-dev-key"
 
-Then read tmp/onboarding/e2e-receipt.json.
+Use cerebro.sources.read with source_id=github and config {"owner":"<owner>","repo":"<repo>","per_page":"5"}.
+
+If I need durable graph evidence, run:
+GITHUB_OWNER=<owner> GITHUB_REPO=<repo> make github-business-demo
+Assume GITHUB_TOKEN is already set in the shell.
+
+Then read tmp/onboarding/github-receipt.json.
 
 Tell me:
 - receipt status
-- whether this Cerebro setup is ready to answer ship/no-ship questions
+- whether this Cerebro setup has live source evidence and durable graph context
 - source runtime ids
 - available compliance evidence and control coverage
 - failed checks, if any
@@ -50,7 +69,9 @@ Do not commit provider credentials, customer names, tenant-specific hostnames, a
 Use env: references for every secret-bearing value.
 ```
 
-## What The First Run Does
+## What The First Runs Do
+
+The MCP preview path uses the source service directly. It can list, check, discover, and read live sources with `cerebro.sources.list`, `cerebro.sources.check`, `cerebro.sources.discover`, and `cerebro.sources.read` before durable stores exist.
 
 The local plan uses the SDK source, local Docker services, and the bearer key from `docker-compose.yml`.
 
@@ -58,10 +79,25 @@ The local plan uses the SDK source, local Docker services, and the bearer key fr
 make secure-business-demo
 ```
 
-The target starts the local stack, builds `./bin/cerebro`, waits for `/health`, runs `deploy preflight`, creates `local-sdk-demo`, writes sample SDK claims, runs sync and graph ingest checks, checks control coverage, and writes:
+The target starts the local stack from the current checkout, builds `./bin/cerebro`, waits for `/health`, runs `deploy preflight`, creates `local-sdk-demo`, writes sample SDK claims, runs sync and graph ingest checks, checks control coverage, and writes:
 
 ```text
 tmp/onboarding/e2e-receipt.json
+```
+
+The GitHub plan uses live repo data instead of synthetic claims:
+
+```bash
+export GITHUB_OWNER=<owner>
+export GITHUB_REPO=<repo>
+export GITHUB_TOKEN=<token>
+make github-business-demo
+```
+
+It writes:
+
+```text
+tmp/onboarding/github-receipt.json
 ```
 
 Use `make agent-onboard-e2e` when you want the same run under the workflow name used by CI and docs.
@@ -141,4 +177,5 @@ python3 -m unittest scripts.tests.test_agent_onboard
 make agent-onboard PLAN=examples/onboarding/cerebro-onboarding.yaml
 make agent-onboard-e2e
 make secure-business-demo
+make github-business-demo
 ```

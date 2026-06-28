@@ -77,6 +77,48 @@ func (s *mcpBatchGraphStore) ExecuteReadCypher(context.Context, ports.CypherQuer
 	return nil, nil
 }
 
+type mcpStubSource struct {
+	spec            *cerebrov1.SourceSpec
+	checkConfigs    []map[string]string
+	discoverConfigs []map[string]string
+	readConfigs     []map[string]string
+	readCursors     []string
+}
+
+func (s *mcpStubSource) Spec() *cerebrov1.SourceSpec {
+	return s.spec
+}
+
+func (s *mcpStubSource) Check(_ context.Context, cfg sourcecdk.Config) error {
+	s.checkConfigs = append(s.checkConfigs, cfg.Values())
+	if cfg.Values()["invalid"] == "true" {
+		return sourcecdk.ErrInvalidConfig
+	}
+	return nil
+}
+
+func (s *mcpStubSource) Discover(_ context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	s.discoverConfigs = append(s.discoverConfigs, cfg.Values())
+	return []sourcecdk.URN{"urn:cerebro:writer:github_code_repository:writer/cerebro"}, nil
+}
+
+func (s *mcpStubSource) Read(_ context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readConfigs = append(s.readConfigs, cfg.Values())
+	if cursor != nil {
+		s.readCursors = append(s.readCursors, cursor.GetOpaque())
+	}
+	return sourcecdk.Pull{
+		Events: []*cerebrov1.EventEnvelope{{
+			Id:       "evt-1",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.pull_request",
+			Payload:  []byte(`{"repository":"writer/cerebro","number":1518}`),
+		}},
+		NextCursor: &cerebrov1.SourceCursor{Opaque: "next-page"},
+	}, nil
+}
+
 func TestFetchMCPGraphStoreNeighborhoodsUsesBatchStore(t *testing.T) {
 	firstURN := "urn:cerebro:writer:asset:first"
 	secondURN := "urn:cerebro:writer:asset:second"
@@ -186,6 +228,10 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	for _, want := range []string{
 		"cerebro.health",
 		"cerebro.version",
+		"cerebro.sources.list",
+		"cerebro.sources.check",
+		"cerebro.sources.discover",
+		"cerebro.sources.read",
 		"cerebro.source_runtimes.list",
 		"cerebro.connector_definitions.list",
 		"cerebro.connector_definitions.validate",
@@ -221,6 +267,166 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	}
 }
 
+func TestMCPSourceToolsUseStatelessSourceService(t *testing.T) {
+	source := &mcpStubSource{spec: &cerebrov1.SourceSpec{
+		Id:           "github",
+		Name:         "GitHub",
+		Description:  "GitHub source",
+		EmittedKinds: []string{"github.pull_request"},
+	}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	server := newMCPTestServerWithGraphReasoningAndSources(t, nil, nil, nil, registry)
+	defer server.Close()
+
+	listResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.sources.list",
+			"arguments": map[string]any{},
+		},
+	})
+	if listResp["error"] != nil {
+		t.Fatalf("sources.list error = %#v", listResp["error"])
+	}
+	listed := listResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if got := listed["sources"].([]any)[0].(map[string]any)["id"]; got != "github" {
+		t.Fatalf("sources.list first source id = %#v, want github", got)
+	}
+	if metadata := listed["metadata"].(map[string]any); metadata["source_preview"] != true {
+		t.Fatalf("sources.list metadata = %#v, want source_preview=true", metadata)
+	}
+
+	config := map[string]any{"tenant_id": "writer", "owner": "writer", "repo": "cerebro"}
+	checkResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.check",
+			"arguments": map[string]any{
+				"source_id": "github",
+				"config":    config,
+			},
+		},
+	})
+	if checkResp["error"] != nil {
+		t.Fatalf("sources.check error = %#v", checkResp["error"])
+	}
+	checkStructured := checkResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if checkStructured["status"] != "ok" {
+		t.Fatalf("sources.check status = %#v, want ok", checkStructured["status"])
+	}
+	if len(source.checkConfigs) != 1 || source.checkConfigs[0]["repo"] != "cerebro" {
+		t.Fatalf("check config = %#v, want repo propagated", source.checkConfigs)
+	}
+
+	discoverResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.discover",
+			"arguments": map[string]any{
+				"source_id": "github",
+				"config":    config,
+			},
+		},
+	})
+	if discoverResp["error"] != nil {
+		t.Fatalf("sources.discover error = %#v", discoverResp["error"])
+	}
+	discovered := discoverResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if got := discovered["urns"].([]any)[0]; got != "urn:cerebro:writer:github_code_repository:writer/cerebro" {
+		t.Fatalf("sources.discover urn = %#v", got)
+	}
+
+	readResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.read",
+			"arguments": map[string]any{
+				"source_id": "github",
+				"config":    config,
+				"cursor":    "page-1",
+			},
+		},
+	})
+	if readResp["error"] != nil {
+		t.Fatalf("sources.read error = %#v", readResp["error"])
+	}
+	readStructured := readResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if got := readStructured["events"].([]any)[0].(map[string]any)["id"]; got != "evt-1" {
+		t.Fatalf("sources.read event id = %#v, want evt-1", got)
+	}
+	if got := readStructured["preview_events"].([]any)[0].(map[string]any)["payload_decoded"]; got != true {
+		t.Fatalf("sources.read preview payload_decoded = %#v, want true", got)
+	}
+	if got := readStructured["next_cursor"].(map[string]any)["opaque"]; got != "next-page" {
+		t.Fatalf("sources.read next cursor = %#v, want next-page", got)
+	}
+	if len(source.readCursors) != 1 || source.readCursors[0] != "page-1" {
+		t.Fatalf("read cursors = %#v, want page-1", source.readCursors)
+	}
+}
+
+func TestMCPSourceToolsReturnSafeErrors(t *testing.T) {
+	source := &mcpStubSource{spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	server := newMCPTestServerWithGraphReasoningAndSources(t, nil, nil, nil, registry)
+	defer server.Close()
+
+	unknownResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.check",
+			"arguments": map[string]any{
+				"source_id": "missing",
+			},
+		},
+	})
+	unknownResult := unknownResp["result"].(map[string]any)
+	if unknownResult["isError"] != true {
+		t.Fatalf("unknown source response = %#v, want tool error", unknownResp)
+	}
+	unknownError := unknownResult["structuredContent"].(map[string]any)["error"].(map[string]any)
+	if unknownError["kind"] != "not_found" || unknownError["message"] != "source not found" {
+		t.Fatalf("unknown source error = %#v", unknownError)
+	}
+
+	forbiddenResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.sources.check",
+			"arguments": map[string]any{
+				"source_id": "github",
+				"config":    map[string]any{"tenant_id": "other"},
+			},
+		},
+	})
+	forbiddenResult := forbiddenResp["result"].(map[string]any)
+	if forbiddenResult["isError"] != true {
+		t.Fatalf("forbidden source response = %#v, want tool error", forbiddenResp)
+	}
+	forbiddenError := forbiddenResult["structuredContent"].(map[string]any)["error"].(map[string]any)
+	if forbiddenError["kind"] != "tenant_forbidden" || forbiddenError["message"] != "tenant forbidden" {
+		t.Fatalf("forbidden source error = %#v", forbiddenError)
+	}
+}
+
 func TestMCPToolsDeclareDomainSurfaceParity(t *testing.T) {
 	corpus := mcpDomainSurfaceCorpus(t)
 	tools := map[string]bool{}
@@ -253,6 +459,10 @@ type mcpToolDomainSurfaceContract struct {
 var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.health":                          {Markers: []string{"GET /health"}},
 	"cerebro.version":                         {Markers: []string{"GetVersion"}},
+	"cerebro.sources.list":                    {Markers: []string{"GET /sources"}},
+	"cerebro.sources.check":                   {Markers: []string{"GET /sources/{sourceID}/check"}},
+	"cerebro.sources.discover":                {Markers: []string{"GET /sources/{sourceID}/discover"}},
+	"cerebro.sources.read":                    {Markers: []string{"GET /sources/{sourceID}/read"}},
 	"cerebro.source_runtimes.list":            {Markers: []string{"GET /source-runtimes"}},
 	"cerebro.connector_definitions.list":      {Markers: []string{"GET /connector-definitions"}},
 	"cerebro.connector_definitions.validate":  {Markers: []string{"POST /connector-definitions/validate"}},
