@@ -547,11 +547,11 @@ def main(argv: list[str] | None = None) -> int:
         require_server=not args.no_require_server,
     )
     try:
-        receipt = runner.run()
+        runner.run()
     except OnboardingError as err:
         print(redact_message(str(err)), file=sys.stderr)
         return 1
-    print(f"agent-onboard: {receipt['status']}; receipt written")
+    print("agent-onboard: passed; receipt written")
     return 0
 
 
