@@ -48,6 +48,36 @@ func TestNormalizeBuildsValidatedDefinition(t *testing.T) {
 	}
 }
 
+func TestNormalizeTrimsTokenHeaderAndScheme(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: AuthSpec{ //nolint:gosec // Test auth descriptor only; no credential value is stored.
+			Model:       "api_key",
+			TokenHeader: " x-api-key ",
+			TokenScheme: " Token ",
+			CredentialFields: []Field{{
+				Key:           "api_key",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "assets",
+			Path:           "/v1/assets",
+			IDField:        "id",
+			RecordSelector: "$.data[*]",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.Auth.TokenHeader != "x-api-key" || definition.Auth.TokenScheme != "Token" {
+		t.Fatalf("auth header/scheme = %q/%q, want trimmed values", definition.Auth.TokenHeader, definition.Auth.TokenScheme)
+	}
+}
+
 func TestNormalizeBackfillsEventKindFromLegacyField(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID:    "tenant-a",
@@ -120,6 +150,37 @@ func TestValidateBlocksUnsafeDynamicDefinition(t *testing.T) {
 	}
 	if len(blocked) < 2 {
 		t.Fatalf("blocking checks = %#v, want secret/path blockers", blocked)
+	}
+}
+
+func TestValidateBlocksUnsafeTokenHeader(t *testing.T) {
+	definition, err := Normalize(Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Runtime:     RuntimeJSONAPI,
+		Auth: AuthSpec{ //nolint:gosec // Test auth descriptor only; no credential value is stored.
+			Model:       "api_key",
+			TokenHeader: "x-api-key: bad",
+			CredentialFields: []Field{{
+				Key:    "api_key",
+				Secret: true,
+			}},
+		},
+		Transport: &TransportSpec{BaseURL: "https://api.example.test"},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "assets",
+			Path:           "/v1/assets",
+			IDField:        "id",
+			RecordSelector: "$.data[*]",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "auth_token_header") {
+		t.Fatalf("validation checks = %#v, want auth_token_header blocker", definition.Validation.Checks)
 	}
 }
 
@@ -724,6 +785,52 @@ func TestClassifyReportsMissingFeatures(t *testing.T) {
 		if !containsString(report.MissingFeatures, want) {
 			t.Fatalf("missing features = %#v, want %q", report.MissingFeatures, want)
 		}
+	}
+}
+
+func TestClassifyAcceptsSingletonWithoutRecordSelector(t *testing.T) {
+	report, err := Classify(Definition{
+		SchemaVersion: SchemaVersionIntegrationV1,
+		ID:            "example",
+		TenantID:      "tenant-a",
+		SourceID:      "example",
+		DisplayName:   "Example",
+		Auth: AuthSpec{
+			Model: "bearer_token",
+			CredentialFields: []Field{{
+				Key:           "token",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		Transport: &TransportSpec{
+			BaseURL:      "https://api.example.test",
+			Verification: &VerificationSpec{Path: "/v1/account"},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:        "account",
+			Path:      "/v1/account",
+			IDField:   "id",
+			Singleton: true,
+			Event: EventMappingSpec{
+				Kind:      "example.account",
+				SchemaRef: "example/account/v1",
+			},
+			Projection: &ProjectionSpec{Template: "asset"},
+			Coverage: []CoverageDimensionSpec{{
+				Type:    "entity_family",
+				Support: "partial",
+			}},
+		}},
+	}, DefaultGrammar())
+	if err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if report.Verdict != SupportVerdictSupported {
+		t.Fatalf("verdict = %q missing=%#v, want supported", report.Verdict, report.MissingFeatures)
+	}
+	if !containsString(report.SupportedFeatures, "record_selector.jsonpath_or_list_key") {
+		t.Fatalf("supported features = %#v, want singleton record selector support", report.SupportedFeatures)
 	}
 }
 

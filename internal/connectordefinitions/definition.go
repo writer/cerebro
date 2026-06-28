@@ -145,6 +145,8 @@ type Field struct {
 type AuthSpec struct {
 	Model                         string            `json:"model"`
 	CredentialFields              []Field           `json:"credential_fields,omitempty"`
+	TokenHeader                   string            `json:"token_header,omitempty"`
+	TokenScheme                   string            `json:"token_scheme,omitempty"`
 	SupportedStoreIDs             []string          `json:"supported_store_ids,omitempty"`
 	RequiresReferences            bool              `json:"requires_references,omitempty"`
 	AuthorizationURL              string            `json:"authorization_url,omitempty"`
@@ -282,6 +284,7 @@ type ResourceFamily struct {
 	Method                string                  `json:"method,omitempty"`
 	RecordSelector        string                  `json:"record_selector,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
+	Singleton             bool                    `json:"singleton,omitempty"`
 	IDField               string                  `json:"id_field"`
 	NameField             string                  `json:"name_field,omitempty"`
 	UpdatedAtField        string                  `json:"updated_at_field,omitempty"`
@@ -395,6 +398,8 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.ScopeSeparator = strings.TrimSpace(definition.Auth.ScopeSeparator)
 	definition.Auth.TokenRequestAuthMethod = strings.TrimSpace(definition.Auth.TokenRequestAuthMethod)
 	definition.Auth.PKCE = strings.TrimSpace(definition.Auth.PKCE)
+	definition.Auth.TokenHeader = strings.TrimSpace(definition.Auth.TokenHeader)
+	definition.Auth.TokenScheme = strings.TrimSpace(definition.Auth.TokenScheme)
 	definition.Auth.AlternateAccessTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateAccessTokenJSONPath)
 	definition.Auth.AlternateRefreshTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateRefreshTokenJSONPath)
 	definition.Auth.Scopes = normalizeStringList(definition.Auth.Scopes)
@@ -690,6 +695,12 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	}
 	if auth.TokenExpirationBufferSeconds < 0 {
 		add(blocking("auth_token_expiration_buffer", "Token expiration buffer", "Token expiration buffer must not be negative."))
+	}
+	if header := strings.TrimSpace(auth.TokenHeader); header != "" && strings.ContainsAny(header, "\r\n\t :") {
+		add(blocking("auth_token_header", "Token header", "Token header must be an HTTP header name such as Authorization or x-api-key."))
+	}
+	if scheme := strings.TrimSpace(auth.TokenScheme); scheme != "" && strings.ContainsAny(scheme, "\r\n\t") {
+		add(blocking("auth_token_scheme", "Token scheme", "Token scheme must not contain whitespace or control characters."))
 	}
 }
 
