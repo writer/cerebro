@@ -71,12 +71,13 @@ func TestNewFixtureReplaysAsanaFamilies(t *testing.T) {
 		RequireDiscover: true,
 	})
 	for _, tt := range []struct {
-		family string
-		kind   string
+		family          string
+		kind            string
+		wantResourceURN string
 	}{
-		{family: familyUsers, kind: "asana.users"},
-		{family: familyProjects, kind: "asana.projects"},
-		{family: familyAuditEvents, kind: "asana.audit_events"},
+		{family: familyUsers, kind: "asana.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
+		{family: familyProjects, kind: "asana.projects", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
+		{family: familyAuditEvents, kind: "asana.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
@@ -88,6 +89,9 @@ func TestNewFixtureReplaysAsanaFamilies(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes["resource_urn"]; got != tt.wantResourceURN {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.wantResourceURN)
 			}
 		})
 	}
