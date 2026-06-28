@@ -542,6 +542,9 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	ccpaPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "CCPA", "1798.100", "privacy-rights", "data_inventory")
 	assertCellContains(t, requirementHeader, ccpaPrivacyRow, "required_fields", "legal_basis")
 
+	isoPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27701", "7.2.6", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, isoPrivacyRow, "required_fields", "legal_basis")
+
 	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
 	assertCellContains(t, requirementHeader, baselineRow, "assessment_methods", "interview")
 
