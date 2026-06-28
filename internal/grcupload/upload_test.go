@@ -84,6 +84,9 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if got := document.GetAttributes()["document_type"]; got != "policy" {
 		t.Fatalf("document_type = %q, want policy", got)
 	}
+	if _, ok := document.GetAttributes()["legacy_record_urn"]; ok {
+		t.Fatal("document included legacy_record_urn for unchanged encoding")
+	}
 	if got := document.GetAttributes()["owner_id"]; got != "owner-1" {
 		t.Fatalf("owner_id = %q, want owner-1", got)
 	}
@@ -154,6 +157,40 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	}
 	if got := document.GetAttributes()["document_type"]; got != "soc2" {
 		t.Fatalf("document_type = %q, want soc2", got)
+	}
+}
+
+func TestBuildEventsReportsLegacyRecordURNWhenEncodingChanged(t *testing.T) {
+	now := time.Date(2026, 6, 28, 10, 30, 0, 0, time.UTC)
+	events, response, err := BuildEvents(UploadRequest{
+		Target:   TargetPolicy,
+		TenantID: "tenant-1",
+		FileName: "Access Policy.pdf",
+		Fields: map[string]string{
+			"policy_id":   "Access Policy+Admin",
+			"document_id": "Access Policy:v2",
+		},
+	}, ParsedDocument{}, now)
+	if err != nil {
+		t.Fatalf("BuildEvents() error = %v", err)
+	}
+	if got, want := response.Events[0].RecordURN, "urn:cerebro:tenant-1:policy:cerebro_upload:Access%20Policy+Admin"; got != want {
+		t.Fatalf("policy record_urn = %q, want %q", got, want)
+	}
+	if got, want := response.Events[0].LegacyRecordURN, "urn:cerebro:tenant-1:policy:cerebro_upload:Access+Policy%2BAdmin"; got != want {
+		t.Fatalf("policy legacy_record_urn = %q, want %q", got, want)
+	}
+	if got, want := events[0].GetAttributes()["legacy_record_urn"], response.Events[0].LegacyRecordURN; got != want {
+		t.Fatalf("policy legacy_record_urn attr = %q, want %q", got, want)
+	}
+	if got, want := response.Events[1].RecordURN, "urn:cerebro:tenant-1:document:cerebro_upload:Access%20Policy%3Av2"; got != want {
+		t.Fatalf("document record_urn = %q, want %q", got, want)
+	}
+	if got, want := response.Events[1].LegacyRecordURN, "urn:cerebro:tenant-1:document:cerebro_upload:Access+Policy%3Av2"; got != want {
+		t.Fatalf("document legacy_record_urn = %q, want %q", got, want)
+	}
+	if got, want := events[1].GetAttributes()["legacy_record_urn"], response.Events[1].LegacyRecordURN; got != want {
+		t.Fatalf("document legacy_record_urn attr = %q, want %q", got, want)
 	}
 }
 
