@@ -479,6 +479,12 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	s3Row := findRow(t, findingRows, findingIDCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, findingHeader, s3Row, "source_capability_status", "source_capability_defined")
 
+	reviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_review_map.csv"))
+	reviewHeader := reviewRows[0]
+	if reviewFlagsCol, sourceCapabilityCol := columnIndex(t, reviewHeader, "review_flags"), columnIndex(t, reviewHeader, "source_capability_status"); reviewFlagsCol > sourceCapabilityCol {
+		t.Fatalf("finding_compliance_review_map.csv source_capability_status column must append after review_flags")
+	}
+
 	gapRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_control_gap_map.csv"))
 	gapHeader := gapRows[0]
 	frameworkCol := columnIndex(t, gapHeader, "framework")

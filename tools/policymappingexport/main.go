@@ -975,8 +975,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(complianceReview.SourceCoverageSupportLevels),
 			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
 			complianceReview.ComplianceEvidenceStatus,
-			sourceCapabilityStatus,
 			joinList(reviewFlags),
+			sourceCapabilityStatus,
 		})
 	}
 
@@ -2553,7 +2553,7 @@ func logicRows() [][]string {
 		{"7", "source coverage reconciliation", "Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."},
 		{"8", "compliance review tags", "Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."},
 		{"9", "framework review areas", "Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."},
-		{"10", "control relationships", "Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
+		{"10", "control relationships", "Add child requirement, sibling scope, evidence dependency, accountability, and operating-context hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."},
 		{"11", "evidence capabilities", "Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible."},
 		{"12", "quality gates", "Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."},
 		{"13", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
@@ -2624,7 +2624,7 @@ func findingComplianceReviewMapHeader() []string {
 		"source_backed_control_ref_count", "control_refs_without_source_match_count",
 		"control_refs_without_source_match", "source_coverage_ref_count",
 		"source_coverage_support_levels", "source_coverage_high_value_count",
-		"compliance_evidence_status", "source_capability_status", "review_flags",
+		"compliance_evidence_status", "review_flags", "source_capability_status",
 	}
 }
 
