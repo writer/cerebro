@@ -150,6 +150,13 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			GovernanceGaps         int `json:"governance_gaps"`
 			PolicyDocumentGaps     int `json:"policy_document_gaps"`
 			RiskRegisterGaps       int `json:"risk_register_gaps"`
+			OpenGovernanceGaps     int `json:"open_governance_gaps"`
+			InProgressGaps         int `json:"in_progress_governance_gaps"`
+			AcknowledgedGaps       int `json:"acknowledged_governance_gaps"`
+			SnoozedGaps            int `json:"snoozed_governance_gaps"`
+			AcceptedGaps           int `json:"accepted_governance_gaps"`
+			ResolvedGaps           int `json:"resolved_governance_gaps"`
+			HighGovernanceGaps     int `json:"high_governance_gaps"`
 			OpenRisks              int `json:"open_risks"`
 			HighRisks              int `json:"high_risks"`
 			AttestationCoveragePct int `json:"attestation_coverage_pct"`
@@ -178,9 +185,24 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			ResidualRisk     string `json:"residual_risk"`
 			SourceDocumentID string `json:"source_document_id"`
 		} `json:"risk_register"`
-		GovernanceGaps    []grcPolicyLifecycleBootstrapGap `json:"governance_gaps"`
-		WorkQueue         []any                            `json:"work_queue"`
-		DocumentWorkQueue []any                            `json:"document_work_queue"`
+		GovernanceGaps  []grcPolicyLifecycleBootstrapGap `json:"governance_gaps"`
+		GovernanceRules []struct {
+			ID       string `json:"id"`
+			Profile  string `json:"profile"`
+			ActionID string `json:"action_id"`
+		} `json:"governance_rules"`
+		GapRollups struct {
+			ByState []struct {
+				Key   string `json:"key"`
+				Count int    `json:"count"`
+			} `json:"by_state"`
+			BySubject []struct {
+				Key   string `json:"key"`
+				Count int    `json:"count"`
+			} `json:"by_subject"`
+		} `json:"governance_gap_rollups"`
+		WorkQueue         []any `json:"work_queue"`
+		DocumentWorkQueue []any `json:"document_work_queue"`
 		Templates         []struct {
 			Controls []any `json:"controls"`
 		} `json:"templates"`
@@ -205,6 +227,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	}
 	if payload.Summary.GovernanceGaps != 4 || payload.Summary.PolicyDocumentGaps != 2 || payload.Summary.RiskRegisterGaps != 2 {
 		t.Fatalf("summary gaps = %+v, want document and risk gap rollups", payload.Summary)
+	}
+	if payload.Summary.OpenGovernanceGaps != 4 || payload.Summary.HighGovernanceGaps != 2 || payload.Summary.InProgressGaps != 0 || payload.Summary.ResolvedGaps != 0 {
+		t.Fatalf("summary gap state counts = %+v, want open high gap counts", payload.Summary)
 	}
 	if len(payload.Policies) != 1 || payload.Policies[0].ID != "access" {
 		t.Fatalf("policies = %+v, want access policy", payload.Policies)
@@ -231,6 +256,12 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 		!grcPolicyLifecycleBootstrapGapExists(payload.GovernanceGaps, "risk", "risk-1", "Missing treatment date") {
 		t.Fatalf("governance gaps = %+v, want document ownership/control and risk treatment gaps", payload.GovernanceGaps)
 	}
+	if len(payload.GovernanceRules) < 12 || payload.GovernanceRules[0].Profile != "baseline" || payload.GovernanceRules[0].ActionID == "" {
+		t.Fatalf("governance rules = %+v, want baseline action rules", payload.GovernanceRules)
+	}
+	if len(payload.GapRollups.ByState) != 1 || payload.GapRollups.ByState[0].Key != "open" || payload.GapRollups.ByState[0].Count != 4 {
+		t.Fatalf("gap rollups = %+v, want open state rollup", payload.GapRollups)
+	}
 	if len(payload.DocumentWorkQueue) < 1 {
 		t.Fatalf("document work queue len = %d, want risk work", len(payload.DocumentWorkQueue))
 	}
@@ -254,11 +285,16 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 }
 
 type grcPolicyLifecycleBootstrapGap struct {
-	Subject   string `json:"subject"`
-	SubjectID string `json:"subject_id"`
-	Reason    string `json:"reason"`
-	Action    string `json:"action"`
-	Severity  string `json:"severity"`
+	Subject       string            `json:"subject"`
+	SubjectID     string            `json:"subject_id"`
+	Reason        string            `json:"reason"`
+	Action        string            `json:"action"`
+	ActionID      string            `json:"action_id"`
+	RuleID        string            `json:"rule_id"`
+	Severity      string            `json:"severity"`
+	GapState      string            `json:"gap_state"`
+	MissingFields []string          `json:"missing_fields"`
+	SourceFields  map[string]string `json:"source_fields"`
 }
 
 func grcPolicyLifecycleBootstrapGapExists(gaps []grcPolicyLifecycleBootstrapGap, subject string, subjectID string, reason string) bool {
