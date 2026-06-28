@@ -1943,7 +1943,7 @@ func grcPolicyRiskTitle(node *grcPolicyGraphNode) string {
 }
 
 func grcPolicyDocumentDueForReview(document grcPolicyDocumentItem, now time.Time) bool {
-	return grcPolicyOverdue(document.NextReviewDueAt, firstNonEmpty(document.Status, "pending"), now)
+	return grcPolicyOverdue(document.NextReviewDueAt, document.Status, now)
 }
 
 func grcPolicyRiskOpen(status string) bool {

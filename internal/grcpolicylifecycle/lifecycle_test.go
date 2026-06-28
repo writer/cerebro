@@ -168,6 +168,28 @@ func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
 	}
 }
 
+func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	document := grcPolicyDocumentItem{
+		ID:              "risk-register",
+		URN:             "urn:document:risk-register",
+		Title:           "Risk Register",
+		DocumentClass:   "risk_register",
+		NextReviewDueAt: "2026-01-15",
+	}
+
+	if grcPolicyDocumentDueForReview(document, now) {
+		t.Fatalf("missing document status should not be due for review")
+	}
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	if summary.DocumentsDueForReview != 0 {
+		t.Fatalf("summary = %+v, want missing-status document excluded from due count", summary)
+	}
+	if items := grcPolicyDocumentWorkQueue([]grcPolicyDocumentItem{document}, nil, now); len(items) != 0 {
+		t.Fatalf("document work queue = %+v, want missing-status document excluded", items)
+	}
+}
+
 func TestExceptionRollupSkipsMissingStatus(t *testing.T) {
 	summary := grcPolicyExceptionRollup([]grcPolicyExceptionItem{
 		{ID: "missing", Status: "", ExpiresAt: "2026-03-01"},
