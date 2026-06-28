@@ -6,10 +6,13 @@ step,layer,definition
 5,policy or finding override,Apply any explicit policy ID or finding ID override when a rule needs different audit language.
 6,source catalog fields,"Use policy YAML and public detection catalog fields as the strongest direct source for controls, tags, severity, evidence, and audit language."
 7,source coverage reconciliation,"Compare finding control_refs with source coverage matched_control_refs so direct, source-backed, and control-only mappings are visible."
-8,compliance review tags,"Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."
-9,framework review areas,"Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."
-10,control relationships,"Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."
-11,evidence capabilities,Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible.
-12,quality gates,"Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."
-13,control gap status,"Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."
-14,spreadsheet,"Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."
+8,mapping confidence,"Classify each finding-control edge as high, medium, or review using matched source coverage and YAML source capability status."
+9,compliance review tags,"Derive framework:, control:, and control-family: tags from control_refs for spreadsheet review. These do not replace runtime finding tags."
+10,framework review areas,"Group direct control refs from internal/compliance/framework_review_areas.yaml so reviewers can see management-system, safeguard, privacy, AI, and payment-card work queues without changing finding evidence."
+11,control relationships,"Add alias, child requirement, sibling scope, and evidence dependency hints from internal/compliance/control_relationships.yaml. These links do not make a finding source-backed."
+12,evidence capabilities,Compare source and dimension capabilities from internal/compliance/evidence_capabilities.yaml with observed source coverage refs so YAML coverage gaps are visible.
+13,quality gates,"Fail generation when a finding lacks framework tags, control refs, evidence mode, resolved audit language, rationale, or source capability status."
+14,control gap status,"Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."
+15,control evidence requirements,"Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."
+16,coverage candidates,"Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."
+17,spreadsheet,"Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."

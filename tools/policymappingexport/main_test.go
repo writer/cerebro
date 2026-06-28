@@ -258,6 +258,8 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 		}
 		if row[controlFindingCol] == "aws-s3-bucket-no-public-access" && row[controlRefCol] == "SOC 2 CC6.6" {
 			assertCellEquals(t, controlHeader, row, "control_match_source", "finding_control_ref+source_coverage_ref")
+			assertCellContains(t, controlHeader, row, "mapping_confidence", "high")
+			assertCellContains(t, controlHeader, row, "mapping_rationale", "matched source coverage")
 			assertCellContains(t, controlHeader, row, "source_coverage_refs", "aws/s3_bucket")
 		}
 	}
@@ -269,6 +271,14 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 		controlRefCol:     "SOC 2 CC6.6",
 	})
 	assertCellContains(t, controlHeader, cc66Row, "source_coverage_refs", "aws/s3_bucket")
+
+	unbackedRow := findRowByColumns(t, controlRows, map[int]string{
+		controlFindingCol: "aws-s3-bucket-no-public-access",
+		controlRefCol:     "CIS AWS Foundations Benchmark v2.0 2.1.5",
+	})
+	assertCellEquals(t, controlHeader, unbackedRow, "control_match_source", "finding_control_ref")
+	assertCellEquals(t, controlHeader, unbackedRow, "mapping_confidence", "review")
+	assertCellContains(t, controlHeader, unbackedRow, "mapping_rationale", "does not currently back this control")
 }
 
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
@@ -507,6 +517,145 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	}
 }
 
+func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	requirementRows := readGeneratedCSV(t, generatedFileByName(t, files, "control_evidence_requirements.csv"))
+	requirementHeader := requirementRows[0]
+	frameworkCol := columnIndex(t, requirementHeader, "framework")
+	controlCol := columnIndex(t, requirementHeader, "control_id")
+	profileCol := columnIndex(t, requirementHeader, "requirement_profile")
+	sourceCol := columnIndex(t, requirementHeader, "requirement_source_id")
+
+	socAccessRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "SOC 2", "CC6.1", "identity-access", "okta")
+	assertCellContains(t, requirementHeader, socAccessRow, "required_fields", "factors")
+	assertCellContains(t, requirementHeader, socAccessRow, "source_capability_refs", "okta/users")
+	assertCellContains(t, requirementHeader, socAccessRow, "coverage_status", "partial_source_backed")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC6.1", "logging-monitoring")
+
+	isoCryptoRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.8.24", "data-protection", "aws")
+	assertCellContains(t, requirementHeader, isoCryptoRow, "required_fields", "encryption_state")
+	assertCellContains(t, requirementHeader, isoCryptoRow, "source_capability_refs", "aws/s3_bucket")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.18", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.30", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC1.5", "identity-access")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.9", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "CIS Controls v8", "11", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "NIST 800-53 r5", "PA-1", "change-configuration")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "A1.1", "ai-governance")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "PI1.1", "privacy-rights")
+
+	ccpaPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "CCPA", "1798.100", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, ccpaPrivacyRow, "required_fields", "legal_basis")
+
+	iso27701PrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27701", "7.2.6", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, iso27701PrivacyRow, "required_fields", "data_category")
+
+	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
+	assertCellContains(t, requirementHeader, baselineRow, "assessment_methods", "interview")
+
+	findingRequirementRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_evidence_requirement_map.csv"))
+	findingRequirementHeader := findingRequirementRows[0]
+	findingCol := columnIndex(t, findingRequirementHeader, "finding_id")
+	findingControlCol := columnIndex(t, findingRequirementHeader, "control_id")
+	findingProfileCol := columnIndex(t, findingRequirementHeader, "requirement_profile")
+	findingRequirementSourceCol := columnIndex(t, findingRequirementHeader, "requirement_source_id")
+	foundFindingRequirement := false
+	for _, row := range findingRequirementRows[1:] {
+		if row[findingCol] == "cerebro-high-risk-api-access" && row[findingControlCol] == "CC6.1" && row[findingProfileCol] == "identity-access" && row[findingRequirementSourceCol] == "okta" {
+			assertCellContains(t, findingRequirementHeader, row, "requirement_source_id", "okta")
+			assertCellContains(t, findingRequirementHeader, row, "freshness_window", "24h")
+			foundFindingRequirement = true
+			break
+		}
+	}
+	if !foundFindingRequirement {
+		t.Fatal("finding_evidence_requirement_map.csv missing identity requirement for cerebro-high-risk-api-access")
+	}
+}
+
+func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	rows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_coverage_candidates.csv"))
+	header := rows[0]
+	frameworkCol := columnIndex(t, header, "framework")
+	controlCol := columnIndex(t, header, "control_id")
+
+	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "CCPA", "1798.100")
+	assertCellContains(t, header, privacyRow, "coverage_status", "direct_control_only")
+	assertCellContains(t, header, privacyRow, "candidate_priority", "high")
+	assertCellContains(t, header, privacyRow, "candidate_type", "source_backing_candidate")
+	assertCellContains(t, header, privacyRow, "suggested_finding_domain", "privacy")
+	assertCellContains(t, header, privacyRow, "requirement_profiles", "privacy-rights")
+
+	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ISO 27001:2022", "A.7.8")
+	assertCellContains(t, header, catalogOnlyRow, "coverage_status", "framework_catalog_only")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_priority", "low")
+	assertCellContains(t, header, catalogOnlyRow, "candidate_type", "scope_or_exclusion_candidate")
+	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
+}
+
+func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
+	cases := []struct {
+		status   string
+		kind     string
+		priority string
+		action   string
+	}{
+		{
+			status:   "direct_with_source_context",
+			kind:     "source_link_review_candidate",
+			priority: "medium",
+			action:   "promote valid links",
+		},
+		{
+			status:   "direct_control_only",
+			kind:     "source_backing_candidate",
+			priority: "high",
+			action:   "Add source coverage",
+		},
+		{
+			status:   "source_capability_only",
+			kind:     "missing_finding_candidate",
+			priority: "high",
+			action:   "Create or map",
+		},
+		{
+			status:   "review_context_only",
+			kind:     "mapping_review_candidate",
+			priority: "medium",
+			action:   "review context",
+		},
+		{
+			status:   "framework_catalog_only",
+			kind:     "scope_or_exclusion_candidate",
+			priority: "low",
+			action:   "in-scope status",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.status, func(t *testing.T) {
+			if got := frameworkCoverageCandidateType(tt.status); got != tt.kind {
+				t.Fatalf("frameworkCoverageCandidateType(%q) = %q, want %q", tt.status, got, tt.kind)
+			}
+			if got := frameworkCoverageCandidatePriority(tt.status); got != tt.priority {
+				t.Fatalf("frameworkCoverageCandidatePriority(%q) = %q, want %q", tt.status, got, tt.priority)
+			}
+			if got := frameworkCoverageCandidateAction(tt.status); !strings.Contains(got, tt.action) {
+				t.Fatalf("frameworkCoverageCandidateAction(%q) = %q, want substring %q", tt.status, got, tt.action)
+			}
+		})
+	}
+}
+
 func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 	cases := []struct {
 		name string
@@ -530,6 +679,13 @@ func TestRequiredReviewContextLoadersRejectMissingFiles(t *testing.T) {
 			name: "evidence capabilities",
 			load: func(root string) error {
 				_, err := loadEvidenceCapabilities(root)
+				return err
+			},
+		},
+		{
+			name: "control evidence requirements",
+			load: func(root string) error {
+				_, err := loadControlEvidenceRequirements(root)
 				return err
 			},
 		},
@@ -644,6 +800,37 @@ func findRow(t *testing.T, rows [][]string, column int, value string) []string {
 	}
 	t.Fatalf("row with column %d = %s not found", column, value)
 	return nil
+}
+
+func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, profileCol int, sourceCol int, framework string, controlID string, profile string, source string) []string {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID && row[profileCol] == profile && row[sourceCol] == source {
+			return row
+		}
+	}
+	t.Fatalf("requirement row not found for %s %s %s %s", framework, controlID, profile, source)
+	return nil
+}
+
+func findFrameworkControlRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, framework string, controlID string) []string {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID {
+			return row
+		}
+	}
+	t.Fatalf("framework control row not found for %s %s", framework, controlID)
+	return nil
+}
+
+func assertRequirementRowMissing(t *testing.T, rows [][]string, frameworkCol int, controlCol int, profileCol int, framework string, controlID string, profile string) {
+	t.Helper()
+	for _, row := range rows[1:] {
+		if row[frameworkCol] == framework && row[controlCol] == controlID && row[profileCol] == profile {
+			t.Fatalf("unexpected requirement row found for %s %s %s", framework, controlID, profile)
+		}
+	}
 }
 
 func assertCellContains(t *testing.T, header []string, row []string, column string, want string) {
