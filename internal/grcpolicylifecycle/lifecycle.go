@@ -488,15 +488,6 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
 			item.PolicyID = policy.ID
 			policy.Reviews = append(policy.Reviews, item)
-			if policy.Reviewer == "" {
-				policy.Reviewer = firstNonEmpty(item.Reviewers...)
-			}
-			if policy.ReviewCadence == "" {
-				policy.ReviewCadence = item.Cadence
-			}
-			if policy.NextReviewDueAt == "" {
-				policy.NextReviewDueAt = item.ReviewDueAt
-			}
 		case "policy.exception":
 			item := grcPolicyExceptionFromNode(node, relations)
 			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
@@ -692,6 +683,20 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Reviews, func(i, j int) bool {
 		return grcPolicySortDate(policy.Reviews[i].ReviewDueAt, policy.Reviews[i].ReviewedAt).Before(grcPolicySortDate(policy.Reviews[j].ReviewDueAt, policy.Reviews[j].ReviewedAt))
 	})
+	for _, review := range policy.Reviews {
+		if policy.Reviewer == "" {
+			policy.Reviewer = firstNonEmpty(review.Reviewers...)
+		}
+		if policy.ReviewCadence == "" {
+			policy.ReviewCadence = review.Cadence
+		}
+		if policy.NextReviewDueAt == "" {
+			policy.NextReviewDueAt = review.ReviewDueAt
+		}
+		if policy.Reviewer != "" && policy.ReviewCadence != "" && policy.NextReviewDueAt != "" {
+			break
+		}
+	}
 	sort.Slice(policy.Exceptions, func(i, j int) bool {
 		return grcPolicySortDate(policy.Exceptions[i].ExpiresAt, policy.Exceptions[i].ApprovedAt).Before(grcPolicySortDate(policy.Exceptions[j].ExpiresAt, policy.Exceptions[j].ApprovedAt))
 	})
@@ -835,12 +840,12 @@ func grcPolicyLifecycleWorkQueue(policies []grcPolicyLifecyclePolicy, now time.T
 func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) grcPolicyAcceptanceSummary {
 	var summary grcPolicyAcceptanceSummary
 	for _, item := range items {
+		if grcPolicyClosedStatus(item.Status) {
+			continue
+		}
 		if grcPolicyAcceptedStatus(item.Status) || item.AcceptedAt != "" {
 			summary.Total++
 			summary.Accepted++
-			continue
-		}
-		if grcPolicyClosedStatus(item.Status) {
 			continue
 		}
 		if grcPolicyOverdue(item.DueAt, item.Status, now) {

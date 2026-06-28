@@ -78,10 +78,29 @@ func TestAcceptanceRollupExcludesClosedUnacceptedAttestations(t *testing.T) {
 		{ID: "overdue", Status: "pending", DueAt: "2026-01-15"},
 		{ID: "rejected", Status: "rejected", DueAt: "2026-01-01"},
 		{ID: "expired", Status: "expired", DueAt: "2026-01-01"},
+		{ID: "stale-date", Status: "rejected", AcceptedAt: "2026-01-10"},
 	}, now)
 
 	if summary.Total != 3 || summary.Accepted != 1 || summary.Pending != 1 || summary.Overdue != 1 {
 		t.Fatalf("rollup = %#v, want closed unaccepted attestations excluded", summary)
+	}
+}
+
+func TestFinalizeUsesSortedReviewMetadata(t *testing.T) {
+	policy := grcPolicyLifecyclePolicy{
+		Reviews: []grcPolicyReviewItem{
+			{ID: "later", ReviewDueAt: "2026-06-15", Cadence: "quarterly", Reviewers: []string{"later@example.com"}},
+			{ID: "earlier", ReviewDueAt: "2026-01-15", Cadence: "monthly", Reviewers: []string{"earlier@example.com"}},
+		},
+	}
+
+	grcPolicyFinalize(&policy, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if policy.Reviews[0].ID != "earlier" {
+		t.Fatalf("first review = %q, want earliest due review", policy.Reviews[0].ID)
+	}
+	if policy.Reviewer != "earlier@example.com" || policy.ReviewCadence != "monthly" || policy.NextReviewDueAt != "2026-01-15" {
+		t.Fatalf("review metadata = %q/%q/%q, want earliest review metadata", policy.Reviewer, policy.ReviewCadence, policy.NextReviewDueAt)
 	}
 }
 
