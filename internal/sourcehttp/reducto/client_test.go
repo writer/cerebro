@@ -116,6 +116,9 @@ func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
 			if r.Method != http.MethodGet {
 				t.Fatalf("result method = %s, want GET", r.Method)
 			}
+			if got := r.Header.Get("Authorization"); got != "Bearer reducto-token" {
+				t.Fatalf("result Authorization = %q, want bearer token", got)
+			}
 			writeJSON(t, w, map[string]any{
 				"chunks": []map[string]string{
 					{"content": "Downloaded policy content"},

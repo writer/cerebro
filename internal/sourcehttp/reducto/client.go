@@ -192,6 +192,7 @@ func (c *Client) fetchResultURL(ctx context.Context, rawURL string) (any, error)
 	if err != nil {
 		return nil, fmt.Errorf("%w: build Reducto result request: %w", grcupload.ErrRemote, err)
 	}
+	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Accept", "application/json")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
