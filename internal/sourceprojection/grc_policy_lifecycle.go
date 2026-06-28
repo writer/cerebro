@@ -7,6 +7,36 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func grcPolicyTemplateProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	templateID := firstAttribute(ctx.attrs, "template_id", "policy_template_id", "external_id")
+	if templateID == "" {
+		return nil, nil, nil
+	}
+	templateURN := ctx.resourceURN("policy_template", templateID)
+	ctx.addResourceEntity(
+		templateURN,
+		"policy.template",
+		firstAttribute(ctx.attrs, "title", "name", "policy_name", "template_id", "policy_template_id"),
+		map[string]string{
+			"source_system": ctx.provider,
+			"status":        firstAttribute(ctx.attrs, "status", "template_status", "lifecycle_state"),
+			"template_id":   templateID,
+		},
+	)
+	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "policy_owner_user_id"))
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, ctx.provider)
+	addGRCPolicyDocumentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, ctx.provider, ctx.attrs)
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, ctx.provider, ctx.attrs)
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, "policy_template_framework", firstAttribute(ctx.attrs, "frameworks", "framework"))
+	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, templateURN, "policy_template_category", firstAttribute(ctx.attrs, "category", "policy_category"))
+	entities, links := ctx.done()
+	return entities, links, nil
+}
+
 func grcPolicyVersionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	ctx, err := newGRCProjectionContext(event)
 	if err != nil {
@@ -149,6 +179,42 @@ func grcPolicyReviewProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, reviewURN, firstAttribute(ctx.attrs, "reviewer_user_id", "reviewer_user_ids", "reviewed_by_user_id"), "reviewed")
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reviewURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "policy_owner_user_id"))
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reviewURN, ctx.provider, ctx.attrs)
+	entities, links := ctx.done()
+	return entities, links, nil
+}
+
+func grcPolicyReminderProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	policyID := firstAttribute(ctx.attrs, "policy_id")
+	versionID := firstAttribute(ctx.attrs, "policy_version_id", "version_id")
+	reminderID := firstAttribute(ctx.attrs, "reminder_id", "policy_reminder_id", "escalation_id", "external_id")
+	if reminderID == "" {
+		reminderID = grcDerivedID(policyID, versionID, firstAttribute(ctx.attrs, "target_id", "person_id", "user_id", "email", "group_id"), firstAttribute(ctx.attrs, "due_at", "sent_at", "scheduled_at"))
+	}
+	if reminderID == "" {
+		return nil, nil, nil
+	}
+	reminderURN := ctx.resourceURN("policy_reminder", reminderID)
+	ctx.addResourceEntity(
+		reminderURN,
+		"policy.reminder",
+		firstAttribute(ctx.attrs, "title", "policy_name", "reminder_id", "policy_reminder_id", "escalation_id"),
+		map[string]string{
+			"policy_id":         policyID,
+			"policy_version_id": versionID,
+			"reminder_id":       reminderID,
+			"source_system":     ctx.provider,
+			"status":            firstAttribute(ctx.attrs, "status", "reminder_status", "escalation_status"),
+		},
+	)
+	addGRCPolicyLifecycleSubjectLinks(ctx, reminderURN, policyID, versionID)
+	addGRCPolicyAssignmentLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reminderURN, ctx.provider, ctx.attrs)
+	addGRCUserActionLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, firstAttribute(ctx.attrs, "sent_by_user_id", "created_by_user_id"), reminderURN, "sent_reminder")
+	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, reminderURN, firstAttribute(ctx.attrs, "escalated_to_user_id", "escalated_to_user_ids"), "escalated")
+	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, reminderURN, ctx.provider, ctx.attrs)
 	entities, links := ctx.done()
 	return entities, links, nil
 }

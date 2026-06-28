@@ -6,6 +6,13 @@ emitted_kinds:
   - grc.control
   - grc.control_test
   - grc.policy
+  - grc.policy_template
+  - grc.policy_version
+  - grc.policy_approval
+  - grc.policy_acceptance
+  - grc.policy_review
+  - grc.policy_exception
+  - grc.policy_reminder
   - grc.document
   - grc.contract
   - grc.security_review
@@ -45,6 +52,34 @@ event_contracts:
       - family
   - kind: grc.policy
     schema_ref: grc/policy/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_template
+    schema_ref: grc/policy_template/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_version
+    schema_ref: grc/policy_version/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_approval
+    schema_ref: grc/policy_approval/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_acceptance
+    schema_ref: grc/policy_acceptance/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_review
+    schema_ref: grc/policy_review/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_exception
+    schema_ref: grc/policy_exception/v1
+    required_attributes:
+      - family
+  - kind: grc.policy_reminder
+    schema_ref: grc/policy_reminder/v1
     required_attributes:
       - family
   - kind: grc.document

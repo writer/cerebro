@@ -37,6 +37,7 @@ Policy lifecycle should model these records:
 | Policy acceptance | `acceptance_id` | One person's acceptance or attestation for a version. |
 | Policy review | `review_id` | Owner or reviewer cadence evidence for annual or ad hoc review. |
 | Policy exception | `exception_id` or `waiver_id` | Time-bound waiver, deferral, or scoped exception. |
+| Policy reminder | `reminder_id` | Reminder or escalation record for an approval, review, exception, or employee attestation. |
 | Policy assignment | policy or version plus group/user | Employee group or user population required to accept the policy. |
 
 Lifecycle states should stay concrete:
@@ -69,22 +70,27 @@ The source projection layer now accepts imported policy lifecycle event kinds. T
 | Event kind | Required identity | Main graph entity |
 | --- | --- | --- |
 | `grc.policy` | `policy_id` | `policy` |
+| `grc.policy_template` | `template_id` | `policy.template` |
 | `grc.policy_version` | `policy_version_id` or derived policy/version/date | `policy.version` |
 | `grc.policy_approval` | `approval_id` or derived policy/version/approver/date | `policy.approval` |
 | `grc.policy_acceptance` | `acceptance_id` or derived person/policy/version/date | `policy.acceptance` |
 | `grc.policy_review` | `review_id` or derived policy/version/review date | `policy.review` |
 | `grc.policy_exception` | `exception_id`, `waiver_id`, or derived policy/target/expiration | `policy.exception` |
+| `grc.policy_reminder` | `reminder_id`, `policy_reminder_id`, `escalation_id`, or derived policy/target/date | `policy.reminder` |
 
 Common attributes:
 
 | Attribute | Use |
 | --- | --- |
 | `provider` | Source system, for example `policy_system`, `document_repository`, `identity_source`, or `manual`. |
+| `template_id`, `policy_template_id` | Policy template identity. |
 | `policy_id` | Parent policy identity. |
 | `policy_version_id`, `version_id` | Policy version identity. |
+| `reminder_id`, `policy_reminder_id`, `escalation_id` | Reminder or escalation identity. |
 | `status` plus specific status fields | Lifecycle, approval, acceptance, review, or exception state. |
 | `owner_id`, `policy_owner_user_id` | Accountable policy owner. |
 | `approver_user_id`, `approver_user_ids`, `reviewer_user_id`, `reviewer_user_ids` | Reviewer and approver actors. |
+| `sent_by_user_id`, `created_by_user_id`, `escalated_to_user_id`, `escalated_to_user_ids` | Reminder sender and escalation targets. |
 | `person_id`, `user_id`, `email` | Employee acceptance subject. |
 | `group_id`, `employee_group_id`, `acceptance_group_id` | Assigned employee group. |
 | `control_id`, `control_ids`, `control_references` | Explicit policy-to-control mappings. |
@@ -97,13 +103,17 @@ Graph relationships:
 | From | Relation | To |
 | --- | --- | --- |
 | Policy or policy version | `supports` | Control |
+| Policy template | `supports` | Control |
 | Policy or policy version | `has_evidence` | Document or runtime evidence |
+| Policy template | `has_evidence` | Document or runtime evidence |
 | Policy version | `belongs_to` | Policy |
-| Approval, acceptance, review, or exception | `associated_with` | Policy version or policy |
+| Approval, acceptance, review, exception, or reminder | `associated_with` | Policy version or policy |
 | Policy, version, or acceptance | `assigned_to` | Employee group or user |
+| Reminder | `assigned_to` | Employee group or user |
 | Person or user | `has_evidence` | Policy acceptance |
 | Author | `acted_on` | Policy version |
 | Approver or reviewer | `acted_on` | Approval, review, or exception |
+| Sender or escalation owner | `acted_on` | Reminder |
 | Policy exception | `targeted` | Scoped asset, service, system, resource, or user target |
 | Policy exception | `associated_with` | Control |
 
@@ -142,7 +152,13 @@ Recommended work items:
 
 The repo does not ship an end-user web UI. Lifecycle operations should be exposed as typed APIs and CLI surfaces, then consumed by a separate console.
 
-Candidate read endpoints:
+Implemented aggregate endpoint:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /grc/policy-lifecycle` | Tenant-scoped aggregate of policy templates, policy records, versions, approvals, attestations, reviews, exceptions, reminders, work queue items, and explicit control/evidence mappings. |
+
+Candidate follow-on read endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
