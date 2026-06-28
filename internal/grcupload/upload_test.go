@@ -157,6 +157,42 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	}
 }
 
+func TestRecordURNEncodesRecordIDSegment(t *testing.T) {
+	request := UploadRequest{TenantID: "tenant-1"}
+	for _, tt := range []struct {
+		name string
+		kind string
+		want string
+	}{
+		{
+			name: "policy",
+			kind: "grc.policy",
+			want: "urn:cerebro:tenant-1:policy:cerebro_upload:ISO%3A27001%2F2022",
+		},
+		{
+			name: "document",
+			kind: "grc.document",
+			want: "urn:cerebro:tenant-1:document:cerebro_upload:ISO%3A27001%2F2022",
+		},
+		{
+			name: "vendor",
+			kind: "grc.vendor",
+			want: "urn:cerebro:tenant-1:vendor:cerebro_upload:ISO%3A27001%2F2022",
+		},
+		{
+			name: "assurance document",
+			kind: "grc.assurance_document",
+			want: "urn:cerebro:tenant-1:assurance_document:cerebro_upload:ISO%3A27001%2F2022",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := recordURN(request, tt.kind, "ISO:27001/2022"); got != tt.want {
+				t.Fatalf("recordURN() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStableUploadIDIgnoresParserIDsAndClock(t *testing.T) {
 	request := normalizeRequest(UploadRequest{
 		Target:      TargetPolicy,
