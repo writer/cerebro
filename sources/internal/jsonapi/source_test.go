@@ -965,6 +965,49 @@ func TestReadObjectMapRecords(t *testing.T) {
 	}
 }
 
+func TestReadUsesNestedIdentityFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resources": []map[string]any{{
+				"metadata": map[string]any{"id": "model-1"},
+				"entity":   map[string]any{"name": "Risk Model"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "models",
+		Path:    "/models",
+		URNKind: "test_model",
+		IDKeys:  []string{"metadata.id"},
+		ListKeys: []string{
+			"resources",
+		},
+		Attributes: map[string]string{
+			"model_id":   "metadata.id",
+			"model_name": "entity.name",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "models",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want nested record", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["external_id"]; got != "model-1" {
+		t.Fatalf("external_id = %q, want model-1", got)
+	}
+	if got := pull.Events[0].Attributes["model_name"]; got != "Risk Model" {
+		t.Fatalf("model_name = %q, want Risk Model", got)
+	}
+}
+
 func TestReadParsesUnixTimestamp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
