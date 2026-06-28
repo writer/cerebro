@@ -153,9 +153,10 @@ Dependencies: `graphquery`, `grcfindings`, `ports`
 
 Key exports:
 
-- `ListVendors(ctx, request)` — returns graph-backed vendor rows with normalized risk level, owner state, review state, and linked GRC record counts
-- `GetVendor(ctx, request)` — returns one vendor, bounded graph neighborhood, and grouped related records
-- `Summarize(vendors)` — aggregates vendor counts, owner gaps, review posture, risk posture, finding counts, and evidence counts
+- `ListVendors(ctx, request)` — returns graph-backed vendor rows with normalized lifecycle, explainable risk score, exposure, packet readiness, owner state, review state, assessment state, remediation state, monitoring state, freshness state, commercial context, offboarding state, queue posture, and linked GRC record counts
+- `GetVendor(ctx, request)` — returns one vendor, bounded graph neighborhood, grouped related records, and review packet
+- `BuildVendorPacket(vendor, relationships)` — builds the vendor review packet with lifecycle, risk inputs, risk score factors, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, control posture, commercial context, freshness clocks, obligations, owners, contacts, identifiers, fourth parties, finding counts, and closeout actions
+- `Summarize(vendors)` — aggregates vendor counts, owner gaps, review posture, risk posture, exposure, packet readiness, assessment work, remediation work, monitoring alerts, renewal pressure, offboarding work, freshness posture, queue posture, finding counts, and evidence counts
 - `ListDiscoveries(ctx, request)` — returns `vendor.discovery` candidates with source status
 - `ApplyDiscoveryDecisions(discoveries, records)` — overlays local approve, reject, ignore, or link decisions without writing back to the source provider
 - `SummarizeDiscoveries(discoveries)` — aggregates discovery decision state counts
@@ -170,6 +171,12 @@ Canonical vendor field precedence:
 | Website | `website_url`, `website`, `url`, `domain` |
 | Owner | `security_owner_user_id`, `business_owner_user_id` |
 | Risk level | `residual_risk_level`, `inherent_risk_level`, `risk_level`, `unknown` |
+| Lifecycle | `lifecycle_state`, `vendor_lifecycle_state`, `status`, `vendor_status` |
+| Risk score | `risk_score`, `vendor_risk_score`, `current_risk_score`, otherwise derived from risk inputs, controls, findings, freshness, and lifecycle |
+| Assessment | `assessment_state`, `assessment_status`, `vendor_assessment_status`, review dates, questionnaires, and assessment counts |
+| Monitoring | source monitoring state, external security rating, material changes, incidents, breached credentials, findings, freshness, and lifecycle conditions |
+| Commercial | spend, contract value, renewal notice date, primary contact, business unit, and cost center attributes |
+| Operations | exposure from data/access/dependency attributes, packet readiness from required review items, remediation due dates and counts, offboarding due dates, and data deletion state |
 
 Vendor review states:
 
@@ -187,10 +194,38 @@ Owner states:
 | `assigned` | Security owner or business owner is present |
 | `missing` | No security owner or business owner is projected |
 
+Queue reasons:
+
+| Reason family | Closing state |
+| --- | --- |
+| Owner missing | Security owner or business owner is present |
+| Review overdue | Review completed or next security review due date moved forward |
+| DPA missing or expired | Current DPA attached or DPA marked not applicable |
+| Evidence stale or expired | Fresh source/runtime, artifact, review, document, or control evidence timestamps are projected |
+| Critical or high findings open | Linked high-severity findings are resolved or risk accepted |
+| Restricted or conditional lifecycle | Vendor moves to approved, retired, rejected, ignored, or another non-queue lifecycle |
+| Packet blocked or needs work | Required packet items are attached, accepted, or marked not applicable |
+| Remediation overdue or due soon | Remediation due date moves forward or open remediation items are closed |
+| Assessment overdue, in progress, or missing | Assessment completed, started, or due date moved forward |
+| Monitoring alert | Monitoring signal resolved, accepted, or source state returns to clear |
+| Renewal due | Renewal notice date moves out of the due window or renewal decision is recorded upstream |
+| Vendor contact missing | Primary vendor contact is projected for Tier 1 or Tier 2 vendors |
+| Offboarding incomplete | Access revocation, data deletion, or offboarding deadline state is completed or marked not applicable |
+
+Freshness clocks:
+
+| Clock | Source attributes |
+| --- | --- |
+| Source runtime | `source_runtime_fresh_at`, `last_source_sync_at`, `last_synced_at`, `source_last_seen_at`, `last_observed_at` |
+| Artifact age | `artifact_created_at`, `assurance_document_created_at`, `document_created_at`, `evidence_created_at` |
+| Review completion | `last_security_review_completion_date`, `last_review_completed_at`, `review_completed_at` |
+| Document expiry | `document_expiry_date`, `assurance_document_expiry_date`, `dpa_expiry_date`, `soc2_expiry_date`, `certificate_expiry_date` |
+| Control evidence | `last_control_evidence_at`, `control_evidence_updated_at`, `last_evidence_at` |
+
 Boundaries:
 
 - Vendor posture classification and graph relationship grouping remain in this package
-- Discovery decisions are local overlay records in the state store. Approve, reject, ignore, and link do not write back to Vanta or any other source provider from this repo.
+- Discovery decisions are local overlay records in the state store with append-only decision events. Approve, reject, ignore, and link do not write back to source providers from this repo.
 - Evidence freshness is not guessed from the UI. Source runtime freshness, artifact age, review completion date, document expiry, and control evidence recency must be explicit source attributes or finding/evidence filters.
 - Finding and evidence enrichment remains in bootstrap because it reuses the existing GRC finding/evidence stores and runtime filters
 - Source runtimes still own raw collection; source projection still owns graph facts

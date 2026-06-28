@@ -22,6 +22,7 @@ type grcVendorsResponse struct {
 type grcVendorDetailResponse struct {
 	Vendor        grcvendor.Vendor              `json:"vendor"`
 	Relationships grcvendor.VendorRelationships `json:"relationships"`
+	Packet        grcvendor.VendorPacket        `json:"packet"`
 	Graph         any                           `json:"graph,omitempty"`
 	Findings      []grcFindingItem              `json:"findings"`
 	Evidence      []grcEvidenceItem             `json:"evidence"`
@@ -29,10 +30,11 @@ type grcVendorDetailResponse struct {
 }
 
 type grcVendorDiscoveriesResponse struct {
-	Summary     grcvendor.DiscoverySummary                `json:"summary"`
-	Discoveries []grcvendor.VendorDiscovery               `json:"discoveries"`
-	Decisions   []*ports.GRCVendorDiscoveryDecisionRecord `json:"decisions,omitempty"`
-	GeneratedAt time.Time                                 `json:"generated_at"`
+	Summary        grcvendor.DiscoverySummary                     `json:"summary"`
+	Discoveries    []grcvendor.VendorDiscovery                    `json:"discoveries"`
+	Decisions      []*ports.GRCVendorDiscoveryDecisionRecord      `json:"decisions,omitempty"`
+	DecisionEvents []*ports.GRCVendorDiscoveryDecisionEventRecord `json:"decision_events,omitempty"`
+	GeneratedAt    time.Time                                      `json:"generated_at"`
 }
 
 type grcVendorDiscoveryDecisionRequest struct {
@@ -63,6 +65,11 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	queueOnly, err := boolQueryParam(r, "queue")
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	vendors, err := grcvendor.New(graphQueryStore(a.deps.GraphStore)).ListVendors(r.Context(), grcvendor.ListVendorsRequest{
 		TenantID:    scope.TenantID,
 		RuntimeID:   scope.RuntimeID,
@@ -72,6 +79,9 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		RiskLevel:   strings.TrimSpace(r.URL.Query().Get("risk_level")),
 		ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")),
 		OwnerState:  strings.TrimSpace(r.URL.Query().Get("owner_state")),
+		Lifecycle:   strings.TrimSpace(r.URL.Query().Get("lifecycle_state")),
+		QueueOnly:   queueOnly,
+		DeferLimit:  queueOnly,
 		Limit:       scope.Limit,
 	})
 	if err != nil {
@@ -83,6 +93,10 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	if queueOnly {
+		vendors = grcvendor.FilterVendorsByQueue(vendors)
+	}
+	vendors = grcvendor.SortAndLimitVendors(vendors, scope.Limit)
 	writeJSON(w, http.StatusOK, grcVendorsResponse{
 		Summary:     grcvendor.Summarize(vendors),
 		Vendors:     vendors,
@@ -166,9 +180,12 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 	detail.Vendor.CriticalFindings = metrics[urn].CriticalFindings
 	detail.Vendor.HighFindings = metrics[urn].HighFindings
 	detail.Vendor.EvidenceItems = metrics[urn].EvidenceItems
+	detail.Vendor = grcvendor.RefreshVendorQueuePosture(detail.Vendor)
+	detail.Packet = grcvendor.BuildVendorPacket(detail.Vendor, detail.Relationships)
 	return grcVendorDetailResponse{
 		Vendor:        detail.Vendor,
 		Relationships: detail.Relationships,
+		Packet:        detail.Packet,
 		Graph:         detail.Graph,
 		Findings:      findingItems,
 		Evidence:      evidenceItems,
@@ -212,11 +229,18 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 	}
 	discoveries = grcvendor.ApplyDiscoveryDecisions(discoveries, decisions)
 	discoveries = grcvendor.FilterDiscoveriesByDecisionState(discoveries, decisionState)
+	decisions = filterGRCVendorDiscoveryDecisions(decisions, grcDiscoveryURNs(discoveries))
+	decisionEvents, err := a.listGRCVendorDiscoveryDecisionEvents(r, scope, grcDiscoveryURNs(discoveries))
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, grcVendorDiscoveriesResponse{
-		Summary:     grcvendor.SummarizeDiscoveries(discoveries),
-		Discoveries: discoveries,
-		Decisions:   decisions,
-		GeneratedAt: time.Now().UTC(),
+		Summary:        grcvendor.SummarizeDiscoveries(discoveries),
+		Discoveries:    discoveries,
+		Decisions:      decisions,
+		DecisionEvents: decisionEvents,
+		GeneratedAt:    time.Now().UTC(),
 	})
 }
 
@@ -334,6 +358,7 @@ func (a *App) enrichGRCVendors(r *http.Request, scope grcScope, vendors []grcven
 		vendors[index].CriticalFindings = item.CriticalFindings
 		vendors[index].HighFindings = item.HighFindings
 		vendors[index].EvidenceItems = item.EvidenceItems
+		vendors[index] = grcvendor.RefreshVendorQueuePosture(vendors[index])
 	}
 	return vendors, nil
 }
@@ -406,6 +431,39 @@ func (a *App) listGRCVendorDiscoveryDecisions(r *http.Request, scope grcScope, d
 		SourceID:      scope.SourceID,
 		Limit:         boundedUint32(len(discoveryURNs)),
 	})
+}
+
+func (a *App) listGRCVendorDiscoveryDecisionEvents(r *http.Request, scope grcScope, discoveryURNs []string) ([]*ports.GRCVendorDiscoveryDecisionEventRecord, error) {
+	store := grcVendorDiscoveryDecisionStore(a.deps.StateStore)
+	if store == nil || len(discoveryURNs) == 0 {
+		return nil, nil
+	}
+	return store.ListGRCVendorDiscoveryDecisionEvents(r.Context(), ports.GRCVendorDiscoveryDecisionEventFilter{
+		TenantID:      scope.TenantID,
+		DiscoveryURNs: discoveryURNs,
+		SourceID:      scope.SourceID,
+		Limit:         boundedUint32(len(discoveryURNs) * 10),
+	})
+}
+
+func filterGRCVendorDiscoveryDecisions(records []*ports.GRCVendorDiscoveryDecisionRecord, discoveryURNs []string) []*ports.GRCVendorDiscoveryDecisionRecord {
+	if len(records) == 0 || len(discoveryURNs) == 0 {
+		return nil
+	}
+	visible := make(map[string]struct{}, len(discoveryURNs))
+	for _, urn := range discoveryURNs {
+		visible[strings.TrimSpace(urn)] = struct{}{}
+	}
+	filtered := records[:0]
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		if _, ok := visible[strings.TrimSpace(record.DiscoveryURN)]; ok {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
 }
 
 func grcVendorFindingLimit(vendorCount int, scopeLimit uint32) uint32 {

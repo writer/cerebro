@@ -73,33 +73,70 @@ func newGRCVulnerabilitySLAOverdueRule() Rule {
 	}})
 }
 
+type grcVendorReviewOverdueRule struct {
+	Rule
+	definition RuleDefinition
+}
+
+var grcVendorReviewOverdueDefinition = RuleDefinition{
+	ID:                 grcVendorReviewOverdueRuleID,
+	Name:               "GRC Vendor Review Overdue",
+	Description:        "Detect provider-neutral GRC vendors with overdue security reviews or missing owners.",
+	SourceID:           "grc",
+	EventKinds:         []string{"grc.vendor"},
+	OutputKind:         "finding.grc_vendor_review_overdue",
+	Severity:           "MEDIUM",
+	Status:             findingStatusOpen,
+	Maturity:           "test",
+	Tags:               []string{"grc", "vendor-risk"},
+	References:         []string{"https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services", "https://www.iso.org/standard/27001"},
+	FalsePositives:     []string{"Vendor review has an approved deferral, owner is tracked outside the provider, or provider sync has not reflected the latest review."},
+	Runbook:            "Confirm vendor owner and review status, request updated security review evidence, and document exceptions or offboarding decisions.",
+	RequiredAttributes: []string{"vendor_id"},
+	FingerprintFields:  []string{"tenant_id", "runtime_id", "provider", "vendor_id"},
+	ControlRefs: []ports.FindingControlRef{
+		{FrameworkName: "SOC 2", ControlID: "CC9.2"},
+		{FrameworkName: "ISO 27001:2022", ControlID: "A.5.19"},
+	},
+	Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
+}
+
+var grcVendorReviewOverdueKindMatcher = eventKindMatcher(grcVendorReviewOverdueDefinition.EventKinds...)
+
 func newGRCVendorReviewOverdueRule() Rule {
-	definition := RuleDefinition{
-		ID:                 grcVendorReviewOverdueRuleID,
-		Name:               "GRC Vendor Review Overdue",
-		Description:        "Detect provider-neutral GRC vendors with overdue security reviews or missing owners.",
-		SourceID:           "grc",
-		EventKinds:         []string{"grc.vendor"},
-		OutputKind:         "finding.grc_vendor_review_overdue",
-		Severity:           "MEDIUM",
-		Status:             findingStatusOpen,
-		Maturity:           "test",
-		Tags:               []string{"grc", "vendor-risk"},
-		References:         []string{"https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services", "https://www.iso.org/standard/27001"},
-		FalsePositives:     []string{"Vendor review has an approved deferral, owner is tracked outside the provider, or provider sync has not reflected the latest review."},
-		Runbook:            "Confirm vendor owner and review status, request updated security review evidence, and document exceptions or offboarding decisions.",
-		RequiredAttributes: []string{"vendor_id"},
-		FingerprintFields:  []string{"tenant_id", "runtime_id", "provider", "vendor_id"},
-		ControlRefs: []ports.FindingControlRef{
-			{FrameworkName: "SOC 2", ControlID: "CC9.2"},
-			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.19"},
-		},
-		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
-	}
-	return newEventRule(eventRuleConfig{definition: definition, match: matchesGRCVendorReviewOverdue, build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+	rule := newEventRule(eventRuleConfig{definition: grcVendorReviewOverdueDefinition, match: matchesGRCVendorReviewOverdue, build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 		attrs := event.GetAttributes()
-		return buildGRCFinding(ctx, runtime, event, definition, "GRC vendor review overdue", grcVendorSummary(attrs), "vendor_id", "MEDIUM")
+		return buildGRCFinding(ctx, runtime, event, grcVendorReviewOverdueDefinition, "GRC vendor review overdue", grcVendorSummary(attrs), "vendor_id", "MEDIUM")
 	}})
+	return &grcVendorReviewOverdueRule{
+		Rule:       rule,
+		definition: grcVendorReviewOverdueDefinition,
+	}
+}
+
+func (r *grcVendorReviewOverdueRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *grcVendorReviewOverdueRule) OpenAnchor(attributes map[string]string) string {
+	return grcVendorReviewAnchor(attributes)
+}
+
+func (r *grcVendorReviewOverdueRule) CloseOnEvent(event Event) (string, bool) {
+	if !grcVendorReviewOverdueKindMatcher(event) || !hasRequiredAttributes(event, grcVendorReviewOverdueDefinition.RequiredAttributes...) {
+		return "", false
+	}
+	if matchesGRCVendorReviewOverdue(event) {
+		return "", false
+	}
+	if !matchesGRCVendorReviewRestored(event) {
+		return "", false
+	}
+	anchor := grcVendorReviewAnchor(eventAttributes(event))
+	return anchor, anchor != ""
 }
 
 func matchesGRCControlTestNeedsAttention(event *cerebrov1.EventEnvelope) bool {
@@ -123,15 +160,38 @@ func matchesGRCVulnerabilitySLAOverdue(event *cerebrov1.EventEnvelope) bool {
 }
 
 func matchesGRCVendorReviewOverdue(event *cerebrov1.EventEnvelope) bool {
-	if !eventKindMatcher("grc.vendor")(event) || !hasRequiredAttributes(event, "vendor_id") {
+	if !grcVendorReviewOverdueKindMatcher(event) || !hasRequiredAttributes(event, "vendor_id") {
 		return false
 	}
 	attrs := event.GetAttributes()
+	if grcVendorInactiveLifecycle(attrs) {
+		return false
+	}
 	if firstNonEmpty(attrs["security_owner_user_id"], attrs["business_owner_user_id"]) == "" {
 		return true
 	}
 	due, ok := parseGRCTime(attrs["next_security_review_due_date"])
 	return ok && due.Before(time.Now().UTC())
+}
+
+func matchesGRCVendorReviewRestored(event *cerebrov1.EventEnvelope) bool {
+	if !grcVendorReviewOverdueKindMatcher(event) || !hasRequiredAttributes(event, "vendor_id") {
+		return false
+	}
+	attrs := event.GetAttributes()
+	if grcVendorInactiveLifecycle(attrs) {
+		return true
+	}
+	if firstNonEmpty(attrs["security_owner_user_id"], attrs["business_owner_user_id"]) == "" {
+		return false
+	}
+	if due, ok := parseGRCTime(attrs["next_security_review_due_date"]); ok && !due.Before(time.Now().UTC()) {
+		return true
+	}
+	if _, ok := parseGRCTime(firstNonEmpty(attrs["last_security_review_completion_date"], attrs["last_review_completed_at"], attrs["review_completed_at"])); ok {
+		return true
+	}
+	return false
 }
 
 func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, definition RuleDefinition, title string, summary string, policyKey string, severity string) (*ports.FindingRecord, error) {
@@ -230,10 +290,32 @@ func grcVulnerabilitySummary(attrs map[string]string) string {
 }
 
 func grcVendorSummary(attrs map[string]string) string {
-	if strings.TrimSpace(attrs["security_owner_user_id"]) == "" {
+	if firstNonEmpty(attrs["security_owner_user_id"], attrs["business_owner_user_id"]) == "" {
 		return fmt.Sprintf("GRC vendor %s is missing a security owner", firstNonEmpty(attrs["name"], attrs["vendor_id"], "unknown vendor"))
 	}
 	return fmt.Sprintf("GRC vendor %s has overdue security review due %s", firstNonEmpty(attrs["name"], attrs["vendor_id"], "unknown vendor"), firstNonEmpty(attrs["next_security_review_due_date"], "unknown"))
+}
+
+func grcVendorReviewAnchor(attrs map[string]string) string {
+	vendorID := firstNonEmpty(attrs["vendor_id"], attrs["external_id"])
+	if vendorID == "" {
+		return ""
+	}
+	provider := firstNonEmpty(attrs["provider"], attrs["source_system"], attrs["source_id"])
+	if provider == "" {
+		return identityCounterEventAnchor(map[string]string{"vendor_id": vendorID}, "vendor_id")
+	}
+	return identityCounterEventAnchor(map[string]string{"provider": provider, "vendor_id": vendorID}, "provider", "vendor_id")
+}
+
+func grcVendorInactiveLifecycle(attrs map[string]string) bool {
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(attrs["lifecycle_state"], attrs["vendor_lifecycle_state"], attrs["status"], attrs["vendor_status"])))
+	switch state {
+	case "archived", "deleted", "disabled", "ignored", "inactive", "rejected", "denied", "retired", "terminated", "offboarding", "offboarded", "terminating", "decommissioning":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseGRCTime(raw string) (time.Time, bool) {

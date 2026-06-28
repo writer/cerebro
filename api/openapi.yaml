@@ -2831,9 +2831,19 @@ paths:
           schema:
             type: string
             enum: [assigned, missing, all]
+        - name: lifecycle_state
+          in: query
+          schema:
+            type: string
+            enum: [discovered, candidate, active, in_review, approved, conditionally_approved, restricted, offboarding, retired, rejected, ignored, unknown, all]
+        - name: queue
+          in: query
+          description: Return vendors with open queue reasons.
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Canonical vendor rows with owner, security review, contract, assurance, finding, and evidence counts.
+          description: Canonical vendor rows with lifecycle, explainable risk scoring, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, owner, security review, freshness, renewal, offboarding, queue, contract, assurance, finding, and evidence counts.
   /grc/vendors/{vendorID}:
     get:
       summary: Vendor detail
@@ -2856,7 +2866,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Vendor detail with relationships, open findings, evidence, and graph context.
+          description: Vendor detail with packet, relationships, open findings, evidence, and graph context.
   /grc/vendors/{vendorID}/packet:
     get:
       summary: Vendor packet
@@ -2879,7 +2889,7 @@ paths:
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
-          description: Vendor packet with relationships, open findings, evidence, and graph context.
+          description: Vendor packet with lifecycle, risk inputs, score factors, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, control posture, commercial context, freshness clocks, obligations, contacts, fourth parties, related records, open findings, evidence, and graph context.
   /grc/vendor-discoveries:
     get:
       summary: Vendor discoveries
@@ -2913,7 +2923,7 @@ paths:
             enum: [discovered, approved, rejected, ignored, linked, all]
       responses:
         '200':
-          description: Discovered vendor candidates with source status and local decision overlay state.
+          description: Discovered vendor candidates with source status, current local decision overlay state, and append-only local decision events.
   /grc/vendor-discoveries/{discoveryID}/decision:
     post:
       summary: Update vendor discovery decision
@@ -2953,7 +2963,7 @@ paths:
                     type: string
       responses:
         '200':
-          description: Updated local discovery decision. Source systems are not written by this endpoint.
+          description: Updated local discovery decision with decision_event_id and version. Source systems are not written by this endpoint.
   /grc/vendor-risk/vendors:
     get:
       summary: Vendor risk vendors
@@ -2988,9 +2998,19 @@ paths:
           schema:
             type: string
             enum: [assigned, missing, all]
+        - name: lifecycle_state
+          in: query
+          schema:
+            type: string
+            enum: [discovered, candidate, active, in_review, approved, conditionally_approved, restricted, offboarding, retired, rejected, ignored, unknown, all]
+        - name: queue
+          in: query
+          description: Return vendors with open queue reasons when true.
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Vendors with owner, security review, contract, assurance, finding, and evidence counts.
+          description: Vendors with open queue reasons, lifecycle, risk score, exposure, packet readiness, assessment posture, remediation posture, monitoring signals, owner, security review, renewal, offboarding, contract, assurance, finding, and evidence counts.
   /grc/vendor-risk/vendors/detail:
     get:
       summary: Vendor risk vendor detail
