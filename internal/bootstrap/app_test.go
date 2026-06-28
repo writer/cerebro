@@ -47,6 +47,7 @@ import (
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
+	auth0source "github.com/writer/cerebro/sources/auth0"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -1744,8 +1745,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 3 {
-		t.Fatalf("/sources entries = %#v, want 3 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 4 {
+		t.Fatalf("/sources entries = %#v, want 4 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
@@ -1913,8 +1914,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 3 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 3", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 4 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 4", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -7697,6 +7698,10 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	auth0, err := auth0source.NewFixture()
+	if err != nil {
+		return nil, err
+	}
 	okta, err := oktasource.NewFixture()
 	if err != nil {
 		return nil, err
@@ -7705,7 +7710,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, okta, sdk)
+	return sourcecdk.NewRegistry(source, auth0, okta, sdk)
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

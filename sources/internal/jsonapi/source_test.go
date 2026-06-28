@@ -482,7 +482,7 @@ func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
 func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"devices": []map[string]any{{"id": "device-1"}},
+			"devices": []map[string]any{{"id": "auth0|user-1"}},
 		})
 	}))
 	defer server.Close()
@@ -495,8 +495,8 @@ func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_device:device-1" {
-		t.Fatalf("URNs = %#v, want test device URN", urns)
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_device:auth0%7Cuser-1" {
+		t.Fatalf("URNs = %#v, want encoded test device URN", urns)
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 type record struct {
@@ -696,7 +697,7 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 	kind := firstNonEmpty(family.URNKind, family.Name)
 	urns := make([]sourcecdk.URN, 0, len(records))
 	for _, record := range dedupeRecords(records) {
-		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, record.ID))
+		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, cerebrourn.EncodeSegment(record.ID)))
 		if err != nil {
 			return nil, err
 		}
