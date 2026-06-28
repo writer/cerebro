@@ -1,8 +1,8 @@
 # Cerebro Documentation
 
-Cerebro is an operations data platform for cloud, SaaS, identity, workflow, finding, compliance, and graph signals.
+Cerebro gives coding agents compliance superpowers.
 
-The current `main` branch is centered on a Go bootstrap service with JSON HTTP and Connect APIs, built-in source integrations, source runtime sync, finding and report workflows, compliance-control coverage, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
+The current `main` branch is centered on a Go bootstrap service that turns security, identity, cloud, SaaS, workflow, policy, and compliance signals into evidence-backed context. Agents and operators can query that context through JSON HTTP, Connect APIs, CLI workflows, SDK helpers, MCP access, and optional graph projection/query tooling.
 
 ## Mental Model
 
@@ -43,6 +43,23 @@ For a durable local stack:
 ```bash
 docker compose up --build
 ```
+
+## Agent Compliance Quickstart
+
+Run the local onboarding flow, then give the receipt to your coding agent:
+
+```bash
+make secure-business-demo
+```
+
+```text
+Use Cerebro as compliance context for this change.
+Read tmp/onboarding/e2e-receipt.json, then tell me which checks passed,
+which evidence exists, which controls apply, and what must happen before
+this can ship.
+```
+
+For live integrations, connect an MCP client to `POST /api/v1/mcp` so agents can query policy memory, compliance evidence, graph context, and safe action-planning contracts.
 
 ## Main Docs
 
