@@ -523,7 +523,7 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	socAccessRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "SOC 2", "CC6.1", "identity-access", "okta")
 	assertCellContains(t, requirementHeader, socAccessRow, "required_fields", "factors")
 	assertCellContains(t, requirementHeader, socAccessRow, "source_capability_refs", "okta/users")
-	assertCellContains(t, requirementHeader, socAccessRow, "coverage_status", "direct_source_backed")
+	assertCellContains(t, requirementHeader, socAccessRow, "coverage_status", "partial_source_backed")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC6.1", "logging-monitoring")
 
 	isoCryptoRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.8.24", "data-protection", "aws")
