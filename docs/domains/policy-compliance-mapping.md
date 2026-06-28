@@ -13,7 +13,7 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `internal/compliance/control_families.yaml` | Framework names, control IDs, and control family labels. |
 | `internal/compliance/policy_rule_extensions.yaml` | Shared audit language by defaults, evidence mode, domain, policy override, finding-domain alias, and finding override. |
 | `internal/compliance/framework_review_areas.yaml` | Framework-level review queues that group direct control refs without changing evidence status. |
-| `internal/compliance/control_relationships.yaml` | Alias, child requirement, sibling scope, evidence dependency, and follow-up hints between controls. |
+| `internal/compliance/control_relationships.yaml` | Child requirement, sibling scope, evidence dependency, accountability, and follow-up hints between controls. |
 | `internal/compliance/evidence_capabilities.yaml` | Source and dimension capability declarations for source-backed evidence review. |
 | `internal/compliance/control_evidence_requirements.yaml` | Profile-driven control evidence requirements, including required sources, entity types, fields, freshness, assessment methods, and auditor-grade evidence language. |
 | `internal/findings/builtin_rule_audit_extensions.yaml` | Layered audit-depth fields (assessment method, evidence type, frequency, false-positive guidance) for non-policy public detections, by defaults, anchors, sources, and per-rule override. |
@@ -75,7 +75,7 @@ For non-policy detections, public detection catalog fields load first as fallbac
 | `compliance_quality_issues.csv` | Blocking quality-gate rows for findings that lack required framework, control, evidence, rationale, or source-capability status fields. An empty table after the header means the gate passes. |
 | `finding_domain_aliases.csv` | One row per YAML finding-domain alias used to resolve non-policy findings into audit domains. |
 | `framework_review_areas.csv` | One row per YAML framework review area with its control refs and purpose. |
-| `control_relationships.csv` | One row per YAML control relationship, including alias, child requirement, sibling scope, and evidence dependency hints. |
+| `control_relationships.csv` | One row per YAML control relationship, including child requirement, sibling scope, evidence dependency, accountability, and follow-up hints. |
 | `finding_review_area_map.csv` | One row per public detection matched into a YAML framework review area through direct control refs. |
 | `finding_control_relationship_map.csv` | One row per public detection-control relationship hint through direct control refs. |
 | `evidence_capabilities.csv` | One row per YAML source/dimension capability with declared source-backed control refs. |
@@ -148,11 +148,13 @@ Use `mapping_rationale` for the row-level reason before relying on a mapping in 
 - `indirect`: review context or source capability exists, but no direct finding maps to the control.
 - `none`: the control is present in the framework catalog only.
 
+Within the `direct` lane, `direct_source_backed` means every direct finding for that control has source-backed evidence. `partial_source_backed` means some direct findings are source-backed and the remaining direct findings still need source backing or an explicit review decision.
+
 ## Review Context
 
 `framework_review_areas.yaml` groups related controls into reviewer queues such as access authorization, technical safeguards, privacy incident response, payment-card authentication, and AI management planning. A finding enters `finding_review_area_map.csv` when one of its direct control refs is in the YAML area.
 
-`control_relationships.yaml` adds explicit links such as aliases, child requirements, sibling scope, evidence dependencies, and corrective-action follow-up. A finding enters `finding_control_relationship_map.csv` when it has the direct control ref. These rows are review hints only; they do not change `source_backed`, `partial_source_backed`, or `control_only` status.
+`control_relationships.yaml` adds explicit links such as child requirements, sibling scope, evidence dependencies, accountability dependencies, corrective-action follow-up, and operating context. A finding enters `finding_control_relationship_map.csv` when it has the direct control ref. These rows are review hints only; they do not change `source_backed`, `partial_source_backed`, or `control_only` status.
 
 `evidence_capabilities.yaml` declares what a source/dimension can support when source coverage is available. `source_capability_review_map.csv` compares those YAML declarations with the public detection catalog so capability gaps are visible without treating review context as evidence.
 

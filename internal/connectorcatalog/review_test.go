@@ -66,6 +66,30 @@ func TestReviewAnalysisBuildsPromotionCleanupAndQuestions(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisOmitsRuntimeDepthWithoutInventory(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 1, Generateable: 1},
+		Entries: []Entry{{
+			Path:         "identity/catalog_only.yaml",
+			Status:       StatusGenerateable,
+			Generateable: true,
+			Definition:   reviewDefinition("catalog_only", "Catalog Only", []connectordefinitions.ResourceFamily{reviewDetailedFamily("users", "identity_user")}),
+		}},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	if report.Summary.RuntimeDepth != nil {
+		t.Fatalf("runtime depth summary = %#v, want nil without runtime inventory", report.Summary.RuntimeDepth)
+	}
+	if len(report.RuntimeDepthQueue) != 0 {
+		t.Fatalf("runtime depth queue = %#v, want empty without runtime inventory", report.RuntimeDepthQueue)
+	}
+	if hasQuestion(report, "catalog_only", "runtime_depth") {
+		t.Fatalf("questions = %#v, did not expect runtime_depth question without runtime inventory", report.Questions)
+	}
+}
+
 func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
 	analysis := Analysis{
 		Summary: Summary{Total: 2, Generateable: 2},
@@ -254,6 +278,68 @@ func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "devops/github.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition:   reviewDefinition("github", "GitHub", []connectordefinitions.ResourceFamily{reviewDetailedFamily("audit", "audit_event")}),
+			},
+			{
+				Path:         "identity/catalog_only.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition:   reviewDefinition("catalog_only", "Catalog Only", []connectordefinitions.ResourceFamily{reviewDetailedFamily("users", "identity_user")}),
+			},
+		},
+	}
+	inventory := RuntimeDepthInventory{
+		"github": {
+			SourceID:                "github",
+			PackagePath:             "sources/github",
+			Score:                   100,
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasSourceTests:          true,
+			HasFixturePair:          true,
+			HasDeployManifest:       true,
+			HasProjectorTests:       true,
+			HasEventContracts:       true,
+			HasCoverageContract:     true,
+			RuntimeFamilies:         []string{"audit"},
+		},
+	}
+
+	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
+
+	if report.Summary.RuntimeDepth == nil {
+		t.Fatal("runtime depth summary = nil, want runtime depth summary")
+	}
+	if report.Summary.RuntimeDepth.ReferenceRuntimeSources != 1 {
+		t.Fatalf("reference runtime sources = %d, want 1", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
+	}
+	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 1 {
+		t.Fatalf("needs runtime depth = %d, want 1", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+	}
+	if _, ok := runtimeDepthFor(report, "github"); ok {
+		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
+	}
+	candidate, ok := runtimeDepthFor(report, "catalog_only")
+	if !ok {
+		t.Fatalf("runtime depth queue = %#v, want catalog_only source", report.RuntimeDepthQueue)
+	}
+	if !containsString(candidate.Missing, "runtime:source_package") {
+		t.Fatalf("catalog_only missing = %v, want runtime:source_package", candidate.Missing)
+	}
+	if !hasQuestion(report, "catalog_only", "runtime_depth") {
+		t.Fatalf("questions = %#v, want runtime_depth question", report.Questions)
+	}
+}
+
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {
 	return connectordefinitions.Definition{
 		SourceID:         sourceID,
@@ -340,6 +426,15 @@ func fidelityFor(report ReviewReport, sourceID string) (FidelityCandidate, bool)
 	return FidelityCandidate{}, false
 }
 
+func runtimeDepthFor(report ReviewReport, sourceID string) (RuntimeDepthCandidate, bool) {
+	for _, candidate := range report.RuntimeDepthQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return RuntimeDepthCandidate{}, false
+}
+
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {
 	for _, queue := range report.PromotionQueues {
 		if queue.ID != queueID {
@@ -366,4 +461,13 @@ func questionFor(report ReviewReport, sourceID string, category string) (ReviewQ
 		}
 	}
 	return ReviewQuestion{}, false
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
