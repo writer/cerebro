@@ -22,6 +22,7 @@ type Family struct {
 	CursorParam           string
 	NextCursorKeys        []string
 	HasMoreKey            string
+	LinkHeader            string
 	PageFirstCursor       string
 	URNKind               string
 	IDKeys                []string
@@ -142,7 +143,8 @@ func (s *Source) CheckPath(ctx context.Context, cfg sourcecdk.Config, path strin
 	if err != nil {
 		return err
 	}
-	return s.doRequest(ctx, settings, normalizedPath, query, nil, expectStatuses)
+	_, err = s.doRequest(ctx, settings, normalizedPath, query, nil, expectStatuses)
+	return err
 }
 
 // Discover returns URNs for the configured family.

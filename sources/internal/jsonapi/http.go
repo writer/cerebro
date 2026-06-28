@@ -56,12 +56,16 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		query.Set(cursorParam(family), pageCursor)
 	}
 	var body json.RawMessage
-	if err := s.getJSON(ctx, settings, query, &body); err != nil {
+	headers, err := s.getJSONWithHeader(ctx, settings, query, &body)
+	if err != nil {
 		return nil, "", err
 	}
 	items, next, err := parseListResponse(family, body)
 	if err != nil {
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
+	}
+	if next == "" {
+		next = linkHeaderCursor(family, headers)
 	}
 	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	records := make([]record, 0, len(items))
@@ -198,10 +202,15 @@ func queryValues(value string, split bool) []string {
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {
+	_, err := s.getJSONWithHeader(ctx, settings, query, target)
+	return err
+}
+
+func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query url.Values, target any) (http.Header, error) {
 	return s.doRequest(ctx, settings, settings.path, query, target, nil)
 }
 
-func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) error {
+func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
 	endpoint := settings.baseURL + settings.path
 	if strings.TrimSpace(path) != "" {
 		endpoint = settings.baseURL + path
@@ -215,7 +224,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("build %s request: %w", s.options.SourceID, err)
+		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
 	req.Header.Set("Accept", "application/json")
 	for key, value := range s.options.StaticHeaders {
@@ -229,7 +238,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 		}
 	}
 	if err := s.authorizeRequest(ctx, settings, req); err != nil {
-		return err
+		return nil, err
 	}
 	client := s.client
 	if client == nil {
@@ -242,26 +251,26 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	}
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(expectStatuses) != 0 {
 		for _, status := range expectStatuses {
 			if resp.StatusCode == status {
-				return nil
+				return resp.Header, nil
 			}
 		}
-		return decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
+		return resp.Header, decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
+		return resp.Header, decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
 	}
 	if target == nil {
-		return nil
+		return resp.Header, nil
 	}
 	if err := json.Unmarshal(resp.Body, target); err != nil {
-		return fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
+		return resp.Header, fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
-	return nil
+	return resp.Header, nil
 }
 
 func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {
@@ -408,6 +417,36 @@ func rawStringAtPath(object map[string]json.RawMessage, path string) string {
 			return ""
 		}
 		current = nested
+	}
+	return ""
+}
+
+func linkHeaderCursor(family Family, headers http.Header) string {
+	headerName := strings.TrimSpace(family.LinkHeader)
+	if headerName == "" {
+		return ""
+	}
+	raw := strings.TrimSpace(headers.Get(headerName))
+	if raw == "" {
+		return ""
+	}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.Contains(part, `rel="next"`) && !strings.Contains(part, "rel=next") {
+			continue
+		}
+		start := strings.Index(part, "<")
+		end := strings.Index(part, ">")
+		if start < 0 || end <= start+1 {
+			continue
+		}
+		parsed, err := url.Parse(part[start+1 : end])
+		if err != nil {
+			continue
+		}
+		if value := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); value != "" {
+			return value
+		}
 	}
 	return ""
 }

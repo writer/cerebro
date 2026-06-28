@@ -672,6 +672,25 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 					CursorJSONPath:  "$.paging.continuation",
 					DisablePageSize: true,
 				},
+			}, {
+				ID:             "files",
+				Path:           "/files",
+				RecordSelector: "$[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "huggingface.files",
+					SchemaRef: "huggingface/files/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+				Pagination: &connectordefinitions.PaginationSpec{
+					Type:          "link",
+					CursorParam:   "cursor",
+					LinkHeader:    "Link",
+					PageSizeParam: "limit",
+				},
 			}},
 		},
 		OutputDir: outputDir,
@@ -684,6 +703,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`Path:             "/models"`,
 		`CursorParam:      "after"`,
 		`NextCursorKeys:   []string{"paging.continuation"}`,
+		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
 		`StaticQuery: map[string]string{"full": "true"}`,

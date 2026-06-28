@@ -367,8 +367,11 @@ entries:
               evidence_types: [source_snapshot]
               control_domains: [asset_inventory]
           pagination:
-            type: none
-            disable_page_size: true
+            type: link
+            cursor_param: cursor
+            link_header: Link
+            page_size_param: limit
+            page_size: 100
 
   - classifier_output: supported
     definition:

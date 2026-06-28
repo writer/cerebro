@@ -52,6 +52,12 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 		}
 		if _, ok := directProviders[sourceID]; ok {
 			for _, family := range entry.Definition.ResourceFamilies {
+				if sourceID == "huggingface" && family.ID == "repositories" {
+					if family.Pagination == nil || family.Pagination.Type != "link" || family.Pagination.CursorParam != "cursor" || family.Pagination.LinkHeader != "Link" || family.Pagination.PageSizeParam != "limit" {
+						t.Fatalf("huggingface repositories pagination = %#v, want link pagination", family.Pagination)
+					}
+					continue
+				}
 				if family.Pagination == nil || family.Pagination.Type != "none" || !family.Pagination.DisablePageSize {
 					t.Fatalf("source %q family %q pagination = %#v, want none with disabled page size", sourceID, family.ID, family.Pagination)
 				}
@@ -65,5 +71,20 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 	}
 	if got := repositories.ConfigQuery["author"]; got != "organization" {
 		t.Fatalf("huggingface repositories author config query = %q, want organization", got)
+	}
+	for _, test := range []struct {
+		sourceID string
+		field    string
+	}{
+		{sourceID: "databricks", field: "workspace_url"},
+		{sourceID: "snowflake", field: "account"},
+	} {
+		fields := map[string]struct{}{}
+		for _, field := range entries[test.sourceID].Definition.ConfigFields {
+			fields[field.Key] = struct{}{}
+		}
+		if _, ok := fields[test.field]; !ok {
+			t.Fatalf("source %q missing config field %q", test.sourceID, test.field)
+		}
 	}
 }

@@ -836,6 +836,10 @@ entries:
       categories:
         - data
         - warehouse
+      config_fields:
+        - key: workspace_url
+          label: Workspace URL
+          required: true
       auth:
         model: bearer_token
         credential_fields:
@@ -2760,6 +2764,10 @@ entries:
       categories:
         - data
         - warehouse
+      config_fields:
+        - key: account
+          label: Account
+          required: true
       auth:
         model: oauth_client_credentials
         token_url: "https://${config.account}.snowflakecomputing.com/oauth/token"
