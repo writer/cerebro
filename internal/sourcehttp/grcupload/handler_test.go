@@ -133,6 +133,9 @@ func TestHandlerAcceptsUploadWithEncodedRecordIDs(t *testing.T) {
 	if got, want := payload.Events[1].RecordURN, "urn:cerebro:tenant-1:document:cerebro_upload:Access%20Policy%3Av2"; got != want {
 		t.Fatalf("document record_urn = %q, want %q", got, want)
 	}
+	if got, want := payload.Events[1].LegacyRecordURN, "urn:cerebro:tenant-1:document:cerebro_upload:Access+Policy%3Av2"; got != want {
+		t.Fatalf("document legacy_record_urn = %q, want %q", got, want)
+	}
 	if len(appendLog.events) != 2 || len(projector.events) != 2 {
 		t.Fatalf("append/project counts = %d/%d, want 2/2", len(appendLog.events), len(projector.events))
 	}
@@ -141,6 +144,9 @@ func TestHandlerAcceptsUploadWithEncodedRecordIDs(t *testing.T) {
 	}
 	if got, want := appendLog.events[0].GetAttributes()["record_urn"], payload.Events[0].RecordURN; got != want {
 		t.Fatalf("record_urn attribute = %q, want %q", got, want)
+	}
+	if got, want := appendLog.events[1].GetAttributes()["legacy_record_urn"], payload.Events[1].LegacyRecordURN; got != want {
+		t.Fatalf("legacy_record_urn attribute = %q, want %q", got, want)
 	}
 	if cacheBumps != 1 {
 		t.Fatalf("cache bumps = %d, want 1", cacheBumps)
