@@ -108,7 +108,7 @@ func claimVerificationContract() ClaimVerificationContract {
 		AllowedStageByVerdict: map[string]string{
 			ClaimVerdictSupported:       ActionStageRecommend,
 			ClaimVerdictWeaklySupported: ActionStageExplain,
-			ClaimVerdictContradicted:    ActionStageExplain,
+			ClaimVerdictContradicted:    ActionStageObserve,
 			ClaimVerdictUnknown:         ActionStageObserve,
 		},
 		RequiredOutputs: []string{"verdict", "allowed_next_stage", "blockers", "warnings", "supporting_evidence", "counter_evidence", "missing_evidence", "required_write_back"},

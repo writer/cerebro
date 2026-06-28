@@ -70,6 +70,25 @@ func TestBuildClaimVerificationBlocksCounterevidenceAndPrefersTenantScope(t *tes
 		t.Fatalf("allowed_next_stage = %q, want observe", verification.AllowedNextStage)
 	}
 
+	counterevidenceOnly := BuildClaimVerification(ClaimVerificationRequest{
+		TenantID:               "tenant-1",
+		Claim:                  "This finding can be resolved.",
+		ScopeURN:               "urn:cerebro:tenant-1:finding:finding-1",
+		SupportingEvidenceURNs: []string{"urn:cerebro:tenant-1:evidence:evidence-1"},
+		CounterEvidenceURNs:    []string{"urn:cerebro:tenant-1:evidence:evidence-2"},
+		FreshnessState:         "fresh",
+		RequestedActionStage:   ActionStageExplain,
+	})
+	if counterevidenceOnly.Verdict != ClaimVerdictContradicted {
+		t.Fatalf("counterevidence verdict = %q, want contradicted", counterevidenceOnly.Verdict)
+	}
+	if counterevidenceOnly.AllowedNextStage != ActionStageObserve {
+		t.Fatalf("counterevidence allowed_next_stage = %q, want observe", counterevidenceOnly.AllowedNextStage)
+	}
+	if !claimVerificationHasBlocker(counterevidenceOnly, "stage_skip") {
+		t.Fatalf("counterevidence blockers = %+v, want stage_skip", counterevidenceOnly.Blockers)
+	}
+
 	crossTenantOnly := BuildClaimVerification(ClaimVerificationRequest{
 		TenantID:               "tenant-1",
 		Claim:                  "This finding can be resolved.",
