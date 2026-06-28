@@ -590,10 +590,6 @@ func TestGenerateFilesIncludesWorkbookManifest(t *testing.T) {
 		}
 		manifestFiles[csvFile] = struct{}{}
 	}
-	generatedFiles := map[string]struct{}{}
-	for _, file := range files {
-		generatedFiles[file.Name] = struct{}{}
-	}
 	for csvFile := range manifestFiles {
 		if _, ok := generatedFiles[csvFile]; !ok {
 			t.Fatalf("workbook_manifest.csv references unknown generated file %s", csvFile)
