@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -284,7 +283,7 @@ func recordURN(request UploadRequest, kind string, recordID string) string {
 	if recordID == "" {
 		return ""
 	}
-	recordID = url.QueryEscape(recordID)
+	recordID = cerebrourn.EncodeSegment(recordID)
 	var urn string
 	var err error
 	switch kind {

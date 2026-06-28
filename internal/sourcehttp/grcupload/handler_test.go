@@ -3,6 +3,7 @@ package grcuploadhttp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -80,6 +81,104 @@ func TestHandlerAppendsAllEventsBeforeProjecting(t *testing.T) {
 	}
 	if len(projector.events) != 0 {
 		t.Fatalf("projected events = %d, want 0 before all appends succeed", len(projector.events))
+	}
+}
+
+func TestHandlerAcceptsUploadWithEncodedRecordIDs(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	projector := &recordingProjector{}
+	cacheBumps := 0
+	handler := NewHandler(Options{
+		Target: grcupload.TargetPolicy,
+		ParserFactory: func() (grcupload.Parser, error) {
+			return stubParser{parsed: grcupload.ParsedDocument{ProviderFileID: "file-1", ParseID: "parse-1", Status: "completed"}}, nil
+		},
+		AppendLog: appendLog,
+		Projector: projector,
+		ResolveScope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: r.URL.Query().Get("tenant_id"), SourceID: "grc", RuntimeID: "runtime-1"}, nil
+		},
+		AuthorizeTenant: func(context.Context, string) error { return nil },
+		BumpCache: func(context.Context, string) {
+			cacheBumps++
+		},
+		Now: fixedUploadTime,
+	})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, uploadRequest(t, "?tenant_id=tenant-1", map[string]string{
+		"policy_id":   "ISO:27001/2022",
+		"document_id": "Access Policy:v2",
+	}))
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusAccepted)
+	}
+	var payload grcupload.Response
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Events) != 2 {
+		t.Fatalf("response events = %d, want 2", len(payload.Events))
+	}
+	if got, want := payload.Events[0].RecordID, "ISO:27001/2022"; got != want {
+		t.Fatalf("policy record_id = %q, want %q", got, want)
+	}
+	if got, want := payload.Events[0].RecordURN, "urn:cerebro:tenant-1:policy:cerebro_upload:ISO%3A27001%2F2022"; got != want {
+		t.Fatalf("policy record_urn = %q, want %q", got, want)
+	}
+	if got, want := payload.Events[1].RecordURN, "urn:cerebro:tenant-1:document:cerebro_upload:Access%20Policy%3Av2"; got != want {
+		t.Fatalf("document record_urn = %q, want %q", got, want)
+	}
+	if len(appendLog.events) != 2 || len(projector.events) != 2 {
+		t.Fatalf("append/project counts = %d/%d, want 2/2", len(appendLog.events), len(projector.events))
+	}
+	if got, want := appendLog.events[0].GetAttributes()["policy_id"], "ISO:27001/2022"; got != want {
+		t.Fatalf("policy_id attribute = %q, want %q", got, want)
+	}
+	if got, want := appendLog.events[0].GetAttributes()["record_urn"], payload.Events[0].RecordURN; got != want {
+		t.Fatalf("record_urn attribute = %q, want %q", got, want)
+	}
+	if cacheBumps != 1 {
+		t.Fatalf("cache bumps = %d, want 1", cacheBumps)
+	}
+}
+
+func TestHandlerAcceptsUploadWhenProjectionFailsAfterAppend(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	projector := &recordingProjector{failAt: 1}
+	cacheBumps := 0
+	handler := NewHandler(Options{
+		Target: grcupload.TargetPolicy,
+		ParserFactory: func() (grcupload.Parser, error) {
+			return stubParser{parsed: grcupload.ParsedDocument{ProviderFileID: "file-1", ParseID: "parse-1", Status: "completed"}}, nil
+		},
+		AppendLog: appendLog,
+		Projector: projector,
+		ResolveScope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: r.URL.Query().Get("tenant_id"), SourceID: "grc", RuntimeID: "runtime-1"}, nil
+		},
+		AuthorizeTenant: func(context.Context, string) error { return nil },
+		BumpCache: func(context.Context, string) {
+			cacheBumps++
+		},
+		Now: fixedUploadTime,
+	})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, uploadRequest(t, "?tenant_id=tenant-1", map[string]string{"policy_id": "access"}))
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusAccepted)
+	}
+	if len(appendLog.events) != 2 {
+		t.Fatalf("appended events = %d, want 2", len(appendLog.events))
+	}
+	if len(projector.events) != 2 {
+		t.Fatalf("projected events = %d, want both events attempted", len(projector.events))
+	}
+	if cacheBumps != 1 {
+		t.Fatalf("cache bumps = %d, want 1 for the successful projection", cacheBumps)
 	}
 }
 

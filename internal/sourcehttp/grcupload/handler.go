@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const maxUploadBytes int64 = 32 << 20
@@ -93,11 +95,13 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
+	sourceID := firstNonEmpty(fields["source_id"], scope.SourceID)
+	runtimeID := firstNonEmpty(fields["runtime_id"], scope.RuntimeID)
 	events, response, err := grcupload.BuildEvents(grcupload.UploadRequest{
 		Target:      h.options.Target,
 		TenantID:    tenantID,
-		SourceID:    firstNonEmpty(fields["source_id"], scope.SourceID),
-		RuntimeID:   firstNonEmpty(fields["runtime_id"], scope.RuntimeID),
+		SourceID:    sourceID,
+		RuntimeID:   runtimeID,
 		ActorUserID: h.actorUserID(r.Context()),
 		FileName:    header.Filename,
 		ContentType: contentType,
@@ -108,22 +112,123 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	for _, event := range events {
-		if err := h.options.AppendLog.Append(r.Context(), event); err != nil {
-			h.writeError(w, fmt.Errorf("%w: append upload event: %w", grcupload.ErrRuntimeUnavailable, err))
-			return
-		}
+	appended, err := h.appendEvents(r.Context(), events)
+	if err != nil {
+		wrapped := fmt.Errorf("%w: append upload event: %w", grcupload.ErrRuntimeUnavailable, err)
+		emitUploadTelemetry(r.Context(), uploadTelemetry{
+			target:         h.options.Target,
+			tenantID:       tenantID,
+			sourceID:       sourceID,
+			runtimeID:      runtimeID,
+			status:         "append_failed",
+			eventsBuilt:    len(events),
+			eventsAppended: appended,
+			err:            wrapped,
+		})
+		h.writeError(w, wrapped)
+		return
 	}
-	for _, event := range events {
-		if _, err := h.options.Projector.Project(r.Context(), event); err != nil {
-			h.writeError(w, fmt.Errorf("%w: project upload event: %w", grcupload.ErrRuntimeUnavailable, err))
-			return
-		}
+	projection := h.projectEvents(r.Context(), events)
+	status := "accepted"
+	if projection.err != nil {
+		status = "accepted_with_projection_errors"
 	}
-	if h.options.BumpCache != nil {
+	emitUploadTelemetry(r.Context(), uploadTelemetry{
+		target:             h.options.Target,
+		tenantID:           tenantID,
+		sourceID:           sourceID,
+		runtimeID:          runtimeID,
+		status:             status,
+		eventsBuilt:        len(events),
+		eventsAppended:     appended,
+		eventsProjected:    projection.eventsProjected,
+		entitiesProjected:  projection.entitiesProjected,
+		linksProjected:     projection.linksProjected,
+		projectionFailures: projection.failures,
+		err:                projection.err,
+	})
+	if h.options.BumpCache != nil && projection.eventsProjected > 0 {
 		h.options.BumpCache(r.Context(), tenantID)
 	}
 	h.writeJSON(w, http.StatusAccepted, response)
+}
+
+func (h Handler) appendEvents(ctx context.Context, events []*cerebrov1.EventEnvelope) (int, error) {
+	appended := 0
+	for _, event := range events {
+		if err := h.options.AppendLog.Append(ctx, event); err != nil {
+			return appended, err
+		}
+		appended++
+	}
+	return appended, nil
+}
+
+type projectionSummary struct {
+	eventsProjected   int
+	entitiesProjected uint32
+	linksProjected    uint32
+	failures          int
+	err               error
+}
+
+func (h Handler) projectEvents(ctx context.Context, events []*cerebrov1.EventEnvelope) projectionSummary {
+	var summary projectionSummary
+	for _, event := range events {
+		result, err := h.options.Projector.Project(ctx, event)
+		if err != nil {
+			summary.failures++
+			if summary.err == nil {
+				summary.err = err
+			}
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				break
+			}
+			continue
+		}
+		summary.eventsProjected++
+		summary.entitiesProjected += result.EntitiesProjected
+		summary.linksProjected += result.LinksProjected
+	}
+	return summary
+}
+
+type uploadTelemetry struct {
+	target             grcupload.Target
+	tenantID           string
+	sourceID           string
+	runtimeID          string
+	status             string
+	eventsBuilt        int
+	eventsAppended     int
+	eventsProjected    int
+	entitiesProjected  uint32
+	linksProjected     uint32
+	projectionFailures int
+	err                error
+}
+
+func emitUploadTelemetry(ctx context.Context, summary uploadTelemetry) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "target", Value: string(summary.target)},
+		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(summary.tenantID)},
+		telemetry.Field{Key: "source_id", Value: strings.TrimSpace(summary.sourceID)},
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(summary.runtimeID)},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(summary.status)},
+		telemetry.Field{Key: "events_built", Value: summary.eventsBuilt},
+		telemetry.Field{Key: "events_appended", Value: summary.eventsAppended},
+		telemetry.Field{Key: "events_projected", Value: summary.eventsProjected},
+		telemetry.Field{Key: "entities_projected", Value: summary.entitiesProjected},
+		telemetry.Field{Key: "links_projected", Value: summary.linksProjected},
+		telemetry.Field{Key: "projection_failures", Value: summary.projectionFailures},
+	)
+	if summary.err != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: telemetry.ErrorKind(summary.err)})
+	}
+	telemetry.Event(ctx, "cerebro.grc.upload", attrs)
+	if summary.err != nil {
+		telemetry.CaptureError(ctx, "cerebro.grc.upload.error", summary.err, attrs.WithField(telemetry.Field{Key: "operation", Value: strings.TrimSpace(summary.status)}))
+	}
 }
 
 func (h Handler) scope(r *http.Request) (Scope, error) {
