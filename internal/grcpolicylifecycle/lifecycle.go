@@ -53,21 +53,36 @@ var grcPolicyLifecycleAnchorEntityTypes = []string{
 const grcPolicyLifecycleRiskScenarioAttrFragment = `"claim_type":"risk_scenario"`
 
 var grcPolicyLifecycleDocumentAttrFragments = []string{
+	`"category":"control_narrative"`,
+	`"category":"exception_register"`,
 	`"category":"policy"`,
 	`"category":"procedure"`,
 	`"category":"risk_register"`,
 	`"category":"standard"`,
+	`"category":"training"`,
+	`"category":"training_material"`,
+	`"category":"waiver_register"`,
 	`"control_id":"`,
 	`"control_ids":`,
+	`"document_class":"control_narrative"`,
+	`"document_class":"exception_register"`,
 	`"document_class":"policy"`,
 	`"document_class":"procedure"`,
 	`"document_class":"risk_register"`,
 	`"document_class":"standard"`,
+	`"document_class":"training"`,
+	`"document_class":"training_material"`,
+	`"document_class":"waiver_register"`,
+	`"document_type":"control_narrative`,
+	`"document_type":"exception_register`,
 	`"document_type":"policy`,
 	`"document_type":"procedure`,
 	`"document_type":"risk_assessment`,
 	`"document_type":"risk_register`,
 	`"document_type":"standard`,
+	`"document_type":"training`,
+	`"document_type":"training_material`,
+	`"document_type":"waiver_register`,
 	`"evidence_id":"`,
 	`"evidence_ids":`,
 	`"policy_document_type":"`,
@@ -1956,7 +1971,7 @@ func grcPolicyRiskOpen(status string) bool {
 	if normalized == "" {
 		return false
 	}
-	return normalized != "closed" && normalized != "resolved" && normalized != "accepted" && normalized != "retired"
+	return !grcPolicyAcceptedStatus(normalized) && normalized != "closed" && normalized != "resolved" && normalized != "retired"
 }
 
 func grcPolicyHighRisk(values ...string) bool {

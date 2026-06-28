@@ -62,6 +62,16 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	if !ok || !stringSliceContains(documentFragments, `"policy_id":"`) || !stringSliceContains(documentFragments, `"risk_scenario_id":"`) {
 		t.Fatalf("entity params = %#v, want document attr filters", entityRequest.Params)
 	}
+	for _, fragment := range []string{
+		`"document_class":"control_narrative"`,
+		`"document_class":"exception_register"`,
+		`"document_class":"training_material"`,
+		`"document_class":"waiver_register"`,
+	} {
+		if !stringSliceContains(documentFragments, fragment) {
+			t.Fatalf("document fragments = %#v, want %s", documentFragments, fragment)
+		}
+	}
 	if !strings.Contains(entityRequest.Query, "entity_type <> 'claim'") || !strings.Contains(entityRequest.Query, "entity_type <> 'document'") {
 		t.Fatalf("entity query %q does not filter broad claim/document types", entityRequest.Query)
 	}
@@ -195,11 +205,30 @@ func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 		{ID: "open-high", Status: "open", ResidualRisk: "high"},
 		{ID: "closed-critical", Status: "closed", ResidualRisk: "critical"},
 		{ID: "accepted-high", Status: "accepted", InherentRisk: "high"},
+		{ID: "completed-high", Status: "completed", ResidualRisk: "high"},
+		{ID: "acknowledged-high", Status: "acknowledged", ResidualRisk: "high"},
 		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
 	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
 	if summary.OpenRisks != 2 || summary.HighRisks != 1 {
 		t.Fatalf("risk summary = %+v, want two open risks and one open high risk", summary)
+	}
+}
+
+func TestCompletedRiskDoesNotCreateWork(t *testing.T) {
+	items := grcPolicyDocumentWorkQueue(nil, []grcPolicyRiskRegisterItem{
+		{
+			ID:             "completed-high",
+			URN:            "urn:risk:completed-high",
+			Title:          "Completed high risk",
+			Status:         "completed",
+			ResidualRisk:   "high",
+			TreatmentDueAt: "2026-01-15",
+		},
+	}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if len(items) != 0 {
+		t.Fatalf("risk work queue = %+v, want completed risk excluded", items)
 	}
 }
 
