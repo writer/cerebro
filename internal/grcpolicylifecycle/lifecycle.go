@@ -36,11 +36,18 @@ var grcPolicyLifecycleEntityTypes = []string{
 	"policy.reminder",
 }
 
-const grcPolicyLifecycleEntitiesQuery = `MATCH (e:Entity)
-WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
-  AND ($source_id = '' OR e.source_id = $source_id)
-  AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
-  AND e.entity_type IN $entity_types
+const grcPolicyLifecycleEntitiesQuery = `UNWIND $entity_types AS entity_type
+CALL {
+  WITH entity_type
+  MATCH (e:Entity)
+  WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
+    AND ($source_id = '' OR e.source_id = $source_id)
+    AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
+    AND e.entity_type = entity_type
+  RETURN e
+  ORDER BY coalesce(e.label, e.urn), e.urn
+  LIMIT $type_limit
+}
 RETURN e.urn AS urn,
        e.tenant_id AS tenant_id,
        e.source_id AS source_id,
@@ -48,8 +55,7 @@ RETURN e.urn AS urn,
        e.entity_type AS entity_type,
        coalesce(e.label, e.urn) AS label,
        coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY e.entity_type, e.label, e.urn
-LIMIT $limit`
+ORDER BY e.entity_type, e.label, e.urn`
 
 const grcPolicyLifecycleRelationsQuery = `MATCH (left:Entity)-[r:RELATION]->(right:Entity)
 WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
@@ -320,6 +326,8 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 	if limit <= 0 {
 		limit = grcPolicyLifecycleDefaultLimit
 	}
+	entityTypeLimit := grcPolicyLifecycleEntityTypeLimit(limit)
+	entityRowLimit := grcPolicyLifecycleEntityRowLimit(entityTypeLimit)
 	entityRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: grcPolicyLifecycleEntitiesQuery,
 		Params: map[string]any{
@@ -327,9 +335,9 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 			"source_id":    scope.SourceID,
 			"runtime_id":   scope.RuntimeID,
 			"entity_types": grcPolicyLifecycleEntityTypes,
-			"limit":        limit,
+			"type_limit":   entityTypeLimit,
 		},
-		RowLimit: limit,
+		RowLimit: entityRowLimit,
 	})
 	if err != nil {
 		return Response{}, err
@@ -356,6 +364,28 @@ func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Respo
 		return Response{}, err
 	}
 	return grcPolicyLifecycleFromGraph(entityRows, relationRows, time.Now().UTC()), nil
+}
+
+func grcPolicyLifecycleEntityTypeLimit(limit int) int {
+	if limit <= 0 {
+		limit = grcPolicyLifecycleDefaultLimit
+	}
+	maxPerType := ports.MaxCypherQueryRows / len(grcPolicyLifecycleEntityTypes)
+	if maxPerType > 0 && limit > maxPerType {
+		return maxPerType
+	}
+	return limit
+}
+
+func grcPolicyLifecycleEntityRowLimit(typeLimit int) int {
+	if typeLimit <= 0 {
+		typeLimit = grcPolicyLifecycleDefaultLimit
+	}
+	rowLimit := typeLimit * len(grcPolicyLifecycleEntityTypes)
+	if rowLimit > ports.MaxCypherQueryRows {
+		return ports.MaxCypherQueryRows
+	}
+	return rowLimit
 }
 
 func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []ports.CypherRow, generatedAt time.Time) Response {
