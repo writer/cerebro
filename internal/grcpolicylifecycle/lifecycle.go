@@ -1275,7 +1275,11 @@ func grcPolicyDocumentWorkQueue(documents []grcPolicyDocumentItem, riskRegister 
 		}
 		if grcPolicyOverdue(risk.ReviewDueAt, risk.Status, now) || grcPolicyOverdue(risk.TreatmentDueAt, risk.Status, now) || grcPolicyHighRisk(risk.ResidualRisk, risk.InherentRisk) {
 			dueAt := firstNonEmpty(risk.TreatmentDueAt, risk.ReviewDueAt)
-			items = append(items, grcPolicyDocumentWork{ID: risk.URN + ":risk", DocumentID: risk.SourceDocumentID, Document: firstNonEmpty(risk.SourceDocumentTitle, risk.Title), RecordURN: risk.URN, Type: "risk", Status: risk.Status, Owner: risk.Owner, DueAt: dueAt, Action: "Review risk treatment", RiskID: risk.ID})
+			policyID := ""
+			if len(risk.Policies) > 0 {
+				policyID = risk.Policies[0].ID
+			}
+			items = append(items, grcPolicyDocumentWork{ID: risk.URN + ":risk", DocumentID: risk.SourceDocumentID, Document: firstNonEmpty(risk.SourceDocumentTitle, risk.Title), RecordURN: risk.URN, Type: "risk", Status: risk.Status, Owner: risk.Owner, DueAt: dueAt, Action: "Review risk treatment", RiskID: risk.ID, PolicyID: policyID})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {

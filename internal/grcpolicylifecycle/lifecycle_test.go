@@ -203,6 +203,28 @@ func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 	}
 }
 
+func TestRiskWorkQueueIncludesLinkedPolicy(t *testing.T) {
+	items := grcPolicyDocumentWorkQueue(nil, []grcPolicyRiskRegisterItem{
+		{
+			ID:           "privileged-access",
+			URN:          "urn:risk:privileged-access",
+			Title:        "Privileged access drift",
+			Status:       "open",
+			ResidualRisk: "high",
+			Policies: []grcPolicyDocumentRef{
+				{ID: "access", URN: "urn:policy:access", Title: "Access Control Policy"},
+			},
+		},
+	}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	if len(items) != 1 {
+		t.Fatalf("risk work queue = %+v, want one high-risk work item", items)
+	}
+	if items[0].RiskID != "privileged-access" || items[0].PolicyID != "access" {
+		t.Fatalf("risk work item = %+v, want linked risk and policy IDs", items[0])
+	}
+}
+
 func TestExceptionRollupSkipsMissingStatus(t *testing.T) {
 	summary := grcPolicyExceptionRollup([]grcPolicyExceptionItem{
 		{ID: "missing", Status: "", ExpiresAt: "2026-03-01"},
