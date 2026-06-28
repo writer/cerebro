@@ -90,7 +90,7 @@ Common attributes:
 | `control_id`, `control_ids`, `control_references` | Explicit policy-to-control mappings. |
 | `document_id`, `approved_document_id`, `url` | Approved document evidence. |
 | `evidence_id`, `evidence_cas_uri` | Runtime evidence packet link. |
-| `target_id`, `resource_id`, `asset_id`, `service_id`, `system_id` | Scoped exception target. |
+| `target_id`, `resource_id`, `asset_id`, `service_id`, `system_id`, `person_id`, `user_id` | Scoped exception target. |
 
 Graph relationships:
 
@@ -102,7 +102,8 @@ Graph relationships:
 | Approval, acceptance, review, or exception | `associated_with` | Policy version or policy |
 | Policy, version, or acceptance | `assigned_to` | Employee group or user |
 | Person or user | `has_evidence` | Policy acceptance |
-| Approver or reviewer | `acted_on` | Approval, review, version, or exception |
+| Author | `acted_on` | Policy version |
+| Approver or reviewer | `acted_on` | Approval, review, or exception |
 | Policy exception | `targeted` | Scoped asset, service, system, resource, or user target |
 | Policy exception | `associated_with` | Control |
 

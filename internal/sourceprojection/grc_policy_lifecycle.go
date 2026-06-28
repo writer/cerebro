@@ -185,6 +185,7 @@ func grcPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	addGRCUserOwnerLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, ctx.provider, firstAttribute(ctx.attrs, "owner_id", "risk_owner_user_id"))
 	addGRCPolicyUserActionLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, ctx.provider, exceptionURN, firstAttribute(ctx.attrs, "approver_user_id", "approved_by_user_id"), "approved_exception")
 	addGRCTargetReferenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, ctx.provider, ctx.attrs, relationTargeted, "grc_policy_exception")
+	addGRCPolicyExceptionIdentityTargetLinks(ctx, exceptionURN)
 	addGRCEvidenceLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, ctx.provider, ctx.attrs)
 	addGRCAssetTagLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, exceptionURN, "policy_exception_status", firstAttribute(ctx.attrs, "status", "exception_status", "waiver_status"))
 	entities, links := ctx.done()
@@ -220,7 +221,6 @@ func addGRCPolicyLifecycleSubjectLinks(ctx *grcProjectionContext, fromURN string
 			map[string]string{"policy_id": policyID, "policy_version_id": versionID, "source_system": ctx.provider},
 		)
 		ctx.addEventLink(fromURN, versionURN, relationAssociatedWith)
-		return
 	}
 	if policyURN := addGRCPolicyReference(ctx, policyID); policyURN != "" {
 		ctx.addEventLink(fromURN, policyURN, relationAssociatedWith)
@@ -313,6 +313,41 @@ func addGRCPolicyPersonEvidenceLinks(ctx *grcProjectionContext, acceptanceURN st
 		ctx.addEventLink(acceptanceURN, userURN, relationObservedOn)
 	}
 	addSecurityContactEmailLink(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, acceptanceURN, firstAttribute(ctx.attrs, "email", "person_email", "user_email"), "policy_acceptance")
+}
+
+func addGRCPolicyExceptionIdentityTargetLinks(ctx *grcProjectionContext, exceptionURN string) {
+	if exceptionURN == "" {
+		return
+	}
+	if personID := firstAttribute(ctx.attrs, "person_id"); personID != "" {
+		personURN := ctx.resourceURN("person", personID)
+		ctx.addReferenceEntity(
+			personURN,
+			"person",
+			firstAttribute(ctx.attrs, "person_name", "email", "person_id"),
+			map[string]string{"person_id": personID, "source_system": ctx.provider},
+		)
+		addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, exceptionURN, personURN, relationTargeted, map[string]string{
+			"event_id":         ctx.event.GetId(),
+			"person_id":        personID,
+			"relationship":     relationTargeted,
+			"relationship_by":  "grc_policy_exception",
+			"source_reference": "grc_person",
+			"target_id":        personID,
+		}))
+	}
+	if userID := firstAttribute(ctx.attrs, "user_id"); userID != "" {
+		userURN := grcUserURN(ctx.tenantID, ctx.provider, userID)
+		addEntity(ctx.entities, grcUserEntity(ctx.tenantID, ctx.sourceID, userURN, firstAttribute(ctx.attrs, "display_name", "email", "user_id"), grcAttributes(nil, map[string]string{"user_id": userID, "source_system": ctx.provider})))
+		addLink(ctx.links, projectedLink(ctx.tenantID, ctx.sourceID, exceptionURN, userURN, relationTargeted, map[string]string{
+			"event_id":         ctx.event.GetId(),
+			"relationship":     relationTargeted,
+			"relationship_by":  "grc_policy_exception",
+			"source_reference": "grc_user",
+			"target_id":        userID,
+			"user_id":          userID,
+		}))
+	}
 }
 
 func addGRCPolicyUserActionLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, provider string, toURN string, rawUserIDs string, action string) {

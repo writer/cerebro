@@ -113,10 +113,12 @@ func TestProjectGRCPolicyApprovalLinksApproversAndVersion(t *testing.T) {
 
 	approvalURN := "urn:cerebro:writer:policy_approval:policyops:approval-1"
 	versionURN := "urn:cerebro:writer:policy_version:policyops:version-2"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:policy-1"
 	firstApproverURN := "urn:cerebro:writer:user:policyops:approver-1"
 	secondApproverURN := "urn:cerebro:writer:user:policyops:approver-2"
 	requesterURN := "urn:cerebro:writer:user:policyops:author-1"
 	assertProjectedLink(t, state, approvalURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, approvalURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, firstApproverURN, relationActedOn, approvalURN)
 	assertProjectedLink(t, state, secondApproverURN, relationActedOn, approvalURN)
 	assertProjectedLink(t, state, requesterURN, relationActedOn, approvalURN)
@@ -152,11 +154,13 @@ func TestProjectGRCPolicyAcceptanceLinksEmployeeAndAssignment(t *testing.T) {
 
 	acceptanceURN := "urn:cerebro:writer:policy_acceptance:policyops:acceptance-1"
 	versionURN := "urn:cerebro:writer:policy_version:policyops:version-2"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:policy-1"
 	personURN := "urn:cerebro:writer:person:policyops:person-1"
 	userURN := "urn:cerebro:writer:user:policyops:user-1"
 	groupURN := "urn:cerebro:writer:grc_group:policyops:group-1"
 	emailURN := "urn:cerebro:writer:identity:email:ada@example.com"
 	assertProjectedLink(t, state, acceptanceURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, acceptanceURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, personURN, relationHasEvidence, acceptanceURN)
 	assertProjectedLink(t, state, userURN, relationHasEvidence, acceptanceURN)
 	assertProjectedLink(t, state, acceptanceURN, relationAssignedTo, groupURN)
@@ -205,20 +209,47 @@ func TestProjectGRCPolicyReviewAndException(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() exception error = %v", err)
 	}
+	_, err = service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-policy-exception-2",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_exception",
+		Attributes: map[string]string{
+			"provider":          "policyops",
+			"exception_id":      "exception-2",
+			"policy_id":         "policy-1",
+			"policy_version_id": "version-2",
+			"person_id":         "person-1",
+			"user_id":           "user-2",
+			"status":            "active",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() identity exception error = %v", err)
+	}
 
 	reviewURN := "urn:cerebro:writer:policy_review:policyops:review-1"
 	exceptionURN := "urn:cerebro:writer:policy_exception:policyops:exception-1"
+	identityExceptionURN := "urn:cerebro:writer:policy_exception:policyops:exception-2"
 	versionURN := "urn:cerebro:writer:policy_version:policyops:version-2"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:policy-1"
 	reviewerURN := "urn:cerebro:writer:user:policyops:reviewer-1"
 	controlURN := "urn:cerebro:writer:policy:policyops:control:control-1"
 	ownerURN := "urn:cerebro:writer:user:policyops:risk-owner-1"
 	approverURN := "urn:cerebro:writer:user:policyops:approver-1"
 	targetURN := "urn:cerebro:writer:grc_target:policyops:asset-1"
+	personTargetURN := "urn:cerebro:writer:person:policyops:person-1"
+	userTargetURN := "urn:cerebro:writer:user:policyops:user-2"
 	assertProjectedLink(t, state, reviewURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, reviewURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, reviewerURN, relationActedOn, reviewURN)
 	assertProjectedLink(t, state, exceptionURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, exceptionURN, relationAssociatedWith, policyURN)
 	assertProjectedLink(t, state, exceptionURN, relationAssociatedWith, controlURN)
 	assertProjectedLink(t, state, exceptionURN, relationOwnedBy, ownerURN)
 	assertProjectedLink(t, state, approverURN, relationActedOn, exceptionURN)
 	assertProjectedLink(t, state, exceptionURN, relationTargeted, targetURN)
+	assertProjectedLink(t, state, identityExceptionURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, identityExceptionURN, relationTargeted, personTargetURN)
+	assertProjectedLink(t, state, identityExceptionURN, relationTargeted, userTargetURN)
 }
