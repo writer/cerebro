@@ -1776,8 +1776,12 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(discoverResp.Body).Decode(&discoverPayload); err != nil {
 		t.Fatalf("decode /sources/github/discover response: %v", err)
 	}
-	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
-		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
+	urns, ok := discoverPayload["urns"].([]any)
+	if !ok || len(urns) != 1 {
+		t.Fatalf("discover urns = %#v, want one default GitHub repository URN", discoverPayload["urns"])
+	}
+	if got := urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+		t.Fatalf("discover urns[0] = %#v, want default GitHub repository URN", got)
 	}
 	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
 	if err != nil {
@@ -1813,16 +1817,16 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
 	}
 	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
-	if !ok || repeatedCursorEvent["id"] != "github-pr-1" {
-		t.Fatalf("repeated cursor event = %#v, want github-pr-1", repeatedCursorEvents[0])
+	if !ok || repeatedCursorEvent["id"] != "github-pr-2" {
+		t.Fatalf("repeated cursor event = %#v, want github-pr-2", repeatedCursorEvents[0])
 	}
 	previewEvents, ok := readPayload["preview_events"].([]any)
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
 	previewEvent, ok := previewEvents[0].(map[string]any)
-	if !ok || previewEvent["event_id"] != "github-audit-1" {
-		t.Fatalf("read preview_event = %#v, want event_id github-audit-1", previewEvents[0])
+	if !ok || previewEvent["event_id"] != "github-pr-1" {
+		t.Fatalf("read preview_event = %#v, want event_id github-pr-1", previewEvents[0])
 	}
 	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -1929,8 +1933,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverSource() error = %v", err)
 	}
-	if len(discoverSourceResp.Msg.Urns) != 2 {
-		t.Fatalf("len(DiscoverSource.Urns) = %d, want 2", len(discoverSourceResp.Msg.Urns))
+	if len(discoverSourceResp.Msg.Urns) != 1 {
+		t.Fatalf("len(DiscoverSource.Urns) = %d, want 1", len(discoverSourceResp.Msg.Urns))
+	}
+	if got := discoverSourceResp.Msg.Urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+		t.Fatalf("DiscoverSource.Urns[0] = %q, want default GitHub repository URN", got)
 	}
 	readSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
 		SourceId: "github",

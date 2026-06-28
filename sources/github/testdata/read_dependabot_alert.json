@@ -1,0 +1,43 @@
+[
+  {
+    "id": "github-dependabot-alert-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.dependabot_alert",
+    "occurred_at": "2026-04-24T14:00:00Z",
+    "schema_ref": "github/dependabot_alert/v1",
+    "payload": {
+      "number": 7,
+      "repository": "writer/cerebro",
+      "state": "open",
+      "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+      "cve_id": "CVE-2025-12345",
+      "advisory_summary": "crypto package vulnerability",
+      "advisory_severity": "high",
+      "ecosystem": "go",
+      "package_name": "golang.org/x/crypto",
+      "manifest_path": "go.mod",
+      "dependency_scope": "runtime",
+      "vulnerable_version_range": "< v0.36.0",
+      "first_patched_version": "v0.36.0",
+      "created_at": "2026-04-23T14:00:00Z",
+      "updated_at": "2026-04-24T14:00:00Z"
+    },
+    "attributes": {
+      "advisory_cve_id": "CVE-2025-12345",
+      "advisory_ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+      "alert_number": "7",
+      "dependency_scope": "runtime",
+      "ecosystem": "go",
+      "first_patched_version": "v0.36.0",
+      "manifest_path": "go.mod",
+      "owner": "writer",
+      "package": "golang.org/x/crypto",
+      "repo": "cerebro",
+      "repository": "writer/cerebro",
+      "severity": "high",
+      "state": "open",
+      "vulnerable_version_range": "< v0.36.0"
+    }
+  }
+]

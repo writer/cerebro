@@ -18,19 +18,7 @@ func NewFixture() (sourcecdk.Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover.json")
-	if err != nil {
-		return nil, err
-	}
-	events, err := sourcecdk.LoadFixtureEvents(fixtureFS, "testdata/read.json")
-	if err != nil {
-		return nil, err
-	}
-	repositoryURNs, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_repository.json")
-	if err != nil {
-		return nil, err
-	}
-	repositoryEvents, err := sourcecdk.LoadFixtureEvents(fixtureFS, "testdata/read_repository.json")
+	families, err := loadFixtureFamilies(familyAudit, familyDependabot, familyOrgInventory, familyPullRequest, familyRepository, familySecretScanning)
 	if err != nil {
 		return nil, err
 	}
@@ -38,16 +26,28 @@ func NewFixture() (sourcecdk.Source, error) {
 		Spec:          spec,
 		DefaultFamily: defaultFamily,
 		Check:         checkFixtureToken,
-		Families: []sourcecdk.FixtureFamily{{
-			Name:   defaultFamily,
+		Families:      families,
+	})
+}
+
+func loadFixtureFamilies(names ...string) ([]sourcecdk.FixtureFamily, error) {
+	families := make([]sourcecdk.FixtureFamily, 0, len(names))
+	for _, name := range names {
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+name+".json")
+		if err != nil {
+			return nil, err
+		}
+		events, err := sourcecdk.LoadFixtureEvents(fixtureFS, "testdata/read_"+name+".json")
+		if err != nil {
+			return nil, err
+		}
+		families = append(families, sourcecdk.FixtureFamily{
+			Name:   name,
 			URNs:   urns,
 			Events: events,
-		}, {
-			Name:   familyRepository,
-			URNs:   repositoryURNs,
-			Events: repositoryEvents,
-		}},
-	})
+		})
+	}
+	return families, nil
 }
 
 func checkFixtureToken(_ context.Context, cfg sourcecdk.Config) error {

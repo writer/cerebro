@@ -49,7 +49,7 @@ func (s *Source) discoverSecretScanningAlerts(ctx context.Context, client *gogit
 	if err := s.checkSecretScanningAlerts(ctx, client, settings); err != nil {
 		return nil, err
 	}
-	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:secret_scanning", settings.owner))}, nil
+	return []sourcecdk.URN{sourcecdk.URN(fmt.Sprintf("urn:cerebro:%s:github_secret_scanning:%s", settings.owner, settings.owner))}, nil
 }
 
 func (s *Source) readSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
