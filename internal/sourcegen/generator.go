@@ -733,6 +733,13 @@ func nextCursorKeysForResource(resource connectordefinitions.ResourceFamily) []s
 	if resource.Pagination == nil {
 		return nil
 	}
+	if strings.TrimSpace(resource.Pagination.Type) == "next_url" {
+		key := cursorJSONPathKey(resource.Pagination.NextURLJSONPath)
+		if key == "" {
+			key = "nextLink"
+		}
+		return []string{key}
+	}
 	key := cursorJSONPathKey(resource.Pagination.CursorJSONPath)
 	if key == "" {
 		return nil

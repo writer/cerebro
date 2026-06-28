@@ -44,3 +44,9 @@ spec:
           controls:
             - CC3.2
             - CC7.2
+        - name: GDPR
+          controls:
+            - Article 5
+        - name: CCPA
+          controls:
+            - "1798.105"
