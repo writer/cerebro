@@ -2,6 +2,7 @@ package connectorcatalog
 
 import (
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strings"
 
@@ -706,7 +707,7 @@ func sourceIdentityFindings(entries []Entry, sourceIDs map[string]Entry) []Revie
 
 func cleanupQuestion(finding ReviewFinding) ReviewQuestion {
 	return ReviewQuestion{
-		ID:         questionID(finding.SourceID, finding.Category),
+		ID:         questionID(finding.SourceID, finding.Category, cleanupQuestionFingerprint(finding)),
 		SourceID:   finding.SourceID,
 		Path:       finding.Path,
 		Category:   finding.Category,
@@ -714,6 +715,14 @@ func cleanupQuestion(finding ReviewFinding) ReviewQuestion {
 		Answer:     finding.Message,
 		NextAction: finding.NextAction,
 	}
+}
+
+func cleanupQuestionFingerprint(finding ReviewFinding) string {
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(finding.Message))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write([]byte(finding.NextAction))
+	return fmt.Sprintf("%08x", hash.Sum32())
 }
 
 func projectionCoverage(familyCounts map[string]int, sources map[string]map[string]struct{}) []ProjectionCoverage {
@@ -830,8 +839,9 @@ func normalizedDisplayName(value string) string {
 	return builder.String()
 }
 
-func questionID(sourceID string, category string) string {
-	id := strings.Trim(strings.ToLower(sourceID+"_"+category), "_")
+func questionID(sourceID string, category string, suffixes ...string) string {
+	parts := append([]string{sourceID, category}, suffixes...)
+	id := strings.Trim(strings.ToLower(strings.Join(parts, "_")), "_")
 	id = strings.NewReplacer(" ", "_", "-", "_", ".", "_", "/", "_").Replace(id)
 	return id
 }

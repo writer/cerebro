@@ -102,6 +102,48 @@ func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
 	}
 }
 
+func TestReviewAnalysisDisambiguatesOverlappingCleanupQuestions(t *testing.T) {
+	analysis := Analysis{
+		Summary: Summary{Total: 2, Generateable: 2},
+		Entries: []Entry{
+			{
+				Path:         "business/acme_one.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("acme_one", "Acme REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("records", "asset"),
+				}),
+			},
+			{
+				Path:         "business/acme_two.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition: reviewDefinition("acme_two", "Acme REST API", []connectordefinitions.ResourceFamily{
+					reviewDetailedFamily("records", "asset"),
+				}),
+			},
+		},
+	}
+
+	report := ReviewAnalysis(analysis)
+
+	questionIDs := map[string]struct{}{}
+	displayCleanupQuestions := 0
+	for _, question := range report.Questions {
+		if question.SourceID != "acme_one" || question.Category != "display_name_cleanup" {
+			continue
+		}
+		displayCleanupQuestions++
+		if _, exists := questionIDs[question.ID]; exists {
+			t.Fatalf("duplicate cleanup question ID %q in questions %#v", question.ID, report.Questions)
+		}
+		questionIDs[question.ID] = struct{}{}
+	}
+	if displayCleanupQuestions != 2 {
+		t.Fatalf("display cleanup questions = %d, want 2; questions = %#v", displayCleanupQuestions, report.Questions)
+	}
+}
+
 func TestRenderReviewMarkdownIncludesQueuesAndQA(t *testing.T) {
 	report := ReviewReport{
 		Summary: ReviewSummary{Total: 1, ProjectedFamilies: 1, Questions: 1},
