@@ -387,6 +387,30 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
 }
 
+func TestGenerateFilesIncludesWorkbookManifest(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	rows := readGeneratedCSV(t, generatedFileByName(t, files, "workbook_manifest.csv"))
+	header := rows[0]
+	csvFileCol := columnIndex(t, header, "csv_file")
+
+	overviewRow := findRow(t, rows, csvFileCol, "overview.csv")
+	assertCellContains(t, header, overviewRow, "sheet_order", "1")
+	assertCellContains(t, header, overviewRow, "worksheet_name", "Overview")
+	assertCellContains(t, header, overviewRow, "include_by_default", "true")
+
+	requirementsRow := findRow(t, rows, csvFileCol, "control_evidence_requirements.csv")
+	assertCellContains(t, header, requirementsRow, "worksheet_name", "Control Requirements")
+	assertCellContains(t, header, requirementsRow, "primary_key", "framework; control_id; requirement_profile; requirement_source_id")
+
+	policyRow := findRow(t, rows, csvFileCol, "policy_map.csv")
+	assertCellContains(t, header, policyRow, "source_authority", "policies/**/*.yaml")
+	assertCellContains(t, header, policyRow, "include_by_default", "false")
+}
+
 func TestComplianceReviewTagsAreDerivedFromControlRefs(t *testing.T) {
 	tags := complianceReviewTags([]controlRef{{
 		Framework: "SOC 2",
