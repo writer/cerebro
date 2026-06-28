@@ -415,6 +415,26 @@ type ExportWindow struct {
 	End   *time.Time
 }
 
+func ParseExportWindowTime(raw string, endOfDay bool) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		utc := parsed.UTC()
+		return &utc, nil
+	}
+	parsed, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid time")
+	}
+	utc := parsed.UTC()
+	if endOfDay {
+		utc = utc.AddDate(0, 0, 1).Add(-time.Nanosecond)
+	}
+	return &utc, nil
+}
+
 func AuditExportHeader() []string {
 	return []string{
 		"record_type", "record_id", "policy_id", "policy_title", "version_id",

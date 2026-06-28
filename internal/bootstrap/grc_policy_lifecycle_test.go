@@ -193,6 +193,35 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	}
 }
 
+func TestGRCPolicyLifecycleExportWindowIncludesDateOnlyEndDay(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/grc/policy-lifecycle/export?start=2026-01-01&end=2026-01-15", nil)
+
+	window, err := grcPolicyLifecycleExportWindowFromRequest(request)
+	if err != nil {
+		t.Fatalf("grcPolicyLifecycleExportWindowFromRequest() error = %v", err)
+	}
+	if window.Start == nil || !window.Start.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("start = %v, want 2026-01-01 midnight UTC", window.Start)
+	}
+	wantEnd := time.Date(2026, 1, 15, 23, 59, 59, int(time.Second/time.Nanosecond)-1, time.UTC)
+	if window.End == nil || !window.End.Equal(wantEnd) {
+		t.Fatalf("end = %v, want %v", window.End, wantEnd)
+	}
+}
+
+func TestGRCPolicyLifecycleExportWindowKeepsTimestampEnd(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/grc/policy-lifecycle/export?end=2026-01-15T10:30:00Z", nil)
+
+	window, err := grcPolicyLifecycleExportWindowFromRequest(request)
+	if err != nil {
+		t.Fatalf("grcPolicyLifecycleExportWindowFromRequest() error = %v", err)
+	}
+	wantEnd := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
+	if window.End == nil || !window.End.Equal(wantEnd) {
+		t.Fatalf("end = %v, want %v", window.End, wantEnd)
+	}
+}
+
 func grcPolicyLifecycleTestNode(urn string, entityType string, label string, attrs map[string]string) ports.CypherRow {
 	rawAttrs, _ := json.Marshal(attrs)
 	return ports.CypherRow{Values: map[string]any{

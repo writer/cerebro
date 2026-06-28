@@ -126,30 +126,14 @@ func grcPolicyLifecycleExportWindowFromRequest(r *http.Request) (grcpolicylifecy
 	if r == nil || r.URL == nil {
 		return window, nil
 	}
-	start, err := grcPolicyLifecycleExportTime(r.URL.Query().Get("start"))
+	start, err := grcpolicylifecycle.ParseExportWindowTime(r.URL.Query().Get("start"), false)
 	if err != nil {
 		return window, fmt.Errorf("%w: invalid start", grcpolicylifecycle.ErrInvalidRequest)
 	}
-	end, err := grcPolicyLifecycleExportTime(r.URL.Query().Get("end"))
+	end, err := grcpolicylifecycle.ParseExportWindowTime(r.URL.Query().Get("end"), true)
 	if err != nil {
 		return window, fmt.Errorf("%w: invalid end", grcpolicylifecycle.ErrInvalidRequest)
 	}
-	window.Start = start
-	window.End = end
+	window.Start, window.End = start, end
 	return window, nil
-}
-
-func grcPolicyLifecycleExportTime(raw string) (*time.Time, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return nil, nil
-	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			utc := parsed.UTC()
-			return &utc, nil
-		}
-	}
-	return nil, fmt.Errorf("invalid time")
 }
