@@ -492,6 +492,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "control_evidence_requirements.csv", Content: csvBytes(append([][]string{controlEvidenceRequirementsHeader()}, controlRequirementRows...))},
 		{Name: "finding_evidence_requirement_map.csv", Content: csvBytes(append([][]string{findingEvidenceRequirementMapHeader()}, findingRequirementRows...))},
 		{Name: "framework_coverage_candidates.csv", Content: csvBytes(append([][]string{frameworkCoverageCandidatesHeader()}, coverageCandidateRows...))},
+		{Name: "workbook_manifest.csv", Content: csvBytes(workbookManifestRows())},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
 		{Name: "logic.csv", Content: csvBytes(logicRows())},
 	}
@@ -3265,6 +3266,50 @@ func extensionRow(scopeType string, scope string, extension policyRuleExtension)
 	}
 }
 
+func workbookManifestRows() [][]string {
+	rows := [][]string{workbookManifestHeader()}
+	rows = append(rows,
+		workbookManifestRow(1, "Overview", "overview.csv", "metric", "metric", "What changed and where should review start?", "generated summary", true),
+		workbookManifestRow(2, "Logic", "logic.csv", "generation step", "step", "What logic produced these review tables?", "tools/policymappingexport", true),
+		workbookManifestRow(3, "Quality Issues", "compliance_quality_issues.csv", "blocking quality issue", "scope; scope_id; quality_gate", "What must be fixed before claiming mapping quality?", "tools/policymappingexport", true),
+		workbookManifestRow(4, "Framework Gaps", "framework_control_gap_map.csv", "framework control", "framework; control_id", "Which controls are direct, indirect, or uncovered?", "internal/compliance/control_families.yaml", true),
+		workbookManifestRow(5, "Coverage Candidates", "framework_coverage_candidates.csv", "framework control work item", "framework; control_id; candidate_type", "What author or evidence work should happen next?", "derived from framework control enrichment", true),
+		workbookManifestRow(6, "Control Requirements", "control_evidence_requirements.csv", "control evidence requirement", "framework; control_id; requirement_profile; requirement_source_id", "What evidence does each control require?", "internal/compliance/control_evidence_requirements.yaml", true),
+		workbookManifestRow(7, "Finding Requirements", "finding_evidence_requirement_map.csv", "finding-control-requirement link", "finding_id; framework; control_id; requirement_profile; requirement_source_id", "Which requirement source does each mapped finding point toward?", "public catalog plus control evidence requirements", true),
+		workbookManifestRow(8, "Finding Map", "finding_map.csv", "public finding", "finding_id", "What controls, tags, evidence, and review signals attach to each finding?", "internal/findings/public_detection_catalog.json", true),
+		workbookManifestRow(9, "Finding Controls", "finding_control_map.csv", "finding-control link", "finding_id; framework; control_id", "Which control links are source-backed, direct-only, or review-needed?", "public catalog source coverage refs", true),
+		workbookManifestRow(10, "Finding Review", "finding_compliance_review_map.csv", "public finding review row", "finding_id", "Which findings need audit-language, source, or control review?", "policy_rule_extensions.yaml plus public catalog", true),
+		workbookManifestRow(11, "Source Coverage", "source_coverage_map.csv", "finding source coverage ref", "finding_id; coverage_source_id; coverage_dimension_id", "Which source coverage refs support or extend finding controls?", "public catalog source coverage refs", true),
+		workbookManifestRow(12, "Source Capability Review", "source_capability_review_map.csv", "source capability", "source_id; dimension_id", "Where do YAML capabilities and catalog coverage differ?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(13, "Evidence Capabilities", "evidence_capabilities.csv", "YAML source capability", "source_id; dimension_id", "What can each source and dimension support?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(14, "Framework Enrichment", "framework_control_enrichment_map.csv", "framework control", "framework; control_id", "What direct findings, source capabilities, and review context enrich each control?", "derived from all mapping layers", true),
+		workbookManifestRow(15, "Review Areas", "framework_review_areas.csv", "framework review area", "framework; area_id", "How should controls be grouped for reviewer queues?", "internal/compliance/framework_review_areas.yaml", false),
+		workbookManifestRow(16, "Control Relationships", "control_relationships.csv", "control relationship", "framework; control_id; related_framework; related_control_id", "Which controls should be reviewed together?", "internal/compliance/control_relationships.yaml", false),
+		workbookManifestRow(17, "Finding Review Areas", "finding_review_area_map.csv", "finding review-area link", "finding_id; framework; area_id", "Which findings enter each framework review queue?", "review areas plus direct control refs", false),
+		workbookManifestRow(18, "Finding Relationships", "finding_control_relationship_map.csv", "finding control relationship link", "finding_id; framework; control_id; related_control_id", "Which related controls should be inspected with each finding?", "control relationships plus direct control refs", false),
+		workbookManifestRow(19, "Policy Map", "policy_map.csv", "policy rule", "rule_id", "What YAML policy metadata, controls, tags, and audit language exist?", "policies/**/*.yaml", false),
+		workbookManifestRow(20, "Policy Controls", "control_map.csv", "policy-control link", "rule_id; framework; control_id", "Which policy rules map to each framework control?", "policies/**/*.yaml", false),
+		workbookManifestRow(21, "Policy Tags", "tag_map.csv", "policy-tag link", "rule_id; tag", "Which metadata and derived tags route each policy?", "policies/**/*.yaml", false),
+		workbookManifestRow(22, "Finding Tags", "finding_tag_map.csv", "finding-tag link", "finding_id; tag", "Which catalog and derived review tags attach to each finding?", "public catalog plus control refs", false),
+		workbookManifestRow(23, "Domain Aliases", "finding_domain_aliases.csv", "finding domain alias", "match_type; match_value", "How are non-policy findings assigned audit domains?", "internal/compliance/policy_rule_extensions.yaml", false),
+		workbookManifestRow(24, "YAML Layers", "yaml_layers.csv", "audit language layer", "scope_type; scope", "Which YAML layer supplied default audit language?", "internal/compliance/policy_rule_extensions.yaml", false),
+	)
+	return rows
+}
+
+func workbookManifestRow(order int, worksheet string, csvFile string, rowGrain string, primaryKey string, reviewQuestion string, sourceAuthority string, includeByDefault bool) []string {
+	return []string{
+		fmt.Sprint(order),
+		worksheet,
+		csvFile,
+		rowGrain,
+		primaryKey,
+		reviewQuestion,
+		sourceAuthority,
+		fmt.Sprint(includeByDefault),
+	}
+}
+
 func logicRows() [][]string {
 	return [][]string{
 		{"step", "layer", "definition"},
@@ -3284,7 +3329,8 @@ func logicRows() [][]string {
 		{"14", "control gap status", "Classify each framework control as direct, indirect, or no coverage so mapped controls and review-only gaps are visible."},
 		{"15", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities and catalog evidence expectations."},
 		{"16", "coverage candidates", "Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."},
-		{"17", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"17", "workbook manifest", "Emit a sheet-order manifest with row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table."},
+		{"18", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -3459,6 +3505,13 @@ func frameworkCoverageCandidatesHeader() []string {
 		"suggested_finding_domain", "suggested_evidence_type", "requirement_profiles",
 		"requirement_sources", "source_capability_refs", "review_context_refs",
 		"next_action",
+	}
+}
+
+func workbookManifestHeader() []string {
+	return []string{
+		"sheet_order", "worksheet_name", "csv_file", "row_grain", "primary_key",
+		"review_question", "source_authority", "include_by_default",
 	}
 }
 

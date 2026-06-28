@@ -596,6 +596,58 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	assertCellContains(t, header, catalogOnlyRow, "requirement_profiles", "baseline-control-review")
 }
 
+func TestGenerateFilesIncludesWorkbookManifest(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	rows := readGeneratedCSV(t, generatedFileByName(t, files, "workbook_manifest.csv"))
+	header := rows[0]
+	csvFileCol := columnIndex(t, header, "csv_file")
+	generatedFiles := map[string]struct{}{}
+	for _, file := range files {
+		generatedFiles[file.Name] = struct{}{}
+	}
+	manifestFiles := map[string]struct{}{}
+	for _, row := range rows[1:] {
+		csvFile := row[csvFileCol]
+		if _, ok := manifestFiles[csvFile]; ok {
+			t.Fatalf("workbook_manifest.csv contains duplicate csv_file %s", csvFile)
+		}
+		if _, ok := generatedFiles[csvFile]; !ok {
+			t.Fatalf("workbook_manifest.csv references unknown generated file %s", csvFile)
+		}
+		manifestFiles[csvFile] = struct{}{}
+	}
+	for csvFile := range manifestFiles {
+		if _, ok := generatedFiles[csvFile]; !ok {
+			t.Fatalf("workbook_manifest.csv references unknown generated file %s", csvFile)
+		}
+	}
+	for _, file := range files {
+		if file.Name == "workbook_manifest.csv" {
+			continue
+		}
+		if _, ok := manifestFiles[file.Name]; !ok {
+			t.Fatalf("workbook_manifest.csv missing generated file %s", file.Name)
+		}
+	}
+
+	overviewRow := findRow(t, rows, csvFileCol, "overview.csv")
+	assertCellContains(t, header, overviewRow, "sheet_order", "1")
+	assertCellContains(t, header, overviewRow, "worksheet_name", "Overview")
+	assertCellContains(t, header, overviewRow, "include_by_default", "true")
+
+	requirementsRow := findRow(t, rows, csvFileCol, "control_evidence_requirements.csv")
+	assertCellContains(t, header, requirementsRow, "worksheet_name", "Control Requirements")
+	assertCellContains(t, header, requirementsRow, "primary_key", "framework; control_id; requirement_profile; requirement_source_id")
+
+	policyRow := findRow(t, rows, csvFileCol, "policy_map.csv")
+	assertCellContains(t, header, policyRow, "source_authority", "policies/**/*.yaml")
+	assertCellContains(t, header, policyRow, "include_by_default", "false")
+}
+
 func TestFrameworkCoverageCandidateClassifiersCoverAllStatuses(t *testing.T) {
 	cases := []struct {
 		status   string

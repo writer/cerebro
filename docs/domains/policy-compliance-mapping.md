@@ -85,6 +85,7 @@ For non-policy detections, public detection catalog fields load first as fallbac
 | `framework_coverage_candidates.csv` | One row per non-source-backed framework control that needs source backing, a source-backed finding, mapping review, or a scope decision. |
 | `control_evidence_requirements.csv` | One row per expanded control evidence requirement with required source, entity type, fields, freshness, assessment methods, catalog evidence refs, source capability refs, and current coverage status. |
 | `finding_evidence_requirement_map.csv` | One row per public finding-control-requirement link so reviewers can see which requirement source each mapped finding points toward. |
+| `workbook_manifest.csv` | Sheet order, worksheet names, row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table. |
 | `yaml_layers.csv` | One row per extension layer so inherited audit language can be reviewed. |
 | `logic.csv` | The generation contract in spreadsheet form. |
 
@@ -168,6 +169,12 @@ Within the `direct` lane, `direct_source_backed` means every direct finding for 
 - `scope_or_exclusion_candidate`: the control is in the framework catalog only and needs an in-scope decision.
 
 Candidate rows include suggested finding domain, evidence type, requirement profiles, requirement sources, source capabilities, review context, and next action. They are work queues, not control coverage.
+
+## Workbook Export
+
+`workbook_manifest.csv` is the import contract for spreadsheet packages. It gives each generated CSV a stable worksheet name, sheet order, row grain, primary key, review question, source authority, and `include_by_default` flag.
+
+Use the default sheets for audit review packets. Use the non-default sheets when tracing why a row exists, reviewing YAML inputs, or debugging joins between policy, finding, source capability, and framework context.
 
 ## Evidence Requirements
 
