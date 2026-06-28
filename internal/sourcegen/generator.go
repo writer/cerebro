@@ -114,6 +114,7 @@ type familyData struct {
 	IDKeys                []string
 	ListKeys              []string
 	CursorParam           string
+	NextCursorKeys        []string
 	PageSizeParams        []string
 	DisablePageSize       bool
 	StaticQuery           map[string]string
@@ -656,6 +657,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			IDKeys:                idKeysForResource(resource),
 			ListKeys:              listKeysForResource(resource),
 			CursorParam:           cursorParamForResource(resource),
+			NextCursorKeys:        nextCursorKeysForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			DisablePageSize:       disablePageSizeForResource(resource),
 			StaticQuery:           resource.StaticQuery,
@@ -707,6 +709,30 @@ func cursorParamForResource(resource connectordefinitions.ResourceFamily) string
 		return ""
 	}
 	return strings.TrimSpace(resource.Pagination.CursorParam)
+}
+
+func nextCursorKeysForResource(resource connectordefinitions.ResourceFamily) []string {
+	if resource.Pagination == nil {
+		return nil
+	}
+	key := cursorJSONPathKey(resource.Pagination.CursorJSONPath)
+	if key == "" {
+		return nil
+	}
+	return []string{key}
+}
+
+func cursorJSONPathKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "$" {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "$.")
+	path = strings.TrimPrefix(path, ".")
+	if path == "" || strings.ContainsAny(path, "[]*") {
+		return ""
+	}
+	return path
 }
 
 func pageSizeParamsForResource(resource connectordefinitions.ResourceFamily) []string {
@@ -1034,6 +1060,9 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
 			fmt.Fprintf(&b, "\t\t\t\tCursorParam: %s,\n", strconv.Quote(family.CursorParam))
+		}
+		if len(family.NextCursorKeys) != 0 {
+			fmt.Fprintf(&b, "\t\t\t\tNextCursorKeys: []string{%s},\n", quotedStrings(family.NextCursorKeys))
 		}
 		if len(family.PageSizeParams) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tPageSizeParams: []string{%s},\n", quotedStrings(family.PageSizeParams))

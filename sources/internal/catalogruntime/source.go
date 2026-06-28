@@ -123,6 +123,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Name:             name,
 		Path:             resource.Path,
 		CursorParam:      cursorParam(resource.Pagination),
+		NextCursorKeys:   nextCursorKeys(resource.Pagination),
 		PageFirstCursor:  pageFirstCursor(resource.Pagination),
 		URNKind:          firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
 		IDKeys:           idKeys(resource, class),
@@ -144,6 +145,30 @@ func cursorParam(pagination *connectordefinitions.PaginationSpec) string {
 		return ""
 	}
 	return firstNonEmpty(pagination.CursorParam, pagination.PageParam, pagination.OffsetParam)
+}
+
+func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
+	if pagination == nil {
+		return nil
+	}
+	key := cursorJSONPathKey(pagination.CursorJSONPath)
+	if key == "" {
+		return nil
+	}
+	return []string{key}
+}
+
+func cursorJSONPathKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "$" {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "$.")
+	path = strings.TrimPrefix(path, ".")
+	if path == "" || strings.ContainsAny(path, "[]*") {
+		return ""
+	}
+	return path
 }
 
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {

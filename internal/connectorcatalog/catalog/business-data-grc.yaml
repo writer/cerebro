@@ -929,7 +929,7 @@ entries:
             page_size: 100
         - id: model_serving_endpoints
           label: "Model serving endpoints"
-          path: /api/2.0/serving-endpoints
+          path: /v1/model-serving/endpoints
           method: GET
           record_selector: "$.endpoints[*]"
           id_field: name
@@ -2856,7 +2856,7 @@ entries:
             page_size: 100
         - id: cortex_search_services
           label: "Cortex search services"
-          path: /api/v2/cortex/search-services
+          path: /v1/cortex/search/services
           method: GET
           record_selector: "$.data[*]"
           id_field: name

@@ -360,7 +360,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		return ""
 	}
 	for _, key := range responseCursorKeys(family) {
-		if value := rawString(object[key]); value != "" {
+		if value := rawStringAtPath(object, key); value != "" {
 			return value
 		}
 	}
@@ -377,6 +377,37 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		if value := nextPageCursor(nested); value != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+func rawStringAtPath(object map[string]json.RawMessage, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if !strings.Contains(path, ".") {
+		return rawString(object[path])
+	}
+	parts := strings.Split(path, ".")
+	current := object
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return ""
+		}
+		raw := current[part]
+		if len(raw) == 0 {
+			return ""
+		}
+		if i == len(parts)-1 {
+			return rawString(raw)
+		}
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &nested); err != nil {
+			return ""
+		}
+		current = nested
 	}
 	return ""
 }

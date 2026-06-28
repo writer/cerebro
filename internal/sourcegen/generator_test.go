@@ -667,7 +667,9 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				},
 				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
 				Pagination: &connectordefinitions.PaginationSpec{
-					Type:            "none",
+					Type:            "cursor",
+					CursorParam:     "after",
+					CursorJSONPath:  "$.paging.continuation",
 					DisablePageSize: true,
 				},
 			}},
@@ -680,6 +682,8 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 	source := readGeneratedFile(t, outputDir, "sources/huggingface/source.go")
 	for _, want := range []string{
 		`Path:             "/models"`,
+		`CursorParam:      "after"`,
+		`NextCursorKeys:   []string{"paging.continuation"}`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
 		`StaticQuery: map[string]string{"full": "true"}`,
