@@ -278,15 +278,40 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 1
-      - name: Fetch secrets from Infisical
-        uses: WriterInternal/devops-github-actions/infisical-secrets@cf0625c0cb6646c057b9bc81c49c8554b2313e27 # v2.3.0
+      - name: Fetch org-level secrets from Infisical
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
-          org-identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
-          org-project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
-          repo-identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
-          repo-project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
           env-slug: prod
-          required-keys: FACTORY_API_KEY
+          export-type: env
+      - name: Fetch repo-level secrets from Infisical
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
+        with:
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          export-type: env
+      - name: Assert required Infisical secrets
+        shell: bash
+        env:
+          REQUIRED_KEYS: FACTORY_API_KEY
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in ${REQUIRED_KEYS}; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Infisical required keys missing: ${missing[*]}"
+            exit 1
+          fi
       - name: Run Droid Auto Review
         id: droid-review-first
         continue-on-error: true
