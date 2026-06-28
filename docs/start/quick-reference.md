@@ -11,8 +11,11 @@ make serve-dev
 Durable local stack:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
+
+Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. Before switching from plain Compose to `make agent-onboard-e2e` or `make github-business-demo`, run `docker compose down -v` to recreate local volumes, or run the Make target with `CEREBRO_LOCAL_POSTGRES_PASSWORD=cerebro` to reuse that volume. `docker compose down -v` deletes local stack data.
 
 End-to-end local walkthrough: [`docs/start/getting-started.md`](getting-started.md).
 Coding agent handoff: [`docs/start/agent-onboarding.md`](agent-onboarding.md).
@@ -21,6 +24,15 @@ First security onboarding run:
 
 ```bash
 make secure-business-demo
+```
+
+First real GitHub-backed run:
+
+```bash
+export GITHUB_OWNER=<owner>
+export GITHUB_REPO=<repo>
+export GITHUB_TOKEN=<token>
+make github-business-demo
 ```
 
 Health and source catalog:
@@ -60,6 +72,16 @@ export CEREBRO_API_KEYS='secret-key:principal:tenant_id'
 ./bin/cerebro source discover github owner=writer repo=cerebro
 ./bin/cerebro source read github owner=writer repo=cerebro per_page=1
 ```
+
+## MCP
+
+```bash
+make serve-dev
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
+```
+
+Ask the agent to call `cerebro.sources.read` with `source_id=github` and `config={"owner":"writer","repo":"cerebro","per_page":"5"}` for a live, store-free first answer.
 
 Runtime-backed commands require Postgres and, for sync/replay, JetStream:
 

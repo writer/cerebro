@@ -32,5 +32,6 @@ spec:
             - CC6.1
         - name: GDPR
           controls:
-            - Art.5
-            - Art.30
+            - Article 5
+            - Article 6
+            - Article 30

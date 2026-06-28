@@ -16,6 +16,8 @@ Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping
 | `internal/compliance/control_relationships.yaml` | Alias, child requirement, sibling scope, evidence dependency, and follow-up hints between controls. |
 | `internal/compliance/evidence_capabilities.yaml` | Source and dimension capability declarations for source-backed evidence review. |
 | `internal/compliance/control_evidence_requirements.yaml` | Profile-driven control evidence requirements, including required sources, entity types, fields, freshness, assessment methods, and auditor-grade evidence language. |
+| `internal/findings/builtin_rule_audit_extensions.yaml` | Layered audit-depth fields (assessment method, evidence type, frequency, false-positive guidance) for non-policy public detections, by defaults, anchors, sources, and per-rule override. |
+| `internal/findings/coverage_control_domain_refs.yaml` | Curated `control_domains` to framework control refs, used to enrich a detection's source coverage refs only for the matched coverage source. |
 | `tools/policymappingexport` | Generated CSV tables for spreadsheet review. |
 
 ## Merge Order
@@ -30,7 +32,24 @@ Audit language is merged in this order:
 
 Specific string fields replace earlier values. Assessment methods replace earlier values. False-positive guidance is accumulated and de-duplicated.
 
+## Non-Policy Audit and Coverage Overlays
+
+Policy findings inherit audit language from `policy_rule_extensions.yaml`. Non-policy public detections (for example correlation and source-native rules) inherit audit depth from `builtin_rule_audit_extensions.yaml`, merged in this order:
+
+1. `defaults`
+2. `anchors.<anchor>`
+3. `sources.<source-id>`
+4. `rules.<detection-id>`
+
+Rule-level values win. Policy-sourced detections are skipped so policy YAML stays authoritative. `detection-catalog-generate` validates that every public detection ends up with complete audit depth.
+
+Source coverage refs come from the source coverage contracts. When a contract declares only coarse `control_domains`, `coverage_control_domain_refs.yaml` maps selected domains to defensible framework controls. Derived refs are added only when the detection matches the coverage source and the coverage dimension or evidence type also matches, so coverage stays source-bounded and avoids broad same-source over-claiming. Domains that do not directly evidence framework controls, such as `source_operations`, are explicitly exempted by tests instead of being silently ignored.
+
+## All-Finding Audit Language
+
 All-finding audit language uses the same YAML file:
+
+For policy-sourced detections, merge order is:
 
 1. `defaults`
 2. `evidence_modes.<evaluation-mode>`
@@ -38,7 +57,7 @@ All-finding audit language uses the same YAML file:
 4. `findings.<finding-id>`
 5. Public detection catalog fields
 
-Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. Direct catalog fields win when they are present. `audit_language_source` reports the final source of the emitted audit fields.
+For non-policy detections, public detection catalog fields load first as fallback values, then the same YAML layers override them in the order above through `findings.<finding-id>`. Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. `audit_language_source` reports the final source of the emitted audit fields.
 
 ## Generated Tables
 

@@ -169,7 +169,7 @@ func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
 			{URN: "urn:review:missing-status", ReviewDueAt: "2026-01-15"},
 		},
 	}
-	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, nil, nil, now)
+	summary := grcPolicyLifecycleSummaryFrom([]grcPolicyLifecyclePolicy{policy}, nil, nil, nil, nil, nil, now)
 	if summary.OverdueReviews != 0 {
 		t.Fatalf("summary = %+v, want missing-status review excluded from overdue count", summary)
 	}
@@ -191,7 +191,7 @@ func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
 	if grcPolicyDocumentDueForReview(document, now) {
 		t.Fatalf("missing document status should not be due for review")
 	}
-	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, nil, now)
 	if summary.DocumentsDueForReview != 0 {
 		t.Fatalf("summary = %+v, want missing-status document excluded from due count", summary)
 	}
@@ -214,7 +214,7 @@ func TestDraftDocumentDoesNotCreateReviewWork(t *testing.T) {
 	if grcPolicyDocumentDueForReview(document, now) {
 		t.Fatalf("draft document should not be due for review")
 	}
-	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, now)
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document}, nil, nil, nil, now)
 	if summary.DraftDocuments != 1 || summary.DocumentsDueForReview != 0 {
 		t.Fatalf("summary = %+v, want one draft document and no due review", summary)
 	}
@@ -237,7 +237,7 @@ func TestHighRiskSummaryCountsOpenRisksOnly(t *testing.T) {
 		{ID: "remediated-high", Status: "remediated", ResidualRisk: "high"},
 		{ID: "transferred-high", Status: "transferred", ResidualRisk: "high"},
 		{ID: "open-medium", Status: "open", ResidualRisk: "medium"},
-	}, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	}, nil, nil, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
 	if summary.OpenRisks != 2 || summary.HighRisks != 1 {
 		t.Fatalf("risk summary = %+v, want two open risks and one open high risk", summary)
@@ -281,6 +281,87 @@ func TestRiskWorkQueueIncludesLinkedPolicy(t *testing.T) {
 	if items[0].RiskID != "privileged-access" || items[0].PolicyID != "access" {
 		t.Fatalf("risk work item = %+v, want linked risk and policy IDs", items[0])
 	}
+}
+
+func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
+	document := grcPolicyDocumentItem{
+		ID:            "secure-development",
+		URN:           "urn:document:secure-development",
+		Title:         "Secure Development Policy",
+		DocumentClass: "policy",
+		Status:        "approved",
+	}
+	draftDocument := grcPolicyDocumentItem{
+		ID:            "draft-policy",
+		URN:           "urn:document:draft-policy",
+		Title:         "Draft Policy",
+		DocumentClass: "policy",
+		Status:        "draft",
+	}
+	missingStatusDocument := grcPolicyDocumentItem{
+		ID:              "statusless-document",
+		URN:             "urn:document:statusless-document",
+		Title:           "Statusless document",
+		DocumentClass:   "record",
+		NextReviewDueAt: "2026-12-31",
+		Policies: []grcPolicyDocumentRef{
+			{ID: "secure-development", URN: "urn:policy:secure-development", Title: "Secure Development Policy"},
+		},
+	}
+	openRisk := grcPolicyRiskRegisterItem{
+		ID:           "privileged-access",
+		URN:          "urn:risk:privileged-access",
+		Title:        "Privileged access drift",
+		Status:       "open",
+		ResidualRisk: "high",
+	}
+	closedRisk := grcPolicyRiskRegisterItem{
+		ID:           "closed-risk",
+		URN:          "urn:risk:closed-risk",
+		Title:        "Closed risk",
+		Status:       "closed",
+		ResidualRisk: "high",
+	}
+
+	gaps := grcPolicyGovernanceGaps([]grcPolicyDocumentItem{document, draftDocument, missingStatusDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk})
+
+	if !grcPolicyGapExists(gaps, "document", "secure-development", "Missing owner") ||
+		!grcPolicyGapExists(gaps, "document", "secure-development", "Missing review date") ||
+		!grcPolicyGapExists(gaps, "document", "secure-development", "No linked policy") ||
+		!grcPolicyGapExists(gaps, "document", "secure-development", "No mapped controls") {
+		t.Fatalf("document gaps = %+v, want owner, review date, policy, and controls", gaps)
+	}
+	for _, reason := range []string{"Missing owner", "Missing treatment", "Missing treatment date", "Missing review date", "No source document", "No linked policy", "No mapped controls", "No evidence"} {
+		if !grcPolicyGapExists(gaps, "risk", "privileged-access", reason) {
+			t.Fatalf("risk gaps = %+v, want %q", gaps, reason)
+		}
+	}
+	if grcPolicyGapExists(gaps, "risk", "closed-risk", "Missing owner") {
+		t.Fatalf("gaps = %+v, want closed risk excluded", gaps)
+	}
+	if grcPolicyGapExists(gaps, "document", "draft-policy", "Missing owner") {
+		t.Fatalf("gaps = %+v, want draft document excluded", gaps)
+	}
+	if !grcPolicyGapExists(gaps, "document", "statusless-document", "Missing owner") {
+		t.Fatalf("gaps = %+v, want missing-status document included for metadata completeness", gaps)
+	}
+	if len(gaps) == 0 || gaps[0].Subject != "risk" || gaps[0].Severity != "high" {
+		t.Fatalf("first gap = %+v, want high risk gap first", gaps)
+	}
+
+	summary := grcPolicyLifecycleSummaryFrom(nil, nil, []grcPolicyDocumentItem{document, missingStatusDocument}, []grcPolicyRiskRegisterItem{openRisk, closedRisk}, nil, gaps, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if summary.GovernanceGaps != len(gaps) || summary.PolicyDocumentGaps != 5 || summary.RiskRegisterGaps != 8 {
+		t.Fatalf("summary = %+v, want governance gap rollups", summary)
+	}
+}
+
+func grcPolicyGapExists(gaps []grcPolicyGovernanceGap, subject string, subjectID string, reason string) bool {
+	for _, gap := range gaps {
+		if gap.Subject == subject && gap.SubjectID == subjectID && gap.Reason == reason {
+			return true
+		}
+	}
+	return false
 }
 
 func TestExceptionRollupSkipsMissingStatus(t *testing.T) {

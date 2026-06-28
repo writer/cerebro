@@ -1,5 +1,8 @@
 framework,control_id,control_ref,control_family,rule_id,name,domain,severity,evidence_mode,evidence_type,path
 CCPA,1798.100,CCPA 1798.100,CCPA 1798 Consumer Privacy Rights,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,control_procedure,policies/compliance/compliance-data-inventory.yaml
+CCPA,1798.105,CCPA 1798.105,CCPA 1798 Consumer Privacy Rights,ai-data-retention-reviewed,AI Data Retention Reviewed,ai,medium,cel,ai_governance,policies/ai/ai-data-retention-reviewed.yaml
+CCPA,1798.130,CCPA 1798.130,CCPA 1798 Consumer Privacy Rights,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,control_procedure,policies/compliance/compliance-data-inventory.yaml
+CCPA,1798.150,CCPA 1798.150,CCPA 1798 Consumer Privacy Rights,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
 CIS AWS Foundations Benchmark v2.0,1.10,CIS AWS Foundations Benchmark v2.0 1.10,CIS AWS Foundations Benchmark v2.0 1 Identity and Access Management,aws-iam-password-policy,IAM Password Policy Requirements,aws,medium,cel,cloud_configuration,policies/aws/aws-iam-password-policy.yaml
 CIS AWS Foundations Benchmark v2.0,1.12,CIS AWS Foundations Benchmark v2.0 1.12,CIS AWS Foundations Benchmark v2.0 1 Identity and Access Management,aws-iam-user-console-inactive,IAM User Console Inactive,aws,medium,cel,cloud_configuration,policies/aws/aws-iam-user-console-inactive.yaml
 CIS AWS Foundations Benchmark v2.0,1.12,CIS AWS Foundations Benchmark v2.0 1.12,CIS AWS Foundations Benchmark v2.0 1 Identity and Access Management,aws-iam-user-unused-credentials,IAM User Unused Credentials,aws,medium,cel,cloud_configuration,policies/aws/aws-iam-user-unused-credentials.yaml
@@ -1440,22 +1443,27 @@ EU AI Act,Art.14,EU AI Act Art.14,EU AI Act Art. Articles,azure-openai-content-f
 EU AI Act,Art.14,EU AI Act Art.14,EU AI Act Art. Articles,azure-openai-private-endpoint,Azure Openai Private Endpoint,ai,medium,cel,ai_governance,policies/ai/azure-openai-private-endpoint.yaml
 EU AI Act,Art.14,EU AI Act Art.14,EU AI Act Art. Articles,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,ai,medium,cel,ai_governance,policies/ai/gcp-vertex-dataset-cmek.yaml
 EU AI Act,Art.14,EU AI Act Art.14,EU AI Act Art. Articles,gcp-vertex-model-endpoint-private,GCP Vertex Model Endpoint Private,ai,medium,cel,ai_governance,policies/ai/gcp-vertex-model-endpoint-private.yaml
-GDPR,Art.30,GDPR Art.30,GDPR Article Articles,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml
-GDPR,Art.30,GDPR Art.30,GDPR Article Articles,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
-GDPR,Art.5,GDPR Art.5,GDPR Article Articles,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml
-GDPR,Art.5,GDPR Art.5,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
-GDPR,Art.5,GDPR Art.5,GDPR Article Articles,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
-GDPR,Art.5,GDPR Art.5,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
 GDPR,Article 24,GDPR Article 24,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
 GDPR,Article 24,GDPR Article 24,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
+GDPR,Article 25,GDPR Article 25,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
 GDPR,Article 28,GDPR Article 28,GDPR Article Articles,vendor-dpa-exists,Vendor Data Processing Agreement Exists,vendor,high,cel,third_party_risk,policies/vendor/vendor-dpa-exists.yaml
+GDPR,Article 30,GDPR Article 30,GDPR Article Articles,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml
 GDPR,Article 30,GDPR Article 30,GDPR Article Articles,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,control_procedure,policies/compliance/compliance-data-inventory.yaml
 GDPR,Article 30,GDPR Article 30,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
+GDPR,Article 30,GDPR Article 30,GDPR Article Articles,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
 GDPR,Article 30,GDPR Article 30,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
 GDPR,Article 32,GDPR Article 32,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
+GDPR,Article 32,GDPR Article 32,GDPR Article Articles,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
 GDPR,Article 32,GDPR Article 32,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
 GDPR,Article 33,GDPR Article 33,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
 GDPR,Article 34,GDPR Article 34,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,ai-data-retention-reviewed,AI Data Retention Reviewed,ai,medium,cel,ai_governance,policies/ai/ai-data-retention-reviewed.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,control_procedure,policies/compliance/compliance-data-inventory.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,compliance-gdpr-policy,GDPR Compliance Policy Exists,compliance,high,query,control_procedure,policies/compliance/compliance-gdpr-policy.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
+GDPR,Article 5,GDPR Article 5,GDPR Article Articles,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,compliance,high,query,control_procedure,policies/compliance/compliance-ir-gdpr-addendum.yaml
+GDPR,Article 6,GDPR Article 6,GDPR Article Articles,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml
 HIPAA,164.308(a)(1)(ii)(A),HIPAA 164.308(a)(1)(ii)(A),HIPAA 164.308 Administrative Safeguards,compliance-risk-assessment-annual,Annual Risk Assessment Completed,compliance,high,cel,control_procedure,policies/compliance/compliance-risk-assessment.yaml
 HIPAA,164.308(a)(5)(ii)(B),HIPAA 164.308(a)(5)(ii)(B),HIPAA 164.308 Administrative Safeguards,endpoint-edr-installed,EDR Agent Installed on Endpoints,endpoint,critical,cel,endpoint_posture,policies/endpoint/endpoint-edr-installed.yaml
 HIPAA,164.308(a)(5)(ii)(B),HIPAA 164.308(a)(5)(ii)(B),HIPAA 164.308 Administrative Safeguards,endpoint-kandji-edr-installed,Kandji Devices Missing EDR Agent,endpoint,high,query,endpoint_posture,policies/endpoint/endpoint-kandji-edr-installed.yaml
@@ -3250,6 +3258,7 @@ ISO 27001:2022,A.8.9,ISO 27001:2022 A.8.9,ISO 27001:2022 A.8 Technology Controls
 ISO 27001:2022,A.8.9,ISO 27001:2022 A.8.9,ISO 27001:2022 A.8 Technology Controls,vuln-sla-breach-crown-jewel,Vuln Sla Breach Crown Jewel,vulnerability,high,cel,vulnerability_management,policies/vulnerability/vuln-sla-breach-crown-jewel.yaml
 ISO 27701,7.2.6,ISO 27701 7.2.6,ISO 27701 7 PII Controller Controls,vendor-dpa-exists,Vendor Data Processing Agreement Exists,vendor,high,cel,third_party_risk,policies/vendor/vendor-dpa-exists.yaml
 ISO 27701,7.2.8,ISO 27701 7.2.8,ISO 27701 7 PII Controller Controls,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,control_procedure,policies/compliance/compliance-data-inventory.yaml
+ISO 27701,7.2.8,ISO 27701 7.2.8,ISO 27701 7 PII Controller Controls,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,compliance,medium,cel,control_procedure,policies/compliance/compliance-inventory-data-tracking.yaml
 ISO 27701,8.2.1,ISO 27701 8.2.1,ISO 27701 8 PII Processor Controls,vendor-dpa-exists,Vendor Data Processing Agreement Exists,vendor,high,cel,third_party_risk,policies/vendor/vendor-dpa-exists.yaml
 ISO 42001,10.1,ISO 42001 10.1,ISO 42001 10 Improvement,ai-incident-response,AI Incident Response Plan,ai,high,cel,ai_governance,policies/ai/ai-incident-response.yaml
 ISO 42001,10.2,ISO 42001 10.2,ISO 42001 10 Improvement,ai-data-governance,AI Training Data Governance,ai,high,cel,ai_governance,policies/ai/ai-data-governance.yaml

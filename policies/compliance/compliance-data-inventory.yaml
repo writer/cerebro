@@ -34,6 +34,7 @@ spec:
     frameworks:
         - name: GDPR
           controls:
+            - Article 5
             - Article 30
         - name: ISO 27701
           controls:
@@ -44,6 +45,7 @@ spec:
         - name: CCPA
           controls:
             - "1798.100"
+            - "1798.130"
         - name: NIST 800-53 r5
           controls:
             - RA-2

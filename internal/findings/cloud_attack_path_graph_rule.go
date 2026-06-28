@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -107,7 +108,7 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) QueryFor(runtime *cerebrov1
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
-		Query: `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+		Query: fmt.Sprintf(`MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
 WHERE public.entity_type IN ['aws.public_principal', 'gcp.public_principal', 'azure.public_principal']
 WITH account, public, reach, exposed
 ORDER BY exposed.label, exposed.urn
@@ -130,6 +131,7 @@ WITH account, exposures_capped, exposure, exposure.exposed AS exposed
 MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})
 WHERE all(node IN nodes(proof_path) WHERE node.tenant_id = $tenant_id)
   AND all(rel IN relationships(proof_path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $traversal_relations)
+  AND %s
 MATCH (principal)-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
 WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND (
@@ -185,13 +187,13 @@ RETURN exposure.public_urn AS public_urn,
        }] AS traversal_edges,
        account_capped AS graph_rule_truncated
 ORDER BY account_label, exposed_label, principal_label, permission_label
-LIMIT $row_limit`,
+LIMIT $row_limit`, graphpaths.CloudExposurePrivilegeTraversalDirectionPredicate),
 		Params: map[string]any{
 			"tenant_id":           strings.TrimSpace(runtime.GetTenantId()),
 			"row_limit":           int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
 			"exposure_cap":        int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
 			"path_cap":            int64(cloudPublicExposurePrivilegedPrincipalPerAccountCap),
-			"traversal_relations": cloudAttackPathTraversalRelations(),
+			"traversal_relations": graphpaths.CloudExposurePrivilegeTraversalRelations(),
 		},
 		RowLimit: cloudPublicExposurePrivilegedPrincipalRowLimit,
 	}
@@ -247,8 +249,11 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 		return nil
 	}
 	relationChain := cloudAttackPathRelationChain(row)
+	if !cloudAttackPathTraversalProofMatches(row, relationChain) {
+		return nil
+	}
 	traversalPaths := cloudAttackPathTraversalEvidencePaths(row)
-	if len(relationChain) == 0 || len(traversalPaths) == 0 {
+	if len(traversalPaths) == 0 {
 		return nil
 	}
 	accountLabel := cypherRowString(row, "account_label")
@@ -316,18 +321,6 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cereb
 	}
 }
 
-func cloudAttackPathTraversalRelations() []string {
-	return []string{
-		"assigned_to",
-		"attached_to",
-		"can_assume",
-		"can_impersonate",
-		"depends_on",
-		"member_of",
-		"runs_as",
-	}
-}
-
 func cloudAttackPathRelationChain(row ports.CypherRow) []string {
 	items := cypherRowList(row, "relation_chain")
 	if len(items) == 0 {
@@ -349,6 +342,26 @@ func cloudAttackPathRelationChain(row ports.CypherRow) []string {
 		}
 	}
 	return relations
+}
+
+func cloudAttackPathTraversalProofMatches(row ports.CypherRow, relationChain []string) bool {
+	items := cypherRowList(row, "traversal_edges")
+	if len(relationChain) == 0 || len(items) != len(relationChain) {
+		return false
+	}
+	for idx, item := range items {
+		relation := cypherListMapString(item, "relation")
+		if relation == "" || relation != strings.TrimSpace(relationChain[idx]) {
+			return false
+		}
+		if cypherListMapString(item, "from_urn") == "" || cypherListMapString(item, "to_urn") == "" {
+			return false
+		}
+		if !graphpaths.CloudExposurePrivilegeTraversalAllowsStep(relation, cypherListMapString(item, "direction")) {
+			return false
+		}
+	}
+	return true
 }
 
 func cloudAttackPathTraversalEvidencePaths(row ports.CypherRow) []*cerebrov1.GraphEvidencePath {
