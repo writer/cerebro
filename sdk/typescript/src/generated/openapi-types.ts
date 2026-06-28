@@ -156,6 +156,40 @@ export type AgentPlatformCapabilityRegistryTotals = {
   default_on: number;
 };
 
+export type AgentPlatformClaimVerification = {
+  actor_id?: string;
+  allowed_next_stage: "observe" | "explain" | "recommend" | "dry_run" | "approve" | "execute" | "verify" | "close_loop";
+  blockers?: AgentPlatformCapabilityDecisionBlocker[];
+  claim: string;
+  claim_type?: string;
+  counter_evidence: AgentPlatformEvidenceReference[];
+  freshness_state?: string;
+  missing_evidence?: string[];
+  requested_action_stage?: "observe" | "explain" | "recommend" | "dry_run" | "approve" | "execute" | "verify" | "close_loop";
+  required_write_back: string[];
+  scope_urn?: string;
+  supporting_evidence: AgentPlatformEvidenceReference[];
+  tenant_id?: string;
+  verdict: "supported" | "weakly_supported" | "contradicted" | "unknown";
+  verifier_results: AgentPlatformVerifierResult[];
+  version: string;
+  warnings?: string[];
+};
+
+export type AgentPlatformClaimVerificationRequest = {
+  actor_id?: string;
+  claim: string;
+  claim_type?: string;
+  counter_evidence_urns?: string[];
+  freshness_state?: "fresh" | "stale" | "failed" | "unknown";
+  human_approved?: boolean;
+  missing_evidence?: string[];
+  requested_action_stage?: "observe" | "explain" | "recommend" | "dry_run" | "approve" | "execute" | "verify" | "close_loop";
+  scope_urn?: string;
+  supporting_evidence_urns?: string[];
+  tenant_id?: string;
+};
+
 export type AgentPlatformConnectorDependency = {
   auth_models: string[];
   credential_store: string;
@@ -286,6 +320,13 @@ export type AgentPlatformEvidencePacketRequest = {
   model?: string;
   question?: string;
   scope_urn?: string;
+};
+
+export type AgentPlatformEvidenceReference = {
+  citation_status: string;
+  kind: string;
+  source_urns?: string[];
+  urn: string;
 };
 
 export type AgentPlatformGraphCitation = {
@@ -498,6 +539,13 @@ export type AgentPlatformSecurityMemoryHint = {
   note?: string;
   type: string;
   urn?: string;
+};
+
+export type AgentPlatformVerifierResult = {
+  evidence?: string[];
+  id: string;
+  message: string;
+  status: "passed" | "warning" | "blocked";
 };
 
 export type AgentPlatformWriteBackContract = {

@@ -1800,6 +1800,7 @@ func authorizeMCPClaimVerificationURNs(ctx context.Context, request agentplatfor
 	urns := []string{request.ScopeURN}
 	urns = append(urns, request.SupportingEvidenceURNs...)
 	urns = append(urns, request.CounterEvidenceURNs...)
+	urns = append(urns, request.MissingEvidence...)
 	for _, urn := range urns {
 		urn = strings.TrimSpace(urn)
 		if urn == "" || !strings.HasPrefix(urn, "urn:cerebro:") {
