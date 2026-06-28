@@ -53,7 +53,7 @@ docker compose up --build
 | Walk through a local end-to-end flow | [Getting started](docs/start/getting-started.md) |
 | Understand runtime shape and stores | [Architecture](docs/reference/architecture.md) |
 | Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
-| Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
+| Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [runtime profiles](docs/operations/runtime-profiles.md), [deployment readiness](docs/operations/deployment-readiness.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
 | Explore JSON HTTP or Connect APIs | [API reference](docs/reference/api-reference.md), `api/openapi.yaml`, and `proto/cerebro/v1/bootstrap.proto` |
 | Use the CLI | [CLI reference](docs/reference/cli.md) |
 | Browse built-in integrations | [Source catalog](docs/reference/sources.md) |
@@ -98,6 +98,7 @@ make verify         # CI-parity local verification
 make readme-check   # README and docs drift checks
 make docs-drift-check
 make oss-audit      # public repository hygiene scan
+cerebro deploy preflight  # emit a redacted deployment readiness receipt
 ```
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
