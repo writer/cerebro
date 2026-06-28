@@ -175,9 +175,11 @@ func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocu
 	}
 	parsed := parsedDocumentFromPayload(payload)
 	if resultURL := lookupTopString(payload, "result_url", "download_url", "url"); parsed.ChunkCount == 0 && resultURL != "" {
-		if resultPayload, err := c.fetchResultURL(ctx, resultURL); err == nil {
-			parsed = mergeParsedDocument(parsed, parsedDocumentFromPayload(resultPayload))
+		resultPayload, err := c.fetchResultURL(ctx, resultURL)
+		if err != nil {
+			return grcupload.ParsedDocument{}, err
 		}
+		parsed = mergeParsedDocument(parsed, parsedDocumentFromPayload(resultPayload))
 	}
 	parsed.ProviderFileID = firstNonEmpty(parsed.ProviderFileID, fileID)
 	return parsed, nil

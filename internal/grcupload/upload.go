@@ -13,6 +13,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -188,8 +189,8 @@ func policyEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 		"upload_status":        "parsed",
 	})
 	return []eventSpec{
-		{Kind: "grc.policy", SchemaRef: SchemaRefPolicy, RecordID: policyID, Attrs: policyAttrs},
-		{Kind: "grc.document", SchemaRef: SchemaRefDocument, RecordID: documentID, Attrs: documentAttrs},
+		{Kind: "grc.policy", SchemaRef: SchemaRefPolicy, RecordID: policyID, RecordURN: recordURN(request, "grc.policy", policyID), Attrs: policyAttrs},
+		{Kind: "grc.document", SchemaRef: SchemaRefDocument, RecordID: documentID, RecordURN: recordURN(request, "grc.document", documentID), Attrs: documentAttrs},
 	}
 }
 
@@ -224,8 +225,8 @@ func vendorEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 		"upload_status":         "parsed",
 	})
 	return []eventSpec{
-		{Kind: "grc.vendor", SchemaRef: SchemaRefVendor, RecordID: vendorID, Attrs: vendorAttrs},
-		{Kind: "grc.assurance_document", SchemaRef: SchemaRefAssuranceDocument, RecordID: documentID, Attrs: documentAttrs},
+		{Kind: "grc.vendor", SchemaRef: SchemaRefVendor, RecordID: vendorID, RecordURN: recordURN(request, "grc.vendor", vendorID), Attrs: vendorAttrs},
+		{Kind: "grc.assurance_document", SchemaRef: SchemaRefAssuranceDocument, RecordID: documentID, RecordURN: recordURN(request, "grc.assurance_document", documentID), Attrs: documentAttrs},
 	}
 }
 
@@ -240,6 +241,9 @@ func buildEvent(request UploadRequest, spec eventSpec, uploadID string, index in
 	}
 	if request.RuntimeID != "" {
 		attrs[ports.EventAttributeSourceRuntimeID] = request.RuntimeID
+	}
+	if spec.RecordURN != "" {
+		attrs["record_urn"] = spec.RecordURN
 	}
 	recordID := strings.TrimSpace(spec.RecordID)
 	if recordID == "" {
@@ -272,6 +276,29 @@ func buildEvent(request UploadRequest, spec eventSpec, uploadID string, index in
 		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	return event, nil
+}
+
+func recordURN(request UploadRequest, kind string, recordID string) string {
+	recordID = strings.TrimSpace(recordID)
+	if recordID == "" {
+		return ""
+	}
+	var urn string
+	var err error
+	switch kind {
+	case "grc.policy":
+		urn, err = cerebrourn.Mint(request.TenantID, "policy", uploadProvider, "policy", recordID)
+	case "grc.document":
+		urn, err = cerebrourn.Mint(request.TenantID, "document", uploadProvider, recordID)
+	case "grc.vendor":
+		urn, err = cerebrourn.Mint(request.TenantID, "vendor", uploadProvider, recordID)
+	case "grc.assurance_document":
+		urn, err = cerebrourn.Mint(request.TenantID, "assurance_document", uploadProvider, recordID)
+	}
+	if err != nil {
+		return ""
+	}
+	return urn
 }
 
 func normalizeRequest(request UploadRequest) UploadRequest {

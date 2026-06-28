@@ -51,6 +51,12 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if policy.GetKind() != "grc.policy" || policy.GetSchemaRef() != SchemaRefPolicy || response.Events[0].RecordID != "access-policy" {
 		t.Fatalf("policy event = %#v, ref = %#v", policy, response.Events[0])
 	}
+	if response.Events[0].RecordURN != "urn:cerebro:tenant-1:policy:cerebro_upload:policy:access-policy" {
+		t.Fatalf("policy record_urn = %q", response.Events[0].RecordURN)
+	}
+	if got := policy.GetAttributes()["record_urn"]; got != response.Events[0].RecordURN {
+		t.Fatalf("policy record_urn attr = %q, want response value", got)
+	}
 	if got := policy.GetAttributes()["policy_id"]; got != "access-policy" {
 		t.Fatalf("policy_id attr = %q, want access-policy", got)
 	}
@@ -67,6 +73,10 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	document := events[1]
 	if document.GetKind() != "grc.document" || document.GetSchemaRef() != SchemaRefDocument || response.Events[1].RecordID == "" {
 		t.Fatalf("document event = %#v, ref = %#v", document, response.Events[1])
+	}
+	wantDocumentURN := "urn:cerebro:tenant-1:document:cerebro_upload:" + response.Events[1].RecordID
+	if response.Events[1].RecordURN != wantDocumentURN {
+		t.Fatalf("document record_urn = %q, want %q", response.Events[1].RecordURN, wantDocumentURN)
 	}
 	if got := document.GetAttributes()["policy_id"]; got != "access-policy" {
 		t.Fatalf("document policy_id = %q, want access-policy", got)
@@ -122,6 +132,9 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	if vendor.GetKind() != "grc.vendor" || vendor.GetSchemaRef() != SchemaRefVendor || response.Events[0].RecordID != "contoso" {
 		t.Fatalf("vendor event = %#v, ref = %#v", vendor, response.Events[0])
 	}
+	if response.Events[0].RecordURN != "urn:cerebro:tenant-1:vendor:cerebro_upload:contoso" {
+		t.Fatalf("vendor record_urn = %q", response.Events[0].RecordURN)
+	}
 	if got := vendor.GetAttributes()["vendor_name"]; got != "Contoso" {
 		t.Fatalf("vendor_name = %q, want Contoso", got)
 	}
@@ -132,6 +145,9 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	document := events[1]
 	if document.GetKind() != "grc.assurance_document" || document.GetSchemaRef() != SchemaRefAssuranceDocument {
 		t.Fatalf("assurance document event = %#v", document)
+	}
+	if response.Events[1].RecordURN == "" {
+		t.Fatal("assurance document record_urn is empty")
 	}
 	if got := document.GetAttributes()["vendor_id"]; got != "contoso" {
 		t.Fatalf("document vendor_id = %q, want contoso", got)

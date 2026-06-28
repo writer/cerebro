@@ -152,6 +152,41 @@ func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
 	}
 }
 
+func TestReductoClientReturnsResultURLFetchError(t *testing.T) {
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upload":
+			writeJSON(t, w, map[string]string{"file_id": "file-1"})
+		case "/parse":
+			writeJSON(t, w, map[string]any{
+				"parse_id":   "parse-1",
+				"status":     "completed",
+				"result_url": serverURL + "/result",
+			})
+		case "/result":
+			http.Error(w, "result unavailable", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client, err := NewClient(Config{
+		APIKey:  "reducto-token",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	_, err = client.Parse(context.Background(), "Access Policy.pdf", "application/pdf", strings.NewReader("policy body"))
+	if !errors.Is(err, grcupload.ErrRemote) {
+		t.Fatalf("Parse() error = %v, want ErrRemote", err)
+	}
+}
+
 func TestReductoClientRejectsCrossOriginResultURL(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()

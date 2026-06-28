@@ -66,7 +66,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	tenantID := firstNonEmpty(fields["tenant_id"], scope.TenantID)
+	tenantID, err := resolvedTenantID(fields["tenant_id"], scope.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	if h.options.AuthorizeTenant != nil {
 		if err := h.options.AuthorizeTenant(r.Context(), tenantID); err != nil {
 			h.writeError(w, err)
@@ -109,6 +113,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, fmt.Errorf("%w: append upload event: %w", grcupload.ErrRuntimeUnavailable, err))
 			return
 		}
+	}
+	for _, event := range events {
 		if _, err := h.options.Projector.Project(r.Context(), event); err != nil {
 			h.writeError(w, fmt.Errorf("%w: project upload event: %w", grcupload.ErrRuntimeUnavailable, err))
 			return
@@ -187,6 +193,15 @@ func scopeRequestWithTenant(r *http.Request, tenantID string) *http.Request {
 	clonedURL.RawQuery = query.Encode()
 	clone.URL = &clonedURL
 	return clone
+}
+
+func resolvedTenantID(formTenantID string, scopeTenantID string) (string, error) {
+	formTenantID = strings.TrimSpace(formTenantID)
+	scopeTenantID = strings.TrimSpace(scopeTenantID)
+	if formTenantID != "" && scopeTenantID != "" && formTenantID != scopeTenantID {
+		return "", fmt.Errorf("%w: tenant_id must match the resolved upload scope", grcupload.ErrInvalidRequest)
+	}
+	return firstNonEmpty(scopeTenantID, formTenantID), nil
 }
 
 func formFields(form *multipart.Form) map[string]string {
