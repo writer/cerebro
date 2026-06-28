@@ -1369,8 +1369,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(complianceReview.SourceCoverageSupportLevels),
 			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
 			complianceReview.ComplianceEvidenceStatus,
-			sourceCapabilityStatus,
 			joinList(reviewFlags),
+			sourceCapabilityStatus,
 		})
 	}
 
@@ -3582,7 +3582,7 @@ func findingComplianceReviewMapHeader() []string {
 		"source_backed_control_ref_count", "control_refs_without_source_match_count",
 		"control_refs_without_source_match", "source_coverage_ref_count",
 		"source_coverage_support_levels", "source_coverage_high_value_count",
-		"compliance_evidence_status", "source_capability_status", "review_flags",
+		"compliance_evidence_status", "review_flags", "source_capability_status",
 	}
 }
 

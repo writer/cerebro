@@ -19,7 +19,7 @@ profiles:
     applies_to:
       family_keywords:
         - Access
-        - Account
+        - Account Management
         - Authentication
         - Authorization
         - Identity
@@ -72,7 +72,7 @@ profiles:
         - Alert
         - Audit
         - Detection
-        - Event
+        - Event Log
         - Incident
         - Logging
         - Monitoring
@@ -171,7 +171,7 @@ profiles:
         - Confidentiality
         - Cryptographic
         - Cryptography
-        - Data
+        - Data Protection
         - Encryption
         - Information Protection
         - Privacy
@@ -283,7 +283,7 @@ profiles:
     name: Change and Configuration Evidence
     applies_to:
       family_keywords:
-        - Change
+        - Change Management
         - Configuration
         - Development
         - Release
@@ -369,8 +369,8 @@ profiles:
         - ISO 27701:2025
       family_keywords:
         - Privacy
-        - Personal
         - PII
+        - Personal
         - Data Subject
         - Consumer
         - Data Processing

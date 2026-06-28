@@ -489,6 +489,12 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	s3Row := findRow(t, findingRows, findingIDCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, findingHeader, s3Row, "source_capability_status", "source_capability_defined")
 
+	reviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_review_map.csv"))
+	reviewHeader := reviewRows[0]
+	if reviewFlagsCol, sourceCapabilityCol := columnIndex(t, reviewHeader, "review_flags"), columnIndex(t, reviewHeader, "source_capability_status"); reviewFlagsCol > sourceCapabilityCol {
+		t.Fatalf("finding_compliance_review_map.csv source_capability_status column must append after review_flags")
+	}
+
 	gapRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_control_gap_map.csv"))
 	gapHeader := gapRows[0]
 	frameworkCol := columnIndex(t, gapHeader, "framework")
@@ -635,12 +641,17 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "ISO 27001:2022", "A.8.24", "logging-monitoring")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.18", "data-protection")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.30", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC1.5", "identity-access")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "DORA", "Art.9", "logging-monitoring")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "CIS Controls v8", "11", "data-protection")
+	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "NIST 800-53 r5", "PA-1", "change-configuration")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "A1.1", "ai-governance")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "PI1.1", "privacy-rights")
 
 	ccpaPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "CCPA", "1798.100", "privacy-rights", "data_inventory")
 	assertCellContains(t, requirementHeader, ccpaPrivacyRow, "required_fields", "legal_basis")
 	isoPrivacyRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27701", "7.2.6", "privacy-rights", "data_inventory")
+	assertCellContains(t, requirementHeader, isoPrivacyRow, "required_fields", "data_category")
 	assertCellContains(t, requirementHeader, isoPrivacyRow, "framework_lifecycle", "withdrawn_replaced_by_2025")
 
 	baselineRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.7.8", "baseline-control-review", "control_owner_review")
