@@ -1,0 +1,28 @@
+[
+  {
+    "id": "asana-project-project-1",
+    "tenant_id": "tenant",
+    "source_id": "asana",
+    "kind": "asana.projects",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "asana/projects/v1",
+    "payload": {
+      "id": "project-1",
+      "gid": "project-1",
+      "name": "Security Evidence",
+      "archived": false,
+      "created_at": "2026-05-15T00:00:00Z",
+      "modified_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/asana-project-project-1",
+      "resource_id": "project-1",
+      "resource_name": "Security Evidence",
+      "resource_type": "project",
+      "resource_urn": "urn:cerebro:tenant:runtime_projects:project-1",
+      "source_event_id": "project-1",
+      "tenant_id": "tenant"
+    }
+  }
+]

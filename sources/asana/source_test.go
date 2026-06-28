@@ -52,3 +52,47 @@ func TestSourceCheckAndRead(t *testing.T) {
 		t.Fatalf("event id is empty: %#v", event)
 	}
 }
+
+func TestNewFixtureReplaysAsanaFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyUsers, familyProjects, familyAuditEvents} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family          string
+		kind            string
+		wantResourceURN string
+	}{
+		{family: familyUsers, kind: "asana.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
+		{family: familyProjects, kind: "asana.projects", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
+		{family: familyAuditEvents, kind: "asana.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes["resource_urn"]; got != tt.wantResourceURN {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.wantResourceURN)
+			}
+		})
+	}
+}
