@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestMCPRequiresAuth(t *testing.T) {
@@ -2364,7 +2365,11 @@ func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
 }
 
 func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
-	server := newMCPTestServerWithGraphReasoning(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient())
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	server := newMCPTestServerWithGraphReasoningAndSources(t, &stubRuntimeStore{}, &stubGraphStore{}, graphagent.NewStubLLMClient(), registry)
 	defer server.Close()
 
 	response, _ := postMCP(t, server, "", map[string]any{
@@ -2408,9 +2413,37 @@ func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
 		t.Fatalf("claim verification warnings = %#v, want stale/coverage warnings", warnings)
 	}
 
-	crossTenantMissingResponse, _ := postMCP(t, server, "", map[string]any{
+	serverCoverageResponse, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.agent.claims.verify",
+			"arguments": map[string]any{
+				"claim":                    "Finding finding-1 is supported by current evidence.",
+				"scope_urn":                "urn:cerebro:writer:finding:finding-1",
+				"supporting_evidence_urns": []any{"urn:cerebro:writer:evidence:evidence-1"},
+				"freshness_state":          "fresh",
+				"requested_action_stage":   "recommend",
+			},
+		},
+	})
+	serverCoverageContent := serverCoverageResponse["result"].(map[string]any)["structuredContent"].(map[string]any)
+	serverCoverageVerifiers := serverCoverageContent["verifier_results"].([]any)
+	var coverageEvidence []any
+	for _, raw := range serverCoverageVerifiers {
+		verifier := raw.(map[string]any)
+		if verifier["id"] == "coverage" {
+			coverageEvidence, _ = verifier["evidence"].([]any)
+		}
+	}
+	if len(coverageEvidence) == 0 || coverageEvidence[0] != "writer" {
+		t.Fatalf("coverage verifier = %#v, want server-computed tenant evidence", serverCoverageVerifiers)
+	}
+
+	crossTenantMissingResponse, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name": "cerebro.agent.claims.verify",
@@ -2430,7 +2463,7 @@ func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
 
 	overrideResponse, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
-		"id":      3,
+		"id":      4,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name": "cerebro.agent.claims.verify",
@@ -2694,6 +2727,11 @@ func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stu
 
 func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient) *httptest.Server {
 	t.Helper()
+	return newMCPTestServerWithGraphReasoningAndSources(t, store, graph, llm, nil)
+}
+
+func newMCPTestServerWithGraphReasoningAndSources(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, llm graphagent.LLMClient, sources *sourcecdk.Registry) *httptest.Server {
+	t.Helper()
 	app := New(config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -2705,7 +2743,7 @@ func newMCPTestServerWithGraphReasoning(t *testing.T, store *stubRuntimeStore, g
 				TenantID:  "writer",
 			}},
 		},
-	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, nil)
+	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, sources)
 	return httptest.NewServer(app.Handler())
 }
 
