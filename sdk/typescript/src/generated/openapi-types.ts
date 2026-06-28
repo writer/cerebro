@@ -1649,6 +1649,29 @@ export type GRCProgramReadinessResponse = {
   work_items?: Record<string, unknown>[];
 };
 
+export type GRCUploadEvent = {
+  event_id?: string;
+  event_kind?: string;
+  record_id?: string;
+  record_urn?: string;
+  schema_ref?: string;
+};
+
+export type GRCUploadResponse = {
+  chunk_count?: number;
+  content_type?: string;
+  events?: GRCUploadEvent[];
+  file_name?: string;
+  generated_at?: string;
+  page_count?: number;
+  parse_status?: string;
+  reducto_file_id?: string;
+  reducto_parse_id?: string;
+  target?: "policy" | "vendor";
+  text_preview?: string;
+  upload_id?: string;
+};
+
 export type GetEntityNeighborhoodResponse = {
   neighbors?: GraphEntity[];
   relations?: GraphRelation[];

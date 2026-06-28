@@ -1,120 +1,142 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-google_drive
-    tenant_id: builtin_catalog
-    source_id: google_drive
-    display_name: Google Drive
-    description: "Collects files, shared drives, and drive changes from Google Drive and projects them into the Cerebro graph as assets and audit events for workspace, document, message, and collaboration context."
-    categories:
-    - document_management
-    - collaboration
-    auth:
-      model: oauth_authorization_code
-      authorization_url: https://accounts.google.com/o/oauth2/v2/auth
-      token_url: https://oauth2.googleapis.com/token
-      scopes:
-      - https://www.googleapis.com/auth/drive.metadata.readonly
-      - https://www.googleapis.com/auth/admin.reports.audit.readonly
-      credential_fields:
-      - key: client_id
-        reference_only: true
-      - key: client_secret
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://www.googleapis.com/drive/v3
-      verification:
-        method: GET
-        path: "/about?fields=user"
-        expect_status:
-        - 200
-    resource_families:
-    - id: files
-      label: Files
-      path: "/files"
-      method: GET
-      record_selector: "$.files[*]"
-      id_field: id
-      event:
-        kind: google_drive.files
-        schema_ref: google_drive/files/v1
-      projection:
-        template: asset
-      coverage:
-      - id: files
-        type: entity_family
-        title: Files
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: pageToken
-        cursor_json_path: "$.nextPageToken"
-        page_size_param: pageSize
-        page_size: 100
-    - id: shared_drives
-      label: Shared drives
-      path: "/drives"
-      method: GET
-      record_selector: "$.drives[*]"
-      id_field: id
-      event:
-        kind: google_drive.shared_drives
-        schema_ref: google_drive/shared_drives/v1
-      projection:
-        template: asset
-      coverage:
-      - id: shared_drives
-        type: entity_family
-        title: Shared drives
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: pageToken
-        cursor_json_path: "$.nextPageToken"
-        page_size_param: pageSize
-        page_size: 100
-    - id: changes
-      label: Drive changes
-      path: "/changes"
-      method: GET
-      record_selector: "$.changes[*]"
-      id_field: fileId
-      event:
-        kind: google_drive.changes
-        schema_ref: google_drive/changes/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: changes
-        type: audit_event
-        title: Drive changes
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: pageToken
-        cursor_json_path: "$.nextPageToken"
-        page_size_param: pageSize
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        authorization_url: https://accounts.google.com/o/oauth2/v2/auth
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            reference_only: true
+            secret: true
+        model: oauth_authorization_code
+        scopes:
+          - https://www.googleapis.com/auth/drive.metadata.readonly
+          - https://www.googleapis.com/auth/admin.reports.audit.readonly
+        token_url: https://oauth2.googleapis.com/token
+      categories:
+        - document_management
+        - collaboration
+      description: Collects files, shared drives, and drive changes from Google Drive and projects them into the Cerebro graph as assets and audit events for workspace, document, message, and collaboration context.
+      display_name: Google Drive
+      id: builtin-google_drive
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: files
+              support: partial
+              title: Files
+              type: entity_family
+          event:
+            kind: google_drive.files
+            required_payload_fields:
+              - id
+            schema_ref: google_drive/files/v1
+            urn_kind: google_drive_files
+          id: files
+          id_field: id
+          label: Files
+          method: GET
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /files
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.files[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: shared_drives
+              support: partial
+              title: Shared drives
+              type: entity_family
+          event:
+            kind: google_drive.shared_drives
+            required_payload_fields:
+              - id
+            schema_ref: google_drive/shared_drives/v1
+            urn_kind: google_drive_shared_drives
+          id: shared_drives
+          id_field: id
+          label: Shared drives
+          method: GET
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /drives
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.drives[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: changes
+              support: partial
+              title: Drive changes
+              type: audit_event
+          event:
+            kind: google_drive.changes
+            required_payload_fields:
+              - fileId
+            schema_ref: google_drive/changes/v1
+            urn_kind: google_drive_changes
+          id: changes
+          id_field: fileId
+          label: Drive changes
+          method: GET
+          pagination:
+            cursor_json_path: $.nextPageToken
+            cursor_param: pageToken
+            page_size: 100
+            page_size_param: pageSize
+            type: cursor
+          path: /changes
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: fileId
+            template: audit_event
+          record_selector: $.changes[*]
+      schema_version: cerebro.integration/v1
+      source_id: google_drive
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://www.googleapis.com/drive/v3
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /about?fields=user

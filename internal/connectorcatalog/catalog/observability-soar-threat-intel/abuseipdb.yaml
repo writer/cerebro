@@ -1,113 +1,136 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-abuseipdb
-    tenant_id: builtin_catalog
-    source_id: abuseipdb
-    display_name: AbuseIPDB
-    description: "Collects reports, IP addresses, and audit events from AbuseIPDB and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context."
-    categories:
-    - threat_intel
-    - security
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.abuseipdb.com/api/v2
-      verification:
-        method: GET
-        path: "/blacklist"
-        expect_status:
-        - 200
-    resource_families:
-    - id: reports
-      label: Reports
-      path: "/reports"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: abuseipdb.reports
-        schema_ref: abuseipdb/reports/v1
-      projection:
-        template: finding
-      coverage:
-      - id: reports
-        type: remediation_state
-        title: Reports
-        families:
-        - reports
-        support: partial
-        high_value: true
-        evidence_types:
-        - remediation_state
-        control_domains:
-        - remediation
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: ip_addresses
-      label: IP addresses
-      path: "/ip-addresses"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: abuseipdb.ip_addresses
-        schema_ref: abuseipdb/ip_addresses/v1
-      projection:
-        template: asset
-      coverage:
-      - id: ip_addresses
-        type: entity_family
-        title: IP addresses
-        families:
-        - ip_addresses
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/audit-events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: abuseipdb.audit_events
-        schema_ref: abuseipdb/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - threat_intel
+        - security
+      description: Collects reports, IP addresses, and audit events from AbuseIPDB and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context.
+      display_name: AbuseIPDB
+      id: builtin-abuseipdb
+      resource_families:
+        - coverage:
+            - control_domains:
+                - remediation
+              evidence_types:
+                - remediation_state
+              families:
+                - reports
+              high_value: true
+              id: reports
+              support: partial
+              title: Reports
+              type: remediation_state
+          event:
+            kind: abuseipdb.reports
+            required_payload_fields:
+              - id
+            schema_ref: abuseipdb/reports/v1
+            urn_kind: abuseipdb_reports
+          id: reports
+          id_field: id
+          label: Reports
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /reports
+          projection:
+            fields:
+              description: description|summary
+              finding_id: id
+              severity: severity|risk|priority
+              status: status|state
+            template: finding
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - ip_addresses
+              high_value: true
+              id: ip_addresses
+              support: partial
+              title: IP addresses
+              type: entity_family
+          event:
+            kind: abuseipdb.ip_addresses
+            required_payload_fields:
+              - id
+            schema_ref: abuseipdb/ip_addresses/v1
+            urn_kind: abuseipdb_ip_addresses
+          id: ip_addresses
+          id_field: id
+          label: IP addresses
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /ip-addresses
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: abuseipdb.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: abuseipdb/audit_events/v1
+            urn_kind: abuseipdb_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /audit-events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: abuseipdb
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.abuseipdb.com/api/v2
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /blacklist

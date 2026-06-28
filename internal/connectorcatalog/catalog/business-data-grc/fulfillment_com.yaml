@@ -12,8 +12,8 @@ entries:
       requires_references: true
     categories:
     - saas
-    description: "Collects accounting, inventory, return, and track from Fulfillment.com APIv2 and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
-    display_name: Fulfillment.com APIv2
+    description: Collects accounting, inventory, return, and track from Fulfillment.com and projects them into the Cerebro graph as assets and users for inventory, access review, audit, risk, and operational context.
+    display_name: Fulfillment.com
     id: builtin_catalog-fulfillment_com
     ingest:
       mode: pull

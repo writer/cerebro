@@ -61,6 +61,8 @@ class AgentOnboardTests(unittest.TestCase):
             "CEREBRO_JETSTREAM_URL": "nats://127.0.0.1:4222",
             "CEREBRO_NEO4J_URI": "bolt://127.0.0.1:7687",
             "CEREBRO_NEO4J_PASSWORD": "local-password",
+            "GITHUB_OWNER": "writer",
+            "GITHUB_TOKEN": "ghp_test",
         }
 
     def test_validate_plan_rejects_literal_runtime_secret(self):
@@ -97,8 +99,17 @@ class AgentOnboardTests(unittest.TestCase):
             "failed password=redacted token=redacted",
         )
 
+    def test_resolved_config_values_resolves_env_refs(self):
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_test"}, clear=True):
+            self.assertEqual(
+                onboard.resolved_config_values({"owner": "writer", "token": "env:GITHUB_TOKEN"}),
+                {"owner": "writer", "token": "ghp_test"},
+            )
+
     def test_runner_writes_passed_receipt(self):
         plan = valid_plan()
+        plan["source_runtimes"][0]["config"]["owner"] = "env:GITHUB_OWNER"
+        plan["source_runtimes"][0]["config"]["token"] = "env:GITHUB_TOKEN"
         requested = []
 
         def fake_cmd(argv, env, cwd, timeout):
@@ -129,12 +140,23 @@ class AgentOnboardTests(unittest.TestCase):
                 self.assertEqual(headers["Authorization"], "Bearer local-dev-key")
                 return 200, json.dumps({"sources": [{"id": "sdk"}]})
             if parsed.startswith("/sources/sdk/check"):
+                source_config = json.loads(headers["X-Cerebro-Source-Config"])
+                self.assertEqual(source_config["inventory_urns"], "urn:cerebro:local:runtime:local-sdk-demo:service:example-api")
+                self.assertEqual(source_config["owner"], "writer")
+                self.assertEqual(source_config["token"], "ghp_test")
                 return 200, json.dumps({"status": "ok"})
             if parsed.startswith("/sources/sdk/discover"):
+                source_config = json.loads(headers["X-Cerebro-Source-Config"])
+                self.assertEqual(source_config["integration"], "demo")
+                self.assertEqual(source_config["owner"], "writer")
+                self.assertEqual(source_config["token"], "ghp_test")
                 return 200, json.dumps({"items": [{"urn": "urn:cerebro:local:runtime:local-sdk-demo:service:example-api"}]})
             if parsed == "/source-runtimes/local-sdk-demo" and method == "PUT":
                 payload = json.loads(body.decode("utf-8"))
                 self.assertEqual(payload["runtime"]["id"], "local-sdk-demo")
+                self.assertEqual(payload["runtime"]["config"]["owner"], "env:GITHUB_OWNER")
+                self.assertEqual(payload["runtime"]["config"]["token"], "env:GITHUB_TOKEN")
+                self.assertNotIn("ghp_test", json.dumps(payload))
                 return 200, json.dumps({"runtime": payload["runtime"]})
             if parsed == "/source-runtimes/local-sdk-demo/claims" and method == "POST":
                 return 200, json.dumps({"claims": [{}]})

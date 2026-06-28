@@ -1,0 +1,165 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects projects, API keys, usage reports, and model deployments from Cerebras and projects them into the Cerebro graph as assets, secrets, and deployments for model access, API key, usage, and workspace governance context.
+      display_name: Cerebras
+      id: builtin-cerebras
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - projects
+              high_value: true
+              id: projects
+              support: partial
+              title: Projects
+              type: entity_family
+          event:
+            kind: cerebras.projects
+            required_payload_fields:
+              - id
+            schema_ref: cerebras/projects/v1
+            urn_kind: cerebras_projects
+          id: projects
+          id_field: id
+          label: Projects
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/projects
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: app_entitlement
+          event:
+            kind: cerebras.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: cerebras/api_keys/v1
+            urn_kind: cerebras_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/api-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - usage_reports
+              high_value: true
+              id: usage_reports
+              support: partial
+              title: Usage reports
+              type: entity_family
+          event:
+            kind: cerebras.usage_reports
+            required_payload_fields:
+              - id
+            schema_ref: cerebras/usage_reports/v1
+            urn_kind: cerebras_usage_reports
+          id: usage_reports
+          id_field: id
+          label: Usage reports
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/usage
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - model_deployments
+              high_value: true
+              id: model_deployments
+              support: partial
+              title: Model deployments
+              type: deployment_state
+          event:
+            kind: cerebras.model_deployments
+            required_payload_fields:
+              - id
+            schema_ref: cerebras/model_deployments/v1
+            urn_kind: cerebras_model_deployments
+          id: model_deployments
+          id_field: id
+          label: Model deployments
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /v1/deployments
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: id
+              deployment_name: name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: cerebras
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.cerebras.ai
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v1/models

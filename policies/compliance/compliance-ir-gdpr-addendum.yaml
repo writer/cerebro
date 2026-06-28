@@ -20,10 +20,13 @@ spec:
     frameworks:
         - name: GDPR
           controls:
-            - Art.5
+            - Article 5
             - Article 24
             - Article 30
             - Article 32
             - Article 33
             - Article 34
+        - name: CCPA
+          controls:
+            - "1798.150"
     enabled: true

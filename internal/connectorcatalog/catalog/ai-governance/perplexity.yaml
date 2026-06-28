@@ -1,0 +1,164 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      description: Collects API groups, API keys, team members, and usage reports from Perplexity and projects them into the Cerebro graph as groups, secrets, users, and assets for model access, API key, usage, and workspace governance context.
+      display_name: Perplexity
+      id: builtin-perplexity
+      resource_families:
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_groups
+              high_value: true
+              id: api_groups
+              support: partial
+              title: API groups
+              type: app_entitlement
+          event:
+            kind: perplexity.api_groups
+            required_payload_fields:
+              - id
+            schema_ref: perplexity/api_groups/v1
+            urn_kind: perplexity_api_groups
+          id: api_groups
+          id_field: id
+          label: API groups
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api-groups
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_keys
+              high_value: true
+              id: api_keys
+              support: partial
+              title: API keys
+              type: app_entitlement
+          event:
+            kind: perplexity.api_keys
+            required_payload_fields:
+              - id
+            schema_ref: perplexity/api_keys/v1
+            urn_kind: perplexity_api_keys
+          id: api_keys
+          id_field: id
+          label: API keys
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /api-keys
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - team_members
+              high_value: true
+              id: team_members
+              support: partial
+              title: Team members
+              type: app_entitlement
+          event:
+            kind: perplexity.team_members
+            required_payload_fields:
+              - id
+            schema_ref: perplexity/team_members/v1
+            urn_kind: perplexity_team_members
+          id: team_members
+          id_field: id
+          label: Team members
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /team/members
+          projection:
+            fields:
+              display_name: name
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - usage_reports
+              high_value: true
+              id: usage_reports
+              support: partial
+              title: Usage reports
+              type: entity_family
+          event:
+            kind: perplexity.usage_reports
+            required_payload_fields:
+              - id
+            schema_ref: perplexity/usage_reports/v1
+            urn_kind: perplexity_usage_reports
+          id: usage_reports
+          id_field: id
+          label: Usage reports
+          method: GET
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /usage
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: perplexity
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.perplexity.ai
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /models

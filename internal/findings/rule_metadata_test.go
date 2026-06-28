@@ -212,7 +212,7 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 	if ref.SourceID != "aws" || ref.DimensionID != "s3_bucket" {
 		t.Fatalf("SourceCoverageRefs[0] = %#v, want aws/s3_bucket", ref)
 	}
-	if got, want := ref.MatchedControlRefs, []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}}; !slices.Equal(got, want) {
+	if got, want := ref.MatchedControlRefs, []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}, {FrameworkName: "SOC 2", ControlID: "CC6.7"}}; !slices.Equal(got, want) {
 		t.Fatalf("MatchedControlRefs = %#v, want %#v", got, want)
 	}
 }

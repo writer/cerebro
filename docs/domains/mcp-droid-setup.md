@@ -44,11 +44,26 @@ investigations.
 
 ## Native Droid client configuration
 
+For the local compose/dev key, one command is enough:
+
+```bash
+droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
+  --header "Authorization: Bearer local-dev-key"
+```
+
 Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the origin.
 
 ```json
 {
   "mcpServers": {
+    "cerebro-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/api/v1/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CEREBRO_API_KEY:-local-dev-key}"
+      },
+      "disabled": false
+    },
     "cerebro-prod": {
       "type": "http",
       "url": "https://<cerebro-origin>/api/v1/mcp",
@@ -69,6 +84,26 @@ http://localhost:53682/callback
 ```
 
 Only configure a static `oauth.clientId` when that client is known to allow the exact Droid redirect URI and requested scopes.
+
+## Instant source preview tools
+
+The source-preview tools work before durable stores are configured:
+
+- `cerebro.sources.list`
+- `cerebro.sources.check`
+- `cerebro.sources.discover`
+- `cerebro.sources.read`
+
+Example agent instruction:
+
+```text
+Call cerebro.sources.read with source_id=github and config
+{"owner":"writer","repo":"cerebro","per_page":"5"}. Summarize the live
+security and compliance evidence, and cite that it came from live source
+preview rather than durable graph state.
+```
+
+For private repos or alert families, pass provider credentials through the MCP client or shell environment. Do not commit real bearer tokens, GitHub tokens, OAuth client secrets, or API keys in `.factory/mcp.json`.
 
 ## OAuth flow
 

@@ -1,113 +1,136 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-cortex_xsoar
-    tenant_id: builtin_catalog
-    source_id: cortex_xsoar
-    display_name: Cortex XSOAR
-    description: "Collects workflow events, cases, and assets from Cortex XSOAR and projects them into the Cerebro graph as audit events, findings, and assets for alert, incident, service health, and response context."
-    categories:
-    - soar
-    - security
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.instance_url}
-      verification:
-        method: GET
-        path: "/xsoar/public/v1/health"
-        expect_status:
-        - 200
-    resource_families:
-    - id: audit_events
-      label: Workflow events
-      path: "/v1/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cortex_xsoar.audit_events
-        schema_ref: cortex_xsoar/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Workflow events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: findings
-      label: Cases
-      path: "/v1/cases"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cortex_xsoar.findings
-        schema_ref: cortex_xsoar/findings/v1
-      projection:
-        template: finding
-      coverage:
-      - id: findings
-        type: remediation_state
-        title: Cases
-        families:
-        - findings
-        support: partial
-        high_value: true
-        evidence_types:
-        - remediation_state
-        control_domains:
-        - remediation
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: assets
-      label: Assets
-      path: "/v1/assets"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: cortex_xsoar.assets
-        schema_ref: cortex_xsoar/assets/v1
-      projection:
-        template: asset
-      coverage:
-      - id: assets
-        type: entity_family
-        title: Assets
-        families:
-        - assets
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - soar
+        - security
+      description: Collects workflow events, cases, and assets from Cortex XSOAR and projects them into the Cerebro graph as audit events, findings, and assets for alert, incident, service health, and response context.
+      display_name: Cortex XSOAR
+      id: builtin-cortex_xsoar
+      resource_families:
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Workflow events
+              type: audit_event
+          event:
+            kind: cortex_xsoar.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: cortex_xsoar/audit_events/v1
+            urn_kind: cortex_xsoar_audit_events
+          id: audit_events
+          id_field: id
+          label: Workflow events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - remediation
+              evidence_types:
+                - remediation_state
+              families:
+                - findings
+              high_value: true
+              id: findings
+              support: partial
+              title: Cases
+              type: remediation_state
+          event:
+            kind: cortex_xsoar.findings
+            required_payload_fields:
+              - id
+            schema_ref: cortex_xsoar/findings/v1
+            urn_kind: cortex_xsoar_findings
+          id: findings
+          id_field: id
+          label: Cases
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/cases
+          projection:
+            fields:
+              description: description|summary
+              finding_id: id
+              severity: severity|risk|priority
+              status: status|state
+            template: finding
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - assets
+              high_value: true
+              id: assets
+              support: partial
+              title: Assets
+              type: entity_family
+          event:
+            kind: cortex_xsoar.assets
+            required_payload_fields:
+              - id
+            schema_ref: cortex_xsoar/assets/v1
+            urn_kind: cortex_xsoar_assets
+          id: assets
+          id_field: id
+          label: Assets
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/assets
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: cortex_xsoar
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.instance_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /xsoar/public/v1/health

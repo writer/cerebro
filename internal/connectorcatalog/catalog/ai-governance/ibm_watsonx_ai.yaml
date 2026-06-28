@@ -1,0 +1,228 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: IBM IAM access token
+            reference_only: true
+            secret: true
+        model: bearer_token
+      categories:
+        - ai
+        - governance
+      config_fields:
+        - key: region
+          label: IBM Cloud region
+          placeholder: us-south
+          required: true
+        - key: project_id
+          label: Project ID
+          required: true
+      description: IBM watsonx.ai connector definition for foundation model specs, foundation model tasks, project custom models, project deployments, and project training jobs.
+      display_name: IBM watsonx.ai
+      id: builtin-ibm-watsonx-ai
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - foundation_model_specs
+              high_value: true
+              id: foundation_model_specs
+              support: partial
+              title: Foundation model specs
+              type: entity_family
+          event:
+            kind: ibm_watsonx_ai.foundation_model_specs
+            required_payload_fields:
+              - model_id
+            schema_ref: ibm_watsonx_ai/foundation_model_specs/v1
+            urn_kind: ibm_watsonx_ai_foundation_model_specs
+          id: foundation_model_specs
+          id_field: model_id
+          label: Foundation model specs
+          method: GET
+          name_field: label
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /ml/v1/foundation_model_specs
+          projection:
+            fields:
+              resource_id: model_id
+              resource_name: label
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.resources[*]
+          static_query:
+            version: "2024-03-14"
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - foundation_model_tasks
+              high_value: true
+              id: foundation_model_tasks
+              support: partial
+              title: Foundation model tasks
+              type: entity_family
+          event:
+            kind: ibm_watsonx_ai.foundation_model_tasks
+            required_payload_fields:
+              - task_id
+            schema_ref: ibm_watsonx_ai/foundation_model_tasks/v1
+            urn_kind: ibm_watsonx_ai_foundation_model_tasks
+          id: foundation_model_tasks
+          id_field: task_id
+          label: Foundation model tasks
+          method: GET
+          name_field: label
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /ml/v1/foundation_model_tasks
+          projection:
+            fields:
+              resource_id: task_id
+              resource_name: label
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.resources[*]
+          static_query:
+            version: "2024-03-14"
+        - config_query:
+            project_id: project_id
+          coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - custom_models
+              high_value: true
+              id: custom_models
+              support: partial
+              title: Custom models
+              type: entity_family
+          event:
+            kind: ibm_watsonx_ai.custom_models
+            required_payload_fields:
+              - metadata.id
+            schema_ref: ibm_watsonx_ai/custom_models/v1
+            urn_kind: ibm_watsonx_ai_custom_models
+          id: custom_models
+          id_field: metadata.id
+          label: Custom models
+          method: GET
+          name_field: entity.name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /ml/v4/models
+          projection:
+            fields:
+              resource_id: metadata.id
+              resource_name: entity.name
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.resources[*]
+          static_query:
+            version: "2024-03-14"
+        - config_query:
+            project_id: project_id
+          coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - deployments
+              high_value: true
+              id: deployments
+              support: partial
+              title: Deployments
+              type: deployment_state
+          event:
+            kind: ibm_watsonx_ai.deployments
+            required_payload_fields:
+              - metadata.id
+            schema_ref: ibm_watsonx_ai/deployments/v1
+            urn_kind: ibm_watsonx_ai_deployments
+          id: deployments
+          id_field: metadata.id
+          label: Deployments
+          method: GET
+          name_field: entity.name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /ml/v4/deployments
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: metadata.id
+              deployment_name: entity.name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.resources[*]
+          static_query:
+            version: "2024-03-14"
+        - config_query:
+            project_id: project_id
+          coverage:
+            - control_domains:
+                - secure_delivery
+              evidence_types:
+                - change_management
+              families:
+                - training_jobs
+              high_value: true
+              id: training_jobs
+              support: partial
+              title: Training jobs
+              type: deployment_state
+          event:
+            kind: ibm_watsonx_ai.training_jobs
+            required_payload_fields:
+              - metadata.id
+            schema_ref: ibm_watsonx_ai/training_jobs/v1
+            urn_kind: ibm_watsonx_ai_training_jobs
+          id: training_jobs
+          id_field: metadata.id
+          label: Training jobs
+          method: GET
+          name_field: entity.name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /ml/v4/trainings
+          projection:
+            fields:
+              deployment_environment: environment|env|stage|target
+              deployment_id: metadata.id
+              deployment_name: entity.name
+              deployment_status: status|state|ready
+              deployment_url: url|deployment_url|endpoint|domain
+            template: deployment
+          record_selector: $.resources[*]
+          static_query:
+            version: "2024-03-14"
+      schema_version: cerebro.integration/v1
+      source_id: ibm_watsonx_ai
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.region}.ml.cloud.ibm.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /ml/v1/foundation_model_specs?version=2024-03-14
