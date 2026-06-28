@@ -1,0 +1,200 @@
+version: "2026-06-28"
+relationships:
+  - framework: SOC 2
+    control_id: CC6.1
+    related_controls:
+      - control_id: CC6.2
+        relationship: sibling_scope
+        evidence_use: review_hint
+        rationale: Access-control findings should be reviewed next to entitlement approval and access-change evidence before an audit packet is called complete.
+      - control_id: CC6.3
+        relationship: sibling_scope
+        evidence_use: review_hint
+        rationale: Authentication or authorization exceptions often need network or system-access boundary evidence to show the full access path.
+  - framework: SOC 2
+    control_id: CC7.1
+    related_controls:
+      - control_id: CC7.2
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Monitoring findings should prompt review of investigation and response evidence for the same asset, user, or service.
+      - control_id: CC7.3
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Detection evidence is stronger when the response or escalation path for the same signal can also be reviewed.
+  - framework: "ISO 27001:2022"
+    control_id: A.5.15
+    related_controls:
+      - control_id: A.5.17
+        relationship: sibling_scope
+        evidence_use: review_hint
+        rationale: Access-control policy findings should be checked with authentication-information handling before relying on the access packet.
+      - control_id: A.5.18
+        relationship: sibling_scope
+        evidence_use: review_hint
+        rationale: Access findings are stronger when the same population has recent access-right review or removal evidence.
+  - framework: "ISO 27001:2022"
+    control_id: A.8.15
+    related_controls:
+      - control_id: A.8.16
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Logging evidence should be reviewed with monitoring evidence so retained events are tied to active detection or alert handling.
+  - framework: "ISO 27001:2022"
+    control_id: A.5.24
+    related_controls:
+      - control_id: A.5.25
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Incident-response planning findings should point reviewers to event assessment and decision evidence for the same incident class.
+  - framework: HIPAA
+    control_id: "164.312"
+    related_controls:
+      - control_id: 164.312(a)(2)(ii)
+        relationship: child_standard
+        evidence_use: review_hint
+        rationale: Broad technical-safeguard mappings should prompt access-emergency and access-procedure detail review when the source can provide it.
+      - control_id: 164.312(a)(2)(iv)
+        relationship: child_standard
+        evidence_use: review_hint
+        rationale: Broad technical-safeguard mappings should prompt encryption and decryption detail review for stored electronic protected health information.
+      - control_id: 164.312(b)
+        relationship: child_standard
+        evidence_use: review_hint
+        rationale: Broad technical-safeguard mappings should prompt audit-control review so activity records can be tied to the safeguard.
+      - control_id: 164.312(e)(1)
+        relationship: child_standard
+        evidence_use: review_hint
+        rationale: Broad technical-safeguard mappings should prompt transmission-security review when protected health information crosses a network boundary.
+  - framework: HIPAA
+    control_id: 164.308(a)(6)
+    related_controls:
+      - control_id: 164.312(b)
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Incident-procedure evidence should be reviewed with audit-control records that show how the incident was detected or reconstructed.
+  - framework: GDPR
+    control_id: Article 32
+    related_controls:
+      - control_id: Article 33
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Security-of-processing findings should prompt breach-notification readiness review for the same processing activity.
+      - control_id: Article 34
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Security-of-processing findings should prompt data-subject notification readiness review when personal-data impact is plausible.
+  - framework: GDPR
+    control_id: Article 5
+    related_controls:
+      - control_id: Article 24
+        relationship: accountability_dependency
+        evidence_use: review_hint
+        rationale: Principle-level findings need ownership and responsibility evidence before the privacy packet is review-ready.
+  - framework: ISO 27701
+    control_id: 7.2.6
+    related_controls:
+      - control_id: 7.2.8
+        relationship: sibling_scope
+        evidence_use: review_hint
+        rationale: Controller privacy findings should be reviewed with the adjacent controller evidence for the same processing activity.
+      - control_id: 8.2.1
+        relationship: processor_dependency
+        evidence_use: review_hint
+        rationale: Controller-side privacy evidence should prompt processor-side evidence review when a third party handles the same personal data.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "1.3"
+    related_controls:
+      - control_id: "1.3.1"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Parent network-boundary mappings should prompt review of the specific inbound and outbound restriction detail.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "3.5"
+    related_controls:
+      - control_id: "3.5.1"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Cryptographic-material findings should prompt detail review for key storage, key exposure, and key-management controls.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "4.2"
+    related_controls:
+      - control_id: "4.2.1"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Transmission-security mappings should prompt protocol and certificate detail review before closure.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "8.3"
+    related_controls:
+      - control_id: "8.3.6"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Authentication mappings should prompt review of passwordless, password, or equivalent authenticator requirements for the affected user class.
+      - control_id: "8.3.7"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Authentication mappings should prompt review of credential lifecycle requirements when stale, shared, or unmanaged credentials are involved.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "8.4"
+    related_controls:
+      - control_id: "8.4.2"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Multifactor mappings should prompt review of whether the specific access path and user population are included.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "10.2"
+    related_controls:
+      - control_id: "10.2.1"
+        relationship: child_requirement
+        evidence_use: review_hint
+        rationale: Audit-log mappings should prompt event-class detail review so critical access and administrative actions are not hidden in a parent control.
+  - framework: "PCI DSS v4.0.1"
+    control_id: "12.10.1"
+    related_controls:
+      - control_id: "10.2"
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: Incident-response evidence should be checked against audit-log coverage for the same systems and time window.
+  - framework: "ISO 42001"
+    control_id: "6.1"
+    related_controls:
+      - control_id: "6.2"
+        relationship: planning_dependency
+        evidence_use: review_hint
+        rationale: AI risk-treatment findings should be reviewed with measurable AI objectives so risk work leads to tracked commitments.
+  - framework: "ISO 42001"
+    control_id: "7.1"
+    related_controls:
+      - control_id: "7.2"
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: AI resource findings should be reviewed with competence evidence for the teams operating or overseeing the system.
+      - control_id: "7.3"
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: AI resource findings should be reviewed with awareness evidence so operators know the limits and required controls.
+  - framework: "ISO 42001"
+    control_id: "9.1"
+    related_controls:
+      - control_id: "9.3"
+        relationship: evidence_dependency
+        evidence_use: review_hint
+        rationale: AI monitoring findings should be reviewed with management-review evidence so drift, failures, or risk changes reach accountable owners.
+  - framework: "ISO 42001"
+    control_id: "10.1"
+    related_controls:
+      - control_id: "10.2"
+        relationship: corrective_action
+        evidence_use: review_hint
+        rationale: AI nonconformity evidence should point reviewers to corrective-action evidence before the issue is treated as closed.
+  - framework: "ISO 42001"
+    control_id: A.2.2
+    related_controls:
+      - control_id: A.6.2.4
+        relationship: operating_context
+        evidence_use: review_hint
+        rationale: AI policy or use-case findings should be reviewed with impact-assessment evidence for the affected AI system.
+      - control_id: A.8.2
+        relationship: operating_context
+        evidence_use: review_hint
+        rationale: AI policy or use-case findings should be reviewed with deployment-operation evidence for the same model, agent, or workflow.

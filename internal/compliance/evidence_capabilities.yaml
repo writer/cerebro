@@ -1,0 +1,491 @@
+version: "2026-06-28"
+sources:
+  - source_id: aws
+    name: AWS
+    purpose: Declare source-backed cloud identity, exposure, logging, encryption, vulnerability, and threat-detection evidence lanes.
+    dimensions:
+      - dimension_id: iam_credential_report
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_credential_report
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: iam_policy
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - iam_policy
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: effective_permission
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - effective_permission
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: iam_role_assignment
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - iam_role_assignment
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: iam_role_trust
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - iam_role_trust
+        evidence_types:
+          - identity_configuration
+          - relationship_evidence
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: s3_bucket
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - s3_bucket
+        evidence_types:
+          - encryption_configuration
+          - network_exposure
+        control_domains:
+          - data_protection
+          - network_security
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.24
+          - framework: SOC 2
+            control_id: C1.1
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: public_endpoint
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - public_endpoint
+        evidence_types:
+          - network_exposure
+        control_domains:
+          - network_security
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.20
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: resource_exposure
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - resource_exposure
+        evidence_types:
+          - network_exposure
+          - relationship_evidence
+        control_domains:
+          - network_security
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.20
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: security_group
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - security_group
+        evidence_types:
+          - network_exposure
+        control_domains:
+          - network_security
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.20
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: cloudtrail
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - cloudtrail
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.15
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+      - dimension_id: guardduty_finding
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - guardduty_finding
+        evidence_types:
+          - security_monitoring
+        control_domains:
+          - logging_monitoring
+          - security_operations
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.15
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+      - dimension_id: securityhub_finding
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - securityhub_finding
+        evidence_types:
+          - security_monitoring
+        control_domains:
+          - logging_monitoring
+          - security_operations
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+          - framework: SOC 2
+            control_id: CC7.5
+      - dimension_id: inspector2_finding
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - inspector2_finding
+        evidence_types:
+          - vulnerability_management
+        control_domains:
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.5
+      - dimension_id: container_vulnerability
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - inspector2_finding
+        evidence_types:
+          - vulnerability_management
+        control_domains:
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.5
+      - dimension_id: kms_key
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - kms_key
+        evidence_types:
+          - encryption_configuration
+        control_domains:
+          - data_protection
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.24
+          - framework: SOC 2
+            control_id: C1.1
+      - dimension_id: secret
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - secret
+        evidence_types:
+          - secrets_management
+        control_domains:
+          - data_protection
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.24
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: config_recorder
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - config_recorder
+        evidence_types:
+          - configuration_state
+          - logging_configuration
+        control_domains:
+          - cloud_security
+          - logging_monitoring
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.2
+  - source_id: github
+    name: GitHub
+    purpose: Declare source-backed code security, repository governance, change review, remediation, access, and audit-event evidence lanes.
+    dimensions:
+      - dimension_id: code_security_alerts
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - dependabot_alert
+          - secret_scanning_alert
+        evidence_types:
+          - vulnerability_management
+        control_domains:
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.5
+      - dimension_id: remediation_state
+        dimension_type: remediation_state
+        support_level: partial
+        high_value: true
+        families:
+          - dependabot_alert
+          - pull_request
+          - secret_scanning_alert
+        evidence_types:
+          - remediation_state
+          - vulnerability_management
+        control_domains:
+          - remediation
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.5
+      - dimension_id: repositories
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - repository
+        evidence_types:
+          - asset_inventory
+          - change_management
+        control_domains:
+          - asset_inventory
+          - secure_delivery
+        control_refs:
+          - framework: SOC 2
+            control_id: CC8.1
+      - dimension_id: pull_requests
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - pull_request
+        evidence_types:
+          - change_management
+        control_domains:
+          - secure_delivery
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.32
+          - framework: SOC 2
+            control_id: CC8.1
+      - dimension_id: audit_events
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - audit
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.15
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+      - dimension_id: fine_grained_permissions
+        dimension_type: app_entitlement
+        support_level: partial
+        high_value: true
+        families:
+          - org_inventory
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+  - source_id: okta
+    name: Okta
+    purpose: Declare source-backed identity lifecycle, access review, authentication policy, group membership, admin role, and audit-event evidence lanes.
+    dimensions:
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: audit_events
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - audit
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.15
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+      - dimension_id: authenticators
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - authenticator
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.5
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: policy_rules
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - policy_rule
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.5
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: admin_roles
+        dimension_type: relationship
+        support_level: partial
+        high_value: true
+        families:
+          - admin_role
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: group_memberships
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - group_membership
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.2
