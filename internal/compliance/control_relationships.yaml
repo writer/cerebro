@@ -85,7 +85,7 @@ relationships:
         evidence_use: review_hint
         rationale: Security-of-processing findings should prompt data-subject notification readiness review when personal-data impact is plausible.
   - framework: GDPR
-    control_id: Art.5
+    control_id: Article 5
     related_controls:
       - control_id: Article 24
         relationship: accountability_dependency
