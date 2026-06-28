@@ -34,6 +34,7 @@ var grcPolicyLifecycleEntityTypes = []string{
 	"policy.review",
 	"policy.exception",
 	"policy.reminder",
+	"policy.lifecycle.event",
 }
 
 const grcPolicyLifecycleEntitiesQuery = `UNWIND $entity_types AS entity_type
@@ -91,18 +92,23 @@ ORDER BY left.urn, r.relation, right.urn
 LIMIT $limit`
 
 type Response struct {
-	Summary     grcPolicyLifecycleSummary   `json:"summary"`
-	Templates   []grcPolicyTemplateItem     `json:"templates"`
-	Policies    []grcPolicyLifecyclePolicy  `json:"policies"`
-	WorkQueue   []grcPolicyLifecycleWork    `json:"work_queue"`
-	Reminders   []grcPolicyReminderItem     `json:"reminders"`
-	Mappings    []grcPolicyLifecycleMapping `json:"mappings"`
-	GeneratedAt time.Time                   `json:"generated_at"`
+	Summary          grcPolicyLifecycleSummary     `json:"summary"`
+	Templates        []grcPolicyTemplateItem       `json:"templates"`
+	Policies         []grcPolicyLifecyclePolicy    `json:"policies"`
+	WorkQueue        []grcPolicyLifecycleWork      `json:"work_queue"`
+	Reminders        []grcPolicyReminderItem       `json:"reminders"`
+	Events           []grcPolicyLifecycleEventItem `json:"events,omitempty"`
+	AvailableActions []ActionDefinition            `json:"available_actions,omitempty"`
+	VersionDiffs     []grcPolicyVersionDiffItem    `json:"version_diffs,omitempty"`
+	ReminderPlan     []grcPolicyReminderPlanItem   `json:"reminder_plan,omitempty"`
+	Mappings         []grcPolicyLifecycleMapping   `json:"mappings"`
+	GeneratedAt      time.Time                     `json:"generated_at"`
 }
 
 type grcPolicyLifecycleSummary struct {
 	Policies               int `json:"policies"`
 	Templates              int `json:"templates"`
+	LifecycleEvents        int `json:"lifecycle_events"`
 	DraftVersions          int `json:"draft_versions"`
 	PendingApprovals       int `json:"pending_approvals"`
 	OverdueReviews         int `json:"overdue_reviews"`
@@ -110,6 +116,7 @@ type grcPolicyLifecycleSummary struct {
 	ExpiringExceptions     int `json:"expiring_exceptions"`
 	AttestationCoveragePct int `json:"attestation_coverage_pct"`
 	OverdueAttestations    int `json:"overdue_attestations"`
+	NextReminders          int `json:"next_reminders"`
 	MappedControls         int `json:"mapped_controls"`
 	EvidenceItems          int `json:"evidence_items"`
 }
@@ -146,10 +153,18 @@ type grcPolicyLifecyclePolicy struct {
 	Attestations      []grcPolicyAcceptanceItem  `json:"attestations,omitempty"`
 	Reviews           []grcPolicyReviewItem      `json:"reviews,omitempty"`
 	Exceptions        []grcPolicyExceptionItem   `json:"exceptions,omitempty"`
-	Assignments       []grcPolicyAssignmentItem  `json:"assignments,omitempty"`
-	Controls          []grcPolicyControlRef      `json:"controls,omitempty"`
-	Evidence          []grcPolicyEvidenceRef     `json:"evidence,omitempty"`
-	Attributes        map[string]string          `json:"attributes,omitempty"`
+	grcPolicyLifecyclePolicyActivity
+	Assignments []grcPolicyAssignmentItem `json:"assignments,omitempty"`
+	Controls    []grcPolicyControlRef     `json:"controls,omitempty"`
+	Evidence    []grcPolicyEvidenceRef    `json:"evidence,omitempty"`
+	Attributes  map[string]string         `json:"attributes,omitempty"`
+}
+
+type grcPolicyLifecyclePolicyActivity struct {
+	Events       []grcPolicyLifecycleEventItem  `json:"events,omitempty"`
+	Actions      []grcPolicyLifecycleActionItem `json:"actions,omitempty"`
+	VersionDiffs []grcPolicyVersionDiffItem     `json:"version_diffs,omitempty"`
+	ReminderPlan []grcPolicyReminderPlanItem    `json:"reminder_plan,omitempty"`
 }
 
 type grcPolicyVersionItem struct {
@@ -239,6 +254,67 @@ type grcPolicyReminderItem struct {
 	EscalatedTo []string `json:"escalated_to,omitempty"`
 	DueAt       string   `json:"due_at,omitempty"`
 	SentAt      string   `json:"sent_at,omitempty"`
+}
+
+type grcPolicyLifecycleEventItem struct {
+	ID         string            `json:"id"`
+	URN        string            `json:"urn"`
+	PolicyID   string            `json:"policy_id,omitempty"`
+	VersionID  string            `json:"policy_version_id,omitempty"`
+	RecordURN  string            `json:"record_urn,omitempty"`
+	RecordType string            `json:"record_type,omitempty"`
+	EventKind  string            `json:"event_kind,omitempty"`
+	Action     string            `json:"action,omitempty"`
+	Status     string            `json:"status,omitempty"`
+	Actor      string            `json:"actor,omitempty"`
+	Reason     string            `json:"reason,omitempty"`
+	OccurredAt string            `json:"occurred_at,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type grcPolicyLifecycleActionItem struct {
+	ID         string `json:"id"`
+	Action     string `json:"action"`
+	Label      string `json:"label"`
+	PolicyID   string `json:"policy_id,omitempty"`
+	Policy     string `json:"policy,omitempty"`
+	VersionID  string `json:"policy_version_id,omitempty"`
+	RecordURN  string `json:"record_urn,omitempty"`
+	RecordType string `json:"record_type,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	DueAt      string `json:"due_at,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type grcPolicyVersionDiffItem struct {
+	PolicyID      string `json:"policy_id,omitempty"`
+	PolicyTitle   string `json:"policy_title,omitempty"`
+	FromVersionID string `json:"from_version_id,omitempty"`
+	FromVersion   string `json:"from_version,omitempty"`
+	ToVersionID   string `json:"to_version_id,omitempty"`
+	ToVersion     string `json:"to_version,omitempty"`
+	Status        string `json:"status,omitempty"`
+	ChangeSummary string `json:"change_summary,omitempty"`
+	DiffSummary   string `json:"diff_summary,omitempty"`
+	DiffURL       string `json:"diff_url,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	ApprovedAt    string `json:"approved_at,omitempty"`
+}
+
+type grcPolicyReminderPlanItem struct {
+	ID         string   `json:"id"`
+	PolicyID   string   `json:"policy_id,omitempty"`
+	Policy     string   `json:"policy,omitempty"`
+	RecordURN  string   `json:"record_urn,omitempty"`
+	RecordType string   `json:"record_type,omitempty"`
+	Action     string   `json:"action"`
+	Owner      string   `json:"owner,omitempty"`
+	Recipients []string `json:"recipients,omitempty"`
+	DueAt      string   `json:"due_at,omitempty"`
+	EscalateAt string   `json:"escalate_at,omitempty"`
+	Channel    string   `json:"channel,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
 }
 
 type grcPolicyLifecycleMapping struct {
@@ -462,6 +538,7 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 
 	templates := []grcPolicyTemplateItem{}
 	reminders := []grcPolicyReminderItem{}
+	events := []grcPolicyLifecycleEventItem{}
 	mappings := []grcPolicyLifecycleMapping{}
 	for _, node := range nodes {
 		if _, ok := entityNodeURNs[node.URN]; !ok {
@@ -508,12 +585,22 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
 			item.PolicyID = policy.ID
 			reminders = append(reminders, item)
+		case "policy.lifecycle.event":
+			item := grcPolicyLifecycleEventFromNode(node, relations)
+			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
+			item.PolicyID = policy.ID
+			policy.Events = append(policy.Events, item)
+			events = append(events, item)
 		}
 	}
 
 	policies := make([]grcPolicyLifecyclePolicy, 0, len(policyBuilders))
+	versionDiffs := []grcPolicyVersionDiffItem{}
+	reminderPlan := []grcPolicyReminderPlanItem{}
 	for _, policy := range policyBuilders {
 		grcPolicyFinalize(policy, generatedAt)
+		versionDiffs = append(versionDiffs, policy.VersionDiffs...)
+		reminderPlan = append(reminderPlan, policy.ReminderPlan...)
 		policies = append(policies, *policy)
 	}
 	sort.Slice(policies, func(i, j int) bool {
@@ -525,14 +612,42 @@ func grcPolicyLifecycleFromGraph(entityRows []ports.CypherRow, relationRows []po
 	sort.Slice(reminders, func(i, j int) bool {
 		return grcPolicySortDate(reminders[i].DueAt, reminders[i].SentAt).Before(grcPolicySortDate(reminders[j].DueAt, reminders[j].SentAt))
 	})
+	sort.Slice(events, func(i, j int) bool {
+		left := grcPolicySortDate(events[i].OccurredAt)
+		right := grcPolicySortDate(events[j].OccurredAt)
+		if left.Equal(right) {
+			return events[i].URN < events[j].URN
+		}
+		return left.After(right)
+	})
+	sort.Slice(versionDiffs, func(i, j int) bool {
+		left := grcPolicySortDate(versionDiffs[i].CreatedAt, versionDiffs[i].ApprovedAt)
+		right := grcPolicySortDate(versionDiffs[j].CreatedAt, versionDiffs[j].ApprovedAt)
+		if left.Equal(right) {
+			return versionDiffs[i].ToVersionID < versionDiffs[j].ToVersionID
+		}
+		return left.After(right)
+	})
+	sort.Slice(reminderPlan, func(i, j int) bool {
+		left := grcPolicySortDate(reminderPlan[i].DueAt, reminderPlan[i].EscalateAt)
+		right := grcPolicySortDate(reminderPlan[j].DueAt, reminderPlan[j].EscalateAt)
+		if left.Equal(right) {
+			return reminderPlan[i].ID < reminderPlan[j].ID
+		}
+		return left.Before(right)
+	})
 	return Response{
-		Summary:     grcPolicyLifecycleSummaryFrom(policies, templates, mappings, generatedAt),
-		Templates:   templates,
-		Policies:    policies,
-		WorkQueue:   grcPolicyLifecycleWorkQueue(policies, generatedAt),
-		Reminders:   reminders,
-		Mappings:    grcPolicyDeduplicateMappings(mappings),
-		GeneratedAt: generatedAt,
+		Summary:          grcPolicyLifecycleSummaryFrom(policies, templates, mappings, generatedAt),
+		Templates:        templates,
+		Policies:         policies,
+		WorkQueue:        grcPolicyLifecycleWorkQueue(policies, generatedAt),
+		Reminders:        reminders,
+		Events:           events,
+		AvailableActions: ActionDefinitions(),
+		VersionDiffs:     versionDiffs,
+		ReminderPlan:     reminderPlan,
+		Mappings:         grcPolicyDeduplicateMappings(mappings),
+		GeneratedAt:      generatedAt,
 	}
 }
 
@@ -670,6 +785,24 @@ func grcPolicyReminderFromNode(node *grcPolicyGraphNode, relations []grcPolicyGr
 	}
 }
 
+func grcPolicyLifecycleEventFromNode(node *grcPolicyGraphNode, relations []grcPolicyGraphRelation) grcPolicyLifecycleEventItem {
+	return grcPolicyLifecycleEventItem{
+		ID:         grcPolicyNodeID(node, "lifecycle_event_id", "source_event_id", "event_id"),
+		URN:        node.URN,
+		PolicyID:   grcPolicyAttr(node, "policy_id"),
+		VersionID:  grcPolicyAttr(node, "policy_version_id", "version_id"),
+		RecordURN:  grcPolicyAttr(node, "record_urn"),
+		RecordType: grcPolicyAttr(node, "record_type"),
+		EventKind:  grcPolicyAttr(node, "event_kind", "kind"),
+		Action:     grcPolicyAttr(node, "action", "lifecycle_action"),
+		Status:     grcPolicyAttr(node, "status"),
+		Actor:      firstNonEmpty(grcPolicyActionActors(node.URN, relations, "")...),
+		Reason:     grcPolicyAttr(node, "reason", "justification"),
+		OccurredAt: grcPolicyAttr(node, "occurred_at", "created_at", "updated_at"),
+		Attributes: grcPolicyPublicAttrs(node.Attrs),
+	}
+}
+
 func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Versions, func(i, j int) bool {
 		iDate, iOK := grcPolicyFirstDate(policy.Versions[i].ApprovedAt, policy.Versions[i].CreatedAt, policy.Versions[i].EffectiveAt)
@@ -708,6 +841,14 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Exceptions, func(i, j int) bool {
 		return grcPolicySortDate(policy.Exceptions[i].ExpiresAt, policy.Exceptions[i].ApprovedAt).Before(grcPolicySortDate(policy.Exceptions[j].ExpiresAt, policy.Exceptions[j].ApprovedAt))
 	})
+	sort.Slice(policy.Events, func(i, j int) bool {
+		left := grcPolicySortDate(policy.Events[i].OccurredAt)
+		right := grcPolicySortDate(policy.Events[j].OccurredAt)
+		if left.Equal(right) {
+			return policy.Events[i].URN < policy.Events[j].URN
+		}
+		return left.After(right)
+	})
 	if len(policy.Versions) > 0 {
 		policy.LatestVersion = firstNonEmpty(policy.Versions[0].Version, policy.Versions[0].ID)
 		policy.VersionStatus = policy.Versions[0].Status
@@ -726,6 +867,9 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	}
 	policy.AcceptanceSummary = grcPolicyAcceptanceRollup(policy.Attestations, now)
 	policy.ExceptionSummary = grcPolicyExceptionRollup(policy.Exceptions, now)
+	policy.Actions = grcPolicyLifecyclePolicyActions(*policy, now)
+	policy.VersionDiffs = grcPolicyVersionDiffsForPolicy(*policy)
+	policy.ReminderPlan = grcPolicyReminderPlanForPolicy(*policy, now)
 	policy.Assignments = uniqueAssignments(policy.Assignments)
 	policy.Controls = uniqueControls(policy.Controls)
 	policy.Evidence = uniqueEvidence(policy.Evidence)
@@ -780,6 +924,8 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 		summary.OpenExceptions += policy.ExceptionSummary.Active
 		summary.ExpiringExceptions += policy.ExceptionSummary.Expiring
 		summary.OverdueAttestations += policy.AcceptanceSummary.Overdue
+		summary.LifecycleEvents += len(policy.Events)
+		summary.NextReminders += len(policy.ReminderPlan)
 		accepted += policy.AcceptanceSummary.Accepted
 		totalAttestations += policy.AcceptanceSummary.Total
 		for _, control := range policy.Controls {
@@ -843,6 +989,279 @@ func grcPolicyLifecycleWorkQueue(policies []grcPolicyLifecyclePolicy, now time.T
 		return left.Before(right)
 	})
 	return items
+}
+
+func grcPolicyLifecyclePolicyActions(policy grcPolicyLifecyclePolicy, now time.Time) []grcPolicyLifecycleActionItem {
+	items := []grcPolicyLifecycleActionItem{}
+	for _, version := range policy.Versions {
+		if grcPolicyDraftStatus(version.Status) {
+			items = append(items, grcPolicyLifecycleActionItem{
+				ID:         version.URN + ":draft.submit",
+				Action:     "draft.submit",
+				Label:      "Submit draft",
+				PolicyID:   policy.ID,
+				Policy:     policy.Title,
+				VersionID:  version.ID,
+				RecordURN:  version.URN,
+				RecordType: "policy.version",
+				Status:     version.Status,
+				Owner:      firstNonEmpty(version.Owner, policy.Owner),
+				DueAt:      firstNonEmpty(version.EffectiveAt, version.CreatedAt),
+				Reason:     "Draft version",
+			})
+		}
+		if strings.EqualFold(version.Status, "approved") && version.EffectiveAt != "" && !grcPolicyPast(version.EffectiveAt, now) {
+			items = append(items, grcPolicyLifecycleActionItem{
+				ID:         version.URN + ":version.publish",
+				Action:     "version.publish",
+				Label:      "Publish version",
+				PolicyID:   policy.ID,
+				Policy:     policy.Title,
+				VersionID:  version.ID,
+				RecordURN:  version.URN,
+				RecordType: "policy.version",
+				Status:     version.Status,
+				Owner:      firstNonEmpty(version.Owner, policy.Owner),
+				DueAt:      version.EffectiveAt,
+				Reason:     "Approved version",
+			})
+		}
+	}
+	for _, approval := range policy.Approvals {
+		if !grcPolicyPendingStatus(approval.Status) {
+			continue
+		}
+		base := grcPolicyLifecycleActionItem{
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			VersionID:  approval.VersionID,
+			RecordURN:  approval.URN,
+			RecordType: "policy.approval",
+			Status:     approval.Status,
+			Owner:      firstNonEmpty(firstNonEmpty(approval.Approvers...), approval.RequestedBy),
+			DueAt:      approval.DueAt,
+			Reason:     "Pending approval",
+		}
+		approve := base
+		approve.ID = approval.URN + ":approval.approve"
+		approve.Action = "approval.approve"
+		approve.Label = "Approve version"
+		items = append(items, approve)
+		reject := base
+		reject.ID = approval.URN + ":approval.reject"
+		reject.Action = "approval.reject"
+		reject.Label = "Reject version"
+		items = append(items, reject)
+	}
+	for _, review := range policy.Reviews {
+		if grcPolicyOverdue(review.ReviewDueAt, review.Status, now) || grcPolicyPendingStatus(review.Status) {
+			items = append(items, grcPolicyLifecycleActionItem{
+				ID:         review.URN + ":review.complete",
+				Action:     "review.complete",
+				Label:      "Complete review",
+				PolicyID:   policy.ID,
+				Policy:     policy.Title,
+				VersionID:  review.VersionID,
+				RecordURN:  review.URN,
+				RecordType: "policy.review",
+				Status:     review.Status,
+				Owner:      firstNonEmpty(review.Owner, firstNonEmpty(review.Reviewers...), policy.Owner),
+				DueAt:      review.ReviewDueAt,
+				Reason:     "Owner review",
+			})
+		}
+	}
+	for _, attestation := range policy.Attestations {
+		if !grcPolicyAcceptanceOpenStatus(attestation.Status) {
+			continue
+		}
+		items = append(items, grcPolicyLifecycleActionItem{
+			ID:         attestation.URN + ":attestation.accept",
+			Action:     "attestation.accept",
+			Label:      "Record attestation",
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			VersionID:  attestation.VersionID,
+			RecordURN:  attestation.URN,
+			RecordType: "policy.acceptance",
+			Status:     attestation.Status,
+			Owner:      firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)),
+			DueAt:      attestation.DueAt,
+			Reason:     "Open attestation",
+		})
+		action := "reminder.send"
+		label := "Send reminder"
+		reason := "Open attestation"
+		if grcPolicyOverdue(attestation.DueAt, attestation.Status, now) {
+			action = "reminder.escalate"
+			label = "Escalate reminder"
+			reason = "Overdue attestation"
+		}
+		items = append(items, grcPolicyLifecycleActionItem{
+			ID:         attestation.URN + ":" + action,
+			Action:     action,
+			Label:      label,
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			VersionID:  attestation.VersionID,
+			RecordURN:  attestation.URN,
+			RecordType: "policy.acceptance",
+			Status:     attestation.Status,
+			Owner:      firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)),
+			DueAt:      attestation.DueAt,
+			Reason:     reason,
+		})
+	}
+	for _, exception := range policy.Exceptions {
+		if !grcPolicyExceptionOpen(exception.Status) {
+			continue
+		}
+		if grcPolicyPendingStatus(exception.Status) {
+			items = append(items, grcPolicyExceptionAction(policy, exception, "exception.approve", "Approve exception", "Pending exception"))
+			continue
+		}
+		if grcPolicyExpiring(exception.ExpiresAt, now) {
+			items = append(items, grcPolicyExceptionAction(policy, exception, "exception.renew", "Renew exception", "Expiring exception"))
+		}
+		items = append(items, grcPolicyExceptionAction(policy, exception, "exception.close", "Close exception", "Open exception"))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := grcPolicySortDate(items[i].DueAt)
+		right := grcPolicySortDate(items[j].DueAt)
+		if left.Equal(right) {
+			return items[i].ID < items[j].ID
+		}
+		return left.Before(right)
+	})
+	return items
+}
+
+func grcPolicyExceptionAction(policy grcPolicyLifecyclePolicy, exception grcPolicyExceptionItem, action string, label string, reason string) grcPolicyLifecycleActionItem {
+	return grcPolicyLifecycleActionItem{
+		ID:         exception.URN + ":" + action,
+		Action:     action,
+		Label:      label,
+		PolicyID:   policy.ID,
+		Policy:     policy.Title,
+		VersionID:  exception.VersionID,
+		RecordURN:  exception.URN,
+		RecordType: "policy.exception",
+		Status:     exception.Status,
+		Owner:      firstNonEmpty(exception.Owner, firstNonEmpty(exception.Approvers...), policy.Owner),
+		DueAt:      exception.ExpiresAt,
+		Reason:     reason,
+	}
+}
+
+func grcPolicyVersionDiffsForPolicy(policy grcPolicyLifecyclePolicy) []grcPolicyVersionDiffItem {
+	diffs := []grcPolicyVersionDiffItem{}
+	for idx, version := range policy.Versions {
+		if version.ChangeSummary == "" && version.DiffSummary == "" && version.DiffURL == "" {
+			continue
+		}
+		item := grcPolicyVersionDiffItem{
+			PolicyID:      policy.ID,
+			PolicyTitle:   policy.Title,
+			ToVersionID:   version.ID,
+			ToVersion:     firstNonEmpty(version.Version, version.ID),
+			Status:        version.Status,
+			ChangeSummary: version.ChangeSummary,
+			DiffSummary:   version.DiffSummary,
+			DiffURL:       version.DiffURL,
+			CreatedAt:     version.CreatedAt,
+			ApprovedAt:    version.ApprovedAt,
+		}
+		if idx+1 < len(policy.Versions) {
+			item.FromVersionID = policy.Versions[idx+1].ID
+			item.FromVersion = firstNonEmpty(policy.Versions[idx+1].Version, policy.Versions[idx+1].ID)
+		}
+		diffs = append(diffs, item)
+	}
+	return diffs
+}
+
+func grcPolicyReminderPlanForPolicy(policy grcPolicyLifecyclePolicy, now time.Time) []grcPolicyReminderPlanItem {
+	items := []grcPolicyReminderPlanItem{}
+	for _, review := range policy.Reviews {
+		if !grcPolicyPendingStatus(review.Status) && !grcPolicyOverdue(review.ReviewDueAt, review.Status, now) {
+			continue
+		}
+		items = append(items, grcPolicyReminderPlanItem{
+			ID:         review.URN + ":review",
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			RecordURN:  review.URN,
+			RecordType: "policy.review",
+			Action:     "Review reminder",
+			Owner:      firstNonEmpty(review.Owner, policy.Owner),
+			Recipients: review.Reviewers,
+			DueAt:      review.ReviewDueAt,
+			EscalateAt: grcPolicyReminderEscalateAt(review.ReviewDueAt),
+			Channel:    "email",
+			Reason:     "Owner review",
+		})
+	}
+	for _, attestation := range policy.Attestations {
+		if !grcPolicyAcceptanceOpenStatus(attestation.Status) {
+			continue
+		}
+		action := "Attestation reminder"
+		reason := "Open attestation"
+		if grcPolicyOverdue(attestation.DueAt, attestation.Status, now) {
+			action = "Attestation escalation"
+			reason = "Overdue attestation"
+		}
+		items = append(items, grcPolicyReminderPlanItem{
+			ID:         attestation.URN + ":attestation",
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			RecordURN:  attestation.URN,
+			RecordType: "policy.acceptance",
+			Action:     action,
+			Owner:      firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)),
+			Recipients: attestation.Assignees,
+			DueAt:      attestation.DueAt,
+			EscalateAt: grcPolicyReminderEscalateAt(attestation.DueAt),
+			Channel:    "email",
+			Reason:     reason,
+		})
+	}
+	for _, exception := range policy.Exceptions {
+		if !grcPolicyExceptionOpen(exception.Status) || !grcPolicyExpiring(exception.ExpiresAt, now) {
+			continue
+		}
+		items = append(items, grcPolicyReminderPlanItem{
+			ID:         exception.URN + ":exception",
+			PolicyID:   policy.ID,
+			Policy:     policy.Title,
+			RecordURN:  exception.URN,
+			RecordType: "policy.exception",
+			Action:     "Exception renewal",
+			Owner:      firstNonEmpty(exception.Owner, policy.Owner),
+			Recipients: exception.Approvers,
+			DueAt:      exception.ExpiresAt,
+			EscalateAt: grcPolicyReminderEscalateAt(exception.ExpiresAt),
+			Channel:    "email",
+			Reason:     "Expiring exception",
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := grcPolicySortDate(items[i].DueAt)
+		right := grcPolicySortDate(items[j].DueAt)
+		if left.Equal(right) {
+			return items[i].ID < items[j].ID
+		}
+		return left.Before(right)
+	})
+	return items
+}
+
+func grcPolicyReminderEscalateAt(rawDueAt string) string {
+	dueAt, ok := grcPolicyTime(rawDueAt)
+	if !ok {
+		return ""
+	}
+	return dueAt.Add(72 * time.Hour).Format("2006-01-02")
 }
 
 func grcPolicyAcceptanceRollup(items []grcPolicyAcceptanceItem, now time.Time) grcPolicyAcceptanceSummary {

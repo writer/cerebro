@@ -1,0 +1,7 @@
+step,layer,definition
+1,defaults,Start with shared audit defaults from internal/compliance/policy_rule_extensions.yaml.
+2,evidence mode,"Apply mode-specific defaults for cel, query, graph, or manual policies."
+3,domain,Apply the domain block keyed by the policy folder under policies/.
+4,policy override,Apply any explicit policy ID override when a rule needs different audit language.
+5,policy YAML,"Use each PolicyFindingRule YAML file for controls, tags, severity, resource, remediation, risk categories, and MITRE references."
+6,spreadsheet,Generate CSV rows from YAML and derived layers. Do not edit spreadsheet rows back into source by hand.

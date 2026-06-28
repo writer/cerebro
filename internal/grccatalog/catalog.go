@@ -284,6 +284,7 @@ func buildCatalog() []Source {
 			DefaultLimit:   DefaultLimit,
 			MaxLimit:       MaxLimit,
 			CacheScope:     "graph",
+			Exportable:     true,
 		},
 		{
 			ID:          "trends",

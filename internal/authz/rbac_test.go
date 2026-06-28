@@ -10,6 +10,10 @@ func TestRiskScoringWriteScopeRoleExpansion(t *testing.T) {
 	assertGRCContentWriteScopeExpansion(t, ScopeRiskScoringWrite)
 }
 
+func TestGRCPolicyLifecycleWriteScopeRoleExpansion(t *testing.T) {
+	assertGRCContentWriteScopeExpansion(t, ScopeGRCPolicyLifecycleWrite)
+}
+
 func TestUserPreferencesWriteScopeRoleExpansion(t *testing.T) {
 	for _, role := range []string{
 		RoleCerebroViewer,

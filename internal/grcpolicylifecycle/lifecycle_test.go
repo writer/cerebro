@@ -45,6 +45,16 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	if !strings.Contains(entityRequest.Query, "UNWIND $entity_types AS entity_type") || !strings.Contains(entityRequest.Query, "LIMIT $type_limit") {
 		t.Fatalf("entity query %q does not apply a per-type limit", entityRequest.Query)
 	}
+	foundLifecycleEvent := false
+	for _, entityType := range entityRequest.Params["entity_types"].([]string) {
+		if entityType == "policy.lifecycle.event" {
+			foundLifecycleEvent = true
+			break
+		}
+	}
+	if !foundLifecycleEvent {
+		t.Fatalf("entity types = %#v, want policy.lifecycle.event", entityRequest.Params["entity_types"])
+	}
 }
 
 func TestEntityTypeLimitStaysWithinGraphRowCeiling(t *testing.T) {
@@ -209,6 +219,81 @@ func TestRelationEnrichmentDoesNotAttachRelationOnlyLifecycleChild(t *testing.T)
 	}
 	if len(response.Policies[0].Versions) != 0 {
 		t.Fatalf("versions = %+v, want relation-only lifecycle child excluded", response.Policies[0].Versions)
+	}
+}
+
+func TestBuildActionEventCreatesNormalizedLifecycleEvent(t *testing.T) {
+	now := time.Date(2026, 2, 1, 12, 30, 0, 0, time.UTC)
+	event, response, err := BuildActionEvent(ActionRequest{
+		Action:          "approval.approve",
+		TenantID:        "writer",
+		SourceID:        "grc",
+		RuntimeID:       "rt-1",
+		PolicyID:        "access",
+		PolicyVersionID: "access-2",
+		RecordID:        "approval-1",
+		ActorUserID:     "reviewer@example.com",
+		Reason:          "Ready for publish",
+		IdempotencyKey:  "approval-1-approved",
+	}, now)
+	if err != nil {
+		t.Fatalf("BuildActionEvent() error = %v", err)
+	}
+	if event.GetKind() != "grc.policy_approval" || event.GetSchemaRef() != policyLifecycleSchemaRef {
+		t.Fatalf("event kind/schema = %q/%q", event.GetKind(), event.GetSchemaRef())
+	}
+	if event.GetAttributes()["status"] != "approved" || event.GetAttributes()["approver_user_id"] != "reviewer@example.com" {
+		t.Fatalf("event attributes = %#v", event.GetAttributes())
+	}
+	if response.EventID == "" || response.Status != "approved" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {
+	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:policy:access", "policy", "Access", map[string]string{
+		"policy_id":   "access",
+		"policy_type": "policy",
+	})
+	version := policyLifecycleTestRow("urn:cerebro:writer:policy_version:policyops:access-2", "policy.version", "Access v2", map[string]string{
+		"policy_id":         "access",
+		"policy_version_id": "access-2",
+		"status":            "draft",
+		"version":           "2",
+		"change_summary":    "Updated owner review.",
+		"diff_summary":      "Added review cadence.",
+		"created_at":        "2026-01-20",
+	})
+	attestation := policyLifecycleTestRow("urn:cerebro:writer:policy_acceptance:policyops:attest-1", "policy.acceptance", "Access attestation", map[string]string{
+		"acceptance_id":     "attest-1",
+		"policy_id":         "access",
+		"policy_version_id": "access-2",
+		"status":            "pending",
+		"due_at":            "2026-01-15",
+	})
+	event := policyLifecycleTestRow("urn:cerebro:writer:policy_lifecycle_event:policyops:event-1", "policy.lifecycle.event", "Approval event", map[string]string{
+		"lifecycle_event_id": "event-1",
+		"policy_id":          "access",
+		"policy_version_id":  "access-2",
+		"action":             "approval.request",
+		"status":             "requested",
+		"occurred_at":        "2026-01-20T10:00:00Z",
+	})
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy, version, attestation, event}, nil, now)
+	if response.Summary.LifecycleEvents != 1 || response.Summary.NextReminders != 1 {
+		t.Fatalf("summary = %+v, want lifecycle events and reminder plan", response.Summary)
+	}
+	if len(response.Policies) != 1 {
+		t.Fatalf("policies len = %d", len(response.Policies))
+	}
+	got := response.Policies[0]
+	if len(got.Events) != 1 || len(got.Actions) == 0 || len(got.VersionDiffs) != 1 || len(got.ReminderPlan) != 1 {
+		t.Fatalf("policy aggregate = %+v", got)
+	}
+	if len(response.VersionDiffs) != 1 || len(response.ReminderPlan) != 1 {
+		t.Fatalf("response diffs/reminders = %+v/%+v", response.VersionDiffs, response.ReminderPlan)
 	}
 }
 
