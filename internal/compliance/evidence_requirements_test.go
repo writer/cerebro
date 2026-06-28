@@ -224,6 +224,25 @@ func TestControlEvidenceRequirementKeywordsOrPrefixesMatch(t *testing.T) {
 	}
 }
 
+func TestControlEvidenceRequirementKeywordSearchMatchesExporterScope(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "identity-access",
+		Name: "Identity and Access Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			FamilyKeywords: []string{"Access"},
+		},
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyID:      "access",
+		FamilyName:    "Control Activities",
+		EffectiveTags: []string{"access"},
+		Control:       Control{ID: "CC5.1", Title: "Controls are selected and developed"},
+	}) {
+		t.Fatal("profile matched family ID or tags outside exporter keyword scope")
+	}
+}
+
 func TestControlEvidenceRequirementKeywordMatchingUsesWholeTerms(t *testing.T) {
 	loggingProfile := ControlEvidenceRequirementProfile{
 		ID:   "logging-monitoring",
@@ -323,6 +342,9 @@ func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) 
 	}
 	if !containsAnyKeywordFold("ISO 27001:2022 A.8 Information Protection", []string{"Information Protection"}) {
 		t.Fatal("Information Protection keyword did not match phrase")
+	}
+	if !containsAnyKeywordFold("SOC 2 CC6.1 Access Control", []string{"6.1"}) {
+		t.Fatal("punctuated keyword did not match control identifier fragment")
 	}
 }
 
