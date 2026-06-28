@@ -552,14 +552,14 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	frameworkCol := columnIndex(t, header, "framework")
 	controlCol := columnIndex(t, header, "control_id")
 
-	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ccpa", "1798.100")
+	privacyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "CCPA", "1798.100")
 	assertCellContains(t, header, privacyRow, "coverage_status", "direct_control_only")
 	assertCellContains(t, header, privacyRow, "candidate_priority", "high")
 	assertCellContains(t, header, privacyRow, "candidate_type", "source_backing_candidate")
 	assertCellContains(t, header, privacyRow, "suggested_finding_domain", "privacy")
 	assertCellContains(t, header, privacyRow, "requirement_profiles", "privacy-rights")
 
-	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "iso270012022", "A.7.8")
+	catalogOnlyRow := findFrameworkControlRow(t, rows, frameworkCol, controlCol, "ISO 27001:2022", "A.7.8")
 	assertCellContains(t, header, catalogOnlyRow, "coverage_status", "framework_catalog_only")
 	assertCellContains(t, header, catalogOnlyRow, "candidate_priority", "low")
 	assertCellContains(t, header, catalogOnlyRow, "candidate_type", "scope_or_exclusion_candidate")
