@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -83,6 +84,7 @@ type mcpStubSource struct {
 	discoverConfigs []map[string]string
 	readConfigs     []map[string]string
 	readCursors     []string
+	readEventCount  int
 }
 
 func (s *mcpStubSource) Spec() *cerebrov1.SourceSpec {
@@ -107,14 +109,22 @@ func (s *mcpStubSource) Read(_ context.Context, cfg sourcecdk.Config, cursor *ce
 	if cursor != nil {
 		s.readCursors = append(s.readCursors, cursor.GetOpaque())
 	}
-	return sourcecdk.Pull{
-		Events: []*cerebrov1.EventEnvelope{{
-			Id:       "evt-1",
+	count := s.readEventCount
+	if count == 0 {
+		count = 1
+	}
+	events := make([]*cerebrov1.EventEnvelope, 0, count)
+	for index := 1; index <= count; index++ {
+		events = append(events, &cerebrov1.EventEnvelope{
+			Id:       fmt.Sprintf("evt-%d", index),
 			TenantId: "writer",
 			SourceId: "github",
 			Kind:     "github.pull_request",
-			Payload:  []byte(`{"repository":"writer/cerebro","number":1518}`),
-		}},
+			Payload:  []byte(fmt.Sprintf(`{"repository":"writer/cerebro","number":%d}`, 1517+index)),
+		})
+	}
+	return sourcecdk.Pull{
+		Events:     events,
 		NextCursor: &cerebrov1.SourceCursor{Opaque: "next-page"},
 	}, nil
 }
@@ -273,7 +283,7 @@ func TestMCPSourceToolsUseStatelessSourceService(t *testing.T) {
 		Name:         "GitHub",
 		Description:  "GitHub source",
 		EmittedKinds: []string{"github.pull_request"},
-	}}
+	}, readEventCount: 3}
 	registry, err := sourcecdk.NewRegistry(source)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -355,6 +365,7 @@ func TestMCPSourceToolsUseStatelessSourceService(t *testing.T) {
 				"source_id": "github",
 				"config":    config,
 				"cursor":    "page-1",
+				"limit":     1,
 			},
 		},
 	})
@@ -365,11 +376,27 @@ func TestMCPSourceToolsUseStatelessSourceService(t *testing.T) {
 	if got := readStructured["events"].([]any)[0].(map[string]any)["id"]; got != "evt-1" {
 		t.Fatalf("sources.read event id = %#v, want evt-1", got)
 	}
+	if got := len(readStructured["events"].([]any)); got != 1 {
+		t.Fatalf("sources.read events returned = %d, want 1", got)
+	}
 	if got := readStructured["preview_events"].([]any)[0].(map[string]any)["payload_decoded"]; got != true {
 		t.Fatalf("sources.read preview payload_decoded = %#v, want true", got)
 	}
+	if got := len(readStructured["preview_events"].([]any)); got != 1 {
+		t.Fatalf("sources.read preview events returned = %d, want 1", got)
+	}
 	if got := readStructured["next_cursor"].(map[string]any)["opaque"]; got != "next-page" {
 		t.Fatalf("sources.read next cursor = %#v, want next-page", got)
+	}
+	readMetadata := readStructured["metadata"].(map[string]any)
+	if got := readMetadata["limit_applied"]; got != float64(1) {
+		t.Fatalf("sources.read limit metadata = %#v, want 1", got)
+	}
+	if got := readMetadata["events_available"]; got != float64(3) {
+		t.Fatalf("sources.read events_available = %#v, want 3", got)
+	}
+	if got := readMetadata["truncated"]; got != true {
+		t.Fatalf("sources.read truncated = %#v, want true", got)
 	}
 	if len(source.readCursors) != 1 || source.readCursors[0] != "page-1" {
 		t.Fatalf("read cursors = %#v, want page-1", source.readCursors)

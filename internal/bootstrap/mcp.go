@@ -40,6 +40,8 @@ const (
 	mcpEndpointPath             = "/api/v1/mcp"
 	defaultMCPListLimit         = 25
 	maxMCPListLimit             = 100
+	defaultMCPSourceReadLimit   = 10
+	maxMCPSourceReadLimit       = 50
 	defaultMCPAssetLimit        = 10
 	maxMCPAssetLimit            = 50
 	defaultMCPEvidenceLimit     = 25
@@ -671,6 +673,10 @@ func (app *App) mcpDiscoverSource(r *http.Request, args map[string]any) (any, er
 }
 
 func (app *App) mcpReadSource(r *http.Request, args map[string]any) (any, error) {
+	limit, err := mcpBoundedLimit(args, "limit", defaultMCPSourceReadLimit, maxMCPSourceReadLimit)
+	if err != nil {
+		return nil, err
+	}
 	sourceID, config, err := mcpSourceArgs(r.Context(), args)
 	if err != nil {
 		return nil, err
@@ -686,11 +692,19 @@ func (app *App) mcpReadSource(r *http.Request, args map[string]any) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	totalEvents := len(response.GetEvents())
+	totalPreviewEvents := len(response.GetPreviewEvents())
+	if totalEvents > limit {
+		response.Events = response.Events[:limit]
+	}
+	if totalPreviewEvents > limit {
+		response.PreviewEvents = response.PreviewEvents[:limit]
+	}
 	value, err := protoJSONValue(response)
 	if err != nil {
 		return nil, err
 	}
-	return mcpAddResponseMetadata(value, mcpLiveSourceMetadata(len(response.GetEvents()))), nil
+	return mcpAddResponseMetadata(value, mcpLiveSourceReadMetadata(limit, len(response.GetEvents()), totalEvents, len(response.GetPreviewEvents()), totalPreviewEvents)), nil
 }
 
 func mcpSourceArgs(ctx context.Context, args map[string]any) (string, map[string]string, error) {
@@ -2188,6 +2202,7 @@ func mcpTools() []mcpTool {
 				"source_id": map[string]any{"type": "string"},
 				"config":    mcpSourceConfigSchema(),
 				"cursor":    map[string]any{"type": "string", "description": "Opaque cursor returned by a previous live source read."},
+				"limit":     mcpLimitSchema(maxMCPSourceReadLimit, "source events"),
 			}, []string{"source_id"}),
 			OutputSchema: mcpOutputSchema(map[string]any{
 				"source":         map[string]any{"type": "object"},
@@ -3995,6 +4010,23 @@ func mcpLiveSourceMetadata(returned int) map[string]any {
 	metadata := mcpResponseMetadata(0, returned, nil)
 	metadata["freshness_note"] = "Snapshot is fetched directly from the source service at request time and does not require durable stores."
 	metadata["source_preview"] = true
+	return metadata
+}
+
+func mcpLiveSourceReadMetadata(limit int, returnedEvents int, totalEvents int, returnedPreviewEvents int, totalPreviewEvents int) map[string]any {
+	metadata := mcpLiveSourceMetadata(returnedEvents)
+	metadata["limit_applied"] = limit
+	metadata["events_available"] = totalEvents
+	metadata["preview_events_returned"] = returnedPreviewEvents
+	metadata["preview_events_available"] = totalPreviewEvents
+	truncated := totalEvents > returnedEvents || totalPreviewEvents > returnedPreviewEvents
+	metadata["truncated"] = truncated
+	if truncated {
+		metadata["truncation_reason"] = "limit_reached"
+		metadata["more_results_possible"] = true
+	} else if returnedEvents == limit || returnedPreviewEvents == limit {
+		metadata["more_results_possible"] = true
+	}
 	return metadata
 }
 
