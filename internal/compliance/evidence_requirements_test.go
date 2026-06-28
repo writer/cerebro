@@ -324,6 +324,9 @@ func TestControlEvidenceRequirementKeywordMatchingUsesWholeTokens(t *testing.T) 
 	if !containsAnyKeywordFold("ISO 27001:2022 A.8 Information Protection", []string{"Information Protection"}) {
 		t.Fatal("Information Protection keyword did not match phrase")
 	}
+	if !containsAnyKeywordFold("SOC 2 CC6.1 Access Control", []string{"6.1"}) {
+		t.Fatal("punctuated keyword did not match control identifier fragment")
+	}
 }
 
 func resolvedRequirementExists(requirements []ResolvedControlEvidenceRequirement, framework string, controlID string, profileID string, sourceID string) bool {

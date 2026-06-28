@@ -262,7 +262,6 @@ func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirement
 		control.FamilyID,
 		control.FamilyName,
 		control.Control.Title,
-		strings.Join(control.EffectiveTags, " "),
 	}, " ")
 	if len(familyKeywords) != 0 && containsAnyKeywordFold(searchText, familyKeywords) {
 		return true
@@ -299,10 +298,24 @@ func containsStringFold(values []string, want string) bool {
 }
 
 func containsAnyKeywordFold(value string, needles []string) bool {
-	value = normalizeKeywordText(value)
+	rawValue := strings.ToLower(strings.TrimSpace(value))
+	normalizedValue := normalizeKeywordText(value)
 	for _, needle := range needles {
-		needle = normalizeKeywordText(needle)
-		if needle != "" && strings.Contains(" "+value+" ", " "+needle+" ") {
+		rawNeedle := strings.ToLower(strings.TrimSpace(needle))
+		normalizedNeedle := normalizeKeywordText(needle)
+		if normalizedNeedle != "" && strings.Contains(" "+normalizedValue+" ", " "+normalizedNeedle+" ") {
+			return true
+		}
+		if rawNeedle != "" && containsKeywordPunctuation(rawNeedle) && strings.Contains(rawValue, rawNeedle) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsKeywordPunctuation(value string) bool {
+	for _, r := range value {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r) {
 			return true
 		}
 	}

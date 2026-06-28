@@ -571,6 +571,21 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	}
 }
 
+func TestControlEvidenceKeywordMatchingUsesWholeTerms(t *testing.T) {
+	if containsAnyFold("SOC 2 A1 Availability", []string{"AI"}) {
+		t.Fatal("AI keyword matched Availability")
+	}
+	if containsAnyFold("SOC 2 CC6 Logical and Physical Access", []string{"Log"}) {
+		t.Fatal("Log keyword matched Logical")
+	}
+	if !containsAnyFold("SOC 2 CC6 Logical and Physical Access", []string{"Access"}) {
+		t.Fatal("Access keyword did not match access token")
+	}
+	if !containsAnyFold("SOC 2 CC6.1 Access Control", []string{"6.1"}) {
+		t.Fatal("punctuated keyword did not match control identifier fragment")
+	}
+}
+
 func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 	files, err := generateFiles(repoRoot(t))
 	if err != nil {
