@@ -397,6 +397,32 @@ func addGRCPolicyDocumentLinks(entities map[string]*ports.ProjectedEntity, links
 	addInternetHostLink(entities, links, tenantID, sourceID, event, fromURN, relationHasIdentifier, firstAttribute(attrs, "url", "document_url", "file_url", "download_url"), "grc_policy_document_url_host", "0.90")
 }
 
+func addGRCPolicyRiskScenarioReferenceLinks(ctx *grcProjectionContext, fromURN string) {
+	if fromURN == "" {
+		return
+	}
+	rawRiskIDs := strings.Join([]string{
+		ctx.attrs["risk_id"],
+		ctx.attrs["risk_ids"],
+		ctx.attrs["risk_register_id"],
+		ctx.attrs["risk_register_item_ids"],
+	}, ",")
+	for _, riskID := range grcAttributeSequence(rawRiskIDs) {
+		riskURN := projectionURN(ctx.tenantID, "claim", ctx.provider, "risk_scenario", riskID)
+		ctx.addReferenceEntity(
+			riskURN,
+			"claim",
+			firstAttribute(ctx.attrs, "risk_statement", "description", "risk_title", "title", "risk_id"),
+			map[string]string{
+				"claim_type":    "risk_scenario",
+				"risk_id":       riskID,
+				"source_system": ctx.provider,
+			},
+		)
+		ctx.addEventLink(fromURN, riskURN, relationAssociatedWith)
+	}
+}
+
 func addGRCPolicyAssignmentLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, attrs map[string]string) {
 	if fromURN == "" {
 		return
