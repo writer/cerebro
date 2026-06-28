@@ -24,12 +24,12 @@ spec:
     riskCategories:
         - MISCONFIGURATION
     frameworks:
-        - name: CIS Benchmarks
-          controls:
-            - "4.8"
-        - name: NIST 800-53 r5
-          controls:
-            - SI-7
         - name: SOC 2
           controls:
             - CC7.1
+        - name: NIST 800-53 r5
+          controls:
+            - SI-7
+        - name: CIS Benchmarks
+          controls:
+            - "4.8"

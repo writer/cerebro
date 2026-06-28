@@ -32,6 +32,7 @@ func (a *App) grcQuerySources() map[string]http.HandlerFunc {
 		"findings":             a.handleGRCFindings,
 		"controls":             a.handleGRCControls,
 		"evidence":             a.handleGRCEvidence,
+		"policy-lifecycle":     a.handleGRCPolicyLifecycle,
 		"trends":               a.handleGRCTrends,
 		"frameworks":           a.handleGRCFrameworks,
 		"control-coverage":     a.handleGRCControlCoverage,

@@ -23,16 +23,16 @@ spec:
     riskCategories:
         - UNPROTECTED_DATA
     frameworks:
-        - name: CIS Benchmarks
+        - name: SOC 2
           controls:
-            - "4.4"
+            - CC6.1
         - name: NIST 800-53 r5
           controls:
             - AC-6
             - SC-7
-        - name: SOC 2
+        - name: CIS Benchmarks
           controls:
-            - CC6.1
+            - "4.4"
     mitreAttack:
         - tactic: Collection
           technique: T1530

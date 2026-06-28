@@ -49,6 +49,41 @@ func TestProjectGRCPolicyLinksLifecycleContext(t *testing.T) {
 	assertProjectedLink(t, state, policyURN, relationHasEvidence, evidenceURN)
 }
 
+func TestProjectGRCPolicyTemplateLinksLibraryContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-policy-template-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_template",
+		Attributes: map[string]string{
+			"provider":    "policyops",
+			"template_id": "template-access",
+			"title":       "Access Control Policy Template",
+			"owner_id":    "owner-1",
+			"control_ids": "CC6.1,CC6.2",
+			"frameworks":  "SOC 2",
+			"status":      "published",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	templateURN := "urn:cerebro:writer:policy_template:policyops:template-access"
+	ownerURN := "urn:cerebro:writer:user:policyops:owner-1"
+	firstControlURN := "urn:cerebro:writer:policy:policyops:control:CC6.1"
+	secondControlURN := "urn:cerebro:writer:policy:policyops:control:CC6.2"
+	if entity := state.entities[templateURN]; entity == nil || entity.EntityType != "policy.template" {
+		t.Fatalf("policy template entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, templateURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, templateURN, relationSupports, firstControlURN)
+	assertProjectedLink(t, state, templateURN, relationSupports, secondControlURN)
+}
+
 func TestProjectGRCPolicyVersionLinksDocumentControlAndPolicy(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -165,6 +200,51 @@ func TestProjectGRCPolicyAcceptanceLinksEmployeeAndAssignment(t *testing.T) {
 	assertProjectedLink(t, state, userURN, relationHasEvidence, acceptanceURN)
 	assertProjectedLink(t, state, acceptanceURN, relationAssignedTo, groupURN)
 	assertProjectedLink(t, state, acceptanceURN, relationAssociatedWith, emailURN)
+}
+
+func TestProjectGRCPolicyReminderLinksRecipientsAndEscalation(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-policy-reminder-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_reminder",
+		Attributes: map[string]string{
+			"provider":              "policyops",
+			"reminder_id":           "reminder-1",
+			"policy_id":             "policy-1",
+			"policy_version_id":     "version-2",
+			"employee_group_id":     "group-1",
+			"sent_by_user_id":       "owner-1",
+			"escalated_to_user_ids": "manager-1,manager-2",
+			"status":                "sent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	reminderURN := "urn:cerebro:writer:policy_reminder:policyops:reminder-1"
+	versionURN := "urn:cerebro:writer:policy_version:policyops:version-2"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:policy-1"
+	groupURN := "urn:cerebro:writer:grc_group:policyops:group-1"
+	senderURN := "urn:cerebro:writer:user:policyops:owner-1"
+	firstManagerURN := "urn:cerebro:writer:user:policyops:manager-1"
+	secondManagerURN := "urn:cerebro:writer:user:policyops:manager-2"
+	if entity := state.entities[reminderURN]; entity == nil || entity.EntityType != "policy.reminder" {
+		t.Fatalf("policy reminder entity missing: %#v", entity)
+	}
+	assertProjectedLink(t, state, reminderURN, relationAssociatedWith, versionURN)
+	assertProjectedLink(t, state, reminderURN, relationAssociatedWith, policyURN)
+	assertProjectedLink(t, state, reminderURN, relationAssignedTo, groupURN)
+	assertProjectedLink(t, state, senderURN, relationActedOn, reminderURN)
+	assertProjectedLink(t, state, firstManagerURN, relationActedOn, reminderURN)
+	assertProjectedLink(t, state, secondManagerURN, relationActedOn, reminderURN)
+	if got := state.links[firstManagerURN+"|"+relationActedOn+"|"+reminderURN].Attributes["action"]; got != "escalated" {
+		t.Fatalf("manager action = %q, want escalated", got)
+	}
 }
 
 func TestProjectGRCPolicyReviewAndException(t *testing.T) {

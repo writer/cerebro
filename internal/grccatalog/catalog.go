@@ -268,6 +268,22 @@ func buildCatalog() []Source {
 			CacheScope:     "evidence",
 		},
 		{
+			ID:          "policy-lifecycle",
+			Domain:      "policies",
+			Title:       "Policy lifecycle",
+			Description: "Policy templates, versions, approvals, attestations, exceptions, reminders, and control mappings.",
+			Method:      "GET",
+			Path:        "/grc/policy-lifecycle",
+			Params: []Param{
+				{ID: "runtime_id", Type: ParamString, Scope: true, Description: "Restrict to one source runtime."},
+				sourceScopeParam(),
+			},
+			Visualizations: []string{"table", "metric"},
+			DefaultLimit:   DefaultLimit,
+			MaxLimit:       MaxLimit,
+			CacheScope:     "graph",
+		},
+		{
 			ID:          "trends",
 			Domain:      "trends",
 			Title:       "Finding trends",

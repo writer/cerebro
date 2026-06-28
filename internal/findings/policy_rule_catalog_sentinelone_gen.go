@@ -147,9 +147,13 @@ var generatedSentineloneRules = []policyRuleConfig{
 			FingerprintFields: []string{"tenant_id", "policy_id", "resource_urn", "resource_id"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC7.1"},
-				{FrameworkName: "PCI DSS v4.0", ControlID: "6.3.1"},
+				{FrameworkName: "SOC 2", ControlID: "CC7.5"},
+				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 				{FrameworkName: "NIST 800-53 r5", ControlID: "RA-5"},
 				{FrameworkName: "NIST 800-53 r5", ControlID: "SI-2"},
+				{FrameworkName: "CIS Controls v8", ControlID: "7"},
+				{FrameworkName: "PCI DSS v4.0.1", ControlID: "6.3"},
+				{FrameworkName: "PCI DSS v4.0.1", ControlID: "11.3"},
 			},
 			Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		},
@@ -165,7 +169,7 @@ var generatedSentineloneRules = []policyRuleConfig{
 		RiskStatement:     "Endpoint detection, protection, or response controls may not be operating effectively.",
 		RemediationIntent: "Triage the threat or agent state, restore protection controls, and retain SentinelOne evidence.",
 		ExceptionGuidance: []string{"A compensating control satisfies the mapped control objective and is documented for auditor review.", "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.", "The subject is outside the assessment scope or has a documented exception for the audit period."},
-		ControlFamilies:   []string{"NIST 800-53 r5 RA Risk Assessment", "NIST 800-53 r5 SI System and Information Integrity", "PCI DSS v4.0 6 Secure Systems and Software", "SOC 2 CC7 System Operations"},
+		ControlFamilies:   []string{"CIS Controls v8 7 Continuous Vulnerability Management", "ISO 27001:2022 A.8 Technology Controls", "NIST 800-53 r5 RA Risk Assessment", "NIST 800-53 r5 SI System and Information Integrity", "PCI DSS v4.0.1 11 Security Testing", "PCI DSS v4.0.1 6 Secure Systems and Software", "SOC 2 CC7 System Operations"},
 		Enabled:           true,
 	},
 }

@@ -21,7 +21,7 @@ spec:
         - name: GDPR
           controls:
             - Art.5
-        - name: SOC 2
-          controls:
-            - CC1.1
+            - Article 24
+            - Article 30
+            - Article 32
     enabled: true

@@ -61,8 +61,10 @@ import (
 // resolution; HTTP behavior lives in internal/sourcehttp/userpreferences and
 // storage stays behind the UserPreferenceStore port. Agent claim verification
 // and durable work contracts add MCP tool/resource request mapping while claim
-// verdicts, gates, and work state live in internal/agentplatform.
-const bootstrapProductionGoLineBudget = 26236
+// verdicts, gates, and work state live in internal/agentplatform. GRC policy
+// lifecycle adds only route/scope/error mapping; graph aggregation and response
+// shaping live in internal/grcpolicylifecycle.
+const bootstrapProductionGoLineBudget = 26268
 
 type bootstrapFileLineCount struct {
 	path  string

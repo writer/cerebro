@@ -18,7 +18,33 @@ spec:
     remediation:
         summary: Configure audit log retention for minimum 1 year with at least 3 months immediately available for analysis.
     frameworks:
-        - name: PCI DSS v4.0
+        - name: SOC 2
           controls:
-            - "1.1"
+            - CC4
+            - CC7.2
+            - CC7.3
+            - A1.1
+            - A1.3
+        - name: ISO 27001:2022
+          controls:
+            - A.8.15
+            - A.8.16
+            - A.8.13
+            - A.8.14
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+            - CP-2
+            - CP-4
+            - CP-9
+            - CP-10
+        - name: CIS Controls v8
+          controls:
+            - "8"
+            - "11"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
     enabled: true
