@@ -98,6 +98,36 @@ func TestDispatchGRCQueryBuildsBoundedRequest(t *testing.T) {
 	}
 }
 
+func TestDispatchGRCQueryBindsPathParameter(t *testing.T) {
+	source, ok := grccatalog.Lookup("vendor-detail")
+	if !ok {
+		t.Fatal("vendor-detail source missing from catalog")
+	}
+	var capturedPath string
+	var capturedQuery string
+	stub := func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.RawQuery
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+	request := customDashboardTestRequest(http.MethodPost, "/grc/query", "")
+	query := grccatalog.WidgetQuery{SourceID: "vendor-detail", Params: map[string]string{"vendor_id": "vanta:acme", "runtime_id": "rt-1"}, Limit: 10}
+	captured := dispatchGRCQuery(stub, request, source, query)
+	if captured.statusCode != http.StatusOK {
+		t.Fatalf("dispatch status = %d, want 200", captured.statusCode)
+	}
+	if capturedPath != "/grc/vendors/vanta:acme" {
+		t.Fatalf("captured path = %q, want /grc/vendors/vanta:acme", capturedPath)
+	}
+	values, err := url.ParseQuery(capturedQuery)
+	if err != nil {
+		t.Fatalf("parse forwarded query: %v", err)
+	}
+	if values.Get("vendor_id") != "" || values.Get("runtime_id") != "rt-1" || values.Get("limit") != "10" {
+		t.Fatalf("unexpected forwarded query %q", capturedQuery)
+	}
+}
+
 func TestWriteGRCQueryResponseEnvelopesSuccessAndPropagatesErrors(t *testing.T) {
 	source, _ := grccatalog.Lookup("findings")
 

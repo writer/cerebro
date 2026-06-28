@@ -100,6 +100,7 @@ func TestGRCInventoryScopeMutationRequiresWriteScope(t *testing.T) {
 		{method: http.MethodPost, path: "/grc/inventory/accountability"},
 		{method: http.MethodPost, path: "/grc/inventory/asset-reports"},
 		{method: http.MethodPatch, path: "/grc/inventory/asset-reports/report-1/triage"},
+		{method: http.MethodPost, path: "/grc/vendor-discoveries/urn:cerebro:writer:vendor_discovery:grc:shadow/decision"},
 	} {
 		request, err := http.NewRequest(tc.method, tc.path, nil)
 		if err != nil {

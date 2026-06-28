@@ -14,6 +14,7 @@ The GRC surface is the fastest-growing part of the Cerebro platform. It spans se
 - `internal/grcinventory` — inventory posture, scope, accountability, and filtering
 - `internal/grcprogram` — program readiness scoring and work-item generation
 - `internal/grctrends` — time-bucketed finding trend aggregation
+- `internal/grcvendor` — vendor register, discovery workflow state, review state, owner state, and graph-backed vendor detail
 - `internal/compliance` — control family catalog, profiles, and coverage mapping
 
 Before this doc, GRC behavior was described only in accumulating paragraphs inside the architecture "bootstrap ownership" section. This doc is the dedicated contract reference that those paragraphs can point to.
@@ -31,12 +32,13 @@ Before this doc, GRC behavior was described only in accumulating paragraphs insi
           |               |               |
           +-------+-------+-------+-------+
                   |       |       |
-             grctrends grcfindings compliance
-           (trend buckets) (risk inbox) (control catalog)
-                  |       |       |
-                  v       v       v
-           Postgres trends + findings  Control families
-           + findings                 + coverage index
+           grctrends grcfindings grcvendor compliance
+         (trend      (risk       (vendor   (control
+          buckets)    inbox)      facts)    catalog)
+              |        |          |          |
+              v        v          v          v
+        Postgres trends + findings  Graph vendor facts
+        + findings                  + control coverage
 ```
 
 ## Package Contracts
@@ -53,7 +55,7 @@ Key exports:
 - `Lookup(id)` — returns one source by ID
 - `ValidateWidgetQuery(query)` — validates that a query references a known source and only binds declared parameters with well-typed values within the source row limit
 
-Current catalog sources: `findings`, `controls`, `evidence`, `trends`, `frameworks`, `control-coverage`, `inventory-assets`, `inventory-categories`. Each source declares its method, path, parameters, visualizations, default/max limits, cache scope, and exportability.
+Current catalog sources: `findings`, `controls`, `evidence`, `trends`, `frameworks`, `control-coverage`, `inventory-assets`, `inventory-categories`, `vendors`, `vendor-detail`, `vendor-discoveries`, and `vendor-risk-queue`. Each source declares its method, path, parameters, visualizations, default/max limits, cache scope, and exportability.
 
 Boundaries:
 
@@ -145,6 +147,67 @@ Boundaries:
 
 Dependencies: `graphquery`, `grcfindings`, `ports`
 
+### grcvendor — Vendors
+
+`internal/grcvendor` reads vendor posture from the shared graph projection. Canonical vendor rows are anchored on `Entity.entity_type='vendor'`; discovered vendor candidates, aliases, website hosts, and category tags are supporting signals unless a source has already emitted them as vendor attributes. Source runtimes still own raw collection. Cerebro only persists local discovery workflow decisions.
+
+Key exports:
+
+- `ListVendors(ctx, request)` — returns graph-backed vendor rows with normalized risk level, owner state, review state, and linked GRC record counts
+- `GetVendor(ctx, request)` — returns one vendor, bounded graph neighborhood, and grouped related records
+- `Summarize(vendors)` — aggregates vendor counts, owner gaps, review posture, risk posture, finding counts, and evidence counts
+- `ListDiscoveries(ctx, request)` — returns `vendor.discovery` candidates with source status
+- `ApplyDiscoveryDecisions(discoveries, records)` — overlays local approve, reject, ignore, or link decisions without writing back to the source provider
+- `SummarizeDiscoveries(discoveries)` — aggregates discovery decision state counts
+
+Canonical vendor field precedence:
+
+| Field | Precedence |
+| --- | --- |
+| Vendor ID | `vendor_id`, `external_id`, URN tail |
+| Name | graph label, `name`, `vendor_id`, URN tail |
+| Provider | `source_system`, `provider`, source ID |
+| Website | `website_url`, `website`, `url`, `domain` |
+| Owner | `security_owner_user_id`, `business_owner_user_id` |
+| Risk level | `residual_risk_level`, `inherent_risk_level`, `risk_level`, `unknown` |
+
+Vendor review states:
+
+| State | Meaning |
+| --- | --- |
+| `current` | Next security review is more than 30 days away |
+| `due_soon` | Next security review is due within 30 days |
+| `overdue` | Next security review date is before today |
+| `not_scheduled` | No next security review date is projected |
+
+Owner states:
+
+| State | Meaning |
+| --- | --- |
+| `assigned` | Security owner or business owner is present |
+| `missing` | No security owner or business owner is projected |
+
+Boundaries:
+
+- Vendor posture classification and graph relationship grouping remain in this package
+- Discovery decisions are local overlay records in the state store. Approve, reject, ignore, and link do not write back to Vanta or any other source provider from this repo.
+- Evidence freshness is not guessed from the UI. Source runtime freshness, artifact age, review completion date, document expiry, and control evidence recency must be explicit source attributes or finding/evidence filters.
+- Finding and evidence enrichment remains in bootstrap because it reuses the existing GRC finding/evidence stores and runtime filters
+- Source runtimes still own raw collection; source projection still owns graph facts
+
+Public HTTP reads:
+
+- `GET /grc/vendors`
+- `GET /grc/vendors/{vendorID}`
+- `GET /grc/vendors/{vendorID}/packet`
+- `GET /grc/vendor-discoveries`
+
+Workflow write:
+
+- `POST /grc/vendor-discoveries/{discoveryID}/decision`
+
+Dependencies: `ports`
+
 ### grcprogram — Program Readiness
 
 `internal/grcprogram` generates program readiness reports from control evidence packets. It scores overall readiness, breaks down per-framework and per-control status, generates prioritized work items, and assembles proof bundles.
@@ -197,7 +260,8 @@ Dependencies: `ports`
 5. `grctrends` queries persisted findings for time-bucketed trend analysis.
 6. `grcfindings` builds GRC-facing finding, control, evidence, and summary rows.
 7. `grcinventory` applies scope and accountability posture to graph inventory assets and builds inventory detail sections.
-8. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
+8. `grcvendor` reads vendor graph facts, overlays local discovery decisions, and bootstrap enriches vendors with open findings and evidence counts.
+9. All reads are tenant-scoped; the bootstrap layer enforces tenant authorization before dispatching to any GRC package.
 
 ## RBAC Ownership
 
@@ -221,6 +285,7 @@ The GRC domain maps to these RBAC roles defined in `internal/authz`:
 - `internal/grcinventory/detail.go` — inventory detail tests, vulnerabilities, risk decoration, timelines, and actions
 - `internal/grcprogram/readiness.go` — program readiness scoring and work items
 - `internal/grctrends/trends.go` — finding trend aggregation
+- `internal/grcvendor/service.go` — vendor graph reads, discovery reads, posture, and relationship grouping
 - `internal/compliance/` — control catalog, profiles, coverage (see [Compliance Controls](compliance-controls.md))
 - `internal/bootstrap/grc.go` — GRC route registration and wiring
 - `internal/bootstrap/grc_catalog.go` — GRC catalog bootstrap
@@ -228,7 +293,8 @@ The GRC domain maps to these RBAC roles defined in `internal/authz`:
 - `internal/bootstrap/grc_inventory.go` — inventory bootstrap
 - `internal/bootstrap/grc_program_readiness.go` — readiness bootstrap
 - `internal/bootstrap/grc_trends.go` — trends bootstrap
-- `internal/statestore/postgres/` — persisted GRC trends, dispositions, and inventory scope storage
+- `internal/bootstrap/grc_vendor.go` — vendor bootstrap
+- `internal/statestore/postgres/` — persisted GRC trends, dispositions, inventory scope storage, and vendor discovery decision storage
 
 ## What This Does Not Solve Yet
 

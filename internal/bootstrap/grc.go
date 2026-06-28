@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/grcproductareas"
 	"github.com/writer/cerebro/internal/grctrends"
+	"github.com/writer/cerebro/internal/grcvendor"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -785,12 +786,14 @@ func grcTelemetryErrorKind(err error) string {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
-		errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		return "invalid_request"
 	default:
@@ -1441,18 +1444,21 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, ports.ErrFindingNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound),
 		errors.Is(err, ports.ErrGraphEntityNotFound),
-		errors.Is(err, ports.ErrGRCInventoryAssetReportNotFound):
+		errors.Is(err, ports.ErrGRCInventoryAssetReportNotFound),
+		errors.Is(err, ports.ErrGRCVendorDiscoveryDecisionNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
-		errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
 		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, grcvendor.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
