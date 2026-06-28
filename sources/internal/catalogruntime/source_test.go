@@ -203,6 +203,207 @@ func TestSourceDefinitionDoesNotSynthesizeCursorWithoutPageParam(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesCursorJSONPath(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("after") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "item-1"}},
+				"paging": map[string]any{
+					"continuation": "item-1",
+				},
+			})
+		case "item-1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "item-2"}},
+			})
+		default:
+			t.Fatalf("after = %q, want empty or item-1", r.URL.Query().Get("after"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:           "cursor",
+				CursorParam:    "after",
+				CursorJSONPath: "$.paging.continuation",
+				PageSizeParam:  "limit",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "item-1" {
+		t.Fatalf("first NextCursor = %q, want item-1", first.NextCursor.GetOpaque())
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("after") != "item-1" {
+		t.Fatalf("requests = %#v, want second request with after=item-1", requests)
+	}
+}
+
+func TestSourceDefinitionUsesLinkHeaderPagination(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			w.Header().Set("Link", `<http://`+r.Host+`/records?cursor=item-1&limit=1>; rel="next"`)
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-1"}})
+		case "item-1":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-2"}})
+		default:
+			t.Fatalf("cursor = %q, want empty or item-1", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:          "link",
+				CursorParam:   "cursor",
+				LinkHeader:    "Link",
+				PageSizeParam: "limit",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "item-1" {
+		t.Fatalf("first NextCursor = %q, want item-1", first.NextCursor.GetOpaque())
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("cursor") != "item-1" {
+		t.Fatalf("requests = %#v, want second request with cursor=item-1", requests)
+	}
+}
+
+func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/models" {
+			t.Fatalf("path = %q, want /models", got)
+		}
+		if got := r.URL.Query().Get("author"); got != "writer" {
+			t.Fatalf("author query = %q, want writer", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Fatalf("limit query = %q, want empty", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "" {
+			t.Fatalf("per_page query = %q, want empty", got)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "writer/model"}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-huggingface",
+		TenantID:    "tenant",
+		SourceID:    "huggingface",
+		DisplayName: "Hugging Face",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ConfigFields: []connectordefinitions.Field{{
+			Key:      "organization",
+			Required: true,
+		}},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "repositories",
+			Path:           "/models",
+			RecordSelector: "$[*]",
+			IDField:        "id",
+			ConfigQuery:    map[string]string{"author": "organization"},
+			Event:          connectordefinitions.EventMappingSpec{Kind: "huggingface.repositories", SchemaRef: "huggingface/repositories/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "repository"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:            "none",
+				DisablePageSize: true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":    "tenant",
+		"token":        "token",
+		"organization": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "huggingface.repositories" {
+		t.Fatalf("events = %#v, want huggingface.repositories event", pull.Events)
+	}
+}
+
 func TestSourceAuthModels(t *testing.T) {
 	tests := []struct {
 		name           string

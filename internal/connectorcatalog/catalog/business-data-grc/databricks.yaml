@@ -10,6 +10,10 @@ entries:
     categories:
     - data
     - warehouse
+    config_fields:
+    - key: workspace_url
+      label: Workspace URL
+      required: true
     auth:
       model: bearer_token
       credential_fields:
@@ -52,6 +56,36 @@ entries:
         cursor_param: cursor
         cursor_json_path: "$.next_cursor"
         page_size_param: limit
+        page_size: 100
+    - id: model_serving_endpoints
+      label: Model serving endpoints
+      path: "/v1/model-serving/endpoints"
+      method: GET
+      record_selector: "$.endpoints[*]"
+      id_field: name
+      name_field: name
+      event:
+        kind: databricks.model_serving_endpoints
+        schema_ref: databricks/model_serving_endpoints/v1
+      projection:
+        template: deployment
+      coverage:
+      - id: model_serving_endpoints
+        type: deployment_state
+        title: Model serving endpoints
+        families:
+        - model_serving_endpoints
+        support: partial
+        high_value: true
+        evidence_types:
+        - change_management
+        control_domains:
+        - secure_delivery
+      pagination:
+        type: cursor
+        cursor_param: page_token
+        cursor_json_path: "$.next_page_token"
+        page_size_param: page_size
         page_size: 100
     - id: audit_events
       label: Audit events

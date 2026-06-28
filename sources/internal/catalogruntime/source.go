@@ -123,6 +123,8 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Name:             name,
 		Path:             resource.Path,
 		CursorParam:      cursorParam(resource.Pagination),
+		NextCursorKeys:   nextCursorKeys(resource.Pagination),
+		LinkHeader:       linkHeader(resource.Pagination),
 		PageFirstCursor:  pageFirstCursor(resource.Pagination),
 		URNKind:          firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
 		IDKeys:           idKeys(resource, class),
@@ -130,7 +132,12 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Attributes:       attributePaths(resource, class),
 		StaticAttributes: staticAttributes(sourceID, name, class),
 		PageSizeParams:   pageSizeParams(resource.Pagination),
+		DisablePageSize:  disablePageSize(resource.Pagination),
 		ListKeys:         listKeys(resource),
+		Config: jsonapi.FamilyConfig{
+			StaticQuery: resource.StaticQuery,
+			ConfigQuery: resource.ConfigQuery,
+		},
 	}, nil
 }
 
@@ -139,6 +146,37 @@ func cursorParam(pagination *connectordefinitions.PaginationSpec) string {
 		return ""
 	}
 	return firstNonEmpty(pagination.CursorParam, pagination.PageParam, pagination.OffsetParam)
+}
+
+func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
+	if pagination == nil {
+		return nil
+	}
+	key := cursorJSONPathKey(pagination.CursorJSONPath)
+	if key == "" {
+		return nil
+	}
+	return []string{key}
+}
+
+func cursorJSONPathKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "$" {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "$.")
+	path = strings.TrimPrefix(path, ".")
+	if path == "" || strings.ContainsAny(path, "[]*") {
+		return ""
+	}
+	return path
+}
+
+func linkHeader(pagination *connectordefinitions.PaginationSpec) string {
+	if pagination == nil || strings.TrimSpace(pagination.Type) != "link" {
+		return ""
+	}
+	return firstNonEmpty(pagination.LinkHeader, "Link")
 }
 
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
@@ -157,6 +195,10 @@ func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
 		return nil
 	}
 	return values
+}
+
+func disablePageSize(pagination *connectordefinitions.PaginationSpec) bool {
+	return pagination != nil && pagination.DisablePageSize
 }
 
 func listKeys(resource connectordefinitions.ResourceFamily) []string {

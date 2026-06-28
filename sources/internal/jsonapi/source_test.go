@@ -752,6 +752,110 @@ func TestReadUsesFamilyCursorKeysAndHasMore(t *testing.T) {
 	}
 }
 
+func TestReadUsesDottedFamilyCursorKey(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("after") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "item-1"}},
+				"paging": map[string]any{
+					"continuation": "item-1",
+				},
+			})
+		case "item-1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "item-2"}},
+			})
+		default:
+			t.Fatalf("after = %q, want empty or item-1", r.URL.Query().Get("after"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "after",
+		NextCursorKeys: []string{"paging.continuation"},
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "item-1" {
+		t.Fatalf("first NextCursor = %q, want item-1", first.NextCursor.GetOpaque())
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("after") != "item-1" {
+		t.Fatalf("requests = %#v, want second request with after=item-1", requests)
+	}
+}
+
+func TestReadUsesLinkHeaderCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			w.Header().Set("Link", `<http://`+r.Host+`/items?cursor=item-1&limit=1>; rel="next"`)
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-1"}})
+		case "item-1":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-2"}})
+		default:
+			t.Fatalf("cursor = %q, want empty or item-1", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "cursor",
+		LinkHeader:     "Link",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "item-1" {
+		t.Fatalf("first NextCursor = %q, want item-1", first.NextCursor.GetOpaque())
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("cursor") != "item-1" {
+		t.Fatalf("requests = %#v, want second request with cursor=item-1", requests)
+	}
+}
+
 func TestReadSingletonObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

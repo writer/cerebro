@@ -201,6 +201,7 @@ type PaginationSpec struct {
 	StartPage       int    `json:"start_page,omitempty"`
 	PageSize        int    `json:"page_size,omitempty"`
 	InjectFirstPage bool   `json:"inject_first_page,omitempty"`
+	DisablePageSize bool   `json:"disable_page_size,omitempty"`
 }
 
 // IncrementalSpec describes durable state for changed-record reads.
@@ -286,6 +287,8 @@ type ResourceFamily struct {
 	UpdatedAtField        string                  `json:"updated_at_field,omitempty"`
 	EventKind             string                  `json:"event_kind,omitempty"`
 	Event                 EventMappingSpec        `json:"event,omitempty"`
+	StaticQuery           map[string]string       `json:"static_query,omitempty"`
+	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
 	Projection            *ProjectionSpec         `json:"projection,omitempty"`
@@ -472,11 +475,11 @@ func Validate(definition Definition) ValidationResult {
 		}
 		path := strings.TrimSpace(family.Path)
 		depositFamily := isDepositResourceFamily(definition, family.ID)
-		if !depositFamily && (path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
-			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths such as /v1/assets."))
+		if !depositFamily && (path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") || strings.ContainsAny(path, "?#")) {
+			add(blocking("path_"+family.ID, "Resource path", "Resource paths must be relative API paths without query or fragment such as /v1/assets."))
 		}
-		if depositFamily && path != "" && (!strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://")) {
-			add(blocking("path_"+family.ID, "Resource path", "Deposit resource paths may be omitted; when present they must be relative API paths."))
+		if depositFamily && path != "" && (!strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "\\") || strings.Contains(path, "://") || strings.ContainsAny(path, "?#")) {
+			add(blocking("path_"+family.ID, "Resource path", "Deposit resource paths may be omitted; when present they must be relative API paths without query or fragment."))
 		}
 		if method := strings.ToUpper(strings.TrimSpace(family.Method)); method != "" {
 			if _, ok := supportedMethods[method]; !ok {
@@ -1038,6 +1041,8 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 			family.EventKind = family.ID
 		}
 		family.Event = normalizeEventMapping(legacyEventKind, family.Event)
+		family.StaticQuery = normalizeStringMap(family.StaticQuery)
+		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
 		family.Projection = normalizeProjectionSpec(family.Projection)

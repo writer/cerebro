@@ -148,6 +148,31 @@ func TestValidateBlocksUnsupportedResourceMethods(t *testing.T) {
 	}
 }
 
+func TestValidateBlocksResourcePathQuery(t *testing.T) {
+	definition, err := Normalize(Definition{
+		ID:          "example",
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Runtime:     RuntimeJSONAPI,
+		Auth: AuthSpec{
+			Model: "none",
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "assets",
+			Path:    "/v1/assets?owner=team",
+			Method:  "GET",
+			IDField: "id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "path_assets") {
+		t.Fatalf("validation checks = %#v, want path_assets blocker", definition.Validation.Checks)
+	}
+}
+
 func TestValidateDepositFamilyAllowsOmittedPullPath(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",

@@ -10,6 +10,10 @@ entries:
     categories:
     - data
     - warehouse
+    config_fields:
+    - key: account
+      label: Account
+      required: true
     auth:
       model: oauth_client_credentials
       token_url: https://${config.account}.snowflakecomputing.com/oauth/token
@@ -44,6 +48,36 @@ entries:
         title: Data assets
         families:
         - assets
+        support: partial
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      pagination:
+        type: cursor
+        cursor_param: cursor
+        cursor_json_path: "$.next_cursor"
+        page_size_param: limit
+        page_size: 100
+    - id: cortex_search_services
+      label: Cortex search services
+      path: "/v1/cortex/search/services"
+      method: GET
+      record_selector: "$.data[*]"
+      id_field: name
+      name_field: name
+      event:
+        kind: snowflake.cortex_search_services
+        schema_ref: snowflake/cortex_search_services/v1
+      projection:
+        template: asset
+      coverage:
+      - id: cortex_search_services
+        type: entity_family
+        title: Cortex search services
+        families:
+        - cortex_search_services
         support: partial
         high_value: true
         evidence_types:
