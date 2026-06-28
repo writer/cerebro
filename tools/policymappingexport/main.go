@@ -734,6 +734,16 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 
 func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleExtensions) resolvedFindingAuditDepth {
 	resolved := resolvedFindingAuditDepth{fieldSources: map[string]string{}}
+	catalogAuditDepth := policyRuleExtension{
+		EvidenceType:      detection.EvidenceType,
+		AssessmentMethods: detection.AssessmentMethods,
+		AuditorGuidance:   detection.AuditorGuidance,
+		RiskStatement:     detection.RiskStatement,
+		RemediationIntent: detection.RemediationIntent,
+	}
+	if !policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	mergeResolvedFindingAuditDepth(&resolved, extensions.Defaults, "yaml:defaults")
 	if mode := strings.TrimSpace(detection.EvaluationMode); mode != "" {
 		mergeResolvedFindingAuditDepth(&resolved, extensions.EvidenceModes[mode], "yaml:evidence_mode:"+mode)
@@ -745,19 +755,19 @@ func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleEx
 	if extension, ok := lookupPolicyExtension(extensions.Findings, detection.ID); ok {
 		mergeResolvedFindingAuditDepth(&resolved, extension, "yaml:finding:"+detection.ID)
 	}
-	mergeResolvedFindingAuditDepth(&resolved, policyRuleExtension{
-		EvidenceType:      detection.EvidenceType,
-		AssessmentMethods: detection.AssessmentMethods,
-		AuditorGuidance:   detection.AuditorGuidance,
-		RiskStatement:     detection.RiskStatement,
-		RemediationIntent: detection.RemediationIntent,
-	}, "catalog")
+	if policySourceDetection(detection) {
+		mergeResolvedFindingAuditDepth(&resolved, catalogAuditDepth, "catalog")
+	}
 	resolved.Domain = domain
 	for _, source := range resolved.fieldSources {
 		resolved.FieldSources = append(resolved.FieldSources, source)
 	}
 	resolved.FieldSources = uniqueSorted(resolved.FieldSources)
 	return resolved
+}
+
+func policySourceDetection(detection publicDetection) bool {
+	return strings.EqualFold(strings.TrimSpace(detection.SourceID), "policy")
 }
 
 func mergeResolvedFindingAuditDepth(resolved *resolvedFindingAuditDepth, next policyRuleExtension, source string) {

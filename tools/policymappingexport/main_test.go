@@ -35,8 +35,117 @@ func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	assertCellContains(t, header, cerebroRow, "compliance_review_tags", "control:soc-2:cc6-1")
 	assertCellContains(t, header, cerebroRow, "all_review_tags", "tenant-isolation")
 	assertCellContains(t, header, cerebroRow, "resolved_audit_domain", "api")
-	assertCellEquals(t, header, cerebroRow, "audit_language_source", "catalog")
+	assertCellContains(t, header, cerebroRow, "audit_language_source", "yaml:domain:api")
 	assertCellContains(t, header, cerebroRow, "evidence_type", "application_access_control")
+}
+
+func TestResolveFindingAuditDepthYAMLOverridesCatalogFallback(t *testing.T) {
+	resolved := resolveFindingAuditDepth(publicDetection{
+		ID:                "api-admin-token",
+		PackID:            "cerebro",
+		SourceID:          "cerebro",
+		EvaluationMode:    "event",
+		Tags:              []string{"tenant-isolation"},
+		EvidenceType:      "catalog_evidence",
+		AssessmentMethods: []string{"catalog_method"},
+		AuditorGuidance:   "catalog guidance",
+		RiskStatement:     "catalog risk",
+		RemediationIntent: "catalog remediation",
+	}, policyRuleExtensions{
+		Defaults: policyRuleExtension{
+			EvidenceType: "default_evidence",
+		},
+		EvidenceModes: map[string]policyRuleExtension{
+			"event": {
+				RiskStatement: "mode risk",
+			},
+		},
+		Domains: map[string]policyRuleExtension{
+			"api": {
+				EvidenceType:      "domain_evidence",
+				AssessmentMethods: []string{"domain_method"},
+				AuditorGuidance:   "domain guidance",
+				RiskStatement:     "domain risk",
+			},
+		},
+		FindingDomains: findingDomainAliases{
+			Tags: map[string]string{"tenant-isolation": "api"},
+		},
+		Findings: map[string]policyRuleExtension{
+			"api-admin-token": {
+				RemediationIntent: "finding remediation",
+			},
+		},
+	})
+
+	if resolved.Domain != "api" {
+		t.Fatalf("Domain = %q, want api", resolved.Domain)
+	}
+	if resolved.EvidenceType != "domain_evidence" {
+		t.Fatalf("EvidenceType = %q, want domain_evidence", resolved.EvidenceType)
+	}
+	if got := strings.Join(resolved.AssessmentMethods, ","); got != "domain_method" {
+		t.Fatalf("AssessmentMethods = %q, want domain_method", got)
+	}
+	if resolved.AuditorGuidance != "domain guidance" {
+		t.Fatalf("AuditorGuidance = %q, want domain guidance", resolved.AuditorGuidance)
+	}
+	if resolved.RiskStatement != "domain risk" {
+		t.Fatalf("RiskStatement = %q, want domain risk", resolved.RiskStatement)
+	}
+	if resolved.RemediationIntent != "finding remediation" {
+		t.Fatalf("RemediationIntent = %q, want finding remediation", resolved.RemediationIntent)
+	}
+	assertStringSliceContains(t, resolved.FieldSources, "yaml:domain:api")
+	assertStringSliceContains(t, resolved.FieldSources, "yaml:finding:api-admin-token")
+}
+
+func TestResolveFindingAuditDepthPolicyCatalogRemainsAuthoritative(t *testing.T) {
+	resolved := resolveFindingAuditDepth(publicDetection{
+		ID:                "api-policy",
+		PackID:            "policy",
+		SourceID:          "policy",
+		EvaluationMode:    "event",
+		Tags:              []string{"tenant-isolation"},
+		EvidenceType:      "catalog_evidence",
+		AssessmentMethods: []string{"catalog_method"},
+		AuditorGuidance:   "catalog guidance",
+		RiskStatement:     "catalog risk",
+		RemediationIntent: "catalog remediation",
+	}, policyRuleExtensions{
+		Domains: map[string]policyRuleExtension{
+			"api": {
+				EvidenceType:      "domain_evidence",
+				AssessmentMethods: []string{"domain_method"},
+				AuditorGuidance:   "domain guidance",
+				RiskStatement:     "domain risk",
+				RemediationIntent: "domain remediation",
+			},
+		},
+		FindingDomains: findingDomainAliases{
+			Tags: map[string]string{"tenant-isolation": "api"},
+		},
+	})
+
+	if resolved.Domain != "api" {
+		t.Fatalf("Domain = %q, want api", resolved.Domain)
+	}
+	if resolved.EvidenceType != "catalog_evidence" {
+		t.Fatalf("EvidenceType = %q, want catalog_evidence", resolved.EvidenceType)
+	}
+	if got := strings.Join(resolved.AssessmentMethods, ","); got != "catalog_method" {
+		t.Fatalf("AssessmentMethods = %q, want catalog_method", got)
+	}
+	if resolved.AuditorGuidance != "catalog guidance" {
+		t.Fatalf("AuditorGuidance = %q, want catalog guidance", resolved.AuditorGuidance)
+	}
+	if resolved.RiskStatement != "catalog risk" {
+		t.Fatalf("RiskStatement = %q, want catalog risk", resolved.RiskStatement)
+	}
+	if resolved.RemediationIntent != "catalog remediation" {
+		t.Fatalf("RemediationIntent = %q, want catalog remediation", resolved.RemediationIntent)
+	}
+	assertStringSliceContains(t, resolved.FieldSources, "catalog")
 }
 
 func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
@@ -283,6 +392,16 @@ func assertCellEquals(t *testing.T, header []string, row []string, column string
 	if row[index] != want {
 		t.Fatalf("%s = %q, want %q", column, row[index], want)
 	}
+}
+
+func assertStringSliceContains(t *testing.T, values []string, want string) {
+	t.Helper()
+	for _, value := range values {
+		if value == want {
+			return
+		}
+	}
+	t.Fatalf("%#v does not contain %q", values, want)
 }
 
 func findRowByColumns(t *testing.T, rows [][]string, matches map[int]string) []string {
