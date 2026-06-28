@@ -11035,15 +11035,110 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.7"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "kms_key",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "kms_key"
+          ],
+          "evidence_types": [
+            "encryption_configuration"
+          ],
+          "control_domains": [
+            "data_protection"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "s3_bucket",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "s3_bucket"
+          ],
+          "evidence_types": [
+            "encryption_configuration",
+            "network_exposure"
+          ],
+          "control_domains": [
+            "data_protection",
+            "network_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            }
+          ]
         }
       ]
     },
@@ -16759,15 +16854,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -17949,12 +18068,40 @@
           "control_id": "CC6.6"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.3.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.3.2"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ],
       "source_coverage_refs": [
@@ -17974,6 +18121,10 @@
             "network_security"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
@@ -18000,6 +18151,59 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "public_endpoint",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "public_endpoint"
+          ],
+          "evidence_types": [
+            "network_exposure"
+          ],
+          "control_domains": [
+            "network_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "resource_exposure",
+          "dimension_type": "relationship",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "resource_exposure"
+          ],
+          "evidence_types": [
+            "network_exposure",
+            "relationship_evidence"
+          ],
+          "control_domains": [
+            "network_security"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
             },
             {
               "framework_name": "SOC 2",
@@ -18071,51 +18275,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "aws",
-          "dimension_id": "public_endpoint",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "public_endpoint"
-          ],
-          "evidence_types": [
-            "network_exposure"
-          ],
-          "control_domains": [
-            "network_security"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "aws",
-          "dimension_id": "resource_exposure",
-          "dimension_type": "relationship",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "resource_exposure"
-          ],
-          "evidence_types": [
-            "network_exposure",
-            "relationship_evidence"
-          ],
-          "control_domains": [
-            "network_security"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
             }
           ]
         },
@@ -23993,19 +24152,113 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-2"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "iam_policy",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "iam_policy"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "effective_permission",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "effective_permission"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "iam_role_assignment",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "iam_role_assignment"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -27570,15 +27823,257 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC4"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "cloudtrail",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cloudtrail"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "guardduty_finding",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "guardduty_finding"
+          ],
+          "evidence_types": [
+            "security_monitoring"
+          ],
+          "control_domains": [
+            "logging_monitoring",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "securityhub_finding",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "securityhub_finding"
+          ],
+          "evidence_types": [
+            "security_monitoring"
+          ],
+          "control_domains": [
+            "logging_monitoring",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "config_recorder",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "config_recorder"
+          ],
+          "evidence_types": [
+            "configuration_state",
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "cloud_security",
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -28997,15 +29492,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "SOC 2",
           "control_id": "A1.1"
         },
         {
           "framework_name": "SOC 2",
           "control_id": "A1.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
@@ -29016,12 +29511,28 @@
           "control_id": "A.8.13"
         },
         {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -29075,15 +29586,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "SOC 2",
           "control_id": "A1.1"
         },
         {
           "framework_name": "SOC 2",
           "control_id": "A1.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
@@ -29094,12 +29605,28 @@
           "control_id": "A.8.13"
         },
         {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -30987,15 +31514,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "SOC 2",
           "control_id": "A1.1"
         },
         {
           "framework_name": "SOC 2",
           "control_id": "A1.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
@@ -31006,12 +31533,28 @@
           "control_id": "A.8.13"
         },
         {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -35276,8 +35819,20 @@
       ],
       "control_refs": [
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "5.1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -35288,20 +35843,20 @@
           "control_id": "AC-6"
         },
         {
-          "framework_name": "PCI DSS v4.0.1",
-          "control_id": "7.2"
-        },
-        {
-          "framework_name": "SOC 2",
-          "control_id": "CC6"
-        },
-        {
           "framework_name": "CIS Controls v8",
           "control_id": "5"
         },
         {
           "framework_name": "CIS Controls v8",
           "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        },
+        {
+          "framework_name": "CIS Benchmarks",
+          "control_id": "5.1.1"
         }
       ]
     },
@@ -40265,23 +40820,75 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.24"
         },
         {
-          "framework_name": "HIPAA",
-          "control_id": "164.312"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.13"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
+        },
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312"
         }
       ]
     },
@@ -40333,15 +40940,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -40393,11 +41024,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         },
         {
           "framework_name": "HIPAA",
@@ -40453,11 +41112,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -40509,11 +41196,19 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -40522,6 +41217,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -41347,15 +42054,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.7"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.24"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -41408,15 +42139,75 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.24"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -41469,11 +42260,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.7"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -41526,15 +42345,47 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -41587,15 +42438,47 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -43231,11 +44114,27 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC1.4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC1.5"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "12.7"
         },
         {
           "framework_name": "HIPAA",
@@ -43452,8 +44351,16 @@
           "control_id": "Art.5"
         },
         {
-          "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "framework_name": "GDPR",
+          "control_id": "Article 24"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 30"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 32"
         }
       ]
     },
@@ -43678,8 +44585,24 @@
           "control_id": "Art.5"
         },
         {
-          "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "framework_name": "GDPR",
+          "control_id": "Article 24"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 30"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 32"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 33"
+        },
+        {
+          "framework_name": "GDPR",
+          "control_id": "Article 34"
         }
       ]
     },
@@ -44172,15 +45095,23 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC1.4"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.6.3"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AT-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "14"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "12.6"
         },
         {
           "framework_name": "HIPAA",
@@ -44644,15 +45575,71 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -45044,15 +46031,79 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -45199,15 +46250,75 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
         }
       ]
     },
@@ -45260,15 +46371,51 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -45484,11 +46631,51 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -45541,15 +46728,51 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "2.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -46935,19 +48158,23 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC4"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
         },
         {
-          "framework_name": "HIPAA",
-          "control_id": "164.312"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -46956,6 +48183,84 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        },
+        {
+          "framework_name": "HIPAA",
+          "control_id": "164.312"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -47007,15 +48312,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -47142,19 +48471,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         },
         {
           "framework_name": "HIPAA",
           "control_id": "164.312"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
         }
       ]
     },
@@ -47206,15 +48555,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -47266,15 +48639,43 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -47327,11 +48728,47 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         },
         {
           "framework_name": "HIPAA",
@@ -47854,12 +49291,98 @@
           "control_id": "CC6.1"
         },
         {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
+        },
+        {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -48200,15 +49723,145 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -48261,19 +49914,149 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.15"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -48325,15 +50108,93 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -48385,15 +50246,145 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -48516,15 +50507,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.15"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -48533,6 +50548,108 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "1"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -50094,8 +52211,8 @@
       ],
       "control_refs": [
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "4.4"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -50106,8 +52223,8 @@
           "control_id": "SC-7"
         },
         {
-          "framework_name": "SOC 2",
-          "control_id": "CC6.1"
+          "framework_name": "CIS Benchmarks",
+          "control_id": "4.4"
         }
       ]
     },
@@ -50497,16 +52614,16 @@
       ],
       "control_refs": [
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "4.8"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-7"
         },
         {
-          "framework_name": "SOC 2",
-          "control_id": "CC7.1"
+          "framework_name": "CIS Benchmarks",
+          "control_id": "4.8"
         }
       ]
     },
@@ -50565,12 +52682,12 @@
           "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "6.3.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "11.3.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -50579,6 +52696,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -50637,8 +52766,12 @@
           "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "6.3.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -50647,6 +52780,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -52791,15 +54936,105 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC4"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -54467,15 +56702,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "SOC 2",
           "control_id": "A1.1"
         },
         {
           "framework_name": "SOC 2",
           "control_id": "A1.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
         },
         {
           "framework_name": "ISO 27001:2022",
@@ -54486,12 +56721,28 @@
           "control_id": "A.8.13"
         },
         {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-9"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CP-10"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
         }
       ]
     },
@@ -56328,15 +58579,98 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC8.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.32"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "CM-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SR-11"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "16"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.5"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "pull_requests",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "families": [
+            "pull_request"
+          ],
+          "evidence_types": [
+            "change_management"
+          ],
+          "control_domains": [
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.32"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
         }
       ]
     },
@@ -56388,11 +58722,157 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC8.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.32"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CM-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SR-11"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "16"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.5"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "fine_grained_permissions",
+          "dimension_type": "app_entitlement",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "org_inventory"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "pull_requests",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "families": [
+            "pull_request"
+          ],
+          "evidence_types": [
+            "change_management"
+          ],
+          "control_domains": [
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.32"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
         }
       ]
     },
@@ -131915,8 +134395,12 @@
           "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "6.3.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -131925,6 +134409,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ],
       "source_coverage_refs": [
@@ -131946,8 +134442,46 @@
           ],
           "matched_control_refs": [
             {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.8"
+            },
+            {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "dependabot_alert",
+            "pull_request",
+            "secret_scanning_alert"
+          ],
+          "evidence_types": [
+            "remediation_state",
+            "vulnerability_management"
+          ],
+          "control_domains": [
+            "remediation",
+            "vulnerability_management"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.8"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -135314,11 +137848,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -136354,11 +138941,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -139637,11 +142277,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -140677,11 +143370,87 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "fine_grained_permissions",
+          "dimension_type": "app_entitlement",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "org_inventory"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -144411,11 +147180,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -147036,11 +149858,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -155238,11 +158113,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -157018,11 +159946,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -159139,11 +162120,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -160827,11 +163861,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -163459,11 +166546,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -164750,11 +167890,104 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "PS-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -174612,15 +177845,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
         }
       ]
     },
@@ -175014,15 +178267,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -175075,11 +178348,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -175367,15 +178693,64 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
         },
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -175428,11 +178803,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -175441,6 +178820,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "IA-5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
         }
       ]
     },
@@ -175580,15 +178971,60 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -175641,10 +179077,6 @@
         {
           "framework_name": "SOC 2",
           "control_id": "CC6"
-        },
-        {
-          "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -175701,11 +179133,15 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -175714,6 +179150,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -175852,11 +179300,120 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -176342,11 +179899,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
         }
       ]
     },
@@ -176485,11 +180066,19 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.11"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.6.5"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -176498,6 +180087,43 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "PS-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.1.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -176903,19 +180529,43 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "control_id": "CC6.6"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.20"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -176967,11 +180617,43 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -177024,19 +180706,145 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -177088,19 +180896,43 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
-        },
-        {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "control_id": "CC6.6"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -177152,15 +180984,43 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "CIS Benchmarks",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -178291,8 +182151,82 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.8"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-4"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "10"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "5.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -178343,8 +182277,142 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "A1.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.13"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.14"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "CP-10"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "11"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -178395,8 +182463,106 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -178447,8 +182613,36 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -178499,8 +182693,44 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
         }
       ]
     },
@@ -178551,8 +182781,36 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
         }
       ]
     },
@@ -178603,8 +182861,36 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
         }
       ]
     },
@@ -178654,8 +182940,36 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -178706,8 +183020,48 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -178758,8 +183112,161 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -178811,8 +183318,36 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -183187,15 +187722,172 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC4"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AU-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "8"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "10.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -183247,19 +187939,100 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.2"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "C1.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.15"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-6"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "5"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "7.2"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -183311,19 +188084,72 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -183375,15 +188201,72 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.6"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "secret",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "secret"
+          ],
+          "evidence_types": [
+            "secrets_management"
+          ],
+          "control_domains": [
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.24"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -183944,8 +188827,12 @@
           "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "6.3.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
@@ -183954,6 +188841,18 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -185937,15 +190836,39 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.7"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -185999,15 +190922,47 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "C1.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC6.7"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.24"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "SC-12"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-13"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-28"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-23"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "3.5"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "4.2"
         }
       ]
     },
@@ -186978,11 +191933,63 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC9.2"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.5.17"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.19"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.21"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-2"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "IA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SA-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SR-3"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "6"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "8.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "12.8"
         }
       ]
     },
@@ -187110,12 +192117,32 @@
       ],
       "control_refs": [
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC9.2"
         },
         {
-          "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.19"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.21"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SA-9"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SR-3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "12.8"
         }
       ]
     },
@@ -189917,11 +194944,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -190673,15 +195724,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -190733,11 +195804,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -191069,15 +196164,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -191410,19 +196525,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "RA-5"
         },
         {
-          "framework_name": "CISA",
-          "control_id": "1.1"
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -191474,11 +196605,35 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
         },
         {
           "framework_name": "ISO 27001:2022",
-          "control_id": "A.5.1"
+          "control_id": "A.8.8"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },
@@ -191530,15 +196685,75 @@
       "control_refs": [
         {
           "framework_name": "SOC 2",
-          "control_id": "CC1.1"
+          "control_id": "CC6.6"
         },
         {
-          "framework_name": "PCI DSS v4.0",
-          "control_id": "1.1"
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.5"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.22"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         },
         {
           "framework_name": "NIST 800-53 r5",
-          "control_id": "AC-1"
+          "control_id": "AC-3"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "AC-4"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SC-7"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "RA-5"
+        },
+        {
+          "framework_name": "NIST 800-53 r5",
+          "control_id": "SI-2"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "12"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "13"
+        },
+        {
+          "framework_name": "CIS Controls v8",
+          "control_id": "7"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "1.4"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "6.3"
+        },
+        {
+          "framework_name": "PCI DSS v4.0.1",
+          "control_id": "11.3"
         }
       ]
     },

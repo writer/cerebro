@@ -1,39 +1,47 @@
 apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRule
 metadata:
-  id: github-vuln-medium
-  name: GitHub Repo Medium Vulnerabilities Addressed
-  description: Ensures medium vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (30 days)
-  lastModified: '0001-01-01T00:00:00Z'
-  tags:
-  - github
-  - dependabot
-  - vulnerability
-  - medium
-  - sla
-  - compliance
+    id: github-vuln-medium
+    name: GitHub Repo Medium Vulnerabilities Addressed
+    description: Ensures medium vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (30 days)
+    lastModified: "0001-01-01T00:00:00Z"
+    tags:
+        - github
+        - dependabot
+        - vulnerability
+        - medium
+        - sla
+        - compliance
 spec:
-  severity: medium
-  effect: forbid
-  resource: github.dependabot_alert
-  match:
-    conditions:
-    - cmp_eq(path(resource, "severity"), "moderate")
-    - cmp_eq(path(resource, "state"), "open")
-    - cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '30 days'")
-    conditionFormat: cel
-  remediation:
-    summary: Update dependencies to address medium severity vulnerabilities within 30 days.
-  riskCategories:
-  - VULNERABLE_CODE
-  frameworks:
-  - name: SOC 2
-    controls:
-    - CC7.1
-  - name: PCI DSS v4.0
-    controls:
-    - 6.3.1
-  - name: NIST 800-53 r5
-    controls:
-    - RA-5
-    - SI-2
+    severity: medium
+    effect: forbid
+    resource: github.dependabot_alert
+    match:
+        conditions:
+            - cmp_eq(path(resource, "severity"), "moderate")
+            - cmp_eq(path(resource, "state"), "open")
+            - cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '30 days'")
+        conditionFormat: cel
+    remediation:
+        summary: Update dependencies to address medium severity vulnerabilities within 30 days.
+    riskCategories:
+        - VULNERABLE_CODE
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC7.1
+            - CC7.5
+        - name: ISO 27001:2022
+          controls:
+            - A.8.8
+        - name: NIST 800-53 r5
+          controls:
+            - RA-5
+            - SI-2
+        - name: CIS Controls v8
+          controls:
+            - "7"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "6.3"
+            - "11.3"

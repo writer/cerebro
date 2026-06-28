@@ -21,11 +21,30 @@ spec:
     frameworks:
         - name: SOC 2
           controls:
-            - CC1.1
+            - CC6.7
+            - A1.1
+            - A1.3
         - name: ISO 27001:2022
           controls:
-            - A.5.1
-        - name: PCI DSS v4.0
+            - A.8.24
+            - A.8.13
+            - A.8.14
+        - name: NIST 800-53 r5
           controls:
-            - "1.1"
+            - SC-8
+            - SC-12
+            - SC-13
+            - SC-23
+            - SC-28
+            - CP-2
+            - CP-4
+            - CP-9
+            - CP-10
+        - name: CIS Controls v8
+          controls:
+            - "3"
+            - "11"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "4.2"
     enabled: true

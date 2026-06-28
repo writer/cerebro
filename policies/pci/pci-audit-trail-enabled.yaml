@@ -18,7 +18,24 @@ spec:
     remediation:
         summary: Enable comprehensive audit logging on all CDE systems. Ensure all actions can be traced to individual users.
     frameworks:
-        - name: PCI DSS v4.0
+        - name: SOC 2
           controls:
-            - "1.1"
+            - CC4
+            - CC7
+            - CC7.2
+        - name: ISO 27001:2022
+          controls:
+            - A.8.15
+            - A.8.16
+        - name: NIST 800-53 r5
+          controls:
+            - AU-2
+            - AU-12
+        - name: CIS Controls v8
+          controls:
+            - "8"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "10.2"
+            - "10.3"
     enabled: true

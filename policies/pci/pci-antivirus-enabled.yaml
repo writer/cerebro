@@ -18,7 +18,22 @@ spec:
     remediation:
         summary: Deploy anti-malware software on all systems commonly affected by malware in the CDE.
     frameworks:
-        - name: PCI DSS v4.0
+        - name: SOC 2
           controls:
-            - "1.1"
+            - CC6.8
+            - CC7.3
+        - name: ISO 27001:2022
+          controls:
+            - A.8.7
+        - name: NIST 800-53 r5
+          controls:
+            - SI-3
+            - SI-4
+        - name: CIS Controls v8
+          controls:
+            - "10"
+        - name: PCI DSS v4.0.1
+          controls:
+            - "5.2"
+            - "5.3"
     enabled: true
