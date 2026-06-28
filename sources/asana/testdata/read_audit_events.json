@@ -1,0 +1,36 @@
+[
+  {
+    "id": "asana-audit-audit-1",
+    "tenant_id": "tenant",
+    "source_id": "asana",
+    "kind": "asana.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "asana/audit_events/v1",
+    "payload": {
+      "id": "audit-1",
+      "event_type": "project.created",
+      "actor": {
+        "id": "user-1",
+        "email": "user@example.test",
+        "name": "User One"
+      },
+      "resource": {
+        "id": "project-1",
+        "type": "project",
+        "name": "Security Evidence"
+      }
+    },
+    "attributes": {
+      "actor_email": "user@example.test",
+      "actor_id": "user-1",
+      "actor_name": "User One",
+      "event_type": "project.created",
+      "resource_id": "project-1",
+      "resource_name": "Security Evidence",
+      "resource_type": "project",
+      "resource_urn": "urn:cerebro:tenant:runtime_projects:project-1",
+      "source_event_id": "audit-1",
+      "tenant_id": "tenant"
+    }
+  }
+]
