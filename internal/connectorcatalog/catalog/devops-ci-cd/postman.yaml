@@ -1,113 +1,135 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-postman
-    tenant_id: builtin_catalog
-    source_id: postman
-    display_name: Postman
-    description: "Collects collections, environments, and audit events from Postman and projects them into the Cerebro graph as assets, secrets, and audit events for repository, build, deployment, and release context."
-    categories:
-    - dev
-    - api
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.getpostman.com
-      verification:
-        method: GET
-        path: "/me"
-        expect_status:
-        - 200
-    resource_families:
-    - id: collections
-      label: Collections
-      path: "/collections"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: uid
-      event:
-        kind: postman.collections
-        schema_ref: postman/collections/v1
-      projection:
-        template: asset
-      coverage:
-      - id: collections
-        type: entity_family
-        title: Collections
-        families:
-        - collections
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: environments
-      label: Environments
-      path: "/environments"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: uid
-      event:
-        kind: postman.environments
-        schema_ref: postman/environments/v1
-      projection:
-        template: secret
-      coverage:
-      - id: environments
-        type: entity_family
-        title: Environments
-        families:
-        - environments
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/audit/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: postman.audit_events
-        schema_ref: postman/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - dev
+        - api
+      description: Collects collections, environments, and audit events from Postman and projects them into the Cerebro graph as assets, secrets, and audit events for repository, build, deployment, and release context.
+      display_name: Postman
+      id: builtin-postman
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - collections
+              high_value: true
+              id: collections
+              support: partial
+              title: Collections
+              type: entity_family
+          event:
+            kind: postman.collections
+            required_payload_fields:
+              - uid
+            schema_ref: postman/collections/v1
+            urn_kind: postman_collections
+          id: collections
+          id_field: uid
+          label: Collections
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /collections
+          projection:
+            fields:
+              resource_id: uid
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - environments
+              high_value: true
+              id: environments
+              support: partial
+              title: Environments
+              type: entity_family
+          event:
+            kind: postman.environments
+            required_payload_fields:
+              - uid
+            schema_ref: postman/environments/v1
+            urn_kind: postman_environments
+          id: environments
+          id_field: uid
+          label: Environments
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /environments
+          projection:
+            fields:
+              secret_id: uid
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: postman.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: postman/audit_events/v1
+            urn_kind: postman_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /audit/events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: postman
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.getpostman.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /me

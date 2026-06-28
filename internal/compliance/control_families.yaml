@@ -3447,8 +3447,7 @@ frameworks:
       - id: Article
         name: Articles
         controls:
-          - id: Art.5
-          - id: Art.30
+          - id: Article 5
           - id: Article 6
           - id: Article 7
           - id: Article 12
@@ -3486,6 +3485,27 @@ frameworks:
         name: Consumer Privacy Rights
         controls:
           - id: 1798.100
+            title: Right to know about personal information collected
+          - id: 1798.105
+            title: Right to delete personal information
+          - id: 1798.106
+            title: Right to correct inaccurate personal information
+          - id: 1798.110
+            title: Right to know what personal information is collected
+          - id: 1798.115
+            title: Right to know what personal information is sold or shared
+          - id: 1798.120
+            title: Right to opt out of sale or sharing of personal information
+          - id: 1798.121
+            title: Right to limit use and disclosure of sensitive personal information
+          - id: 1798.125
+            title: Right of no retaliation following opt out or exercise of rights
+          - id: 1798.130
+            title: Notice, disclosure, correction, and deletion request methods
+          - id: 1798.135
+            title: Methods of limiting use and disclosure of sensitive personal information
+          - id: 1798.150
+            title: Personal information security and breach liability
   - name: US Data Privacy
     families:
       - id: Privacy

@@ -389,6 +389,77 @@ func TestSourceDefinitionUsesLinkHeaderPagination(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesNextURLPagination(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value":    []map[string]any{{"id": "item-1"}},
+				"nextLink": "http://" + r.Host + "/records?page=2",
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value": []map[string]any{{"id": "item-2"}},
+			})
+		default:
+			t.Fatalf("page = %q, want empty or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "bearer_token"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "records",
+			Path:           "/records",
+			RecordSelector: "$.value[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.records", SchemaRef: "example/records/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:            "next_url",
+				NextURLJSONPath: "$.nextLink",
+				DisablePageSize: true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != server.URL+"/records?page=2" {
+		t.Fatalf("first NextCursor = %q, want nextLink", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"token":     "token",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Id == first.Events[0].Id {
+		t.Fatalf("second events = %#v, want second page", second.Events)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" {
+		t.Fatalf("requests = %#v, want second request from nextLink", requests)
+	}
+}
+
 func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/models" {

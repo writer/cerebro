@@ -1,116 +1,138 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-workday
-    tenant_id: builtin_catalog
-    source_id: workday
-    display_name: Workday
-    description: "Collects workers, organizations, and audit events from Workday and projects them into the Cerebro graph as users, groups, and audit events for owner, account, evidence, and compliance context."
-    categories:
-    - hr
-    - identity
-    auth:
-      model: oauth_client_credentials
-      token_url: https://${config.tenant_url}/oauth/token
-      credential_fields:
-      - key: client_id
-        reference_only: true
-      - key: client_secret
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://${config.tenant_url}
-      verification:
-        method: GET
-        path: "/ccx/api/v1/${config.tenant}/workers"
-        expect_status:
-        - 200
-    resource_families:
-    - id: users
-      label: Workers
-      path: "/v1/workers"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: workday.users
-        schema_ref: workday/users/v1
-      projection:
-        template: identity_user
-      coverage:
-      - id: users
-        type: entity_family
-        title: Workers
-        families:
-        - users
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: groups
-      label: Organizations
-      path: "/v1/organizations"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: workday.groups
-        schema_ref: workday/groups/v1
-      projection:
-        template: identity_group
-      coverage:
-      - id: groups
-        type: entity_family
-        title: Organizations
-        families:
-        - groups
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/v1/audit/events"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: workday.audit_events
-        schema_ref: workday/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            reference_only: true
+          - key: client_secret
+            reference_only: true
+            secret: true
+        model: oauth_client_credentials
+        token_url: https://${config.tenant_url}/oauth/token
+      categories:
+        - hr
+        - identity
+      description: Collects workers, organizations, and audit events from Workday and projects them into the Cerebro graph as users, groups, and audit events for owner, account, evidence, and compliance context.
+      display_name: Workday
+      id: builtin-workday
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - users
+              high_value: true
+              id: users
+              support: partial
+              title: Workers
+              type: entity_family
+          event:
+            kind: workday.users
+            required_payload_fields:
+              - id
+            schema_ref: workday/users/v1
+            urn_kind: workday_users
+          id: users
+          id_field: id
+          label: Workers
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/workers
+          projection:
+            fields:
+              email: email|primary_email|profile.email
+              status: status|state|lifecycle_state
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - groups
+              high_value: true
+              id: groups
+              support: partial
+              title: Organizations
+              type: entity_family
+          event:
+            kind: workday.groups
+            required_payload_fields:
+              - id
+            schema_ref: workday/groups/v1
+            urn_kind: workday_groups
+          id: groups
+          id_field: id
+          label: Organizations
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/organizations
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+            template: identity_group
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: workday.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: workday/audit_events/v1
+            urn_kind: workday_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/audit/events
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: workday
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://${config.tenant_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /ccx/api/v1/${config.tenant}/workers

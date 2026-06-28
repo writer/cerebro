@@ -183,6 +183,9 @@ func nextCursorKeys(pagination *connectordefinitions.PaginationSpec) []string {
 	if pagination == nil {
 		return nil
 	}
+	if strings.TrimSpace(pagination.Type) == "next_url" {
+		return []string{firstNonEmpty(cursorJSONPathKey(pagination.NextURLJSONPath), "nextLink")}
+	}
 	if len(pagination.NextCursorKeys) > 0 {
 		return append([]string(nil), pagination.NextCursorKeys...)
 	}

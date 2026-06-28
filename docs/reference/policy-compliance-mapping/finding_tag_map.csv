@@ -5185,7 +5185,9 @@ contents,routing,catalog,github-secops-app-installation-all-repos-contents-write
 control,routing,catalog,grc-control-missing-evidence-coverage,GRC Control Missing Evidence Coverage,grc,grc,graph,medium,open,test
 control,routing,catalog,grc-failing-control-test-unhealthy-integration,GRC Failing Control Test On Unhealthy Integration,grc,grc,graph,high,open,test
 control-coverage,routing,catalog,security-tooling-map-control-coverage-gap,Security Tooling Control Coverage Gap,security_tooling_map,security_tooling_map,event,medium,open,test
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control-family:ccpa-1798-consumer-privacy-rights,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control-family:cerebro-ai-governance-ai-ai-governance-controls,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 control-family:cerebro-ai-governance-ai-ai-governance-controls,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 control-family:cerebro-financial-controls-fin-financial-controls,compliance,control_ref,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
@@ -6488,6 +6490,7 @@ control-family:eu-ai-act-art-articles,compliance,control_ref,azure-openai-privat
 control-family:eu-ai-act-art-articles,compliance,control_ref,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
 control-family:eu-ai-act-art-articles,compliance,control_ref,gcp-vertex-model-endpoint-private,GCP Vertex Model Endpoint Private,policy,policy,event,medium,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
+control-family:gdpr-article-articles,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control-family:gdpr-article-articles,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
@@ -7845,6 +7848,7 @@ control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,vul
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,vulnview-actionable-external-finding,VulnView Actionable External Finding,vulnview,vulnview,event,dynamic,open,test
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
 control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control-family:iso-27701-7-pii-controller-controls,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control-family:iso-27701-8-pii-processor-controls,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control-family:iso-42001-10-improvement,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
@@ -13270,6 +13274,9 @@ control-plane,routing,catalog,identity-auth-control-lifecycle-tampering,Identity
 control-plane,routing,catalog,sentinelone-protection-control-tampering,SentinelOne Protection Control Tampering,sentinelone,sentinelone,event,high,open,test
 control-test,routing,catalog,grc-control-test-needs-attention,GRC Control Test Needs Attention,grc,grc,event,medium,open,test
 control:ccpa:1798-100,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:ccpa:1798-105,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
+control:ccpa:1798-130,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:ccpa:1798-150,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:cerebro-ai-governance:ai-3,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 control:cerebro-ai-governance:ai-4,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 control:cerebro-ai-governance:ai-5,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
@@ -14710,22 +14717,27 @@ control:eu-ai-act:art-14,compliance,control_ref,azure-openai-content-filter-enab
 control:eu-ai-act:art-14,compliance,control_ref,azure-openai-private-endpoint,Azure Openai Private Endpoint,policy,policy,event,medium,active,candidate
 control:eu-ai-act:art-14,compliance,control_ref,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
 control:eu-ai-act:art-14,compliance,control_ref,gcp-vertex-model-endpoint-private,GCP Vertex Model Endpoint Private,policy,policy,event,medium,active,candidate
-control:gdpr:art-30,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
-control:gdpr:art-30,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
-control:gdpr:art-5,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
-control:gdpr:art-5,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
-control:gdpr:art-5,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
-control:gdpr:art-5,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:gdpr:article-24,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-24,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control:gdpr:article-25,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 control:gdpr:article-28,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
+control:gdpr:article-30,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
 control:gdpr:article-30,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 control:gdpr:article-30,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
+control:gdpr:article-30,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:gdpr:article-30,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:gdpr:article-32,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
+control:gdpr:article-32,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:gdpr:article-32,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:gdpr:article-33,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 control:gdpr:article-34,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control:gdpr:article-5,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
+control:gdpr:article-5,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
+control:gdpr:article-5,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:gdpr:article-5,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
+control:gdpr:article-5,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
+control:gdpr:article-5,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
+control:gdpr:article-6,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-1-ii-a,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control:hipaa:164-308-a-3-ii-c,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
 control:hipaa:164-308-a-5-ii-b,compliance,control_ref,endpoint-edr-installed,EDR Agent Installed on Endpoints,policy,policy,event,critical,active,candidate
@@ -16610,6 +16622,7 @@ control:iso-27001-2022:a-8-9,compliance,control_ref,vuln-kev-public-facing,Vuln 
 control:iso-27001-2022:a-8-9,compliance,control_ref,vuln-sla-breach-crown-jewel,Vuln Sla Breach Crown Jewel,policy,policy,event,high,active,candidate
 control:iso-27701:7-2-6,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control:iso-27701:7-2-8,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+control:iso-27701:7-2-8,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:iso-27701:8-2-1,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 control:iso-42001:10-1,compliance,control_ref,ai-incident-response,AI Incident Response Plan,policy,policy,event,high,active,candidate
 control:iso-42001:10-2,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
@@ -26023,7 +26036,9 @@ fork,routing,catalog,github-secops-repo-public-fork-secret-scanning-disabled,Git
 forwarding,routing,catalog,m365-external-forwarding-enabled,M365 External Forwarding Enabled,policy,policy,event,medium,active,candidate
 foundation,routing,catalog,ai-foundation-model-safety-card-required,AI Foundation Model Safety Card Required,policy,policy,event,medium,active,candidate
 foundation-model,routing,catalog,ai-foundation-model-safety-card-required,AI Foundation Model Safety Card Required,policy,policy,event,medium,active,candidate
+framework:ccpa,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 framework:ccpa,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+framework:ccpa,compliance,control_ref,compliance-ir-gdpr-addendum,Incident Response Plan GDPR Addendum,policy,policy,event,high,active,candidate
 framework:cerebro-ai-governance,compliance,control_ref,aws-bedrock-model-no-guardrails,Bedrock Model Without Guardrails,policy,policy,event,medium,active,candidate
 framework:cerebro-ai-governance,compliance,control_ref,ml-model-untrusted-source,ML Model from Untrusted Source,policy,policy,event,high,active,candidate
 framework:cerebro-financial-controls,compliance,control_ref,contract-billing-mismatch,Contract and Billing Mismatch,policy,policy,event,high,active,candidate
@@ -26710,6 +26725,7 @@ framework:eu-ai-act,compliance,control_ref,azure-openai-private-endpoint,Azure O
 framework:eu-ai-act,compliance,control_ref,gcp-vertex-dataset-cmek,GCP Vertex Dataset Cmek,policy,policy,event,medium,active,candidate
 framework:eu-ai-act,compliance,control_ref,gcp-vertex-model-endpoint-private,GCP Vertex Model Endpoint Private,policy,policy,event,medium,active,candidate
 framework:gdpr,compliance,control_ref,ai-data-governance,AI Training Data Governance,policy,policy,event,high,active,candidate
+framework:gdpr,compliance,control_ref,ai-data-retention-reviewed,AI Data Retention Reviewed,policy,policy,event,medium,active,candidate
 framework:gdpr,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
 framework:gdpr,compliance,control_ref,compliance-gdpr-policy,GDPR Compliance Policy Exists,policy,policy,event,high,active,candidate
 framework:gdpr,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
@@ -27784,6 +27800,7 @@ framework:iso-27001-2022,compliance,control_ref,vuln-sla-breach-crown-jewel,Vuln
 framework:iso-27001-2022,compliance,control_ref,vulnview-actionable-external-finding,VulnView Actionable External Finding,vulnview,vulnview,event,dynamic,open,test
 framework:iso-27001-2022,compliance,control_ref,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
 framework:iso-27701,compliance,control_ref,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
+framework:iso-27701,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 framework:iso-27701,compliance,control_ref,vendor-dpa-exists,Vendor Data Processing Agreement Exists,policy,policy,event,high,active,candidate
 framework:iso-42001,compliance,control_ref,ai-agent-human-approval-destructive-actions,AI Agent Human Approval Destructive Actions,policy,policy,event,high,active,candidate
 framework:iso-42001,compliance,control_ref,ai-agent-secret-redaction,AI Agent Secret Redaction,policy,policy,event,medium,active,candidate

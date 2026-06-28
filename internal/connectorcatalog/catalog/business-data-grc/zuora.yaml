@@ -1,0 +1,581 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: token
+        label: Bearer token
+        reference_only: true
+        required: true
+        secret: true
+      model: bearer_token
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: event_number
+      label: Event Number
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: rs_number
+      label: Rs Number
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: account_key
+      label: Account Key
+      required: true
+    description: Collects event trigger, accounting code, callout, hostedpage, product, and accounting period from Zuora and projects them into the Cerebro graph as alerts, assets, audit events, and users for inventory, access review, audit, risk, and operational context.
+    display_name: Zuora
+    id: builtin_catalog-zuora
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - event_trigger
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Event Trigger
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: zuora.event_trigger
+        required_payload_fields:
+        - id
+        schema_ref: zuora/event_trigger/v1
+        urn_kind: zuora_event_trigger
+      event_kind: event_trigger
+      id: event_trigger
+      id_field: id
+      label: Event Trigger
+      list_key: data
+      method: GET
+      name_field: description
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/events/event-triggers"
+      projection:
+        fields:
+          id: id
+          name: description
+          provider_id: id
+        template: audit_event
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - accounting_code
+        high_value: true
+        id: accounting_code
+        support: partial
+        title: Accounting Code
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.accounting_code
+        required_payload_fields:
+        - id
+        schema_ref: zuora/accounting_code/v1
+        urn_kind: zuora_accounting_code
+      event_kind: accounting_code
+      id: accounting_code
+      id_field: id
+      label: Accounting Code
+      list_key: accountingCodes
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/accounting-codes"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.accountingCodes[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - callout
+        high_value: true
+        id: alerts
+        support: partial
+        title: Callout
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: zuora.callout
+        required_payload_fields:
+        - attemptedNum
+        schema_ref: zuora/callout/v1
+        urn_kind: zuora_callout
+      event_kind: callout
+      id: callout
+      id_field: attemptedNum
+      label: Callout
+      list_key: calloutHistories
+      method: GET
+      name_field: attemptedNum
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/notification-history/callout"
+      projection:
+        fields:
+          alert_id: attemptedNum
+          alert_name: attemptedNum
+          alert_severity: attemptedNum
+          alert_status: attemptedNum
+          id: attemptedNum
+          name: attemptedNum
+        template: alert
+      record_selector: "$.calloutHistories[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - hostedpage
+        high_value: true
+        id: hostedpage
+        support: partial
+        title: Hostedpage
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.hostedpage
+        required_payload_fields:
+        - pageId
+        schema_ref: zuora/hostedpage/v1
+        urn_kind: zuora_hostedpage
+      event_kind: hostedpage
+      id: hostedpage
+      id_field: pageId
+      label: Hostedpage
+      list_key: hostedpages
+      method: GET
+      name_field: pageId
+      pagination:
+        type: none
+      path: "/v1/hostedpages"
+      projection:
+        fields:
+          id: pageId
+          name: pageId
+          resource_id: pageId
+          resource_name: pageId
+          resource_type: hostedpage
+        template: asset
+      record_selector: "$.hostedpages[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - product
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Product
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: zuora.product
+        required_payload_fields:
+        - id
+        schema_ref: zuora/product/v1
+        urn_kind: zuora_product
+      event_kind: product
+      id: product
+      id_field: id
+      label: Product
+      list_key: products
+      method: GET
+      name_field: name
+      pagination:
+        inject_first_page: true
+        page_param: page
+        page_size: 100
+        page_size_param: pageSize
+        start_page: 1
+        type: page
+      path: "/v1/catalog/products"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: audit_event
+      record_selector: "$.products[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - accounting_period
+        high_value: true
+        id: accounting_period
+        support: partial
+        title: Accounting Period
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.accounting_period
+        required_payload_fields:
+        - id
+        schema_ref: zuora/accounting_period/v1
+        urn_kind: zuora_accounting_period
+      event_kind: accounting_period
+      id: accounting_period
+      id_field: id
+      label: Accounting Period
+      list_key: accountingPeriods
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/accounting-periods"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.accountingPeriods[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - email
+        high_value: true
+        id: email
+        support: partial
+        title: Email
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.email
+        required_payload_fields:
+        - bcc
+        schema_ref: zuora/email/v1
+        urn_kind: zuora_email
+      event_kind: email
+      id: email
+      id_field: bcc
+      label: Email
+      list_key: emailHistories
+      method: GET
+      name_field: subject
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/notification-history/email"
+      projection:
+        fields:
+          id: bcc
+          name: subject
+          provider_id: bcc
+        template: identity_user
+      record_selector: "$.emailHistories[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - email_template
+        high_value: true
+        id: email_template
+        support: partial
+        title: Email Template
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.email_template
+        required_payload_fields:
+        - id
+        schema_ref: zuora/email_template/v1
+        urn_kind: zuora_email_template
+      event_kind: email_template
+      id: email_template
+      id_field: id
+      label: Email Template
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/notifications/email-templates"
+      projection:
+        fields:
+          id: id
+          name: name
+          provider_id: id
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        - security_operations
+        evidence_types:
+        - security_monitoring
+        families:
+        - notification_definition
+        high_value: true
+        id: alerts
+        support: partial
+        title: Notification Definition
+        type: alert_state
+      default_enabled: true
+      event:
+        kind: zuora.notification_definition
+        required_payload_fields:
+        - id
+        schema_ref: zuora/notification_definition/v1
+        urn_kind: zuora_notification_definition
+      event_kind: notification_definition
+      id: notification_definition
+      id_field: id
+      label: Notification Definition
+      list_key: data
+      method: GET
+      name_field: name
+      pagination:
+        page_size: 100
+        page_size_param: limit
+        type: page
+      path: "/notifications/notification-definitions"
+      projection:
+        fields:
+          alert_id: id
+          alert_name: name
+          alert_severity: active
+          alert_status: active
+          id: id
+          name: name
+        template: alert
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - revenue_event
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Revenue Event
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: zuora.revenue_event
+        required_payload_fields:
+        - accountingPeriodEndDate
+        schema_ref: zuora/revenue_event/v1
+        urn_kind: zuora_revenue_event
+      event_kind: revenue_event
+      id: revenue_event
+      id_field: accountingPeriodEndDate
+      label: Revenue Event
+      list_key: revenueItems
+      method: GET
+      name_field: accountingPeriodEndDate
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/revenue-items/revenue-events/${config.event_number}"
+      projection:
+        fields:
+          id: accountingPeriodEndDate
+          name: accountingPeriodEndDate
+          provider_id: accountingPeriodEndDate
+        template: audit_event
+      record_selector: "$.revenueItems[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - revenue_schedule
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Revenue Schedule
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: zuora.revenue_schedule
+        required_payload_fields:
+        - accountId
+        schema_ref: zuora/revenue_schedule/v1
+        urn_kind: zuora_revenue_schedule
+      event_kind: revenue_schedule
+      id: revenue_schedule
+      id_field: accountId
+      label: Revenue Schedule
+      list_key: revenueEventDetails
+      method: GET
+      name_field: accountId
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/revenue-events/revenue-schedules/${config.rs_number}"
+      projection:
+        fields:
+          id: accountId
+          name: accountId
+          provider_id: accountId
+        template: audit_event
+      record_selector: "$.revenueEventDetails[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - account
+        high_value: true
+        id: account
+        support: partial
+        title: Account
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: zuora.account
+        required_payload_fields:
+        - id
+        schema_ref: zuora/account/v1
+        urn_kind: zuora_account
+      event_kind: account
+      id: account
+      id_field: id
+      label: Account
+      list_key: creditCards
+      method: GET
+      name_field: cardHolderInfo
+      pagination:
+        page_size: 100
+        page_size_param: pageSize
+        type: page
+      path: "/v1/payment-methods/credit-cards/accounts/${config.account_key}"
+      projection:
+        fields:
+          id: id
+          name: cardHolderInfo
+          provider_id: id
+        template: identity_user
+      record_selector: "$.creditCards[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - event_trigger
+      id: event_trigger
+      label: Event Trigger
+    - default_enabled: true
+      families:
+      - accounting_code
+      id: accounting_code
+      label: Accounting Code
+    - default_enabled: true
+      families:
+      - callout
+      id: callout
+      label: Callout
+    - default_enabled: true
+      families:
+      - hostedpage
+      id: hostedpage
+      label: Hostedpage
+    - default_enabled: true
+      families:
+      - product
+      id: product
+      label: Product
+    - default_enabled: true
+      families:
+      - accounting_period
+      id: accounting_period
+      label: Accounting Period
+    - default_enabled: true
+      families:
+      - email
+      id: email
+      label: Email
+    - default_enabled: true
+      families:
+      - email_template
+      id: email_template
+      label: Email Template
+    - default_enabled: true
+      families:
+      - notification_definition
+      id: notification_definition
+      label: Notification Definition
+    - default_enabled: true
+      families:
+      - revenue_event
+      id: revenue_event
+      label: Revenue Event
+    - default_enabled: true
+      families:
+      - revenue_schedule
+      id: revenue_schedule
+      label: Revenue Schedule
+    - default_enabled: true
+      families:
+      - account
+      id: account
+      label: Account
+    source_id: zuora
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://rest.zuora.com
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/events/event-triggers"

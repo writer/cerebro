@@ -1,0 +1,555 @@
+entries:
+- classifier_output: supported
+  definition:
+    auth:
+      credential_fields:
+      - key: api_key
+        label: API key
+        reference_only: true
+        required: true
+        secret: true
+      model: api_key
+      requires_references: true
+    categories:
+    - saas
+    config_fields:
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: offeringid
+      label: Offeringid
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: useremail
+      label: Useremail
+      required: true
+    - help: Path parameter inferred from the OpenAPI operation.
+      key: groupid
+      label: Groupid
+      required: true
+    description: Collects learners progress, group, user, pulses, progress, and responses from iQualify and projects them into the Cerebro graph as assets, audit events, groups, and users for inventory, access review, audit, risk, and operational context.
+    display_name: iQualify
+    id: builtin_catalog-iqualify
+    ingest:
+      mode: pull
+    resource_families:
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - learners_progress
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Learners Progress
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: iqualify.learners_progress
+        required_payload_fields:
+        - email
+        schema_ref: iqualify/learners_progress/v1
+        urn_kind: iqualify_learners_progress
+      event_kind: learners_progress
+      id: learners_progress
+      id_field: email
+      label: Learners Progress
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/analytics/learners-progress"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - group
+        high_value: true
+        id: group
+        support: partial
+        title: Group
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: iqualify.group
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/group/v1
+        urn_kind: iqualify_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: Group
+      method: GET
+      name_field: title
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/groups"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: title
+          provider_id: id
+        template: identity_group
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - user
+        high_value: true
+        id: user
+        support: partial
+        title: User
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: iqualify.user
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/user/v1
+        urn_kind: iqualify_user
+      event_kind: user
+      id: user
+      id_field: id
+      label: User
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/users"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: email
+          provider_id: id
+        template: identity_user
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - pulses
+        id: pulses
+        support: partial
+        title: Pulses
+        type: entity_family
+      event:
+        kind: iqualify.pulses
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/pulses/v1
+        urn_kind: iqualify_pulses
+      event_kind: pulses
+      id: pulses
+      id_field: id
+      label: Pulses
+      method: GET
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/analytics/pulses"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          resource_id: id
+          resource_name: id
+          resource_type: pulses
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - progress
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Progress
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: iqualify.progress
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/progress/v1
+        urn_kind: iqualify_progress
+      event_kind: progress
+      id: progress
+      id_field: id
+      label: Progress
+      list_key: offerings
+      method: GET
+      name_field: completion
+      pagination:
+        type: none
+      path: "/users/${config.useremail}/progress"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: completion
+          provider_id: id
+        template: audit_event
+      record_selector: "$.offerings[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - responses
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Responses
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: iqualify.responses
+        required_payload_fields:
+        - activityId
+        schema_ref: iqualify/responses/v1
+        urn_kind: iqualify_responses
+      event_kind: responses
+      id: responses
+      id_field: activityId
+      label: Responses
+      method: GET
+      name_field: activityId
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/analytics/activities/responses"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: activityId
+          name: activityId
+          provider_id: activityId
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - social_note
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Social Note
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: iqualify.social_note
+        required_payload_fields:
+        - email
+        schema_ref: iqualify/social_note/v1
+        urn_kind: iqualify_social_note
+      event_kind: social_note
+      id: social_note
+      id_field: email
+      label: Social Note
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/analytics/social-notes"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: email
+          name: email
+          provider_id: email
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - unit_reaction
+        high_value: true
+        id: audit_events
+        support: partial
+        title: Unit Reaction
+        type: audit_event
+      default_enabled: true
+      event:
+        kind: iqualify.unit_reaction
+        required_payload_fields:
+        - feedback
+        schema_ref: iqualify/unit_reaction/v1
+        urn_kind: iqualify_unit_reaction
+      event_kind: unit_reaction
+      id: unit_reaction
+      id_field: feedback
+      label: Unit Reaction
+      method: GET
+      name_field: feedback
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/analytics/unit-reactions"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: feedback
+          name: feedback
+          provider_id: feedback
+        template: audit_event
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - learner
+        high_value: true
+        id: learner
+        support: partial
+        title: Learner
+        type: entity_family
+      default_enabled: true
+      event:
+        kind: iqualify.learner
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/learner/v1
+        urn_kind: iqualify_learner
+      event_kind: learner
+      id: learner
+      id_field: id
+      label: Learner
+      method: GET
+      name_field: email
+      pagination:
+        type: none
+      path: "/offerings/${config.offeringid}/groups/${config.groupid}/learners"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: email
+          resource_id: id
+          resource_name: email
+          resource_type: learner
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - courses
+        id: courses
+        support: partial
+        title: Courses
+        type: entity_family
+      event:
+        kind: iqualify.courses
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/courses/v1
+        urn_kind: iqualify_courses
+      event_kind: courses
+      id: courses
+      id_field: id
+      label: Courses
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/courses"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: courses
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - current
+        id: current
+        support: partial
+        title: Current
+        type: entity_family
+      event:
+        kind: iqualify.current
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/current/v1
+        urn_kind: iqualify_current
+      event_kind: current
+      id: current
+      id_field: id
+      label: Current
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/offerings/current"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: current
+        template: asset
+      record_selector: "$[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - future
+        id: future
+        support: partial
+        title: Future
+        type: entity_family
+      event:
+        kind: iqualify.future
+        required_payload_fields:
+        - id
+        schema_ref: iqualify/future/v1
+        urn_kind: iqualify_future
+      event_kind: future
+      id: future
+      id_field: id
+      label: Future
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/offerings/future"
+      permissions_needed:
+      - Authorization
+      projection:
+        fields:
+          id: id
+          name: name
+          resource_id: id
+          resource_name: name
+          resource_type: future
+        template: asset
+      record_selector: "$[*]"
+    schema_version: cerebro.integration/v1
+    scope_options:
+    - default_enabled: true
+      families:
+      - learners_progress
+      id: learners_progress
+      label: Learners Progress
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: Group
+    - default_enabled: true
+      families:
+      - user
+      id: user
+      label: User
+    - families:
+      - pulses
+      id: pulses
+      label: Pulses
+    - default_enabled: true
+      families:
+      - progress
+      id: progress
+      label: Progress
+    - default_enabled: true
+      families:
+      - responses
+      id: responses
+      label: Responses
+    - default_enabled: true
+      families:
+      - social_note
+      id: social_note
+      label: Social Note
+    - default_enabled: true
+      families:
+      - unit_reaction
+      id: unit_reaction
+      label: Unit Reaction
+    - default_enabled: true
+      families:
+      - learner
+      id: learner
+      label: Learner
+    - families:
+      - courses
+      id: courses
+      label: Courses
+    - families:
+      - current
+      id: current
+      label: Current
+    - families:
+      - future
+      id: future
+      label: Future
+    source_id: iqualify
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.iqualify.com/v1
+      retry:
+        backoff: exponential
+        max_attempts: 3
+        retry_after_header: Retry-After
+        statuses:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/offerings/${config.offeringid}/analytics/learners-progress"

@@ -1,142 +1,171 @@
 entries:
-- classifier_output: supported
-  definition:
-    schema_version: cerebro.integration/v1
-    id: builtin-akeyless
-    tenant_id: builtin_catalog
-    source_id: akeyless
-    display_name: Akeyless
-    description: "Collects auth methods, roles, and audit events from Akeyless and projects them into the Cerebro graph as secrets, assets, groups, and audit events for identity, access, device, and secret context."
-    categories:
-    - identity
-    - secrets
-    auth:
-      model: api_key
-      credential_fields:
-      - key: api_key
-        secret: true
-        reference_only: true
-    transport:
-      base_url: https://api.akeyless.io
-      verification:
-        method: GET
-        path: "/v2/item"
-        expect_status:
-        - 200
-    resource_families:
-    - id: items
-      label: Items
-      path: "/v2/items"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: akeyless.items
-        schema_ref: akeyless/items/v1
-      projection:
-        template: secret
-      coverage:
-      - id: items
-        type: entity_family
-        title: Items
-        families:
-        - items
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: auth_methods
-      label: Auth methods
-      path: "/v2/auth-methods"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: akeyless.auth_methods
-        schema_ref: akeyless/auth_methods/v1
-      projection:
-        template: asset
-      coverage:
-      - id: auth_methods
-        type: entity_family
-        title: Auth methods
-        families:
-        - auth_methods
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: roles
-      label: Roles
-      path: "/v2/roles"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: akeyless.roles
-        schema_ref: akeyless/roles/v1
-      projection:
-        template: identity_group
-      coverage:
-      - id: roles
-        type: entity_family
-        title: Roles
-        families:
-        - roles
-        support: partial
-        high_value: true
-        evidence_types:
-        - source_snapshot
-        control_domains:
-        - asset_inventory
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
-    - id: audit_events
-      label: Audit events
-      path: "/v2/audit"
-      method: GET
-      record_selector: "$.data[*]"
-      id_field: id
-      event:
-        kind: akeyless.audit_events
-        schema_ref: akeyless/audit_events/v1
-      projection:
-        template: audit_event
-      coverage:
-      - id: audit_events
-        type: audit_event
-        title: Audit events
-        families:
-        - audit_events
-        support: partial
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-      pagination:
-        type: cursor
-        cursor_param: cursor
-        cursor_json_path: "$.next_cursor"
-        page_size_param: limit
-        page_size: 100
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            reference_only: true
+            secret: true
+        model: api_key
+      categories:
+        - identity
+        - secrets
+      description: Collects auth methods, roles, and audit events from Akeyless and projects them into the Cerebro graph as secrets, assets, groups, and audit events for identity, access, device, and secret context.
+      display_name: Akeyless
+      id: builtin-akeyless
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - items
+              high_value: true
+              id: items
+              support: partial
+              title: Items
+              type: entity_family
+          event:
+            kind: akeyless.items
+            required_payload_fields:
+              - id
+            schema_ref: akeyless/items/v1
+            urn_kind: akeyless_items
+          id: items
+          id_field: id
+          label: Items
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v2/items
+          projection:
+            fields:
+              secret_id: id
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - auth_methods
+              high_value: true
+              id: auth_methods
+              support: partial
+              title: Auth methods
+              type: entity_family
+          event:
+            kind: akeyless.auth_methods
+            required_payload_fields:
+              - id
+            schema_ref: akeyless/auth_methods/v1
+            urn_kind: akeyless_auth_methods
+          id: auth_methods
+          id_field: id
+          label: Auth methods
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v2/auth-methods
+          projection:
+            fields:
+              resource_id: id
+              resource_type: resource_type|type|kind
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - roles
+              high_value: true
+              id: roles
+              support: partial
+              title: Roles
+              type: entity_family
+          event:
+            kind: akeyless.roles
+            required_payload_fields:
+              - id
+            schema_ref: akeyless/roles/v1
+            urn_kind: akeyless_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v2/roles
+          projection:
+            fields:
+              description: description|summary
+              group_email: group_email|email
+              group_id: id
+            template: identity_group
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          event:
+            kind: akeyless.audit_events
+            required_payload_fields:
+              - id
+            schema_ref: akeyless/audit_events/v1
+            urn_kind: akeyless_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v2/audit
+          projection:
+            fields:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              event_type: event_type|event_name|action|type
+              id: id
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: akeyless
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.akeyless.io
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /v2/item
