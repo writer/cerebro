@@ -41,6 +41,7 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 			"permission_label":       "AdministratorAccess",
 			"reach_relation":         "can_reach",
 			"access_relation":        "can_perform",
+			"relation_chain":         []any{"attached_to", "runs_as"},
 		}}},
 	}}
 
@@ -61,6 +62,9 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if got := store.requests[0].Params["account_id"]; got != "123456789012" {
 		t.Fatalf("account_id param = %v, want 123456789012", got)
 	}
+	if got := store.requests[0].Params["traversal_relations"]; len(got.([]string)) == 0 {
+		t.Fatalf("traversal_relations param = %v, want relation allowlist", got)
+	}
 	if got := store.requests[1].RowLimit; got != maxAttackPathLimit {
 		t.Fatalf("sample row limit = %d, want %d", got, maxAttackPathLimit)
 	}
@@ -70,7 +74,35 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if len(result.Paths) != 1 || result.Paths[0].Principal.Label != "admin@writer.com" {
 		t.Fatalf("paths = %#v", result.Paths)
 	}
+	if got := result.Paths[0].RelationChain; len(got) != 2 || got[0] != "attached_to" || got[1] != "runs_as" {
+		t.Fatalf("relation chain = %#v, want attached_to -> runs_as", got)
+	}
 	if result.NeighborhoodURN != "urn:cerebro:writer:aws_network_interface:eni-1" {
 		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
+	}
+}
+
+func TestAttackPathsFromRowsRequiresTraversalProof(t *testing.T) {
+	paths := attackPathsFromRows([]ports.CypherRow{{Values: map[string]any{
+		"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
+		"public_entity_type":     "aws.public_principal",
+		"public_label":           "public internet",
+		"exposed_urn":            "urn:cerebro:writer:aws_network_interface:eni-1",
+		"exposed_entity_type":    "aws.network.interface",
+		"exposed_label":          "prod-web",
+		"account_urn":            "urn:cerebro:writer:cloud_account:123456789012",
+		"account_entity_type":    "cloud.account",
+		"account_label":          "123456789012",
+		"principal_urn":          "urn:cerebro:writer:aws_user:admin@writer.com",
+		"principal_entity_type":  "aws.user",
+		"principal_label":        "admin@writer.com",
+		"permission_urn":         "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess",
+		"permission_entity_type": "aws.aws.iam.policy",
+		"permission_label":       "AdministratorAccess",
+		"reach_relation":         "can_reach",
+		"access_relation":        "can_perform",
+	}}})
+	if len(paths) != 0 {
+		t.Fatalf("len(paths) = %d, want 0 without relation_chain proof", len(paths))
 	}
 }

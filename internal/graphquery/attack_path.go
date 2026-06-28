@@ -47,6 +47,7 @@ type AttackPath struct {
 	Permission      GraphEntityRef `json:"permission"`
 	ReachRelation   string         `json:"reach_relation"`
 	AccessRelation  string         `json:"access_relation"`
+	RelationChain   []string       `json:"relation_chain,omitempty"`
 }
 
 func (s *Service) GetAttackPaths(ctx context.Context, request AttackPathRequest) (*AttackPathResult, error) {
@@ -99,24 +100,41 @@ func normalizeAttackPathLimit(limit uint32) int {
 
 func attackPathParams(tenantID string, request AttackPathRequest) map[string]any {
 	return map[string]any{
-		"account_id":   strings.TrimSpace(request.AccountID),
-		"sample_limit": int64(normalizeAttackPathLimit(request.Limit)),
-		"tenant_id":    tenantID,
+		"account_id":          strings.TrimSpace(request.AccountID),
+		"sample_limit":        int64(normalizeAttackPathLimit(request.Limit)),
+		"tenant_id":           tenantID,
+		"traversal_relations": attackPathTraversalRelations,
 	}
 }
 
 const attackPathPattern = `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
-MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
 WHERE public.entity_type ENDS WITH '.public_principal'
-  AND access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND ($account_id = '' OR account.label = $account_id OR account.urn CONTAINS $account_id)
+MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})
+WHERE all(node IN nodes(proof_path) WHERE node.tenant_id = $tenant_id)
+  AND all(rel IN relationships(proof_path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $traversal_relations)
+MATCH (principal)-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
+WHERE access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
   AND (
     access.relation <> 'can_perform'
     OR coalesce(access.attributes_json, '') CONTAINS '"is_admin":"true"'
     OR coalesce(access.attributes_json, '') CONTAINS '"privilege_level":"admin"'
     OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
     OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
-  )`
+  )
+WITH public, reach, exposed, account, principal, access, permission, proof_path
+ORDER BY length(proof_path), principal.label, principal.urn, permission.label, permission.urn
+WITH public, reach, exposed, account, principal, access, permission, head(collect(proof_path)) AS proof_path`
+
+var attackPathTraversalRelations = []string{
+	"assigned_to",
+	"attached_to",
+	"can_assume",
+	"can_impersonate",
+	"depends_on",
+	"member_of",
+	"runs_as",
+}
 
 const attackPathCountsQuery = attackPathPattern + `
 RETURN count(*) AS path_count,
@@ -141,7 +159,8 @@ RETURN public.urn AS public_urn,
        permission.entity_type AS permission_entity_type,
        permission.label AS permission_label,
        reach.relation AS reach_relation,
-       access.relation AS access_relation
+       access.relation AS access_relation,
+       [rel IN relationships(proof_path) | rel.relation] AS relation_chain
 ORDER BY account.label, exposed.label, principal.label, permission.label
 LIMIT $sample_limit`
 
@@ -165,8 +184,9 @@ func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
 			Permission:      GraphEntityRef{URN: cypherString(row, "permission_urn"), EntityType: cypherString(row, "permission_entity_type"), Label: cypherString(row, "permission_label")},
 			ReachRelation:   cypherString(row, "reach_relation"),
 			AccessRelation:  cypherString(row, "access_relation"),
+			RelationChain:   cypherStringList(row.Values["relation_chain"]),
 		}
-		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" {
+		if path.PublicPrincipal.URN == "" || path.ExposedResource.URN == "" || path.CloudAccount.URN == "" || path.Principal.URN == "" || path.Permission.URN == "" || len(path.RelationChain) == 0 {
 			continue
 		}
 		result = append(result, path)
