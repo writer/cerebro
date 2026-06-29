@@ -13,6 +13,7 @@ const (
 	IntentRawCypher                 = "raw_cypher"
 	IntentAggregateFindingsBySource = "aggregate_findings_by_source"
 	IntentTopRiskFindings           = "top_risk_findings"
+	IntentFailingControls           = "failing_controls"
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
@@ -206,6 +207,8 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 	switch intent {
 	case IntentTopRiskFindings:
 		plan.Filters = fastPathTopRiskFilters(question)
+	case IntentFailingControls:
+		plan.Filters = map[string]string{}
 	case IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge:
 		plan.Filters = map[string]string{}
 	case IntentExplainFinding:
@@ -260,8 +263,13 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 		out = *plan
 	}
 	out.Intent = canonicalIntent(out.Intent)
+	requestIntent := inferIntent(request.Question, cypher)
+	if requestIntent == IntentFailingControls && out.Intent != IntentFailingControls {
+		out.Intent = IntentFailingControls
+		out.Filters = map[string]string{}
+	}
 	if out.Intent == "" || out.Intent == IntentRawCypher {
-		out.Intent = inferIntent(request.Question, cypher)
+		out.Intent = requestIntent
 	}
 	out.ScopeURN = firstNonEmpty(out.ScopeURN, strings.TrimSpace(request.ScopeURN))
 	out.Limit = boundedLimit(out.Limit, defaultMaxRows)
@@ -270,6 +278,10 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 	}
 	if out.Filters == nil {
 		out.Filters = map[string]string{}
+	}
+	if out.Intent == IntentFailingControls {
+		out.Filters = map[string]string{}
+		return out
 	}
 	for key, value := range out.Filters {
 		trimmed := strings.TrimSpace(value)
@@ -317,6 +329,8 @@ func canonicalIntent(value string) string {
 		return IntentAggregateFindingsBySource
 	case "top_risk_findings", "high_risk_findings", "findings":
 		return IntentTopRiskFindings
+	case "failing_controls", "failed_controls", "control_failures":
+		return IntentFailingControls
 	case "explain_finding", "finding_explanation":
 		return IntentExplainFinding
 	case "identity_bridge", "identity_bridges":
@@ -331,6 +345,8 @@ func canonicalIntent(value string) string {
 func inferIntent(question string, cypher string) string {
 	haystack := strings.ToLower(question + "\n" + cypher)
 	switch {
+	case (strings.Contains(haystack, "control") || strings.Contains(haystack, "controls")) && (containsWord(haystack, "failing") || containsWord(haystack, "failed") || containsWord(haystack, "fail") || strings.Contains(haystack, "not passing")):
+		return IntentFailingControls
 	case (strings.Contains(haystack, "high risk") || strings.Contains(haystack, "top risk") || strings.Contains(haystack, "critical")) && strings.Contains(haystack, "finding"):
 		return IntentTopRiskFindings
 	case strings.Contains(haystack, "source") && strings.Contains(haystack, "finding") && (strings.Contains(haystack, "count") || strings.Contains(haystack, "breakdown") || strings.Contains(haystack, "group") || strings.Contains(haystack, "top")):
@@ -378,6 +394,35 @@ RETURN finding.urn AS finding_urn,
        coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY finding_urn, resource_urn
 LIMIT %d`, filterProjection, filterPredicate, postProcessingCandidateRowLimit), true
+	case IntentFailingControls:
+		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
+WITH resource, r, finding,
+     coalesce(
+       %s,
+       ''
+     ) AS filter_status,
+     coalesce(
+       %s,
+       ''
+     ) AS filter_control_refs
+WHERE (filter_status = '' OR toLower(filter_status) = 'open')
+  AND filter_control_refs <> ''
+RETURN finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       resource.urn AS resource_urn,
+       coalesce(resource.label, resource.urn) AS resource_label,
+       resource.entity_type AS resource_type,
+       coalesce(r.attributes_json, '') AS relation_attributes_json_internal,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
+ORDER BY finding_urn, resource_urn
+LIMIT %d`, strings.Join([]string{
+			cypherJSONStringAttributes("r.attributes_json", "status"),
+			cypherJSONStringAttributes("finding.attributes_json", "status"),
+		}, ",\n       "), strings.Join([]string{
+			cypherJSONStringAttributes("r.attributes_json", "control_refs"),
+			cypherJSONStringAttributes("finding.attributes_json", "control_refs"),
+		}, ",\n       "), postProcessingCandidateRowLimit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = ''
@@ -552,6 +597,8 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
 				return true
 			}
+		case IntentFailingControls:
+			return true
 		default:
 			return true
 		}
