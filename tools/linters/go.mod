@@ -5,7 +5,7 @@ module github.com/writer/cerebro/tools/linters
 
 go 1.26
 
-require golang.org/x/tools v0.46.0
+require golang.org/x/tools v0.47.0
 
 require (
 	golang.org/x/mod v0.37.0 // indirect
