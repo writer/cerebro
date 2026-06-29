@@ -126,13 +126,6 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:okta_admin_role:SUPER_ADMIN"},
 		},
 		{
-			Type:        "okta.role",
-			Description: "Non-admin Okta role resources. Users or groups link to these with assigned_to when the projection records role context that is not privileged administrator access.",
-			Aliases:     []string{"okta role", "Okta role", "non-admin role"},
-			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
-			Examples:    []string{"urn:cerebro:writer:okta_role:role-1"},
-		},
-		{
 			Type:        "okta.entitlement",
 			Description: "Projected Okta app or role entitlement nodes. These grant privileged.capability nodes; do not infer app-local entitlements beyond what this path exposes.",
 			Aliases:     []string{"okta entitlement", "Okta entitlement", "app entitlement"},

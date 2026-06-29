@@ -96,6 +96,16 @@ func TestOntologyEntityPropertiesStayWithinProjectedContract(t *testing.T) {
 	}
 }
 
+func TestOntologyEntityTypesAreUnique(t *testing.T) {
+	seen := map[string]struct{}{}
+	for _, entity := range canonicalGraphOntology.Entities {
+		if _, ok := seen[entity.Type]; ok {
+			t.Fatalf("ontology entity type %q is documented more than once", entity.Type)
+		}
+		seen[entity.Type] = struct{}{}
+	}
+}
+
 func TestOntologyRelationEndpointTypesAreDocumented(t *testing.T) {
 	entityTypes := map[string]struct{}{"*": {}}
 	for _, entity := range canonicalGraphOntology.Entities {
