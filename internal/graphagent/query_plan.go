@@ -253,7 +253,11 @@ func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
 	if strings.Contains(haystack, "qauto") || strings.Contains(haystack, "questionnaire") || strings.Contains(haystack, "security questionnaire") {
 		return true
 	}
-	if strings.Contains(haystack, "control coverage") || (strings.Contains(haystack, "control") && strings.Contains(haystack, "evidence")) {
+	if strings.Contains(haystack, "control coverage") ||
+		strings.Contains(haystack, "coverage gap") ||
+		strings.Contains(haystack, "evidence gap") ||
+		strings.Contains(haystack, "evidence packet") ||
+		strings.Contains(haystack, "mapped control") {
 		return true
 	}
 	if strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document") {
@@ -277,7 +281,7 @@ func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
 		filters["topic"] = "okta_access"
 	case strings.Contains(lower, "policy doc") || strings.Contains(lower, "policy document"):
 		filters["topic"] = "policy_documents"
-	case strings.Contains(lower, "control coverage") || strings.Contains(lower, "mapped control"):
+	case strings.Contains(lower, "control coverage") || strings.Contains(lower, "coverage gap") || strings.Contains(lower, "evidence gap") || strings.Contains(lower, "evidence packet") || strings.Contains(lower, "mapped control"):
 		filters["topic"] = "control_coverage"
 	}
 	return filters

@@ -405,7 +405,7 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 }
 
 func questionnaireEvidenceRow(row map[string]any) bool {
-	for _, key := range []string{"control_attributes_json_internal", "support_attributes_json_internal", "evidence_attributes_json_internal", "exception_attributes_json_internal"} {
+	for _, key := range []string{"control_attributes_json_internal", "support_attributes_json_internal", "evidence_attributes_json_internal"} {
 		if _, ok := row[key]; ok {
 			return true
 		}

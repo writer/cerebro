@@ -853,6 +853,57 @@ func TestServiceSanitizesInternalSourceAttributes(t *testing.T) {
 	}
 }
 
+func TestServiceKeepsExceptionOnlyRowsOnNonQuestionnaireAttributePath(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"exception_urn":                      "urn:cerebro:writer:exception:exc-1",
+				"exception_label":                    "Accepted exception",
+				"exception_attributes_json_internal": `{"status":"accepted","exception_id":"exc-1","owner_id":"security"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Checking accepted exceptions.",
+			Cypher: `MATCH (exception:Entity {tenant_id: $tenant_id})
+RETURN exception.urn AS exception_urn,
+       coalesce(exception.label, exception.urn) AS exception_label,
+       coalesce(exception.attributes_json, '') AS exception_attributes_json_internal
+LIMIT 25`,
+		},
+		Summary: "Accepted exception is present.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show accepted exceptions",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	rowsEvent := events[6].Data.(RowsEvent)
+	row := rowsEvent.Rows[0]
+	if _, exists := row["exception_attributes_json_internal"]; exists {
+		t.Fatalf("internal exception attributes leaked in row: %#v", row)
+	}
+	if _, exists := row["exception_status"]; exists {
+		t.Fatalf("exception-only non-questionnaire row used questionnaire field names: %#v", row)
+	}
+	if got := row["status"]; got != "accepted" {
+		t.Fatalf("status = %q, want accepted", got)
+	}
+	if got := row["exception_id"]; got != "exc-1" {
+		t.Fatalf("exception_id = %q, want exc-1", got)
+	}
+}
+
 func TestSanitizeInternalAttributesKeepsOnlyBoundedScalars(t *testing.T) {
 	rows := []map[string]any{{
 		"finding_attributes_json_internal": `{"summary":"` + strings.Repeat("a", maxInternalAttributeValueBytes+20) + `","status":{"nested":true},"risk_score":73}`,

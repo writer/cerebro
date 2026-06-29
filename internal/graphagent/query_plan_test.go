@@ -348,6 +348,9 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"qauto_match_text CONTAINS 'mfa'",
 		"WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel",
 		"WHERE supportEvidence IS NULL",
+		"coalesce(supportEvidence, controlEvidence) AS evidence",
+		"coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel",
+		"WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel",
 		"RETURN DISTINCT control.urn AS control_urn",
 		"evidence_source_id,",
 		"source_attributes_json_internal",
@@ -387,6 +390,17 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 	}
 	if got := inferIntent("Explain the Okta access finding", ""); got != IntentExplainFinding {
 		t.Fatalf("inferIntent(okta finding explanation) = %q, want %q", got, IntentExplainFinding)
+	}
+}
+
+func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing.T) {
+	for _, question := range []string{
+		"Show source evidence for access control findings",
+		"What evidence supports this control gap?",
+	} {
+		if got := inferIntent(question, ""); got != IntentRawCypher {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
+		}
 	}
 }
 
