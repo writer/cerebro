@@ -3,18 +3,19 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-suspended-user-active-group-membership
     name: Okta Suspended User Remains in Access Group
-    description: Detects suspended or deprovisioned Okta users that remain in active group memberships.
+    description: Detects suspended or deprovisioned Okta users that remain connected to groups, including group-to-application assignment context when present.
     tags:
         - okta
         - identity
         - offboarding
         - group-membership
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
 spec:
     severity: HIGH
     category: identity
     resourceType: okta_group_membership
-    match:
-        query: SELECT m.member_user_id AS id, COALESCE(u.login, m.member_email, m.member_user_id) AS account_name, COALESCE(u.status, m.member_status) AS user_status, m.group_id, COALESCE(g.name, g.group_name, m.group_id) AS group_name FROM okta_group_memberships m LEFT JOIN okta_users u ON u.id = m.member_user_id LEFT JOIN okta_groups g ON g.id = m.group_id WHERE LOWER(COALESCE(u.status, m.member_status, '')) IN ('suspended','deprovisioned','deactivated','locked_out')
     remediation:
         summary: Remove suspended or deprovisioned users from access groups and confirm connected app access is closed.
     frameworks:
@@ -28,12 +29,22 @@ spec:
     input:
         sourceKinds:
             - okta.group_membership
+            - okta.app_assignment
             - okta.user
         requiredFields:
             - member_user_id
             - member_status
             - group_id
         freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - group_membership
+                - group_app_assignment
+                - user_lifecycle_state
     evidence:
         type: identity_governance
         assessmentMethods:
@@ -45,10 +56,64 @@ spec:
             - user_id
             - user_status
             - group_id
-            - observed_at
+            - graph_evidence_count
         fingerprintFields:
             - tenant_id
             - policy_id
             - resource_urn
             - resource_id
+    audit:
+        evidenceType: identity_governance
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: Suspended or deprovisioned Okta users should not remain in groups that can grant access.
+        riskStatement: Stale group membership can preserve application access even after the user lifecycle state changes.
+        remediationIntent: Remove the membership, review group-assigned applications, and retain updated group evidence.
+        auditorGuidance: Use the graph path from user to group and any group-to-app assignment evidence before scoping remediation.
+        falsePositives:
+            - The group may not grant application access; retain the group purpose or downstream app evidence before suppressing.
+    verification:
+        fixtures:
+            - name: suspended user in access group
+              expect: finding
+              description: Suspended Okta user still has a member_of graph edge to an Okta group.
+            - name: suspended user membership removed
+              expect: pass
+              description: Suspended Okta user has no group membership edge or the lifecycle state is active with approved access.
+        mutationChecks:
+            - remove_group_membership_edge
+            - reactivate_user_with_approval
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (user:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.user'})-[:RELATION {relation: 'member_of'}]->(group:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.group'})
+            OPTIONAL MATCH (group)-[:RELATION {relation: 'assigned_to'}]->(app:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.application'})
+            WITH user, group, collect(DISTINCT app) AS apps,
+                 toLower(coalesce(user.attributes_json, '')) AS user_attrs
+            WHERE user_attrs CONTAINS '"status":"suspended"'
+               OR user_attrs CONTAINS '"status":"deprovisioned"'
+               OR user_attrs CONTAINS '"status":"deactivated"'
+               OR user_attrs CONTAINS '"status":"locked_out"'
+            RETURN user.urn AS primary_urn,
+                   user.label AS primary_label,
+                   user.entity_type AS primary_type,
+                   user.urn + '|' + group.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta suspended or deprovisioned user ' + coalesce(user.label, user.urn) + ' remains in group ' + coalesce(group.label, group.urn) AS summary,
+                   'Remove the group membership and review applications assigned through the group' AS action,
+                   [user.urn, group.urn] AS resource_urns,
+                   [{urn: group.urn, label: group.label, entity_type: group.entity_type, relation: 'member_of', attributes_json: coalesce(group.attributes_json, '')}] +
+                   [a IN apps | {urn: a.urn, label: a.label, entity_type: a.entity_type, relation: 'assigned_to', attributes_json: coalesce(a.attributes_json, '')}] AS evidence,
+                   {evidence_basis: 'okta_user_lifecycle_to_group_membership_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta group membership and review group-assigned applications', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' WHEN user_attrs CONTAINS '"status":"locked_out"' THEN 'locked_out' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.group_membership member_of edge', limitation: 'The finding cites current group paths; group purpose and downstream app enforcement may require separate evidence.'} AS finding_attributes
+            ORDER BY user.urn, group.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
     enabled: true

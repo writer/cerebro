@@ -3,18 +3,19 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-suspended-user-active-assignment
     name: Okta Suspended User Has Active App Assignment
-    description: Detects suspended or deprovisioned Okta users that still have active application assignments.
+    description: Detects suspended or deprovisioned Okta users that still have application-assignment graph edges.
     tags:
         - okta
         - identity
         - offboarding
         - stale-access
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
 spec:
     severity: HIGH
     category: identity
     resourceType: okta_app_assignment
-    match:
-        query: SELECT a.assignee_id AS id, COALESCE(u.login, u.email, a.assignee_id) AS account_name, u.status AS user_status, a.app_id, COALESCE(a.app_label, app.label, app.name) AS app_name FROM okta_app_assignments a JOIN okta_users u ON u.id = a.assignee_id LEFT JOIN okta_applications app ON app.id = a.app_id WHERE UPPER(COALESCE(a.assignee_type, '')) = 'USER' AND LOWER(COALESCE(a.status, 'active')) IN ('active', 'assigned') AND LOWER(COALESCE(u.status, '')) IN ('suspended','deprovisioned','deactivated','locked_out')
     remediation:
         summary: Remove app assignments from suspended or deprovisioned users and verify downstream application access is revoked.
     frameworks:
@@ -30,12 +31,21 @@ spec:
             - okta.app_assignment
             - okta.user
         requiredFields:
-            - assignee_id
-            - assignee_type
+            - subject_id
+            - subject_type
             - status
-            - user_status
             - app_id
         freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - app_assignment
+                - app_entitlement
+                - privileged_capability
+                - user_lifecycle_state
     evidence:
         type: identity_governance
         assessmentMethods:
@@ -47,11 +57,66 @@ spec:
             - user_id
             - user_status
             - app_id
-            - assignment_status
-            - observed_at
+            - graph_evidence_count
         fingerprintFields:
             - tenant_id
             - policy_id
             - resource_urn
             - resource_id
+    audit:
+        evidenceType: identity_governance
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: Suspended or deprovisioned Okta users should not retain application assignments.
+        riskStatement: Dormant lifecycle states with active assignment edges can leave downstream application access available after offboarding.
+        remediationIntent: Remove the assignment, verify downstream app revocation, and retain the updated graph evidence.
+        auditorGuidance: Review the user lifecycle state and the user-to-application graph path before treating this as an access gap.
+        falsePositives:
+            - The linked application may ignore suspended users from Okta; retain downstream revocation evidence with the exception.
+    verification:
+        fixtures:
+            - name: suspended user assigned to app
+              expect: finding
+              description: Suspended Okta user still has an assigned_to graph edge to an application.
+            - name: suspended user assignment removed
+              expect: pass
+              description: Suspended Okta user has no application assignment edge or the user is active with valid access.
+        mutationChecks:
+            - remove_app_assignment_edge
+            - reactivate_user_with_approval
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (user:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.user'})-[:RELATION {relation: 'assigned_to'}]->(app:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.application'})
+            OPTIONAL MATCH (app)-[:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})
+            OPTIONAL MATCH (entitlement)-[:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+            WITH user, app, collect(DISTINCT entitlement) AS entitlements, collect(DISTINCT capability) AS capabilities,
+                 toLower(coalesce(user.attributes_json, '')) AS user_attrs
+            WHERE user_attrs CONTAINS '"status":"suspended"'
+               OR user_attrs CONTAINS '"status":"deprovisioned"'
+               OR user_attrs CONTAINS '"status":"deactivated"'
+               OR user_attrs CONTAINS '"status":"locked_out"'
+            RETURN user.urn AS primary_urn,
+                   user.label AS primary_label,
+                   user.entity_type AS primary_type,
+                   user.urn + '|' + app.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta suspended or deprovisioned user ' + coalesce(user.label, user.urn) + ' remains assigned to ' + coalesce(app.label, app.urn) AS summary,
+                   'Remove the app assignment and confirm downstream access is revoked' AS action,
+                   [user.urn, app.urn] AS resource_urns,
+                   [{urn: app.urn, label: app.label, entity_type: app.entity_type, relation: 'assigned_to', attributes_json: coalesce(app.attributes_json, '')}] +
+                   [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
+                   [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
+                   {evidence_basis: 'okta_user_lifecycle_to_app_assignment_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta app assignment and verify downstream revocation', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' WHEN user_attrs CONTAINS '"status":"locked_out"' THEN 'locked_out' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.app_assignment assigned_to edge', limitation: 'The graph shows Okta assignment state; downstream app revocation must be verified separately when required.'} AS finding_attributes
+            ORDER BY user.urn, app.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
     enabled: true

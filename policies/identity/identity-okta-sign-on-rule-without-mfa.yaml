@@ -3,20 +3,21 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-sign-on-rule-without-mfa
     name: Okta Sign-On Rule Allows Access Without MFA
-    description: Detects active Okta sign-on or access policy rules that allow access without requiring MFA.
+    description: Detects active Okta sign-on policy rules that allow access without requiring MFA, with graph context for scoped users, groups, networks, or identity providers.
     tags:
         - okta
         - identity
         - mfa
         - policy
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
 spec:
     severity: HIGH
     category: identity
     resourceType: okta_policy_rule
-    match:
-        query: SELECT r.policy_rule_id AS id, r.name AS rule_name, r.policy_id, r.policy_name, r.policy_type, r.access, r.requires_mfa, r.group_include_ids, r.app_include_ids FROM okta_policy_rules r WHERE LOWER(COALESCE(r.status, r.policy_rule_status, '')) IN ('active','enabled') AND LOWER(COALESCE(r.policy_status, 'active')) IN ('active','enabled') AND UPPER(COALESCE(r.policy_type, '')) IN ('OKTA_SIGN_ON','ACCESS_POLICY') AND UPPER(COALESCE(r.access, 'ALLOW')) = 'ALLOW' AND COALESCE(r.requires_mfa, false) = false
     remediation:
-        summary: Require MFA on the policy rule or narrow the rule to a documented exception group.
+        summary: Require MFA on the Okta sign-on rule or narrow the rule to a documented exception group.
     frameworks:
         - name: SOC 2
           controls:
@@ -41,6 +42,16 @@ spec:
             - access
             - requires_mfa
         freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - policy_scope
+                - scoped_groups
+                - scoped_applications
+                - source_policy_rule
     evidence:
         type: identity_configuration
         assessmentMethods:
@@ -56,7 +67,7 @@ spec:
             - status
             - access
             - requires_mfa
-            - observed_at
+            - graph_evidence_count
         fingerprintFields:
             - tenant_id
             - policy_id
@@ -68,8 +79,9 @@ spec:
             - test
         freshnessSLA: 24h
         auditorStatement: Okta sign-on rules require MFA unless an approved exception rule is documented.
-        riskStatement: A sign-on rule that allows access without MFA can bypass identity control enforcement for users or applications in scope.
-        remediationIntent: Update the policy rule to require MFA, limit exception scope, and retain the rule snapshot after synchronization.
+        riskStatement: A sign-on rule that allows access without MFA can bypass identity control enforcement for users or groups in scope.
+        remediationIntent: Update the policy rule to require MFA, limit exception scope, and retain the graph evidence after synchronization.
+        auditorGuidance: Use the graph evidence rows to review the policy, rule, and scoped targets before accepting the exception.
         acceptableEvidence:
             - source: okta
               fields:
@@ -77,7 +89,7 @@ spec:
                 - policy_id
                 - policy_type
                 - requires_mfa
-                - observed_at
+                - graph_evidence_count
         exceptionPolicy:
             maxAge: 30d
             requiresApproval: true
@@ -85,4 +97,49 @@ spec:
             - A break-glass or service-access exception is approved, scoped, and reviewed before expiration.
         falsePositives:
             - The rule is inactive, denied, or restricted to a documented exception population.
+            - A downstream application may enforce MFA separately; retain that application evidence with the exception.
+    verification:
+        fixtures:
+            - name: active scoped sign-on rule without MFA
+              expect: finding
+              description: Active Okta sign-on policy rule allows access without MFA and returns scoped graph targets.
+            - name: rule requires MFA
+              expect: pass
+              description: Okta policy rule requires MFA or is inactive and does not return a finding.
+        mutationChecks:
+            - remove_graph_scope
+            - require_mfa_on_rule
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (rule:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.policy_rule'})
+            MATCH (rule)-[:RELATION {relation: 'belongs_to'}]->(policy:Entity {tenant_id: $tenant_id})
+            OPTIONAL MATCH (rule)-[scope:RELATION]->(target:Entity {tenant_id: $tenant_id})
+            WHERE scope.relation IN ['targeted', 'depends_on']
+            WITH rule, policy, collect(DISTINCT {urn: target.urn, label: target.label, entity_type: target.entity_type, relation: scope.relation, attributes_json: coalesce(target.attributes_json, '')}) AS scoped_targets,
+                 toLower(coalesce(rule.attributes_json, '')) AS attrs
+            WHERE attrs CONTAINS '"status":"active"'
+              AND attrs CONTAINS '"policy_type":"okta_sign_on"'
+              AND attrs CONTAINS '"access":"allow"'
+              AND attrs CONTAINS '"requires_mfa":"false"'
+            RETURN rule.urn AS primary_urn,
+                   rule.label AS primary_label,
+                   rule.entity_type AS primary_type,
+                   rule.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta sign-on policy rule ' + coalesce(rule.label, rule.urn) + ' allows access without MFA' AS summary,
+                   'Require MFA on the sign-on policy rule or narrow the scope to an approved exception' AS action,
+                   [rule.urn, policy.urn] AS resource_urns,
+                   [{urn: policy.urn, label: policy.label, entity_type: policy.entity_type, relation: 'belongs_to', attributes_json: coalesce(policy.attributes_json, '')}] + scoped_targets AS evidence,
+                   {evidence_basis: 'okta_sign_on_policy_rule_scope_graph_path', confidence: 'high', remediation_intent: 'Require MFA on the Okta sign-on policy rule or narrow exception scope', mfa_state: 'rule_requires_mfa_false', source_provenance: 'okta.policy_rule graph node plus scoped targeted/depends_on edges for OKTA_SIGN_ON policy_type', limitation: 'ACCESS_POLICY app sign-on MFA/factor sequence data is not evaluated until the Okta source extracts actions.appSignOn evidence.'} AS finding_attributes
+            ORDER BY rule.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
     enabled: true

@@ -2,19 +2,20 @@ apiVersion: cerebro.writer.com/v1alpha1
 kind: PolicyFindingRule
 metadata:
     id: identity-okta-external-account-no-owner
-    name: Okta External Account Missing Owner Evidence
-    description: Detects active Okta accounts on non-corporate domains that do not have manager, employee, or owner evidence.
+    name: Okta External Account With Access Missing Owner Evidence
+    description: Detects active Okta accounts on unmanaged email domains that have access graph edges but no manager, employee, or owner evidence.
     tags:
         - okta
         - identity
         - third-party-access
         - owner-evidence
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
 spec:
     severity: MEDIUM
     category: identity
     resourceType: okta_user
-    match:
-        query: SELECT u.id AS id, COALESCE(u.login, u.email, u.id) AS account_name, u.email, u.user_type, u.manager, u.manager_id, u.employee_number FROM okta_users u LEFT JOIN employees e ON LOWER(COALESCE(u.email, '')) = LOWER(e.work_email) WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND COALESCE(TRIM(u.email), '') != '' AND LOWER(COALESCE(u.email, '')) RLIKE '.*@(gmail|yahoo|hotmail|outlook|icloud|protonmail)\\.com$' AND e.work_email IS NULL AND COALESCE(TRIM(u.manager_id), TRIM(u.manager), TRIM(u.employee_number), '') = ''
     remediation:
         summary: Assign an internal owner, document the external account purpose, or disable the account.
     frameworks:
@@ -29,6 +30,9 @@ spec:
     input:
         sourceKinds:
             - okta.user
+            - okta.app_assignment
+            - okta.group_membership
+            - okta.admin_role
         requiredFields:
             - email
             - status
@@ -36,6 +40,17 @@ spec:
             - manager_id
             - employee_number
         freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - access_edges
+                - lifecycle_owner
+                - admin_role
+                - app_assignment
+                - group_membership
     evidence:
         type: identity_governance
         assessmentMethods:
@@ -49,10 +64,65 @@ spec:
             - manager
             - manager_id
             - employee_number
-            - observed_at
+            - graph_evidence_count
         fingerprintFields:
             - tenant_id
             - policy_id
             - resource_urn
             - resource_id
+    audit:
+        evidenceType: identity_governance
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: External Okta accounts with access should have an internal owner or approved lifecycle evidence.
+        riskStatement: Unowned external accounts with access edges are harder to review, renew, or remove when work ends.
+        remediationIntent: Attach owner evidence, document the account purpose, or remove access and disable the account.
+        auditorGuidance: Review the email domain, missing owner fields, and each returned access edge before accepting the finding.
+        falsePositives:
+            - A contractor or vendor may have separately approved owner evidence; attach that source before suppressing.
+            - Some corporate domains may look like public domains after tenant-specific aliases; document the accepted domain list separately.
+    verification:
+        fixtures:
+            - name: external account with access and no owner
+              expect: finding
+              description: Active Okta account on an unmanaged email domain has access graph edges and no owner evidence.
+            - name: external account owned or disabled
+              expect: pass
+              description: External Okta account has owner evidence, no access edges, or is disabled.
+        mutationChecks:
+            - add_owner_evidence
+            - remove_access_edges
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (user:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.user'})-[access:RELATION]->(target:Entity {tenant_id: $tenant_id})
+            WHERE access.relation IN ['assigned_to', 'member_of', 'can_admin']
+            WITH user, collect(DISTINCT {urn: target.urn, label: target.label, entity_type: target.entity_type, relation: access.relation, attributes_json: coalesce(target.attributes_json, '')}) AS access_targets,
+                 toLower(coalesce(user.attributes_json, '')) AS user_attrs
+            WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
+              AND (user_attrs CONTAINS '@gmail.com' OR user_attrs CONTAINS '@yahoo.com' OR user_attrs CONTAINS '@hotmail.com' OR user_attrs CONTAINS '@outlook.com' OR user_attrs CONTAINS '@icloud.com' OR user_attrs CONTAINS '@protonmail.com')
+              AND NOT (user_attrs CONTAINS '"manager":')
+              AND NOT (user_attrs CONTAINS '"manager_id":')
+              AND NOT (user_attrs CONTAINS '"employee_number":')
+            RETURN user.urn AS primary_urn,
+                   user.label AS primary_label,
+                   user.entity_type AS primary_type,
+                   user.urn AS fingerprint_key,
+                   'MEDIUM' AS severity,
+                   'Okta external account ' + coalesce(user.label, user.urn) + ' has access but no owner evidence' AS summary,
+                   'Assign an internal owner, document the account purpose, or remove the access' AS action,
+                   [user.urn] AS resource_urns,
+                   access_targets AS evidence,
+                   {evidence_basis: 'okta_external_identity_with_access_graph_path', confidence: 'medium', remediation_intent: 'Assign an internal owner, document purpose, or remove Okta access', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user graph node plus assigned_to/member_of/can_admin access edge', limitation: 'External status is inferred from email domain and missing owner fields in Okta source data.'} AS finding_attributes
+            ORDER BY user.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
     enabled: true

@@ -1208,6 +1208,67 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	assertProjectedLinkMissing(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_oauth_client:ALL_CLIENTS")
 }
 
+func TestProjectOktaUserCarriesLifecycleMFAAndSourceFacts(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	observed := time.Date(2026, time.June, 20, 12, 30, 0, 0, time.UTC)
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-user-00u1",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.user",
+		OccurredAt: timestamppb.New(observed),
+		Attributes: map[string]string{
+			"activated_at":           "2026-01-02T03:04:05Z",
+			"created_at":             "2026-01-01T03:04:05Z",
+			"domain":                 "writer.okta.com",
+			"email":                  "admin@writer.com",
+			"employee_number":        "E-123",
+			"last_login_at":          "2026-05-01T03:04:05Z",
+			"last_updated_at":        "2026-05-02T03:04:05Z",
+			"login":                  "admin@writer.com",
+			"mfa_enrolled":           "true",
+			"mfa_factor_count":       "2",
+			"mfa_factor_types":       "okta_verify,webauthn",
+			"mfa_phishing_resistant": "true",
+			"password_changed_at":    "2026-04-01T03:04:05Z",
+			"status":                 "ACTIVE",
+			"status_changed_at":      "2026-01-03T03:04:05Z",
+			"user_id":                "00u1",
+		},
+	}); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	entity := state.entities["urn:cerebro:writer:okta_user:00u1"]
+	if entity == nil {
+		t.Fatal("projected Okta user missing")
+	}
+	for key, want := range map[string]string{
+		"activated_at":           "2026-01-02T03:04:05Z",
+		"created_at":             "2026-01-01T03:04:05Z",
+		"email":                  "admin@writer.com",
+		"employee_number":        "E-123",
+		"event_kind":             "okta.user",
+		"last_login_at":          "2026-05-01T03:04:05Z",
+		"last_updated_at":        "2026-05-02T03:04:05Z",
+		"mfa_enrolled":           "true",
+		"mfa_factor_count":       "2",
+		"mfa_factor_types":       "okta_verify,webauthn",
+		"mfa_phishing_resistant": "true",
+		"observed_at":            observed.Format(time.RFC3339),
+		"password_changed_at":    "2026-04-01T03:04:05Z",
+		"source_event_id":        "okta-user-00u1",
+		"status":                 "ACTIVE",
+		"status_changed_at":      "2026-01-03T03:04:05Z",
+	} {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("entity.Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 	tests := []struct {
 		name           string

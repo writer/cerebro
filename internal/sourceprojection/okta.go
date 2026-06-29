@@ -488,14 +488,20 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 	userURN := oktaUserURN(tenantID, userID)
 	if userURN != "" {
 		userAttrs := map[string]string{
-			"email":  email,
-			"login":  login,
-			"status": strings.TrimSpace(attributes["status"]),
+			"email":           email,
+			"event_kind":      event.GetKind(),
+			"login":           login,
+			"source_event_id": event.GetId(),
+			"status":          strings.TrimSpace(attributes["status"]),
 		}
 		for _, key := range []string{
+			"activated_at",
+			"created_at",
 			"department",
 			"employee_number",
 			"job_title",
+			"last_login_at",
+			"last_updated_at",
 			"manager",
 			"manager_id",
 			"mfa_enrolled",
@@ -503,11 +509,16 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"mfa_factor_types",
 			"mfa_phishing_resistant",
 			"organization",
+			"password_changed_at",
+			"status_changed_at",
 			"user_type",
 		} {
 			if v := strings.TrimSpace(attributes[key]); v != "" {
 				userAttrs[key] = v
 			}
+		}
+		if observedAt := eventObservedAt(event); observedAt != "" {
+			userAttrs["observed_at"] = observedAt
 		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,

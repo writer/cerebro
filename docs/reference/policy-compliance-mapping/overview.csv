@@ -1,7 +1,7 @@
 metric,value
 policy finding rules,1506
 policy-control rows,10044
-tag rows,15034
+tag rows,15043
 unique tags,1023
 domains,36
 frameworks,23
@@ -10,22 +10,22 @@ all finding metric,value
 public detections,1592
 non-policy detections,86
 finding-control rows,10228
-finding-tag rows,38550
-source-coverage rows,4213
+finding-tag rows,38559
+source-coverage rows,4284
 finding compliance review rows,1592
 unique finding review tags,1575
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
 detections missing source coverage refs,393
-detections source-backed,415
-detections partial source-backed,784
+detections source-backed,416
+detections partial source-backed,783
 detections control-only,393
 
 evidence mode,rules
 cel,992
-query,513
-graph,1
+query,504
+graph,10
 
 domain,rules
 identity,433
@@ -91,8 +91,8 @@ CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1561
-graph,31
+event,1552
+graph,40
 
 finding pack,detections
 policy,1506
@@ -128,13 +128,13 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1505
+policy,1496
 github,16
+okta,15
 grc,12
 sentinelone,9
 identity,8
 cloud,6
-okta,6
 graph,4
 vulnview,2
 anthropic,1
@@ -189,7 +189,7 @@ CIS Google Workspace Benchmark,1
 NIST SP 800-177,1
 
 finding audit domain,detections
-identity,467
+identity,459
 github,307
 aws,142
 vulnerability,107
@@ -208,6 +208,7 @@ secrets,15
 container,13
 incident_response,12
 database,9
+okta,9
 org,9
 network,8
 pci,8
@@ -225,4 +226,3 @@ hubspot,3
 stripe,3
 integration,2
 zendesk,2
-okta,1

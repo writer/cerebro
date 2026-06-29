@@ -3,20 +3,21 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-dormant-admin-role-assignment
     name: Okta Dormant Admin Role Assignment
-    description: Detects active Okta admin role assignments for users with no login activity in 30 days.
+    description: Detects each active Okta admin-role assignment whose assigned user has no login activity in 30 days, preserving per-role evidence for access review.
     tags:
         - okta
         - identity
         - privileged-access
         - stale-accounts
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
 spec:
     severity: HIGH
     category: identity
     resourceType: okta_admin_role
-    match:
-        query: SELECT r.user_id AS id, COALESCE(u.login, r.user_login, r.user_id) AS account_name, r.role_type, r.role_label, u.last_login FROM okta_admin_roles r LEFT JOIN okta_users u ON u.id = r.user_id WHERE LOWER(COALESCE(u.status, 'active')) IN ('active','enabled','provisioned','onboarded') AND (u.last_login IS NULL OR u.last_login < CURRENT_TIMESTAMP() - INTERVAL '30 days')
     remediation:
-        summary: Remove the admin role from dormant users or document the active break-glass review.
+        summary: Remove the specific admin role assignment from dormant users or document the active break-glass review.
     frameworks:
         - name: SOC 2
           controls:
@@ -34,8 +35,18 @@ spec:
             - user_id
             - role_type
             - status
-            - last_login
+            - last_login_at
         freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - admin_role
+                - privileged_capability
+                - last_login_at
+                - source_user
     evidence:
         type: access_review
         assessmentMethods:
@@ -46,11 +57,69 @@ spec:
         requiredFields:
             - user_id
             - role_type
-            - last_login
-            - observed_at
+            - last_login_at
+            - graph_evidence_count
         fingerprintFields:
             - tenant_id
             - policy_id
             - resource_urn
             - resource_id
+    audit:
+        evidenceType: access_review
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: Each Okta admin-role assignment should be reviewed when the assigned user has no recent login activity.
+        riskStatement: A dormant user can retain one or more distinct Okta admin roles outside normal activity patterns.
+        remediationIntent: Remove the specific admin role assignment, disable the dormant account, or document the reviewed break-glass use case.
+        auditorGuidance: Use the per-role graph path from user to admin role and the Okta last_login_at source fact before deciding remediation.
+        falsePositives:
+            - A break-glass account may intentionally have no recent login; retain review and monitoring evidence before suppressing.
+            - Last login can be absent for newly provisioned or source-limited accounts; confirm account age if available.
+    verification:
+        fixtures:
+            - name: dormant user with specific admin role
+              expect: finding
+              description: Active Okta user has stale or missing last_login_at and a specific admin-role graph edge.
+            - name: recent admin login or role removed
+              expect: pass
+              description: Okta admin user has recent last_login_at evidence or no admin-role graph edge.
+        mutationChecks:
+            - refresh_last_login_at
+            - remove_admin_role_edge
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (user:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.user'})-[:RELATION {relation: 'can_admin'}]->(role:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.admin_role'})
+            OPTIONAL MATCH (role)-[:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})
+            OPTIONAL MATCH (entitlement)-[:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+            WITH user, role, collect(DISTINCT entitlement) AS entitlements, collect(DISTINCT capability) AS capabilities,
+                 coalesce(user.attributes_json, '') AS attrs,
+                 toLower(coalesce(user.attributes_json, '')) AS user_attrs
+            WITH user, role, entitlements, capabilities, user_attrs,
+                 CASE WHEN attrs CONTAINS '"last_login_at":"' THEN split(split(attrs, '"last_login_at":"')[1], '"')[0] ELSE '' END AS last_login_at
+            WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
+              AND (last_login_at = '' OR datetime(last_login_at) < datetime() - duration('P30D'))
+            RETURN user.urn AS primary_urn,
+                   user.label AS primary_label,
+                   user.entity_type AS primary_type,
+                   user.urn + '|' + role.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta dormant user ' + coalesce(user.label, user.urn) + ' still has admin role assignment ' + coalesce(role.label, role.urn) AS summary,
+                   'Remove this admin role assignment or document the current break-glass review' AS action,
+                   [user.urn, role.urn] AS resource_urns,
+                   [{urn: role.urn, label: role.label, entity_type: role.entity_type, relation: 'can_admin', attributes_json: coalesce(role.attributes_json, '')}] +
+                   [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
+                   [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
+                   {evidence_basis: 'okta_last_login_at_to_admin_role_assignment_graph_path', confidence: 'medium', remediation_intent: 'Remove this dormant admin role assignment or document a current break-glass review', finding_scope: 'per_admin_role_assignment', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus specific okta.admin_role can_admin edge', limitation: 'Missing last_login_at is treated as review-needed, not proof of misuse; this rule emits per admin role assignment and may coexist with account-level stale-login policies.'} AS finding_attributes
+            ORDER BY user.urn, role.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
     enabled: true

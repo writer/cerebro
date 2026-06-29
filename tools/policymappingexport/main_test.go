@@ -443,10 +443,10 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4213")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4284")
 	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "393")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "415")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "784")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "416")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "783")
 	assertOverviewMetric(t, overviewRows, "detections control-only", "393")
 }
 
@@ -699,13 +699,14 @@ func TestGenerateFilesMapsOktaPolicyFindingsToSourceCoverage(t *testing.T) {
 	} {
 		row := findRow(t, findingRows, findingIDCol, findingID)
 		assertCellContains(t, findingHeader, row, "source_capability_status", "source_capability_defined")
-		assertCellContains(t, findingHeader, row, "source_id", "policy")
+		assertCellContains(t, findingHeader, row, "source_id", "okta")
+		assertCellContains(t, findingHeader, row, "evaluation_mode", "graph")
 	}
 
 	signOnRow := findRow(t, findingRows, findingIDCol, "identity-okta-sign-on-rule-without-mfa")
 	assertCellContains(t, findingHeader, signOnRow, "source_capability_refs", "okta/policy_rules")
 	assertCellContains(t, findingHeader, signOnRow, "control_refs", "NIST 800-53 r5 IA-2")
-	assertCellContains(t, findingHeader, signOnRow, "evidence_type", "identity_configuration")
+	assertCellContains(t, findingHeader, signOnRow, "evidence_type", "identity_governance")
 
 	assignmentRow := findRow(t, findingRows, findingIDCol, "identity-okta-suspended-user-active-assignment")
 	assertCellContains(t, findingHeader, assignmentRow, "source_capability_refs", "okta/app_assignments")
