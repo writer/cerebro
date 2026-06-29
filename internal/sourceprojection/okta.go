@@ -488,14 +488,20 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 	userURN := oktaUserURN(tenantID, userID)
 	if userURN != "" {
 		userAttrs := map[string]string{
-			"email":  email,
-			"login":  login,
-			"status": strings.TrimSpace(attributes["status"]),
+			"email":           email,
+			"event_kind":      event.GetKind(),
+			"login":           login,
+			"source_event_id": event.GetId(),
+			"status":          strings.TrimSpace(attributes["status"]),
 		}
 		for _, key := range []string{
+			"activated_at",
+			"created_at",
 			"department",
 			"employee_number",
 			"job_title",
+			"last_login_at",
+			"last_updated_at",
 			"manager",
 			"manager_id",
 			"mfa_enrolled",
@@ -503,12 +509,18 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"mfa_factor_types",
 			"mfa_phishing_resistant",
 			"organization",
+			"password_changed_at",
+			"status_changed_at",
 			"user_type",
 		} {
 			if v := strings.TrimSpace(attributes[key]); v != "" {
 				userAttrs[key] = v
 			}
 		}
+		if observedAt := eventObservedAt(event); observedAt != "" {
+			userAttrs["observed_at"] = observedAt
+		}
+		addOktaUserLifecyclePayloadAttributes(userAttrs, payloadMap(event))
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
 			TenantID:   tenantID,
@@ -833,4 +845,16 @@ func oktaResourceURN(tenantID string, resourceType string, resourceID string) st
 
 func oktaAuditTargetUser(resourceType string, targetType string) bool {
 	return strings.EqualFold(resourceType, "user") || strings.EqualFold(targetType, "user")
+}
+
+func addOktaUserLifecyclePayloadAttributes(attributes map[string]string, payload map[string]any) {
+	timestamps, _ := payload["timestamps"].(map[string]any)
+	for _, key := range []string{"created_at", "activated_at", "last_login_at", "last_updated_at", "password_changed_at", "status_changed_at"} {
+		if strings.TrimSpace(attributes[key]) != "" {
+			continue
+		}
+		if value, _ := timestamps[key].(string); strings.TrimSpace(value) != "" {
+			attributes[key] = strings.TrimSpace(value)
+		}
+	}
 }

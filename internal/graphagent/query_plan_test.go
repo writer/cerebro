@@ -112,6 +112,21 @@ func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	}
 }
 
+func TestOntologyPromptDocumentsOktaAccessReviewGraphShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"Entity `okta.user`",
+		"Okta access-review evidence is graph-shaped",
+		"`okta.user` -> `okta.group` via `member_of`",
+		"`mfa_phishing_resistant`",
+		"do not treat missing factor detail as proof of weak MFA",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
+	}
+}
+
 func TestAskQueryPlanUnmarshalCoercesFilterValues(t *testing.T) {
 	var plan AskQueryPlan
 	if err := json.Unmarshal([]byte(`{"intent":"top_risk_findings","filters":{"risk_score":50,"active":true,"source":"github"}}`), &plan); err != nil {
@@ -134,6 +149,90 @@ func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
 	}
 	if got := inferIntent("show top finding sources", ""); got != IntentAggregateFindingsBySource {
 		t.Fatalf("inferIntent(top finding sources) = %q, want %q", got, IntentAggregateFindingsBySource)
+	}
+}
+
+func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
+	cases := []struct {
+		question string
+		want     string
+	}{
+		{question: "Which privileged Okta users lack strong MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which dormant Okta users still have app or admin access?", want: IntentOktaDormantAccess},
+		{question: "Which Okta group memberships create compliance risk?", want: IntentOktaGroupAccessRisk},
+	}
+	for _, tc := range cases {
+		if got := inferIntent(tc.question, ""); got != tc.want {
+			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaPrivilegedWeakMFA, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentOktaPrivilegedWeakMFA || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta privileged weak MFA template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.user'",
+		"relation: 'can_admin'",
+		"entity_type: 'okta.admin_role'",
+		"user.mfa_disabled = true OR toLower(mfa_phishing_resistant) = 'false'",
+		"mfa_factor_types",
+		"overclaim_guard",
+		"LIMIT 25",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaDormantAccessTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which dormant Okta users still have app or admin access?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaDormantAccess, Limit: 30},
+	})
+
+	if result.Plan.Intent != IntentOktaDormantAccess || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta dormant access template", result)
+	}
+	for _, want := range []string{
+		"last_login_at",
+		"duration('P90D')",
+		"direct_app_assignment",
+		"group_app_assignment",
+		"admin_role_assignment",
+		"membership_event_id",
+		"overclaim_guard",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaGroupAccessRiskTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which Okta group memberships create compliance risk?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaGroupAccessRisk, Limit: 10},
+	})
+
+	if result.Plan.Intent != IntentOktaGroupAccessRisk || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta group access risk template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.group'",
+		"entity_type: 'okta.application'",
+		"grants_entitlement",
+		"confers_capability",
+		"privileged_group_app_access",
+		"does not infer app-local roles",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
 	}
 }
 

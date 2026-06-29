@@ -69,6 +69,48 @@ var canonicalGraphOntology = GraphOntology{
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:source:github"},
 		},
+		{
+			Type:        "okta.user",
+			Description: "Okta user principals. Lifecycle, MFA summary, employment/profile hints, source_event_id, and observed_at are stored in attributes_json; promoted booleans such as is_privileged_identity and mfa_disabled may exist as indexed node properties.",
+			Aliases:     []string{"okta user", "Okta user", "Okta principal", "identity user"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_user:00u1"},
+		},
+		{
+			Type:        "okta.group",
+			Description: "Okta groups linked from users by member_of and to Okta applications by assigned_to when group app assignments are projected.",
+			Aliases:     []string{"okta group", "Okta group", "identity group"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_group:grp-security"},
+		},
+		{
+			Type:        "okta.application",
+			Description: "Okta applications. Application metadata is in attributes_json; app-local permissions are available only when projected as okta.entitlement capability paths.",
+			Aliases:     []string{"okta app", "Okta app", "Okta application", "application"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_application:app-1"},
+		},
+		{
+			Type:        "okta.admin_role",
+			Description: "Okta admin role assignments and role resources. Users link to these with can_admin for privileged administrator access.",
+			Aliases:     []string{"okta admin role", "Okta admin role", "privileged role"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_admin_role:SUPER_ADMIN"},
+		},
+		{
+			Type:        "okta.entitlement",
+			Description: "Projected Okta app or role entitlement nodes. These grant privileged.capability nodes; do not infer app-local entitlements beyond what this path exposes.",
+			Aliases:     []string{"okta entitlement", "Okta entitlement", "app entitlement"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_entitlement:app_assignment:app-1"},
+		},
+		{
+			Type:        "privileged.capability",
+			Description: "Normalized capability nodes conferred by source entitlements, such as app_access, identity_admin, or cloud_admin.",
+			Aliases:     []string{"capability", "privileged capability", "access capability"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:privileged_capability:identity_admin"},
+		},
 	},
 	Relations: []OntologyRelation{
 		{
@@ -106,6 +148,41 @@ var canonicalGraphOntology = GraphOntology{
 			FromTypes:   []string{"*"},
 			ToTypes:     []string{"identity.email", "identity.login"},
 		},
+		{
+			Relation:    fabriccontract.RelationMemberOf,
+			Description: "Membership edge from an identity principal to a group; edge attributes carry event/source provenance.",
+			Aliases:     []string{"MEMBER_OF", "group membership", "member of"},
+			FromTypes:   []string{"okta.user"},
+			ToTypes:     []string{"okta.group"},
+		},
+		{
+			Relation:    fabriccontract.RelationAssignedTo,
+			Description: "Assignment edge from a user or group to an application, or from a principal to a non-admin role; edge attributes carry event/source provenance.",
+			Aliases:     []string{"ASSIGNED_TO", "app assignment", "assigned to"},
+			FromTypes:   []string{"okta.user", "okta.group"},
+			ToTypes:     []string{"okta.application", "okta.role"},
+		},
+		{
+			Relation:    fabriccontract.RelationCanAdmin,
+			Description: "Privileged admin assignment edge from a user to an admin role; edge attributes carry event/source provenance.",
+			Aliases:     []string{"CAN_ADMIN", "admin role assignment", "administrator"},
+			FromTypes:   []string{"okta.user"},
+			ToTypes:     []string{"okta.admin_role"},
+		},
+		{
+			Relation:    fabriccontract.RelationGrantsEntitlement,
+			Description: "Edge from an application or role to a projected entitlement. Use this before claiming an access capability.",
+			Aliases:     []string{"GRANTS_ENTITLEMENT", "grants entitlement"},
+			FromTypes:   []string{"okta.application", "okta.admin_role"},
+			ToTypes:     []string{"okta.entitlement"},
+		},
+		{
+			Relation:    fabriccontract.RelationConfersCapability,
+			Description: "Edge from a projected entitlement to a normalized capability. Capabilities are source-backed, not inferred app-local permissions.",
+			Aliases:     []string{"CONFERS_CAPABILITY", "confers capability"},
+			FromTypes:   []string{"okta.entitlement"},
+			ToTypes:     []string{"privileged.capability"},
+		},
 	},
 }
 
@@ -122,6 +199,8 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Connector/source health nodes use `entity_type: 'source'`; there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property. Read source health metadata from controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
+	fmt.Fprintf(&b, "- Okta access-review evidence is graph-shaped: use `okta.user` -> `okta.group` via `member_of`, user/group -> `okta.application` via `assigned_to`, user -> `okta.admin_role` via `can_admin`, and application/admin-role -> `okta.entitlement` -> `privileged.capability` before claiming app, admin, or privileged capability access.\n")
+	fmt.Fprintf(&b, "- Okta lifecycle and MFA fields such as `status`, `last_login_at`, `mfa_enrolled`, `mfa_factor_count`, `mfa_factor_types`, `mfa_phishing_resistant`, `source_event_id`, and `observed_at` live in `attributes_json`; do not treat missing factor detail as proof of weak MFA or infer contractor approval from Okta profile hints alone.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
 		if len(entity.Examples) > 0 {

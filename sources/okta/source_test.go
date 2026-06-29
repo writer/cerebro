@@ -688,8 +688,8 @@ func TestReadOktaUserEmitsEmploymentAttributes(t *testing.T) {
 	for key, want := range map[string]string{
 		"department":   "Security",
 		"job_title":    "Engineer",
-		"title":        "Engineer",
 		"organization": "Writer",
+		"title":        "Engineer",
 		"user_type":    "employee",
 	} {
 		if got := event.Attributes[key]; got != want {
