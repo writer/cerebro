@@ -66,7 +66,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
 			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
-			if len(matches) == 0 || !coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
+			if len(matches) == 0 || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
@@ -175,8 +175,11 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 	return score + matchedControls
 }
 
-func coverageControlMatchAllowed(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
+func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
 	if !sourceMatched && !dimensionMatched {
+		return false
+	}
+	if strings.TrimSpace(detectionSourceID) == policyRuleSourceID && !dimensionMatched {
 		return false
 	}
 	if !exactControlMatch && !dimensionMatched && !evidenceMatched {

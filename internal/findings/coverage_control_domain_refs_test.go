@@ -167,6 +167,67 @@ func TestSourceCoverageExplicitRefsCanMatchSourceWithoutDimensionOrEvidence(t *t
 	}
 }
 
+func TestPolicySourceCoverageExplicitRefsRequireDimensionMatch(t *testing.T) {
+	detection := PublicDetection{
+		ID:       "aws-load-balancer-network-posture",
+		Name:     "AWS Load Balancer Network Posture",
+		SourceID: policyRuleSourceID,
+		Tags:     []string{"aws", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "cloud_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "aws",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{
+				ID:            "s3_bucket",
+				Type:          "entity_family",
+				Families:      []string{"s3_bucket"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"network_exposure"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+			{
+				ID:            "unrelated_cloud_configuration",
+				Type:          "entity_family",
+				Families:      []string{"unrelated"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"cloud_configuration"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+			{
+				ID:            "elbv2_load_balancer",
+				Type:          "entity_family",
+				Families:      []string{"load_balancer"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"network_exposure"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+		},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want only the named load balancer dimension: %#v", len(refs), refs)
+	}
+	if refs[0].DimensionID != "elbv2_load_balancer" {
+		t.Fatalf("DimensionID = %q, want elbv2_load_balancer", refs[0].DimensionID)
+	}
+}
+
 func TestCoverageControlIDMatchesGDPRArticleAliases(t *testing.T) {
 	for _, legacy := range []string{"Art.5", "Art-5", "Art 5"} {
 		matched, exact := coverageControlIDMatches(legacy, "Article 5")

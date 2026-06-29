@@ -112,16 +112,15 @@ sources:
         high_value: true
         families:
           - iam_role_trust
+          - cross_account
+          - role_trust
         evidence_types:
+          - cloud_configuration
           - identity_configuration
           - relationship_evidence
         control_domains:
           - identity_access
         control_refs:
-          - framework: SOC 2
-            control_id: CC6.1
-          - framework: SOC 2
-            control_id: CC6.6
           - framework: CIS Controls v8
             control_id: "5"
           - framework: CIS Controls v8
@@ -129,34 +128,58 @@ sources:
           - framework: NIST 800-53 r5
             control_id: AC-2
           - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
             control_id: AC-6
           - framework: PCI DSS v4.0.1
             control_id: "7.2"
           - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
             control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: s3_bucket
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
           - s3_bucket
+          - replication
+          - s3
         evidence_types:
           - encryption_configuration
           - network_exposure
+          - resilience_control
         control_domains:
+          - availability_resilience
           - data_protection
           - network_security
         control_refs:
-          - framework: ISO 27001:2022
-            control_id: A.8.24
-          - framework: SOC 2
-            control_id: C1.1
-          - framework: SOC 2
-            control_id: CC6.6
+          - framework: CIS Controls v8
+            control_id: "11"
           - framework: CIS Controls v8
             control_id: "13"
           - framework: CIS Controls v8
             control_id: "3"
+          - framework: ISO 27001:2022
+            control_id: A.5.29
+          - framework: ISO 27001:2022
+            control_id: A.5.30
+          - framework: ISO 27001:2022
+            control_id: A.8.13
+          - framework: ISO 27001:2022
+            control_id: A.8.14
+          - framework: ISO 27001:2022
+            control_id: A.8.24
+          - framework: NIST 800-53 r5
+            control_id: CP-10
+          - framework: NIST 800-53 r5
+            control_id: CP-2
+          - framework: NIST 800-53 r5
+            control_id: CP-4
+          - framework: NIST 800-53 r5
+            control_id: CP-9
           - framework: NIST 800-53 r5
             control_id: SC-12
           - framework: NIST 800-53 r5
@@ -172,7 +195,17 @@ sources:
           - framework: PCI DSS v4.0.1
             control_id: "3.5"
           - framework: SOC 2
+            control_id: A1.1
+          - framework: SOC 2
+            control_id: A1.2
+          - framework: SOC 2
+            control_id: A1.3
+          - framework: SOC 2
+            control_id: C1.1
+          - framework: SOC 2
             control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
           - framework: SOC 2
             control_id: CC6.7
       - dimension_id: public_endpoint
@@ -219,26 +252,32 @@ sources:
         support_level: supported
         high_value: true
         families:
+          - ecs
           - security_group
+          - security_groups
         evidence_types:
           - network_exposure
         control_domains:
           - network_security
         control_refs:
-          - framework: ISO 27001:2022
-            control_id: A.8.20
-          - framework: SOC 2
-            control_id: CC6.6
           - framework: CIS Controls v8
             control_id: "13"
           - framework: ISO 27001:2022
+            control_id: A.8.20
+          - framework: ISO 27001:2022
             control_id: A.8.22
+          - framework: NIST 800-53 r5
+            control_id: AC-17
+          - framework: NIST 800-53 r5
+            control_id: AC-4
           - framework: NIST 800-53 r5
             control_id: SC-7
           - framework: PCI DSS v4.0.1
             control_id: "1.3"
           - framework: PCI DSS v4.0.1
             control_id: "1.4"
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: cloudtrail
         dimension_type: audit_event
         support_level: supported
@@ -246,18 +285,18 @@ sources:
         families:
           - cloudtrail
         evidence_types:
+          - cloud_configuration
           - logging_configuration
+          - security_monitoring
         control_domains:
           - logging_monitoring
         control_refs:
-          - framework: ISO 27001:2022
-            control_id: A.8.15
-          - framework: SOC 2
-            control_id: CC7.2
-          - framework: SOC 2
-            control_id: CC7.3
+          - framework: CIS AWS Foundations Benchmark v2.0
+            control_id: "3.2"
           - framework: CIS Controls v8
             control_id: "8"
+          - framework: HIPAA
+            control_id: "164.312(b)"
           - framework: ISO 27001:2022
             control_id: A.8.16
           - framework: NIST 800-53 r5
@@ -265,9 +304,19 @@ sources:
           - framework: NIST 800-53 r5
             control_id: AU-6
           - framework: NIST 800-53 r5
+            control_id: AU-9
+          - framework: NIST 800-53 r5
             control_id: SI-4
+          - framework: NIST 800-53 r5
+            control_id: SI-7
+          - framework: SOC 2
+            control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
       - dimension_id: guardduty_finding
         dimension_type: entity_family
         support_level: supported
@@ -480,15 +529,99 @@ sources:
         high_value: true
         families:
           - apigateway_method
+          - apigateway
+          - api_gateway
         evidence_types:
+          - application_access_control
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.4"
           - framework: SOC 2
             control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: apigateway_rest_api
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - apigateway_rest_api
+          - apigateway
+          - api_gateway
+        evidence_types:
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - network_security
+        control_refs:
+          - framework: CIS AWS Foundations Benchmark v2.0
+            control_id: "2.6"
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: appsync_graphql_api
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - appsync_graphql_api
+          - appsync
+          - graphql
+        evidence_types:
+          - application_access_control
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.4"
       - dimension_id: backup_vault
         dimension_type: entity_family
         support_level: supported
@@ -529,17 +662,32 @@ sources:
         high_value: true
         families:
           - cloudfront_distribution
+          - cloudfront
         evidence_types:
+          - encryption_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - network_security
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "3"
           - framework: CIS Controls v8
             control_id: "4"
           - framework: NIST 800-53 r5
             control_id: AC-3
           - framework: NIST 800-53 r5
             control_id: CM-6
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
           - framework: SOC 2
             control_id: CC6.1
           - framework: SOC 2
@@ -550,13 +698,20 @@ sources:
         high_value: true
         families:
           - cloudfront_origin_access_control
+          - cloudfront
         evidence_types:
+          - identity_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
+          - network_security
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
+          - framework: CIS Controls v8
+            control_id: "6"
           - framework: NIST 800-53 r5
             control_id: AC-3
           - framework: NIST 800-53 r5
@@ -592,13 +747,119 @@ sources:
         high_value: true
         families:
           - codebuild_project
+          - codebuild
         evidence_types:
+          - secrets_management
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: codebuild_source_credential
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - codebuild_source_credential
+          - codebuild
+        evidence_types:
+          - identity_configuration
+          - secrets_management
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: dynamodb_table
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - dynamodb_table
+          - dynamodb
+        evidence_types:
+          - encryption_configuration
+          - resilience_control
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - availability_resilience
+          - data_protection
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "11"
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: ISO 27001:2022
+            control_id: A.8.13
+          - framework: ISO 27001:2022
+            control_id: A.8.14
+          - framework: NIST 800-53 r5
+            control_id: CP-10
+          - framework: NIST 800-53 r5
+            control_id: CP-2
+          - framework: NIST 800-53 r5
+            control_id: CP-4
+          - framework: NIST 800-53 r5
+            control_id: CP-9
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: A1.1
+          - framework: SOC 2
+            control_id: A1.3
       - dimension_id: ebs_snapshot
         dimension_type: entity_family
         support_level: supported
@@ -618,11 +879,55 @@ sources:
         high_value: true
         families:
           - ebs_volume
+          - ebs
         evidence_types:
+          - encryption_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ec2_ebs_encryption_by_default
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ec2_ebs_encryption_by_default
+          - ebs
+          - ebs_encryption_by_default
+        evidence_types:
+          - encryption_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
           - framework: SOC 2
             control_id: CC7.1
       - dimension_id: ec2_ami
@@ -644,15 +949,55 @@ sources:
         high_value: true
         families:
           - ec2_instance
+          - ec2
+          - imdsv2
+          - instance_profile
         evidence_types:
+          - cloud_configuration
+          - configuration_state
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - cloud_security
+          - identity_access
         control_refs:
+          - framework: CIS AWS Foundations Benchmark v2.0
+            control_id: "1.16"
+          - framework: CIS AWS Foundations Benchmark v2.0
+            control_id: "5.6"
+          - framework: CIS Controls v8
+            control_id: "12"
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
           - framework: SOC 2
             control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
           - framework: SOC 2
             control_id: CC7.1
       - dimension_id: ecr_public_repository
@@ -674,15 +1019,28 @@ sources:
         high_value: true
         families:
           - ecr_repository
+          - ecr
         evidence_types:
           - source_snapshot
+          - vulnerability_management
         control_domains:
           - asset_inventory
+          - vulnerability_management
         control_refs:
           - framework: CIS Controls v8
             control_id: "2"
+          - framework: CIS Controls v8
+            control_id: "7"
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: RA-5
+          - framework: NIST 800-53 r5
+            control_id: SI-2
+          - framework: PCI DSS v4.0.1
+            control_id: "11.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "6.3"
           - framework: SOC 2
             control_id: CC7.1
       - dimension_id: ecs_service
@@ -788,13 +1146,56 @@ sources:
         high_value: true
         families:
           - eks_cluster
+          - eks
         evidence_types:
+          - configuration_state
+          - encryption_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - cloud_security
+          - data_protection
+          - identity_access
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "12"
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: eks_node
         dimension_type: entity_family
         support_level: supported
@@ -826,19 +1227,111 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: elbv2_listener
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - alb
+          - elb
+          - elbv2_listener
+          - load_balancer
+        evidence_types:
+          - application_access_control
+          - encryption_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+          - identity_access
+          - network_security
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: ISO 27001:2022
+            control_id: A.8.24
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-23
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: NIST 800-53 r5
+            control_id: SC-8
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "4.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.4"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: SOC 2
+            control_id: CC6.7
       - dimension_id: elbv2_load_balancer
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
+          - elb
           - elbv2_load_balancer
+          - load_balancer
         evidence_types:
+          - encryption_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - network_security
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: elbv2_target_group
         dimension_type: entity_family
         support_level: supported
@@ -896,6 +1389,45 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+      - dimension_id: guardduty_detector
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - guardduty
+          - guardduty_detector
+        evidence_types:
+          - security_monitoring
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - logging_monitoring
+          - security_operations
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.5.24
+          - framework: ISO 27001:2022
+            control_id: A.5.25
+          - framework: ISO 27001:2022
+            control_id: A.5.26
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: AU-6
+          - framework: NIST 800-53 r5
+            control_id: IR-4
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+          - framework: SOC 2
+            control_id: CC7.4
       - dimension_id: iam_account_password_policy
         dimension_type: entity_family
         support_level: supported
@@ -935,6 +1467,34 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: iam_saml_provider
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_saml_provider
+          - federation
+          - saml
+        evidence_types:
+          - cloud_configuration
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
       - dimension_id: iam_user
         dimension_type: entity_family
         support_level: supported
@@ -953,16 +1513,40 @@ sources:
         support_level: supported
         high_value: true
         families:
+          - lambda
           - lambda_function
         evidence_types:
+          - secrets_management
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
           - framework: SOC 2
             control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
           - framework: SOC 2
             control_id: CC7.1
       - dimension_id: opensearch_domain
@@ -1012,19 +1596,137 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: rds_instance
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - rds
+          - rds_db_instance
+          - rds_instance
+        evidence_types:
+          - encryption_configuration
+          - identity_configuration
+          - logging_configuration
+          - network_exposure
+          - resilience_control
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - availability_resilience
+          - data_protection
+          - identity_access
+          - logging_monitoring
+          - network_security
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "11"
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.5.30
+          - framework: ISO 27001:2022
+            control_id: A.8.13
+          - framework: ISO 27001:2022
+            control_id: A.8.14
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: AU-2
+          - framework: NIST 800-53 r5
+            control_id: CP-10
+          - framework: NIST 800-53 r5
+            control_id: CP-2
+          - framework: NIST 800-53 r5
+            control_id: CP-4
+          - framework: NIST 800-53 r5
+            control_id: CP-9
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: SOC 2
+            control_id: A1.1
+          - framework: SOC 2
+            control_id: A1.2
+          - framework: SOC 2
+            control_id: A1.3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.2
       - dimension_id: redshift_cluster
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
+          - redshift
           - redshift_cluster
         evidence_types:
+          - encryption_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - network_security
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: route53_resolver_rule
         dimension_type: entity_family
         support_level: supported
@@ -1061,6 +1763,30 @@ sources:
             control_id: AC-3
           - framework: SOC 2
             control_id: CC6.1
+      - dimension_id: sagemaker_endpoint_configuration
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sagemaker_endpoint
+          - sagemaker_endpoint_configuration
+        evidence_types:
+          - encryption_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
       - dimension_id: sagemaker_model
         dimension_type: entity_family
         support_level: supported
@@ -1080,24 +1806,60 @@ sources:
         high_value: true
         families:
           - sagemaker_notebook_instance
+          - notebook
+          - root_access
+          - sagemaker
         evidence_types:
+          - ai_governance
+          - configuration_state
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: sagemaker_training_job
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
+          - sagemaker_training
           - sagemaker_training_job
         evidence_types:
+          - encryption_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
           - framework: SOC 2
             control_id: CC6.1
       - dimension_id: sns_topic
@@ -1105,27 +1867,77 @@ sources:
         support_level: supported
         high_value: true
         families:
+          - sns
           - sns_topic
         evidence_types:
+          - encryption_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - network_security
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: sqs_queue
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
+          - sqs
           - sqs_queue
         evidence_types:
+          - encryption_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - network_security
         control_refs:
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
           - framework: NIST 800-53 r5
             control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: ssm_document
         dimension_type: entity_family
         support_level: supported

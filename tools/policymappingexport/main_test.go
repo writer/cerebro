@@ -301,9 +301,9 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 	}
 	s3Row := findRow(t, reviewRows, reviewFindingCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, reviewHeader, s3Row, "compliance_evidence_status", "partial_source_backed")
-	assertCellEquals(t, reviewHeader, s3Row, "source_matched_control_ref_count", "6")
-	assertCellEquals(t, reviewHeader, s3Row, "source_backed_control_ref_count", "6")
-	assertCellEquals(t, reviewHeader, s3Row, "control_refs_without_source_match_count", "8")
+	assertCellEquals(t, reviewHeader, s3Row, "source_matched_control_ref_count", "5")
+	assertCellEquals(t, reviewHeader, s3Row, "source_backed_control_ref_count", "5")
+	assertCellEquals(t, reviewHeader, s3Row, "control_refs_without_source_match_count", "9")
 	assertCellContains(t, reviewHeader, s3Row, "review_flags", "partial_source_backed_control_refs")
 
 	controlRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_control_map.csv"))
@@ -323,8 +323,8 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 			assertCellContains(t, controlHeader, row, "source_coverage_refs", "aws/s3_bucket")
 		}
 	}
-	if sourceBackedRows != 6 {
-		t.Fatalf("source-backed control rows for aws-s3-bucket-no-public-access = %d, want 6", sourceBackedRows)
+	if sourceBackedRows != 5 {
+		t.Fatalf("source-backed control rows for aws-s3-bucket-no-public-access = %d, want 5", sourceBackedRows)
 	}
 	cc66Row := findRowByColumns(t, controlRows, map[int]string{
 		controlFindingCol: "aws-s3-bucket-no-public-access",
@@ -348,11 +348,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4076")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "474")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "169")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "943")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "474")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "2320")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "462")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "91")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "1033")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "462")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {

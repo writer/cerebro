@@ -3618,12 +3618,12 @@ func evidenceCapabilityRows(sources []evidenceCapabilitySource, index controlFam
 
 func sourceCapabilityReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, sources []evidenceCapabilitySource) [][]string {
 	capabilities := evidenceCapabilityIndex(sources, index)
-	coverage := sourceCoverageAggregate(catalog, index)
+	observedCoverage := sourceCoverageAggregate(catalog, index)
 	keys := map[string]struct{}{}
 	for key := range capabilities {
 		keys[key] = struct{}{}
 	}
-	for key := range coverage {
+	for key := range observedCoverage {
 		keys[key] = struct{}{}
 	}
 	var sorted []string
@@ -3636,7 +3636,7 @@ func sourceCapabilityReviewRows(catalog publicDetectionCatalog, index controlFam
 	for _, key := range sorted {
 		sourceID, dimensionID, _ := strings.Cut(key, "\x00")
 		capability := capabilities[key]
-		observed := coverage[key]
+		observed := observedCoverage[key]
 		capabilityRefs := evidenceCapabilityControlRefs(capability.Dimension, index)
 		catalogRefs := observed.ControlRefs
 		rows = append(rows, []string{
