@@ -718,6 +718,22 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: bedrock_provisioned_model_throughput
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - bedrock_provisioned_model_throughput
+          - provisioned_model_throughput
+        evidence_types:
+          - ai_system_inventory
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - compliance_operations
+        control_refs:
+          - framework: ISO 42001
+            control_id: A.2.2
       - dimension_id: cloudfront_distribution
         dimension_type: entity_family
         support_level: supported
@@ -2632,6 +2648,41 @@ sources:
             control_id: A.5.17
           - framework: ISO 27001:2022
             control_id: A.8.5
+      - dimension_id: mfa_posture
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - enrolled_factor
+          - factor
+          - mfa
+          - mfa_exempt
+          - no_mfa
+          - weak_factor
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.4"
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: ISO 27001:2022
+            control_id: A.8.5
       - dimension_id: audit_events
         dimension_type: audit_event
         support_level: supported
@@ -2929,6 +2980,60 @@ sources:
             control_id: CC6.2
           - framework: ISO 27001:2022
             control_id: A.8.9
+      - dimension_id: user_lifecycle
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - active_account
+          - deprovisioned
+          - dormant_user
+          - employee_record
+          - external_user
+          - last_login
+          - never_logged_in
+          - stale_login
+          - suspended
+          - terminated_account
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: PS-4
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: 8.1.3
+          - framework: ISO 27001:2022
+            control_id: A.5.11
+          - framework: ISO 27001:2022
+            control_id: A.5.16
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: ISO 27001:2022
+            control_id: A.6.5
       - dimension_id: users
         dimension_type: entity_family
         support_level: supported
@@ -3174,6 +3279,47 @@ sources:
             control_id: "7.2"
           - framework: ISO 27001:2022
             control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+      - dimension_id: conditional_access_policy
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - conditional_access
+          - conditional_access_policy
+          - high_risk_signin_policy
+          - sign_in_risk
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.16
           - framework: ISO 27001:2022
             control_id: A.5.18
       - dimension_id: directory_audit
@@ -3468,6 +3614,9 @@ sources:
           - identity_access
           - network_security
           - security_operations
+        control_refs:
+          - framework: CIS Benchmarks
+            control_id: "5.1.1"
       - dimension_id: application
         dimension_type: entity_family
         support_level: supported
@@ -4868,6 +5017,419 @@ sources:
             control_id: A.5.17
           - framework: ISO 27001:2022
             control_id: A.5.18
+      - dimension_id: external_accounts
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - external_member
+          - external_user
+          - guest_user
+          - personal_email
+          - unmanaged_account
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+  - source_id: microsoft_entra_id
+    name: Microsoft Entra ID
+    purpose: Declare source-backed directory identity lifecycle, authentication method, group membership, role assignment, external account, application entitlement, risky-user, and audit-event evidence lanes.
+    dimensions:
+      - dimension_id: audit_events
+        dimension_type: audit_event
+        support_level: partial
+        high_value: true
+        families:
+          - audit
+          - directory_audit
+          - sign_in
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+      - dimension_id: directory_role_assignments
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - admin_role
+          - directory_role
+          - privileged_role
+          - role_assignment
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: app_role_assignments
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - app_role
+          - application_assignment
+          - service_principal_role
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: external_accounts
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - b2b_guest
+          - external_user
+          - guest_user
+          - user_type
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: group_memberships
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - group
+          - group_member
+          - group_membership
+          - nested_group
+        evidence_types:
+          - access_review
+          - identity_configuration
+          - relationship_evidence
+        control_domains:
+          - identity_access
+      - dimension_id: mfa_posture
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - authentication_method
+          - mfa
+          - passwordless
+          - strong_authentication
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: risky_users
+        dimension_type: alert_state
+        support_level: partial
+        high_value: true
+        families:
+          - identity_protection
+          - risk_detection
+          - risky_user
+        evidence_types:
+          - access_review
+          - security_monitoring
+        control_domains:
+          - identity_access
+          - security_operations
+      - dimension_id: user_lifecycle
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - account_enabled
+          - active_account
+          - dormant_user
+          - employee_record
+          - last_sign_in
+          - stale_login
+          - terminated_account
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - account
+          - identity_user
+          - user
+        evidence_types:
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+  - source_id: microsoft_365
+    name: Microsoft 365
+    purpose: Declare source-backed collaboration identity, guest access, mailbox permission, forwarding, Teams membership, SharePoint sharing, Purview policy, Defender alert, content asset, and audit-event evidence lanes.
+    dimensions:
+      - dimension_id: audit_events
+        dimension_type: audit_event
+        support_level: partial
+        high_value: true
+        families:
+          - audit
+          - unified_audit_log
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+      - dimension_id: content_assets
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - content_asset
+          - drive_item
+          - file
+          - message
+          - site
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+      - dimension_id: defender_alerts
+        dimension_type: alert_state
+        support_level: partial
+        high_value: true
+        families:
+          - alert
+          - defender_alert
+          - security_alert
+        evidence_types:
+          - security_monitoring
+        control_domains:
+          - security_operations
+      - dimension_id: guest_users
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - b2b_guest
+          - external_user
+          - guest_user
+          - stale_guest
+          - user_type
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+      - dimension_id: mailbox_delegations
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - delegate_access
+          - mailbox_delegation
+          - mailbox_permission
+          - send_as
+          - send_on_behalf
+        evidence_types:
+          - access_review
+          - identity_configuration
+          - relationship_evidence
+        control_domains:
+          - identity_access
+          - data_protection
+      - dimension_id: mailbox_forwarding_rules
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - external_forwarding
+          - forwarding_rule
+          - inbox_rule
+          - mailbox_forwarding
+        evidence_types:
+          - data_protection
+          - identity_configuration
+        control_domains:
+          - data_protection
+          - identity_access
+      - dimension_id: purview_dlp_policies
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - dlp_policy
+          - information_protection
+          - sensitivity_label
+        evidence_types:
+          - data_protection
+          - privacy_control
+        control_domains:
+          - compliance_operations
+          - data_protection
+      - dimension_id: purview_retention_policies
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - records_management
+          - retention_label
+          - retention_policy
+        evidence_types:
+          - compliance_operations
+          - data_protection
+        control_domains:
+          - compliance_operations
+          - data_protection
+      - dimension_id: sharepoint_anonymous_links
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - anonymous_link
+          - anyone_link
+          - sharing_link
+        evidence_types:
+          - access_review
+          - data_protection
+          - relationship_evidence
+        control_domains:
+          - data_protection
+          - identity_access
+      - dimension_id: sharepoint_external_sharing
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - external_sharing
+          - guest_access
+          - sharepoint_site
+          - site_permission
+        evidence_types:
+          - access_review
+          - data_protection
+          - identity_configuration
+        control_domains:
+          - data_protection
+          - identity_access
+      - dimension_id: shared_mailboxes
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - mailbox
+          - shared_mailbox
+        evidence_types:
+          - access_review
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+      - dimension_id: teams_guest_membership
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - channel_member
+          - guest_member
+          - team_member
+          - teams_guest
+        evidence_types:
+          - access_review
+          - identity_configuration
+          - relationship_evidence
+        control_domains:
+          - identity_access
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - account
+          - active_user
+          - collaboration_user
+          - dormant_user
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+  - source_id: hris_system
+    name: HRIS System
+    purpose: Declare source-backed workforce identity, employment lifecycle, manager, department, start, termination, contractor, and join-key evidence lanes used to prove deprovisioning and access-review scope.
+    dimensions:
+      - dimension_id: employee_lifecycle
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - active_employee
+          - employee_record
+          - employment_status
+          - start_date
+          - termination_date
+          - terminated_employee
+        evidence_types:
+          - access_review
+          - identity_governance
+          - source_snapshot
+        control_domains:
+          - compliance_operations
+          - identity_access
+      - dimension_id: identity_join_keys
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - employee_id
+          - identity_join
+          - personal_email
+          - work_email
+        evidence_types:
+          - identity_governance
+          - relationship_evidence
+        control_domains:
+          - identity_access
+      - dimension_id: organization_assignments
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - department
+          - manager
+          - organization_unit
+          - worker_type
+        evidence_types:
+          - access_review
+          - source_snapshot
+        control_domains:
+          - compliance_operations
+          - identity_access
   - source_id: grc
     name: GRC
     purpose: Declare source-backed GRC asset_inventory, compliance_operations, vendor_risk, vulnerability_management evidence lanes.
@@ -5429,6 +5991,44 @@ sources:
             control_id: CC6.6
           - framework: ISO 27001:2022
             control_id: A.8.2
+      - dimension_id: external_users
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - external_user
+          - guest_user
+          - invited_user
+          - personal_email
+          - shared_tailnet_user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
       - dimension_id: user_lifecycle
         dimension_type: lifecycle_state
         support_level: supported

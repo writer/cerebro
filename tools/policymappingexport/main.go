@@ -1388,6 +1388,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		sourceCapabilityStatus := sourceCapabilityStatusForDetection(detection, capabilities)
 		auditDepth := resolveFindingAuditDepth(detection, extensions)
 		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
+		evidenceBackingLevel := findingEvidenceBackingLevel(complianceReview, sourceCapabilityStatus, auditDepth)
+		evidenceBackingGaps := findingEvidenceBackingGaps(controlRefs, detection.SourceCoverageRefs, complianceReview, sourceCapabilityStatus, auditDepth)
 		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
 		qualityIssueRows = append(qualityIssueRows, findingQualityIssueRows(detection, controlRefs, complianceTags, auditDepth, sourceCapabilityStatus)...)
 
@@ -1459,6 +1461,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(complianceReview.SourceCoverageSupportLevels),
 			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
 			complianceReview.ComplianceEvidenceStatus,
+			evidenceBackingLevel,
+			joinList(evidenceBackingGaps),
 			joinList(reviewFlags),
 			joinList(frameworkReviewAreas),
 			joinList(controlRelationshipHints),
@@ -1571,6 +1575,8 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(complianceReview.SourceCoverageSupportLevels),
 			fmt.Sprint(complianceReview.SourceCoverageHighValueCount),
 			complianceReview.ComplianceEvidenceStatus,
+			evidenceBackingLevel,
+			joinList(evidenceBackingGaps),
 			joinList(reviewFlags),
 			sourceCapabilityStatus,
 		})
@@ -1868,6 +1874,75 @@ func complianceEvidenceStatus(directControlRefs []controlRef, sourceMatchedContr
 	default:
 		return "partial_source_backed"
 	}
+}
+
+func findingEvidenceBackingLevel(review findingComplianceReview, sourceCapabilityStatus string, auditDepth resolvedFindingAuditDepth) string {
+	switch strings.TrimSpace(review.ComplianceEvidenceStatus) {
+	case "missing_controls":
+		return "mapping_required"
+	case "source_only":
+		return "control_mapping_required"
+	case "control_only":
+		return "control_reference_only"
+	}
+	if strings.TrimSpace(sourceCapabilityStatus) != "source_capability_defined" {
+		return "source_capability_review_required"
+	}
+	if len(findingAuditDepthFlags(auditDepth)) != 0 {
+		return "audit_language_review_required"
+	}
+	if strings.TrimSpace(review.ComplianceEvidenceStatus) == "partial_source_backed" {
+		return "partial_runtime_evidence"
+	}
+	if hasValue(review.SourceCoverageSupportLevels, "partial") || hasValue(review.SourceCoverageSupportLevels, "planned") {
+		return "partial_runtime_evidence"
+	}
+	if strings.TrimSpace(review.ComplianceEvidenceStatus) == "source_backed" && review.SourceCoverageHighValueCount > 0 {
+		return "runtime_source_evidence_ready"
+	}
+	return "source_evidence_review_required"
+}
+
+func findingEvidenceBackingGaps(controlRefs []controlRef, coverageRefs []publicDetectionSourceCoverageRef, review findingComplianceReview, sourceCapabilityStatus string, auditDepth resolvedFindingAuditDepth) []string {
+	var gaps []string
+	if len(controlRefs) == 0 {
+		gaps = append(gaps, "missing_control_refs")
+	}
+	if len(coverageRefs) == 0 {
+		gaps = append(gaps, "missing_source_coverage_refs")
+	}
+	if len(review.ControlRefsWithoutSourceMatch) != 0 {
+		gaps = append(gaps, "control_refs_without_source_match")
+	}
+	switch strings.TrimSpace(sourceCapabilityStatus) {
+	case "source_capability_defined", "":
+	default:
+		gaps = append(gaps, "source_capability_yaml_review")
+	}
+	for _, supportLevel := range review.SourceCoverageSupportLevels {
+		switch strings.TrimSpace(supportLevel) {
+		case "partial":
+			gaps = append(gaps, "partial_source_coverage")
+		case "planned":
+			gaps = append(gaps, "planned_source_coverage")
+		case "unsupported":
+			gaps = append(gaps, "unsupported_source_coverage")
+		}
+	}
+	if len(coverageRefs) != 0 && review.SourceCoverageHighValueCount == 0 {
+		gaps = append(gaps, "no_high_value_source_dimension")
+	}
+	gaps = append(gaps, findingAuditDepthFlags(auditDepth)...)
+	return uniqueSorted(gaps)
+}
+
+func hasValue(values []string, want string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceCoverageMatchStatus(matchedControlRefs []controlRef, matchedFindingControlRefs []controlRef, sourceOnlyControlRefs []controlRef) string {
@@ -4007,9 +4082,9 @@ func findingMapHeader() []string {
 		"source_coverage_ref_count", "source_coverage_refs", "coverage_evidence_types",
 		"coverage_control_domains", "source_matched_control_refs", "source_backed_control_refs",
 		"control_refs_without_source_match", "source_coverage_support_levels",
-		"source_coverage_high_value_count", "compliance_evidence_status", "review_flags",
-		"framework_review_areas", "control_relationship_hints", "source_capability_refs",
-		"source_capability_status",
+		"source_coverage_high_value_count", "compliance_evidence_status",
+		"evidence_backing_level", "evidence_backing_gaps", "review_flags", "framework_review_areas",
+		"control_relationship_hints", "source_capability_refs", "source_capability_status",
 	}
 }
 
@@ -4043,7 +4118,8 @@ func findingComplianceReviewMapHeader() []string {
 		"source_backed_control_ref_count", "control_refs_without_source_match_count",
 		"control_refs_without_source_match", "source_coverage_ref_count",
 		"source_coverage_support_levels", "source_coverage_high_value_count",
-		"compliance_evidence_status", "review_flags", "source_capability_status",
+		"compliance_evidence_status", "evidence_backing_level",
+		"evidence_backing_gaps", "review_flags", "source_capability_status",
 	}
 }
 

@@ -413,6 +413,99 @@ func TestPolicySourceCoverageRejectsConflictingIdentityProviderDimension(t *test
 	}
 }
 
+func TestPolicySourceCoverageAllowsGenericIdentityEvidenceProviders(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-privileged-account-without-mfa",
+		Name:        "Privileged Identity Without MFA",
+		Description: "Flags failed identity evidence for privileged accounts with no MFA factor.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"identity", "mfa", "privileged-access"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+			{FrameworkName: "PCI DSS v4.0.1", ControlID: "8.3"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:             "authenticators",
+				Type:           "entity_family",
+				Families:       []string{"authenticator", "mfa"},
+				Support:        sourcecdk.CoverageSupportSupported,
+				EvidenceTypes:  []string{"identity_configuration"},
+				ControlDomains: []string{"identity_access"},
+			}},
+		},
+		{
+			SourceID: "google_workspace",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:             "mfa_posture",
+				Type:           "app_entitlement",
+				Families:       []string{"mfa", "two_step_verification"},
+				Support:        sourcecdk.CoverageSupportSupported,
+				EvidenceTypes:  []string{"identity_configuration"},
+				ControlDomains: []string{"identity_access"},
+			}},
+		},
+		{
+			SourceID: "aws",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:             "iam_credential_report",
+				Type:           "entity_family",
+				Families:       []string{"mfa"},
+				Support:        sourcecdk.CoverageSupportSupported,
+				EvidenceTypes:  []string{"identity_configuration"},
+				ControlDomains: []string{"identity_access"},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	got := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		got = append(got, ref.SourceID+"/"+ref.DimensionID)
+	}
+	sort.Strings(got)
+	if strings.Join(got, ",") != "google_workspace/mfa_posture,okta/authenticators" {
+		t.Fatalf("SourceCoverageRefs = %v, want generic identity providers only", got)
+	}
+}
+
+func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-vanta-stale-login-90d",
+		Name:        "Vanta Stale Active Accounts",
+		Description: "Flags failed identity evidence for stale accounts in a named SaaS source.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"identity", "policy", "query", "stale-accounts", "vanta"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "okta",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:             "user_lifecycle",
+			Type:           "lifecycle_state",
+			Families:       []string{"stale_login", "user"},
+			Support:        sourcecdk.CoverageSupportSupported,
+			EvidenceTypes:  []string{"identity_governance"},
+			ControlDomains: []string{"identity_access"},
+		}},
+	}}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no generic cross-provider coverage for source-named policy", refs)
+	}
+}
+
 func TestPolicySourceCoverageAllowsNamedCrossIdentityFinding(t *testing.T) {
 	detection := PublicDetection{
 		ID:          "identity-github-active-without-okta-link",

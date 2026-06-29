@@ -183,6 +183,76 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, and last observed access for the sampled principal.
+      - source_id: microsoft_entra_id
+        entity_type: directory_identity_posture
+        required_fields:
+          - user_id
+          - account_enabled
+          - user_type
+          - groups
+          - directory_roles
+          - authentication_methods
+          - last_sign_in_at
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Directory evidence ties each principal to current account state, user type, groups, privileged roles, authentication methods, last sign-in activity, and lifecycle state.
+      - source_id: microsoft_365
+        entity_type: collaboration_identity_access
+        required_fields:
+          - user_id
+          - account_type
+          - guest_or_external_state
+          - mailbox_permissions
+          - sharepoint_permissions
+          - teams_memberships
+          - forwarding_rules
+          - last_activity_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Collaboration evidence shows whether a user, guest, mailbox, team, or content permission remains active, externally shared, delegated, forwarded, or dormant.
+      - source_id: google_workspace
+        entity_type: workspace_identity_posture
+        required_fields:
+          - user_id
+          - suspended
+          - two_step_verification_enforced
+          - groups
+          - admin_roles
+          - last_login_at
+          - external_memberships
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Workspace identity evidence ties account state, two-step verification, group membership, admin role assignment, external membership, and last login to the sampled principal.
+      - source_id: tailscale
+        entity_type: tailnet_identity_access
+        required_fields:
+          - user_id
+          - user_role
+          - groups
+          - tag_owner_grants
+          - acl_grants
+          - devices
+          - last_seen_at
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Tailnet evidence shows user role, group membership, ACL grants, tag ownership, device association, last-seen state, and lifecycle state for the sampled principal.
+      - source_id: hris_system
+        entity_type: workforce_identity_record
+        required_fields:
+          - employee_id
+          - work_email
+          - employment_status
+          - start_date
+          - termination_date
+          - manager_id
+          - department
+          - last_hr_update_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Workforce evidence ties the account to an employee record, employment status, dates, manager, department, and last HR update so lifecycle and deprovisioning claims are not made from IdP state alone.
       - source_id: github
         entity_type: repository_access
         required_fields:
