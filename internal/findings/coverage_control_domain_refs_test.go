@@ -378,6 +378,181 @@ func TestPolicySourceCoverageRejectsConflictingCloudProviderDimension(t *testing
 	}
 }
 
+func TestPolicySourceCoverageRejectsConflictingIdentityProviderDimension(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "m365-guest-admin",
+		Name:        "Microsoft 365 Guest User with Admin Role",
+		Description: "Flags failed M365 identity evidence for a guest admin role.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"m365", "identity", "admin"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "collaboration_control",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "okta",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "admin_roles",
+			Type:          "relationship",
+			Families:      []string{"admin_role"},
+			Support:       sourcecdk.CoverageSupportPartial,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.2",
+			}},
+		}},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no cross-provider identity coverage", refs)
+	}
+}
+
+func TestPolicySourceCoverageAllowsNamedCrossIdentityFinding(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-github-active-without-okta-link",
+		Name:        "Active GitHub Identity With No Linked Okta Identity",
+		Description: "Flags failed identity evidence when both GitHub and Okta identities are named in the finding.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"github", "okta", "identity", "organization_member", "user"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID: "github",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:            "organization_members",
+				Type:          "entity_family",
+				Families:      []string{"organization_member"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"identity_governance"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.2",
+				}},
+			}},
+		},
+		{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:            "users",
+				Type:          "entity_family",
+				Families:      []string{"user"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"identity_governance"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.2",
+				}},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 2 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want both named identity providers: %#v", len(refs), refs)
+	}
+	got := []string{refs[0].SourceID, refs[1].SourceID}
+	sort.Strings(got)
+	if strings.Join(got, ",") != "github,okta" {
+		t.Fatalf("SourceCoverageRefs sources = %v, want github and okta", got)
+	}
+}
+
+func TestPolicySourceCoverageAllowsAzureForNamedEntraFinding(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-entra-active-no-employee-record",
+		Name:        "Entra ID Active Accounts Without Employee Record",
+		Description: "Flags failed query-result evidence for entra user lifecycle evidence.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"entra", "identity", "active-account"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "azure",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "user",
+			Type:          "entity_family",
+			Families:      []string{"active_account", "entra_user", "user"},
+			Support:       sourcecdk.CoverageSupportSupported,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.1",
+			}},
+		}},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 || refs[0].SourceID != "azure" || refs[0].DimensionID != "user" {
+		t.Fatalf("SourceCoverageRefs = %#v, want azure/user for named Entra coverage", refs)
+	}
+}
+
+func TestPolicySourceCoverageDoesNotUseIdentityAliasesOutsideIdentityNamespace(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "audit-entra-control-change",
+		Name:        "Entra Control Change Missing Review",
+		Description: "Flags failed policy evidence that mentions entra in supporting context.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"audit", "entra"},
+	}
+
+	if sourceMatchesDetection(detection, "azure", detectionCoverageSearchText(detection)) {
+		t.Fatal("sourceMatchesDetection matched azure through identity aliases outside the identity policy namespace")
+	}
+}
+
+func TestPolicySourceCoverageRejectsAzureForM365OnlyFinding(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "m365-guest-admin",
+		Name:        "M365 Guest User with Admin Role",
+		Description: "Flags failed M365 identity evidence for a guest admin role.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"m365", "identity", "admin"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "collaboration_control",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "azure",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "directory_role_assignment",
+			Type:          "app_entitlement",
+			Families:      []string{"admin_role"},
+			Support:       sourcecdk.CoverageSupportSupported,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.2",
+			}},
+		}},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no Azure coverage for M365-only finding", refs)
+	}
+}
+
 func TestCoverageControlIDMatchesGDPRArticleAliases(t *testing.T) {
 	for _, legacy := range []string{"Art.5", "Art-5", "Art 5"} {
 		matched, exact := coverageControlIDMatches(legacy, "Article 5")

@@ -47,6 +47,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 	}
 	searchText := detectionCoverageSearchText(detection)
 	candidates := make([]sourceCoverageCandidate, 0)
+	sourceMatchRequired := policyIdentityNamespaceRequiresSourceMatch(detection)
 	for _, contract := range contracts {
 		sourceID := strings.TrimSpace(contract.SourceID)
 		if sourceID == "" {
@@ -67,7 +68,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
 			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
-			if len(matches) == 0 || sourceConflicted || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
+			if len(matches) == 0 || sourceConflicted || (sourceMatchRequired && !sourceMatched) || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
@@ -210,11 +211,19 @@ func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, d
 	return true
 }
 
+func policyIdentityNamespaceRequiresSourceMatch(detection PublicDetection) bool {
+	if strings.TrimSpace(detection.SourceID) != policyRuleSourceID {
+		return false
+	}
+	return strings.HasPrefix(normalizeCoverageText(detection.ID), "identity_")
+}
+
 func coverageSourceConflictsWithPolicyDetection(detectionSourceID string, coverageSourceID string, searchText string) bool {
 	if strings.TrimSpace(detectionSourceID) != policyRuleSourceID {
 		return false
 	}
-	return cloudProviderCoverageSourceConflicts(coverageSourceID, searchText)
+	return cloudProviderCoverageSourceConflicts(coverageSourceID, searchText) ||
+		identityProviderCoverageSourceConflicts(coverageSourceID, searchText)
 }
 
 var cloudProviderCoverageAliases = map[string][]string{
@@ -233,6 +242,37 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 		return false
 	}
 	for provider, providerAliases := range cloudProviderCoverageAliases {
+		if provider == sourceID {
+			continue
+		}
+		if coverageTextContainsAny(searchText, providerAliases) {
+			return true
+		}
+	}
+	return false
+}
+
+var identityProviderCoverageAliases = map[string][]string{
+	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"github":             {"github", "github_org", "github_organization"},
+	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
+	"microsoft_365":      {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
+	"microsoft_entra":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"microsoft_entra_id": {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"okta":               {"okta"},
+	"tailscale":          {"tailscale", "tailnet"},
+}
+
+func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {
+	sourceID := normalizeCoverageText(coverageSourceID)
+	aliases, ok := identityProviderCoverageAliases[sourceID]
+	if !ok {
+		return false
+	}
+	if coverageTextContainsAny(searchText, aliases) {
+		return false
+	}
+	for provider, providerAliases := range identityProviderCoverageAliases {
 		if provider == sourceID {
 			continue
 		}
@@ -285,7 +325,7 @@ func sourceMatchesDetection(detection PublicDetection, sourceID string, searchTe
 	if detectionSourceID := strings.TrimSpace(detection.SourceID); detectionSourceID != "" && detectionSourceID != policyRuleSourceID {
 		return strings.EqualFold(detectionSourceID, sourceID)
 	}
-	for _, alias := range sourceCoverageAliases(sourceID) {
+	for _, alias := range sourceCoverageAliases(sourceID, policyIdentityNamespaceRequiresSourceMatch(detection)) {
 		if coverageTextContains(searchText, alias) {
 			return true
 		}
@@ -504,16 +544,22 @@ func normalizeGDPRArticleControlID(value string) string {
 	return value
 }
 
-func sourceCoverageAliases(sourceID string) []string {
+func sourceCoverageAliases(sourceID string, includeIdentityAliases bool) []string {
 	sourceID = strings.TrimSpace(sourceID)
 	if sourceID == "" {
 		return nil
 	}
-	return uniqueSortedStrings([]string{
+	aliases := []string{
 		sourceID,
 		strings.ReplaceAll(sourceID, "_", "-"),
 		strings.ReplaceAll(sourceID, "_", ""),
-	})
+	}
+	normalized := normalizeCoverageText(sourceID)
+	aliases = append(aliases, cloudProviderCoverageAliases[normalized]...)
+	if includeIdentityAliases {
+		aliases = append(aliases, identityProviderCoverageAliases[normalized]...)
+	}
+	return uniqueSortedStrings(aliases)
 }
 
 func controlRefKey(ref ports.FindingControlRef) string {
