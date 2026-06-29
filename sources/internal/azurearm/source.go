@@ -35,6 +35,7 @@ var DefaultDefinitions = []Definition{
 	{Name: "metric_alert_rule", Label: "azure metric alert rules", ProviderPath: "Microsoft.Insights/metricAlerts", APIVersion: "2018-03-01", Kind: "azure.metric_alert_rule", SchemaRef: "azure/metric_alert_rule/v1"},
 	{Name: "policy_assignment", Label: "azure policy assignments", ProviderPath: "Microsoft.Authorization/policyAssignments", APIVersion: "2022-06-01", Kind: "azure.policy_assignment", SchemaRef: "azure/policy_assignment/v1"},
 	{Name: "postgresql_server", Label: "azure postgresql flexible servers", ProviderPath: "Microsoft.DBforPostgreSQL/flexibleServers", APIVersion: "2023-06-01-preview", Kind: "azure.postgresql_server", SchemaRef: "azure/postgresql_server/v1"},
+	{Name: "purview_account", Label: "microsoft purview accounts", ProviderPath: "Microsoft.Purview/accounts", APIVersion: "2021-12-01", Kind: "azure.purview_account", SchemaRef: "azure/purview_account/v1"},
 	{Name: "role", Label: "azure role definitions", ProviderPath: "Microsoft.Authorization/roleDefinitions", APIVersion: "2022-04-01", Kind: "azure.role", SchemaRef: "azure/role/v1"},
 	{Name: "route_table", Label: "azure route tables", ProviderPath: "Microsoft.Network/routeTables", APIVersion: "2023-09-01", Kind: "azure.route_table", SchemaRef: "azure/route_table/v1"},
 	{Name: "security_contact", Label: "azure security contacts", ProviderPath: "Microsoft.Security/securityContacts", APIVersion: "2020-01-01-preview", Kind: "azure.security_contact", SchemaRef: "azure/security_contact/v1"},

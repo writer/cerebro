@@ -192,6 +192,20 @@ func ResourceAttributes(family string, recordKind string, fallbackKind string, p
 		set(attributes, "private_dns_zone_id", stringAt(properties, "network", "privateDnsZoneArmResourceId"))
 		set(attributes, "auth_active_directory_enabled", stringAt(properties, "authConfig", "activeDirectoryAuth"))
 		set(attributes, "auth_password_enabled", stringAt(properties, "authConfig", "passwordAuth"))
+	case "purview_account":
+		set(attributes, "catalog_endpoint", stringAt(properties, "endpoints", "catalog"))
+		set(attributes, "scan_endpoint", stringAt(properties, "endpoints", "scan"))
+		set(attributes, "guardian_endpoint", stringAt(properties, "endpoints", "guardian"))
+		set(attributes, "managed_resource_group_name", stringAt(properties, "managedResourceGroupName"))
+		set(attributes, "managed_resources_resource_group", stringAt(properties, "managedResources", "resourceGroup"))
+		set(attributes, "managed_virtual_network", stringAt(properties, "managedVirtualNetwork"))
+		set(attributes, "private_endpoint_connection_count", strconv.Itoa(len(arrayAt(properties, "privateEndpointConnections"))))
+	case "purview_private_endpoint_connection":
+		set(attributes, "private_endpoint_id", stringAt(properties, "privateEndpoint", "id"))
+		set(attributes, "private_link_service_connection_status", stringAt(properties, "privateLinkServiceConnectionState", "status"))
+		set(attributes, "private_link_service_connection_description", stringAt(properties, "privateLinkServiceConnectionState", "description"))
+		set(attributes, "private_link_service_connection_actions_required", stringAt(properties, "privateLinkServiceConnectionState", "actionsRequired"))
+		set(attributes, "group_ids", strings.Join(stringsAt(properties, "groupIds"), ","))
 	case "mysql_server":
 		set(attributes, "version", stringAt(properties, "version"))
 		set(attributes, "administrator_login", stringAt(properties, "administratorLogin"))
