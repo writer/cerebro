@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 from datetime import UTC, datetime, timedelta
 import io
 import json
@@ -211,6 +212,27 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertFalse(fake_process.killed)
         self.assertEqual(fake_process.wait_calls, [3, 10])
         self.assertIn("graph health verification timed out after 3s", result.diagnostics)
+
+    def test_graph_health_failure_artifact_records_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "graph.tsv"
+            run_aws_deploy_verifications._write_graph_health_failure_artifact(
+                output,
+                stack="go-prod",
+                status=1,
+                category="missing_ingest_run_history",
+                diagnostics="ERROR: missing graph ingest run history for 2 declared runtime(s): runtime-a, runtime-b",
+            )
+
+            with output.open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["stack"], "go-prod")
+        self.assertEqual(rows[0]["status"], "1")
+        self.assertEqual(rows[0]["diagnostic_category"], "missing_ingest_run_history")
+        self.assertEqual(rows[0]["missing_ingest_runtimes"], "runtime-a,runtime-b")
+        self.assertIn("missing graph ingest run history", rows[0]["diagnostic_tail"])
 
     def test_fresh_graph_health_cache_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -457,6 +479,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
     def test_missing_ingest_run_history_degrades_when_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "outputs.txt"
+            graph_output = Path(temp_dir) / "graph.tsv"
             diagnostics = "ERROR: missing graph ingest run history for 2 declared runtime(s): runtime-a, runtime-b"
             with patch(
                 "scripts.run_aws_deploy_verifications._stream_graph_health",
@@ -468,17 +491,20 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                         "aws/Pulumi.go-prod.yaml",
                         "--graph-health",
                         "--graph-health-output",
-                        str(Path(temp_dir) / "graph.tsv"),
+                        str(graph_output),
                         "--allow-graph-health-degradation",
                         "--github-output",
                         str(output_path),
                     ]
                 )
                 outputs = output_path.read_text(encoding="utf-8")
+                with graph_output.open("r", encoding="utf-8", newline="") as handle:
+                    graph_rows = list(csv.DictReader(handle, delimiter="\t"))
 
         self.assertEqual(status, 0)
         self.assertIn("graph_health_degraded=true", outputs)
         self.assertIn("graph_health_degradation_category=missing_ingest_run_history", outputs)
+        self.assertEqual(graph_rows[0]["missing_ingest_runtimes"], "runtime-a,runtime-b")
 
     def test_resource_initialization_secret_failure_uses_specific_category(self) -> None:
         diagnostics = (
@@ -715,6 +741,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             stack_file=Path("aws/Pulumi.go-prod.yaml"),
             graph_health_heal_concurrency=2,
             graph_health_heal_failed_run_retry_seconds=600,
+            graph_health_heal_wait_timeout_seconds=900,
         )
         diagnostics = (
             "ERROR: latest graph ingest run failed for 2 runtime(s): "
@@ -735,6 +762,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         for call in run.call_args_list:
             command = call.args[0]
             self.assertEqual(command[command.index("--failed-run-retry-seconds") + 1], "600")
+            self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "900")
 
     def test_graph_degradation_can_create_followup_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
