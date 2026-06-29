@@ -34,6 +34,7 @@ const (
 	KindGraphRebuildDryRun        = "graph_rebuild_dry_run"
 	KindAppendLogRuntimeIndex     = "append_log_runtime_index"
 	KindProactiveFindingTriage    = "proactive_finding_triage"
+	KindGRCUpload                 = "grc_upload"
 )
 
 type Runner func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error)

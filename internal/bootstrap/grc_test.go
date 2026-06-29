@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -210,6 +211,64 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if payload.Connectors[0].CheckpointWatermark == nil && payload.Connectors[1].CheckpointWatermark == nil {
 		t.Fatalf("connector checkpoint watermarks were not surfaced")
+	}
+}
+
+func TestGRCUploadReplayProjectsUploadEvents(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	appendLog := &recordingAppendLog{replayEvents: []*cerebrov1.EventEnvelope{{
+		Id:         "event-policy",
+		SourceId:   "grc",
+		TenantId:   "writer",
+		Kind:       "grc.policy",
+		OccurredAt: timestamppb.New(now),
+		Attributes: map[string]string{
+			"upload_id":     "upload-1",
+			"provider":      "cerebro_upload",
+			"source_system": "cerebro_upload",
+			"policy_id":     "access-policy",
+			"name":          "Access Policy",
+			"policy_name":   "Access Policy",
+			"status":        "uploaded",
+		},
+	}}}
+	state := &stubRuntimeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: state,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/grc/policy-lifecycle/uploads/upload-1/replay?tenant_id=writer", nil)
+	if err != nil {
+		t.Fatalf("new replay request: %v", err)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST upload replay error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST upload replay status = %d, want %d: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	var payload grcuploadhttp.ReplayResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	if payload.Status != "projected" || payload.EventsFound != 1 || payload.EventsProjected != 1 {
+		t.Fatalf("replay response = %+v, want one projected event", payload)
+	}
+	if len(appendLog.replayRequests) != 1 {
+		t.Fatalf("replay requests = %d, want 1", len(appendLog.replayRequests))
+	}
+	replayRequest := appendLog.replayRequests[0]
+	if replayRequest.TenantID != "writer" || replayRequest.AttributeEquals["upload_id"] != "upload-1" {
+		t.Fatalf("replay request = %+v, want tenant writer upload filter", replayRequest)
+	}
+	if len(state.entities) == 0 {
+		t.Fatalf("projected entities = 0, want policy entity")
 	}
 }
 

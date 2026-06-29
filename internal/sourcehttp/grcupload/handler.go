@@ -2,9 +2,12 @@ package grcuploadhttp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -12,6 +15,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/grcupload"
+	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -19,9 +23,11 @@ import (
 const maxUploadBytes int64 = 32 << 20
 
 type Scope struct {
-	TenantID  string
-	SourceID  string
-	RuntimeID string
+	TenantID   string
+	RuntimeID  string
+	RuntimeIDs []string
+	SourceID   string
+	Limit      uint32
 }
 
 type Options struct {
@@ -29,6 +35,7 @@ type Options struct {
 	ParserFactory   func() (grcupload.Parser, error)
 	AppendLog       ports.AppendLog
 	Projector       ports.SourceProjector
+	JobStore        ports.JobStore
 	ResolveScope    func(*http.Request) (Scope, error)
 	AuthorizeTenant func(context.Context, string) error
 	ActorUserID     func(context.Context) string
@@ -90,14 +97,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentType := fileContentType(header)
-	parsed, err := parser.Parse(r.Context(), header.Filename, contentType, file)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
 	sourceID := firstNonEmpty(fields["source_id"], scope.SourceID)
 	runtimeID := firstNonEmpty(fields["runtime_id"], scope.RuntimeID)
-	events, response, err := grcupload.BuildEvents(grcupload.UploadRequest{
+	request := grcupload.UploadRequest{
 		Target:      h.options.Target,
 		TenantID:    tenantID,
 		SourceID:    sourceID,
@@ -107,14 +109,43 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ContentType: contentType,
 		FileSize:    header.Size,
 		Fields:      fields,
-	}, parsed, h.now())
+	}
+	uploadID := grcupload.NewUploadID(request)
+	job, err := h.startUploadJob(r.Context(), uploadID, request)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
+	h.recordUploadJobEvent(r.Context(), job, "parsing", ports.JobStatusRunning, "Parsing file with Reducto", nil)
+	hasher := sha256.New()
+	parsed, err := parser.Parse(r.Context(), header.Filename, contentType, io.TeeReader(file, hasher))
+	request.FileSHA256 = hex.EncodeToString(hasher.Sum(nil))
+	if err != nil {
+		h.failUploadJob(r.Context(), job, "parse_failed", err, map[string]any{"upload_id": uploadID})
+		h.writeError(w, err)
+		return
+	}
+	h.recordUploadJobEvent(r.Context(), job, "parsed", ports.JobStatusRunning, "Reducto parse completed", map[string]any{
+		"upload_id":   uploadID,
+		"parse_id":    parsed.ParseID,
+		"chunk_count": parsed.ChunkCount,
+		"page_count":  parsed.PageCount,
+	})
+	events, response, err := grcupload.BuildEvents(request, parsed, h.now())
+	if err != nil {
+		h.failUploadJob(r.Context(), job, "events_failed", err, map[string]any{"upload_id": uploadID})
+		h.writeError(w, err)
+		return
+	}
+	response.Job = uploadJobRef(job)
 	appended, err := h.appendEvents(r.Context(), events)
 	if err != nil {
 		wrapped := fmt.Errorf("%w: append upload event: %w", grcupload.ErrRuntimeUnavailable, err)
+		h.failUploadJob(r.Context(), job, "append_failed", wrapped, map[string]any{
+			"upload_id":       uploadID,
+			"events_built":    len(events),
+			"events_appended": appended,
+		})
 		emitUploadTelemetry(r.Context(), uploadTelemetry{
 			target:         h.options.Target,
 			tenantID:       tenantID,
@@ -128,13 +159,26 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, wrapped)
 		return
 	}
+	h.recordUploadJobEvent(r.Context(), job, "events_appended", ports.JobStatusRunning, "Upload events appended", map[string]any{
+		"upload_id":         uploadID,
+		"events_built":      len(events),
+		"events_appended":   appended,
+		"review_state":      response.ReviewState,
+		"quality_status":    response.QualityStatus,
+		"review_item_count": len(response.ReviewItems),
+	})
 	projection := h.projectEvents(r.Context(), events)
 	status := "accepted"
+	response.Status = "projected"
 	response.ProjectionStatus = "projected"
 	if projection.err != nil {
 		status = "accepted_with_projection_errors"
-		response.ProjectionStatus = status
+		response.Status = "projection_partial"
+		response.ProjectionStatus = "projection_partial"
 		response.ProjectionFailures = projection.failures
+	}
+	if response.ReviewState == "needs_review" && response.Status == "projected" {
+		response.Status = "needs_review"
 	}
 	emitUploadTelemetry(r.Context(), uploadTelemetry{
 		target:             h.options.Target,
@@ -153,6 +197,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.options.BumpCache != nil && projection.eventsProjected > 0 {
 		h.options.BumpCache(r.Context(), tenantID)
 	}
+	job = h.completeUploadJob(r.Context(), job, response, projection, len(events), appended)
+	response.Job = uploadJobRef(job)
 	h.writeJSON(w, http.StatusAccepted, response)
 }
 
@@ -194,6 +240,160 @@ func (h Handler) projectEvents(ctx context.Context, events []*cerebrov1.EventEnv
 		summary.linksProjected += result.LinksProjected
 	}
 	return summary
+}
+
+func (h Handler) startUploadJob(ctx context.Context, uploadID string, request grcupload.UploadRequest) (*ports.Job, error) {
+	if h.options.JobStore == nil {
+		return nil, nil
+	}
+	job, _, err := h.options.JobStore.CreateJob(ctx, ports.CreateJobRequest{
+		Kind:           platformjobs.KindGRCUpload,
+		TenantID:       request.TenantID,
+		SubjectType:    "grc_upload",
+		SubjectID:      uploadID,
+		IdempotencyKey: "grc_upload:" + uploadID,
+		Payload: map[string]any{
+			"upload_id":    uploadID,
+			"target":       string(request.Target),
+			"source_id":    request.SourceID,
+			"runtime_id":   request.RuntimeID,
+			"file_name":    request.FileName,
+			"content_type": request.ContentType,
+			"file_size":    request.FileSize,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: create upload job: %w", grcupload.ErrRuntimeUnavailable, err)
+	}
+	now := h.now()
+	progress := uint32(10)
+	updated, err := h.options.JobStore.UpdateJob(ctx, job.ID, ports.JobUpdate{
+		Status:    ports.JobStatusRunning,
+		Progress:  &progress,
+		Message:   "Upload received",
+		StartedAt: &now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: start upload job: %w", grcupload.ErrRuntimeUnavailable, err)
+	}
+	h.recordUploadJobEvent(ctx, updated, "received", ports.JobStatusRunning, "Upload received", map[string]any{
+		"upload_id":  uploadID,
+		"target":     string(request.Target),
+		"file_name":  request.FileName,
+		"file_size":  request.FileSize,
+		"runtime_id": request.RuntimeID,
+	})
+	return updated, nil
+}
+
+func (h Handler) recordUploadJobEvent(ctx context.Context, job *ports.Job, eventType string, status string, message string, payload map[string]any) {
+	if h.options.JobStore == nil || job == nil {
+		return
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if _, err := h.options.JobStore.AppendJobEvent(ctx, ports.JobEvent{
+		JobID:   job.ID,
+		Type:    strings.TrimSpace(eventType),
+		Status:  strings.TrimSpace(status),
+		Message: strings.TrimSpace(message),
+		Payload: payload,
+	}); err != nil {
+		telemetry.CaptureError(ctx, "cerebro.grc.upload.job_event_error", err, telemetry.Attrs(
+			telemetry.Field{Key: "job_id", Value: job.ID},
+			telemetry.Field{Key: "event_type", Value: strings.TrimSpace(eventType)},
+		))
+	}
+}
+
+func (h Handler) failUploadJob(ctx context.Context, job *ports.Job, eventType string, err error, payload map[string]any) {
+	if h.options.JobStore == nil || job == nil {
+		return
+	}
+	finished := h.now()
+	updated, updateErr := h.options.JobStore.UpdateJob(ctx, job.ID, ports.JobUpdate{
+		Status:     ports.JobStatusFailed,
+		Message:    "Upload failed",
+		Error:      err.Error(),
+		FinishedAt: &finished,
+	})
+	if updateErr != nil {
+		telemetry.CaptureError(ctx, "cerebro.grc.upload.job_update_error", updateErr, telemetry.Attrs(telemetry.Field{Key: "job_id", Value: job.ID}))
+		updated = job
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["error_kind"] = telemetry.ErrorKind(err)
+	h.recordUploadJobEvent(ctx, updated, eventType, ports.JobStatusFailed, "Upload failed", payload)
+}
+
+func (h Handler) completeUploadJob(ctx context.Context, job *ports.Job, response grcupload.Response, projection projectionSummary, eventsBuilt int, eventsAppended int) *ports.Job {
+	if h.options.JobStore == nil || job == nil {
+		return job
+	}
+	eventType := "projected"
+	message := "Upload projected"
+	if response.Status == "projection_partial" {
+		eventType = "projection_partial"
+		message = "Upload accepted with projection errors"
+	}
+	if response.Status == "needs_review" {
+		eventType = "needs_review"
+		message = "Upload needs field review"
+	}
+	result := map[string]any{
+		"upload_id":           response.UploadID,
+		"status":              response.Status,
+		"target":              response.Target,
+		"projection_status":   response.ProjectionStatus,
+		"projection_failures": response.ProjectionFailures,
+		"events_built":        eventsBuilt,
+		"events_appended":     eventsAppended,
+		"events_projected":    projection.eventsProjected,
+		"entities_projected":  projection.entitiesProjected,
+		"links_projected":     projection.linksProjected,
+		"review_state":        response.ReviewState,
+		"review_item_count":   len(response.ReviewItems),
+		"quality_status":      response.QualityStatus,
+		"quality_check_count": len(response.QualityChecks),
+		"reducto_parse_id":    response.ReductoParseID,
+		"reducto_file_id":     response.ReductoFileID,
+		"entity_match_hints":  response.EntityMatchHints,
+	}
+	refs := map[string]string{
+		"upload_id": response.UploadID,
+	}
+	if response.ReductoParseID != "" {
+		refs["reducto_parse_id"] = response.ReductoParseID
+	}
+	if len(response.Events) > 0 {
+		refs["first_event_id"] = response.Events[0].EventID
+	}
+	finished := h.now()
+	progress := uint32(100)
+	updated, err := h.options.JobStore.UpdateJob(ctx, job.ID, ports.JobUpdate{
+		Status:     ports.JobStatusCompleted,
+		Progress:   &progress,
+		Message:    message,
+		Result:     result,
+		ResultRefs: refs,
+		FinishedAt: &finished,
+	})
+	if err != nil {
+		telemetry.CaptureError(ctx, "cerebro.grc.upload.job_update_error", err, telemetry.Attrs(telemetry.Field{Key: "job_id", Value: job.ID}))
+		updated = job
+	}
+	h.recordUploadJobEvent(ctx, updated, eventType, ports.JobStatusCompleted, message, result)
+	return updated
+}
+
+func uploadJobRef(job *ports.Job) *grcupload.UploadJobRef {
+	if job == nil {
+		return nil
+	}
+	return &grcupload.UploadJobRef{ID: job.ID, Status: job.Status}
 }
 
 type uploadTelemetry struct {

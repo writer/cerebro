@@ -12,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
@@ -123,7 +124,8 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))
 	registerHTTPRoute(mux, "GET /grc/policy-lifecycle", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("policy.lifecycle", time.Minute, grcCacheScopeGraph), app.handleGRCPolicyLifecycle))
 	registerHTTPRoute(mux, "POST /grc/policy-lifecycle/actions", routeSurfacePlatformHTTP, app.handleGRCPolicyLifecycleAction)
-	registerHTTPRoute(mux, "POST /grc/policy-lifecycle/uploads", routeSurfacePlatformHTTP, app.handleGRCPolicyUpload)
+	registerHTTPRoute(mux, "POST /grc/policy-lifecycle/uploads", routeSurfacePlatformHTTP, app.grcUploadHandler(grcupload.TargetPolicy).ServeHTTP)
+	registerHTTPRoute(mux, "POST /grc/policy-lifecycle/uploads/{uploadID}/replay", routeSurfacePlatformHTTP, app.grcUploadReplayHandler().ServeHTTP)
 	registerHTTPRoute(mux, "GET /grc/policy-lifecycle/export", routeSurfacePlatformHTTP, app.handleGRCPolicyLifecycleExport)
 	registerHTTPRoute(mux, "GET /grc/trends", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("trends", time.Minute, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCTrends))
 	registerHTTPRoute(mux, "POST /grc/ask", routeSurfacePlatformHTTP, app.handleGRCAsk)
@@ -152,7 +154,8 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/inventory/assets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.assets", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssets))
 	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssetDetail))
 	registerHTTPRoute(mux, "GET /grc/vendors", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendors", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCVendors))
-	registerHTTPRoute(mux, "POST /grc/vendors/uploads", routeSurfacePlatformHTTP, app.handleGRCVendorUpload)
+	registerHTTPRoute(mux, "POST /grc/vendors/uploads", routeSurfacePlatformHTTP, app.grcUploadHandler(grcupload.TargetVendor).ServeHTTP)
+	registerHTTPRoute(mux, "POST /grc/vendors/uploads/{uploadID}/replay", routeSurfacePlatformHTTP, app.grcUploadReplayHandler().ServeHTTP)
 	registerHTTPRoute(mux, "GET /grc/vendors/{vendorID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendor.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCVendorDetail))
 	registerHTTPRoute(mux, "GET /grc/vendors/{vendorID}/packet", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendor.packet", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCVendorPacket))
 	registerHTTPRoute(mux, "GET /grc/vendor-discoveries", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendor.discoveries", time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeRuntime), app.handleGRCVendorDiscoveries))

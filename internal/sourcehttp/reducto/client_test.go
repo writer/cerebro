@@ -115,6 +115,9 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	if parsed.StructuredSummary != "Access policy summary" {
 		t.Fatalf("StructuredSummary = %q", parsed.StructuredSummary)
 	}
+	if len(parsed.Chunks) != 2 || parsed.Chunks[0].Index != 1 || parsed.Chunks[0].TextPreview != "Access control policy" {
+		t.Fatalf("chunks = %#v", parsed.Chunks)
+	}
 }
 
 func TestReductoClientMarksUnstructuredWhenNoFieldsExtracted(t *testing.T) {

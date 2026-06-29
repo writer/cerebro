@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -184,7 +185,7 @@ func TestHandlerAcceptsUploadWhenProjectionFailsAfterAppend(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got, want := payload.ProjectionStatus, "accepted_with_projection_errors"; got != want {
+	if got, want := payload.ProjectionStatus, "projection_partial"; got != want {
 		t.Fatalf("projection_status = %q, want %q", got, want)
 	}
 	if got, want := payload.ProjectionFailures, 1; got != want {
@@ -198,6 +199,78 @@ func TestHandlerAcceptsUploadWhenProjectionFailsAfterAppend(t *testing.T) {
 	}
 	if cacheBumps != 1 {
 		t.Fatalf("cache bumps = %d, want 1 for the successful projection", cacheBumps)
+	}
+}
+
+func TestHandlerRecordsUploadJobTimeline(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	projector := &recordingProjector{}
+	jobs := newRecordingJobStore()
+	handler := NewHandler(Options{
+		Target: grcupload.TargetPolicy,
+		ParserFactory: func() (grcupload.Parser, error) {
+			return stubParser{parsed: grcupload.ParsedDocument{
+				ProviderFileID: "file-1",
+				ParseID:        "parse-1",
+				Status:         "completed",
+				TextPreview:    "Access policy review evidence",
+				ChunkCount:     1,
+				PageCount:      2,
+				Chunks:         []grcupload.ParsedChunk{{Index: 1, Page: 1, TextPreview: "Access policy review evidence"}},
+			}}, nil
+		},
+		AppendLog: appendLog,
+		Projector: projector,
+		JobStore:  jobs,
+		ResolveScope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: r.URL.Query().Get("tenant_id"), RuntimeID: "runtime-1"}, nil
+		},
+		AuthorizeTenant: func(context.Context, string) error { return nil },
+		Now:             fixedUploadTime,
+	})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, uploadRequest(t, "?tenant_id=tenant-1", map[string]string{
+		"policy_id":          "access",
+		"owner_id":           "owner-1",
+		"next_review_due_at": "2026-12-31",
+	}))
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusAccepted)
+	}
+	var payload grcupload.Response
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Job == nil || payload.Job.ID == "" || payload.Job.Status != ports.JobStatusCompleted {
+		t.Fatalf("job ref = %#v", payload.Job)
+	}
+	if payload.FileSHA256 == "" {
+		t.Fatal("file_sha256 is empty")
+	}
+	if payload.Status != "projected" {
+		t.Fatalf("upload status = %q, want projected", payload.Status)
+	}
+	gotTypes := []string{}
+	for _, event := range jobs.events {
+		gotTypes = append(gotTypes, event.Type)
+	}
+	wantTypes := []string{"received", "parsing", "parsed", "events_appended", "projected"}
+	if len(gotTypes) != len(wantTypes) {
+		t.Fatalf("job event types = %#v, want %#v", gotTypes, wantTypes)
+	}
+	for index, want := range wantTypes {
+		if gotTypes[index] != want {
+			t.Fatalf("job event types = %#v, want %#v", gotTypes, wantTypes)
+		}
+	}
+	job := jobs.jobs[payload.Job.ID]
+	if job == nil || job.Result["status"] != "projected" || job.ResultRefs["upload_id"] != payload.UploadID {
+		t.Fatalf("stored job = %#v", job)
+	}
+	if job.SubjectID != payload.UploadID || job.IdempotencyKey != "grc_upload:"+payload.UploadID {
+		t.Fatalf("job upload identity = subject %q idempotency %q, want upload %q", job.SubjectID, job.IdempotencyKey, payload.UploadID)
 	}
 }
 
@@ -266,4 +339,127 @@ func (p *recordingProjector) Project(_ context.Context, event *cerebrov1.EventEn
 		return ports.ProjectionResult{}, errors.New("project failed")
 	}
 	return ports.ProjectionResult{}, nil
+}
+
+type recordingJobStore struct {
+	jobs   map[string]*ports.Job
+	events []*ports.JobEvent
+	nextID int
+}
+
+func newRecordingJobStore() *recordingJobStore {
+	return &recordingJobStore{jobs: map[string]*ports.Job{}, nextID: 1}
+}
+
+func (s *recordingJobStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *recordingJobStore) CreateJob(_ context.Context, request ports.CreateJobRequest) (*ports.Job, bool, error) {
+	for _, job := range s.jobs {
+		if job.TenantID == request.TenantID && job.IdempotencyKey != "" && job.IdempotencyKey == request.IdempotencyKey {
+			return cloneTestJob(job), false, nil
+		}
+	}
+	id := "job-" + strconv.Itoa(s.nextID)
+	s.nextID++
+	job := &ports.Job{
+		ID:             id,
+		Kind:           request.Kind,
+		Status:         ports.JobStatusQueued,
+		TenantID:       request.TenantID,
+		SubjectType:    request.SubjectType,
+		SubjectID:      request.SubjectID,
+		IdempotencyKey: request.IdempotencyKey,
+		Payload:        request.Payload,
+	}
+	s.jobs[id] = cloneTestJob(job)
+	return cloneTestJob(job), true, nil
+}
+
+func (s *recordingJobStore) GetJob(_ context.Context, id string) (*ports.Job, error) {
+	job := s.jobs[id]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	return cloneTestJob(job), nil
+}
+
+func (s *recordingJobStore) ListJobs(context.Context, ports.JobFilter) ([]*ports.Job, error) {
+	return nil, nil
+}
+
+func (s *recordingJobStore) CountJobs(context.Context, ports.JobFilter) (uint64, error) {
+	return 0, nil
+}
+
+func (s *recordingJobStore) UpdateJob(_ context.Context, id string, update ports.JobUpdate) (*ports.Job, error) {
+	job := s.jobs[id]
+	if job == nil {
+		return nil, ports.ErrJobNotFound
+	}
+	if update.Status != "" {
+		job.Status = update.Status
+	}
+	if update.Progress != nil {
+		job.Progress = *update.Progress
+	}
+	if update.Message != "" {
+		job.Message = update.Message
+	}
+	if update.Error != "" {
+		job.Error = update.Error
+	}
+	if update.Result != nil {
+		job.Result = update.Result
+	}
+	if update.ResultRefs != nil {
+		job.ResultRefs = update.ResultRefs
+	}
+	if update.StartedAt != nil {
+		job.StartedAt = *update.StartedAt
+	}
+	if update.FinishedAt != nil {
+		job.FinishedAt = *update.FinishedAt
+	}
+	if update.CancelRequested != nil {
+		job.CancelRequested = *update.CancelRequested
+	}
+	return cloneTestJob(job), nil
+}
+
+func (s *recordingJobStore) AppendJobEvent(_ context.Context, event ports.JobEvent) (*ports.JobEvent, error) {
+	event.Sequence = uint64(len(s.events) + 1)
+	s.events = append(s.events, &event)
+	return &event, nil
+}
+
+func (s *recordingJobStore) ListJobEvents(context.Context, string, uint32) ([]*ports.JobEvent, error) {
+	return nil, nil
+}
+
+func cloneTestJob(job *ports.Job) *ports.Job {
+	if job == nil {
+		return nil
+	}
+	clone := *job
+	if job.Payload != nil {
+		clone.Payload = map[string]any{}
+		for key, value := range job.Payload {
+			clone.Payload[key] = value
+		}
+	}
+	if job.Result != nil {
+		clone.Result = map[string]any{}
+		for key, value := range job.Result {
+			clone.Result[key] = value
+		}
+	}
+	if job.ResultRefs != nil {
+		clone.ResultRefs = map[string]string{}
+		for key, value := range job.ResultRefs {
+			clone.ResultRefs[key] = value
+		}
+	}
+	return &clone
 }
