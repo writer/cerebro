@@ -1102,6 +1102,7 @@ func renderSourceGo(request normalizedRequest) string {
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "var oauthScopes = []string{%s}\n\n", quotedStrings(request.OAuth.Scopes))
 		fmt.Fprintf(&b, "var oauthTokenParams = map[string]string{%s}\n\n", renderedAttributeMap(request.OAuth.TokenParams))
+		fmt.Fprintf(&b, "var oauthRuntimeConfigOptions = sourcehttp.ClientCredentialsRuntimeConfigOptions{\n\tSourceID: sourceID,\n\tDefaultBaseURLTemplate: defaultBaseURLTemplate,\n\tTemplateKeys: templateKeys,\n\tTokenURLTemplate: oauthTokenURLTemplate,\n\tScopes: oauthScopes,\n\tScopeSeparator: oauthScopeSeparator,\n\tTokenParams: oauthTokenParams,\n\tExpirationBuffer: oauthTokenExpirationBuffer,\n}\n\n")
 	}
 	fmt.Fprintf(&b, "type Source struct {\n\tinner *jsonapi.Source\n\tallowLoopback bool\n")
 	if request.OAuth != nil {
@@ -1181,9 +1182,7 @@ func renderSourceGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.inner.Discover(ctx, runtimeCfg)\n}\n\n")
 	fmt.Fprintf(&b, "func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {\n\truntimeCfg, err := s.runtimeConfig(ctx, cfg)\n\tif err != nil {\n\t\treturn sourcecdk.Pull{}, err\n\t}\n\treturn s.inner.Read(ctx, runtimeCfg, cursor)\n}\n\n")
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tvalues := cfg.Values()\n\tif strings.TrimSpace(values[\"base_url\"]) == \"\" && strings.TrimSpace(defaultBaseURLTemplate) != \"\" {\n\t\tbaseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)\n\t\tif err != nil {\n\t\t\treturn sourcecdk.Config{}, err\n\t\t}\n\t\tvalues[\"base_url\"] = baseURL\n\t}\n")
-		fmt.Fprintf(&b, "\tif s == nil {\n\t\treturn sourcecdk.Config{}, fmt.Errorf(\"%%s source is required\", sourceID)\n\t}\n\ttoken, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{\n\t\tSourceID: sourceID,\n\t\tTokenURLTemplate: oauthTokenURLTemplate,\n\t\tTemplateKeys: templateKeys,\n\t\tScopes: oauthScopes,\n\t\tScopeSeparator: oauthScopeSeparator,\n\t\tTokenParams: oauthTokenParams,\n\t\tExpirationBuffer: oauthTokenExpirationBuffer,\n\t\tAllowLoopback: s.allowLoopback,\n\t})\n\tif err != nil {\n\t\treturn sourcecdk.Config{}, err\n\t}\n\tvalues[\"token\"] = token\n")
-		fmt.Fprintf(&b, "\treturn sourcecdk.NewConfig(values), nil\n}\n\n")
+		fmt.Fprintf(&b, "func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {\n\tif s == nil {\n\t\treturn sourcecdk.Config{}, fmt.Errorf(\"%%s source is required\", sourceID)\n\t}\n\toptions := oauthRuntimeConfigOptions\n\toptions.TokenCache = &s.tokenCache\n\toptions.AllowLoopback = s.allowLoopback\n\treturn sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, cfg, options)\n}\n\n")
 	} else {
 		// Non-OAuth sources delegate base-URL resolution to the shared CDK
 		// helper so the body stays below the cross-source duplication threshold

@@ -537,11 +537,12 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 	source := readGeneratedFile(t, outputDir, "sources/auth0/source.go")
 	for _, want := range []string{
 		"oauthTokenURLTemplate",
-		"sourcehttp.ClientCredentialsOptions",
-		"TokenURLTemplate: oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsRuntimeConfigOptions",
+		"TokenURLTemplate:",
+		"oauthTokenURLTemplate",
 		"sourcehttp.ClientCredentialsCache",
 		"oauthTokenExpirationBuffer",
-		"sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate",
+		"sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, cfg, options)",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)
@@ -1028,7 +1029,7 @@ func TestGenerateFindingOnlyScaffold(t *testing.T) {
 		}
 	}
 	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source.go")
-	for _, want := range []string{"demoSourceFindingVulnerabilityProjections", "demoSourceFindingProjections", "relationAffects", "relationSupports"} {
+	for _, want := range []string{"demoSourceFindingVulnerabilityProjections", "demoSourceGenericFindingProjections", "relationAffects", "relationSupports"} {
 		if !strings.Contains(projection, want) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
@@ -1052,12 +1053,12 @@ func TestGenerateAssetOnlySkipsUnusedFindingHelper(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source.go")
-	for _, want := range []string{"demoSourceAssetHostProjections", "demoSourceAssetProjections", "relationHasEvidence"} {
+	for _, want := range []string{"demoSourceAssetHostProjections", "demoSourceGenericAssetProjections", "relationHasEvidence"} {
 		if !strings.Contains(projection, want) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
 	}
-	if strings.Contains(projection, "demoSourceFindingProjections") {
+	if strings.Contains(projection, "demoSourceGenericFindingProjections") {
 		t.Fatalf("asset-only projection emitted unused finding helper:\n%s", projection)
 	}
 }

@@ -37,6 +37,17 @@ var oauthScopes = []string{}
 
 var oauthTokenParams = map[string]string{}
 
+var oauthRuntimeConfigOptions = sourcehttp.ClientCredentialsRuntimeConfigOptions{
+	SourceID:               sourceID,
+	DefaultBaseURLTemplate: defaultBaseURLTemplate,
+	TemplateKeys:           templateKeys,
+	TokenURLTemplate:       oauthTokenURLTemplate,
+	Scopes:                 oauthScopes,
+	ScopeSeparator:         oauthScopeSeparator,
+	TokenParams:            oauthTokenParams,
+	ExpirationBuffer:       oauthTokenExpirationBuffer,
+}
+
 type Source struct {
 	inner         *jsonapi.Source
 	allowLoopback bool
@@ -139,32 +150,13 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	values := cfg.Values()
-	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
-		baseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
-		if err != nil {
-			return sourcecdk.Config{}, err
-		}
-		values["base_url"] = baseURL
-	}
 	if s == nil {
 		return sourcecdk.Config{}, fmt.Errorf("%s source is required", sourceID)
 	}
-	token, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{
-		SourceID:         sourceID,
-		TokenURLTemplate: oauthTokenURLTemplate,
-		TemplateKeys:     templateKeys,
-		Scopes:           oauthScopes,
-		ScopeSeparator:   oauthScopeSeparator,
-		TokenParams:      oauthTokenParams,
-		ExpirationBuffer: oauthTokenExpirationBuffer,
-		AllowLoopback:    s.allowLoopback,
-	})
-	if err != nil {
-		return sourcecdk.Config{}, err
-	}
-	values["token"] = token
-	return sourcecdk.NewConfig(values), nil
+	options := oauthRuntimeConfigOptions
+	options.TokenCache = &s.tokenCache
+	options.AllowLoopback = s.allowLoopback
+	return sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, cfg, options)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
