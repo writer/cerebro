@@ -572,12 +572,10 @@ WHERE assignment.tenant_id = $tenant_id
 OPTIONAL MATCH (app)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
 WHERE grant.tenant_id = $tenant_id AND confers.tenant_id = $tenant_id
 WITH group, assignment, app, entitlement, capability,
-     coalesce(%s, '') AS direct_members,
      coalesce(%s, '') AS assignment_event_id,
      coalesce(%s, '') AS assignment_at
 RETURN group.urn AS group_urn,
        coalesce(group.label, group.urn) AS group_label,
-       direct_members,
        app.urn AS app_urn,
        coalesce(app.label, app.urn) AS app_label,
        coalesce(entitlement.urn, '') AS entitlement_urn,
@@ -590,9 +588,9 @@ RETURN group.urn AS group_urn,
          WHEN coalesce(capability.urn, '') ENDS WITH ':cloud_admin' OR coalesce(capability.urn, '') ENDS WITH ':identity_admin' THEN 'privileged_group_app_access'
          ELSE 'group_app_access'
        END AS risk_signal,
-       'Group risk is derived from Okta group-to-application assignments and projected entitlement capability edges; it does not infer app-local roles not present in Okta.' AS overclaim_guard
+       'Group risk is derived from Okta group-to-application assignments and projected entitlement capability edges; enumerate members from member_of edges or okta.group_membership events, not group attributes.' AS overclaim_guard
 ORDER BY risk_signal DESC, group_label, app_label
-LIMIT %d`, cypherJSONStringAttributes("group.attributes_json", "direct_members", "direct_members_count"), cypherJSONStringAttributes("assignment.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("assignment.attributes_json", "at", "observed_at"), limit), true
+LIMIT %d`, cypherJSONStringAttributes("assignment.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("assignment.attributes_json", "at", "observed_at"), limit), true
 	default:
 		return "", false
 	}

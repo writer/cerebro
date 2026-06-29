@@ -96,6 +96,20 @@ func TestOntologyEntityPropertiesStayWithinProjectedContract(t *testing.T) {
 	}
 }
 
+func TestOntologyRelationEndpointTypesAreDocumented(t *testing.T) {
+	entityTypes := map[string]struct{}{"*": {}}
+	for _, entity := range canonicalGraphOntology.Entities {
+		entityTypes[entity.Type] = struct{}{}
+	}
+	for _, relation := range canonicalGraphOntology.Relations {
+		for _, entityType := range append(relation.FromTypes, relation.ToTypes...) {
+			if _, ok := entityTypes[entityType]; !ok {
+				t.Fatalf("relation %q references undocumented entity type %q", relation.Relation, entityType)
+			}
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -116,6 +130,7 @@ func TestOntologyPromptDocumentsOktaAccessReviewGraphShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
 		"Entity `okta.user`",
+		"Entity `okta.role`",
 		"Okta access-review evidence is graph-shaped",
 		"`okta.user` -> `okta.group` via `member_of`",
 		"`mfa_phishing_resistant`",
@@ -235,10 +250,15 @@ func TestConvertDraftToQueryRendersOktaGroupAccessRiskTemplate(t *testing.T) {
 		"grants_entitlement",
 		"confers_capability",
 		"privileged_group_app_access",
-		"does not infer app-local roles",
+		"enumerate members from member_of edges or okta.group_membership events",
 	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{"direct_members", "direct_members_count"} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("converted cypher should not expose Okta group attribute %q:\n%s", forbidden, result.Cypher)
 		}
 	}
 }

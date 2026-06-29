@@ -63,6 +63,27 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:identity:login:alice"},
 		},
 		{
+			Type:        "identifier.email",
+			Description: "Email identifier evidence nodes linked from concrete principals and canonical identity.email anchors. Use them as join evidence, not as person records.",
+			Aliases:     []string{"email identifier", "identifier email", "raw email"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:identifier:email:alice@writer.com"},
+		},
+		{
+			Type:        "identifier.login",
+			Description: "Login identifier evidence nodes linked from concrete principals and canonical identity.login anchors. Use them as join evidence, not as account records.",
+			Aliases:     []string{"login identifier", "identifier login", "username identifier"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:identifier:login:alice"},
+		},
+		{
+			Type:        "endpoint.identifier",
+			Description: "Endpoint-scoped identifier evidence nodes such as serial numbers, hostnames, or device owner identifiers.",
+			Aliases:     []string{"endpoint identifier", "device identifier", "host identifier"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:endpoint_identifier:serial_number:serial1"},
+		},
+		{
 			Type:        fabriccontract.EntityTypeSource,
 			Description: "Projected source/integration nodes used for connector health. Freshness and health metadata are stored in attributes_json.",
 			Aliases:     []string{"source", "source runtime", "runtime", "connector"},
@@ -96,6 +117,13 @@ var canonicalGraphOntology = GraphOntology{
 			Aliases:     []string{"okta admin role", "Okta admin role", "privileged role"},
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:okta_admin_role:SUPER_ADMIN"},
+		},
+		{
+			Type:        "okta.role",
+			Description: "Non-admin Okta role resources. Users or groups link to these with assigned_to when the projection records role context that is not privileged administrator access.",
+			Aliases:     []string{"okta role", "Okta role", "non-admin role"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_role:role-1"},
 		},
 		{
 			Type:        "okta.entitlement",
@@ -139,7 +167,7 @@ var canonicalGraphOntology = GraphOntology{
 			Description: "Edge from a concrete identity/resource node to a normalized identifier node.",
 			Aliases:     []string{"HAS_IDENTIFIER", "identity_email", "email", "identifier"},
 			FromTypes:   []string{"*"},
-			ToTypes:     []string{"identifier"},
+			ToTypes:     []string{"identifier.email", "identifier.login", "endpoint.identifier"},
 		},
 		{
 			Relation:    fabriccontract.RelationRepresentsIdentity,
