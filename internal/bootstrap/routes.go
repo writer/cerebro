@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
@@ -198,6 +199,9 @@ func (app *App) registerSourceRoutes(mux *http.ServeMux) {
 }
 
 func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
+	credentialStores := credentialstoreshttp.New(credentialstoreshttp.Dependencies{Config: app.cfg, StateStore: app.deps.StateStore, TransitKey: app.connectorTransitKey, SourceService: app.sourceService(), EffectiveTenant: effectiveTenantFilter, RequiresTenantFilter: requiresTenantFilter, TenantAllowed: tenantAllowedByContext, WriteError: writeConnectorError})
+	registerHTTPRoute(mux, "GET /credential-stores", routeSurfacePlatformHTTP, credentialStores.List)
+	registerHTTPRoute(mux, "GET /credential-stores/{storeID}", routeSurfacePlatformHTTP, credentialStores.Get)
 	registerHTTPRoute(mux, "GET /connectors", routeSurfacePlatformHTTP, app.handleListConnectors)
 	registerHTTPRoute(mux, "GET /connectors/coverage", routeSurfacePlatformHTTP, app.handleGetConnectorCoverage)
 	registerHTTPRoute(mux, "GET /connectors/credential-key", routeSurfacePlatformHTTP, app.handleConnectorCredentialKey)

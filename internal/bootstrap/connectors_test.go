@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -195,6 +196,265 @@ func connectorCredentialRecordMatches(record *ports.ConnectorCredentialRecord, f
 		return false
 	}
 	return true
+}
+
+func TestCredentialStoresListReturnsOperationalBindings(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-vault": {
+				Id:       "runtime-vault",
+				SourceId: "bootstrap_token",
+				TenantId: "tenant-a",
+				Config: map[string]string{
+					"token": connectorcredentials.Reference("cred-valid", "token"),
+				},
+			},
+			"runtime-env": {
+				Id:       "runtime-env",
+				SourceId: "bootstrap_token",
+				TenantId: "tenant-a",
+				// #nosec G101 -- credential store tests use reference-shaped fixture values, not real secrets.
+				Config: map[string]string{
+					"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
+				},
+			},
+			"runtime-aws": {
+				Id:       "runtime-aws",
+				SourceId: "bootstrap_token",
+				TenantId: "tenant-a",
+				// #nosec G101 -- credential store tests use reference-shaped fixture values, not real secrets.
+				Config: map[string]string{
+					"token": "aws-sm:us-east-1:cerebro/tenant-a/bootstrap_token/runtime-aws/credentials#token",
+				},
+			},
+			"runtime-plain": {
+				Id:       "runtime-plain",
+				SourceId: "bootstrap_token",
+				TenantId: "tenant-a",
+				Config: map[string]string{
+					"token": "plain-secret-value",
+				},
+			},
+		}},
+		credentials: map[string]*ports.ConnectorCredentialRecord{
+			"cred-valid": {
+				ID:                "cred-valid",
+				TenantID:          "tenant-a",
+				SourceID:          "bootstrap_token",
+				RuntimeID:         "runtime-vault",
+				CredentialStoreID: defaultConnectorCredentialStoreID,
+				AuthMethod:        connectorAuthMethodEncryptedSubmission,
+				Status:            connectorcredentials.StatusValid,
+				Fields:            []string{"token"},
+				CreatedAt:         now,
+				UpdatedAt:         now,
+				LastValidatedAt:   now,
+			},
+		},
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/credential-stores?tenant_id=tenant-a")
+	if err != nil {
+		t.Fatalf("GET /credential-stores error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	body := string(bodyBytes)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /credential-stores status = %d, want 200: %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "plain-secret-value") || strings.Contains(body, "CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN") || strings.Contains(body, "cerebro/tenant-a/bootstrap_token/runtime-aws") {
+		t.Fatalf("credential store response leaked runtime reference value: %s", body)
+	}
+	type credentialStoreTestItem struct {
+		Store struct {
+			ID string `json:"id"`
+		} `json:"store"`
+		Health struct {
+			Status string `json:"status"`
+		} `json:"health"`
+		Usage struct {
+			Connections     int `json:"connections"`
+			Credentials     int `json:"credentials"`
+			FieldReferences int `json:"field_references"`
+		} `json:"usage"`
+		Bindings []struct {
+			RuntimeID         string   `json:"runtime_id"`
+			CredentialID      string   `json:"credential_id"`
+			ReferencePrefixes []string `json:"reference_prefixes"`
+		} `json:"bindings"`
+		Issues []struct {
+			Detail string `json:"detail"`
+		} `json:"issues"`
+	}
+	var payload struct {
+		Stores []credentialStoreTestItem `json:"stores"`
+		Issues []struct {
+			StoreID string `json:"credential_store_id"`
+			Field   string `json:"field"`
+			Detail  string `json:"detail"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	stores := map[string]credentialStoreTestItem{}
+	for _, item := range payload.Stores {
+		stores[item.Store.ID] = item
+	}
+	vault := stores[defaultConnectorCredentialStoreID]
+	if vault.Usage.Credentials != 1 || vault.Usage.Connections != 1 || len(vault.Bindings) != 1 || vault.Bindings[0].CredentialID != "cred-valid" {
+		t.Fatalf("vault usage/bindings = %#v, want one credential-backed connection", vault)
+	}
+	env := stores[connectorStoreEnvironmentManaged]
+	if env.Usage.Connections != 1 || env.Usage.FieldReferences != 1 || len(env.Bindings) != 1 {
+		t.Fatalf("environment usage/bindings = %#v, want one env reference", env)
+	}
+	aws := stores[connectorStoreAWSSecretsManager]
+	if aws.Usage.Connections != 1 || aws.Health.Status != "needs_attention" || len(aws.Issues) == 0 {
+		t.Fatalf("aws store = %#v, want unavailable in-use issue", aws)
+	}
+	foundPlaintextIssue := false
+	for _, issue := range payload.Issues {
+		if issue.Field == "token" && strings.Contains(issue.Detail, "without a credential reference") {
+			foundPlaintextIssue = true
+			break
+		}
+	}
+	if !foundPlaintextIssue {
+		t.Fatalf("issues = %#v, want plaintext sensitive config issue", payload.Issues)
+	}
+}
+
+func TestCredentialStoreDetailReturnsAudit(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	now := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
+	store := &connectorTestStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-vault": {
+				Id:       "runtime-vault",
+				SourceId: "bootstrap_token",
+				TenantId: "tenant-a",
+				Config: map[string]string{
+					"token": connectorcredentials.Reference("cred-valid", "token"),
+				},
+			},
+		}},
+		credentials: map[string]*ports.ConnectorCredentialRecord{
+			"cred-valid": {
+				ID:                "cred-valid",
+				TenantID:          "tenant-a",
+				SourceID:          "bootstrap_token",
+				RuntimeID:         "runtime-vault",
+				CredentialStoreID: defaultConnectorCredentialStoreID,
+				AuthMethod:        connectorAuthMethodEncryptedSubmission,
+				Status:            connectorcredentials.StatusValid,
+				Fields:            []string{"token"},
+				CreatedAt:         now,
+				UpdatedAt:         now,
+				LastValidatedAt:   now,
+			},
+		},
+		audit: []*ports.ConnectorCredentialAuditRecord{
+			{
+				ID:           "audit-validated",
+				CredentialID: "cred-valid",
+				TenantID:     "tenant-a",
+				SourceID:     "bootstrap_token",
+				RuntimeID:    "runtime-vault",
+				EventType:    connectorcredentials.AuditEventValidated,
+				Status:       connectorcredentials.StatusValid,
+				CreatedAt:    now,
+			},
+			{
+				ID:           "audit-used",
+				CredentialID: "cred-valid",
+				TenantID:     "tenant-a",
+				SourceID:     "bootstrap_token",
+				RuntimeID:    "runtime-vault",
+				EventType:    connectorcredentials.AuditEventUsed,
+				Status:       connectorcredentials.StatusValid,
+				CreatedAt:    now.Add(500 * time.Millisecond),
+			},
+		},
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		ConnectorCredentials: config.ConnectorCredentialConfig{
+			Key:               "test-connector-vault-key",
+			TransitPrivateKey: testConnectorTransitPrivateKeyPEM(t),
+		},
+	}, Dependencies{StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/credential-stores/" + defaultConnectorCredentialStoreID + "?tenant_id=tenant-a")
+	if err != nil {
+		t.Fatalf("GET /credential-stores/{storeID} error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /credential-stores/{storeID} status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		Store struct {
+			Usage struct {
+				Credentials int `json:"credentials"`
+			} `json:"usage"`
+		} `json:"store"`
+		Audit []struct {
+			ID        string `json:"id"`
+			EventType string `json:"event_type"`
+			CreatedAt string `json:"created_at"`
+		} `json:"audit"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Store.Usage.Credentials != 1 {
+		t.Fatalf("credentials = %d, want 1", payload.Store.Usage.Credentials)
+	}
+	if len(payload.Audit) != 2 {
+		t.Fatalf("audit length = %d, want 2: %#v", len(payload.Audit), payload.Audit)
+	}
+	if payload.Audit[0].ID != "audit-used" || payload.Audit[0].EventType != connectorcredentials.AuditEventUsed {
+		t.Fatalf("audit[0] = %#v, want latest used event", payload.Audit[0])
+	}
+	if payload.Audit[1].ID != "audit-validated" || payload.Audit[1].EventType != connectorcredentials.AuditEventValidated {
+		t.Fatalf("audit[1] = %#v, want earlier validated event", payload.Audit[1])
+	}
 }
 
 func TestConnectorConnectionStoresCredentialReference(t *testing.T) {

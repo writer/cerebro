@@ -404,6 +404,65 @@ paths:
       responses:
         '200':
           description: Source events and cursor.
+  /credential-stores:
+    get:
+      summary: List connector credential stores
+      tags:
+        - Connectors
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Caps each backing collection independently. Source runtimes and credential records are each limited to this value before the operations view is built.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+      responses:
+        '200':
+          description: Credential-store readiness, runtime bindings, credential metadata, and non-secret setup issues. Secret values and full secret reference addresses are never returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialStoreListResponse'
+        '403':
+          description: Caller is not allowed to inspect credential stores for the requested tenant.
+  /credential-stores/{storeID}:
+    get:
+      summary: Get connector credential store operations
+      tags:
+        - Connectors
+      parameters:
+        - name: storeID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Caps each backing collection independently. Source runtimes and credential records are each limited to this value before the store detail is built.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+      responses:
+        '200':
+          description: One credential store with runtime bindings, setup issues, and recent non-secret credential audit events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialStoreDetailResponse'
+        '403':
+          description: Caller is not allowed to inspect credential stores for the requested tenant.
+        '404':
+          description: Credential store was not found.
   /connectors:
     get:
       summary: List connector library entries
@@ -6673,6 +6732,292 @@ components:
         nonce:
           type: string
         ciphertext:
+          type: string
+    CredentialStoreListResponse:
+      type: object
+      required:
+        - generated_at
+        - runtime_store_status
+        - credential_store_status
+        - stores
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        runtime_store_status:
+          type: string
+          enum:
+            - ready
+            - unavailable
+        credential_store_status:
+          type: string
+          enum:
+            - ready
+            - unavailable
+        stores:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialStoreOperational'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialStoreIssue'
+    CredentialStoreDetailResponse:
+      type: object
+      required:
+        - generated_at
+        - runtime_store_status
+        - credential_store_status
+        - store
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        tenant_id:
+          type: string
+        runtime_store_status:
+          type: string
+          enum:
+            - ready
+            - unavailable
+        credential_store_status:
+          type: string
+          enum:
+            - ready
+            - unavailable
+        store:
+          $ref: '#/components/schemas/CredentialStoreOperational'
+        audit:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorCredentialAuditEvent'
+    CredentialStoreOperational:
+      type: object
+      required:
+        - store
+        - health
+        - usage
+      properties:
+        store:
+          $ref: '#/components/schemas/CredentialStoreMetadata'
+        health:
+          $ref: '#/components/schemas/CredentialStoreHealth'
+        usage:
+          $ref: '#/components/schemas/CredentialStoreUsage'
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialStoreBinding'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialStoreIssue'
+    CredentialStoreMetadata:
+      type: object
+      required:
+        - id
+        - label
+        - provider
+        - available
+        - mode
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        provider:
+          type: string
+        available:
+          type: boolean
+        default:
+          type: boolean
+        mode:
+          type: string
+          enum:
+            - encrypted_submission
+            - environment_managed
+            - reference
+        status:
+          type: string
+        detail:
+          type: string
+        description:
+          type: string
+        reference_prefixes:
+          type: array
+          items:
+            type: string
+        reference_namespace_template:
+          type: string
+        reference_field_template:
+          type: string
+        reference_placeholder:
+          type: string
+        native_resolution_available:
+          type: boolean
+        setup_steps:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              description:
+                type: string
+              command:
+                type: string
+        required_config:
+          type: array
+          items:
+            type: object
+            properties:
+              env:
+                type: string
+              label:
+                type: string
+              required:
+                type: boolean
+              description:
+                type: string
+    CredentialStoreHealth:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - in_use
+            - warning
+            - needs_attention
+            - needs_configuration
+            - unavailable
+        severity:
+          type: string
+          enum:
+            - success
+            - warning
+            - error
+        detail:
+          type: string
+        next_action:
+          type: string
+    CredentialStoreUsage:
+      type: object
+      required:
+        - connections
+        - credentials
+        - bindings
+        - field_references
+        - issues
+      properties:
+        connections:
+          type: integer
+        credentials:
+          type: integer
+        bindings:
+          type: integer
+        field_references:
+          type: integer
+        issues:
+          type: integer
+        last_updated_at:
+          type: string
+          format: date-time
+    CredentialStoreBinding:
+      type: object
+      required:
+        - id
+        - credential_store_id
+      properties:
+        id:
+          type: string
+        credential_store_id:
+          type: string
+        source_id:
+          type: string
+        source_name:
+          type: string
+        runtime_id:
+          type: string
+        tenant_id:
+          type: string
+        auth_method:
+          type: string
+        resolver:
+          type: string
+          enum:
+            - cerebro_vault
+            - environment
+            - environment_projection
+            - native
+            - native_reference
+            - unknown
+        credential_id:
+          type: string
+        credential_status:
+          type: string
+        connection_status:
+          type: string
+        next_action:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        field_count:
+          type: integer
+        reference_prefixes:
+          type: array
+          items:
+            type: string
+        updated_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        last_validated_at:
+          type: string
+          format: date-time
+    CredentialStoreIssue:
+      type: object
+      required:
+        - id
+        - status
+        - severity
+        - detail
+      properties:
+        id:
+          type: string
+        credential_store_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        credential_id:
+          type: string
+        field:
+          type: string
+        status:
+          type: string
+          enum:
+            - blocked
+            - warning
+        severity:
+          type: string
+          enum:
+            - error
+            - warning
+        detail:
+          type: string
+        next_action:
           type: string
     ConnectorCredential:
       type: object
