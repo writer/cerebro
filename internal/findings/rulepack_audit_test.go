@@ -1037,7 +1037,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-okta-group-grants-admin-app-graph", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-oauth-public-client-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-privileged-missing-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
-		{RuleID: "identity-okta-sign-on-rule-without-mfa", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
+		{RuleID: "identity-okta-sign-on-rule-without-mfa", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-stale-app-assignment-graph-30d", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-stale-group-membership-graph-90d", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-suspended-user-active-assignment", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},

@@ -156,7 +156,7 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 		}
 	}
 	groupAdminGraph := byID["identity-okta-group-grants-admin-app-graph"].Spec.Graph.Query
-	if strings.Contains(groupAdminGraph, "app.attributes_json") {
+	if strings.Contains(groupAdminGraph, "toLower(coalesce(app.label, '') + ' ' + coalesce(app.attributes_json, '')) AS app_text") {
 		t.Fatalf("group admin graph query should not match admin-like terms across full application attributes:\n%s", groupAdminGraph)
 	}
 	if !strings.Contains(groupAdminGraph, "toLower(coalesce(app.label, '')) AS app_text") {

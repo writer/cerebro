@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: group grants admin app access fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_group:admins
+        primary_label: Finance Admins
+        primary_type: okta.group
+        fingerprint_key: urn:cerebro:writer:okta_group:admins|urn:cerebro:writer:okta_application:admin-console
+        resource_urns:
+          - urn:cerebro:writer:okta_group:admins
+          - urn:cerebro:writer:okta_application:admin-console
+        severity: HIGH
+        summary: Okta group Finance Admins grants admin-like access to Admin Console
+        action: Review group membership and split broad admin application access
+        evidence:
+          - urn: urn:cerebro:writer:okta_application:admin-console
+    wantFinding: true
+  - name: group scoped away from admin app passes
+    resource:
+      placeholder: true
+    wantFinding: false
