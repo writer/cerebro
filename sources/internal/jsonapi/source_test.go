@@ -281,6 +281,62 @@ func TestReadSynthesizesPageCursorForFullPages(t *testing.T) {
 	}
 }
 
+func TestReadSynthesizesStartOffsetCursorForFullPages(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("count"); got != "2" {
+			t.Fatalf("count query = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("start") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "item-1"}, {"id": "item-2"}}})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "item-3"}}})
+		default:
+			t.Fatalf("unexpected start %q", r.URL.Query().Get("start"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "items",
+		Path:            "/items",
+		CursorParam:     "start",
+		PageSizeParams:  []string{"count"},
+		PageFirstCursor: "0",
+		URNKind:         "test_item",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"items"},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if got := requests[0].URL.Query().Get("start"); got != "0" {
+		t.Fatalf("first start query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("start"); got != "2" {
+		t.Fatalf("second start query = %q, want 2", got)
+	}
+}
+
 func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

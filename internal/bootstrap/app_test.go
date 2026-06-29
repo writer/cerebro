@@ -48,6 +48,7 @@ import (
 	"github.com/writer/cerebro/internal/workflowprojection"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	auth0source "github.com/writer/cerebro/sources/auth0"
+	datadogsource "github.com/writer/cerebro/sources/datadog"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
@@ -1747,8 +1748,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 6 {
-		t.Fatalf("/sources entries = %#v, want 6 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 7 {
+		t.Fatalf("/sources entries = %#v, want 7 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
@@ -1883,6 +1884,72 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(oktaPreviewEvents) != 1 {
 		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
 	}
+	datadogConfig := map[string]string{"tenant_id": "tenant"}
+	datadogCheckResp, err := sourceGet(t, server, "/sources/datadog/check?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/check error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogCheckResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/check response body: %v", closeErr)
+		}
+	}()
+	var datadogCheckPayload map[string]any
+	if err := json.NewDecoder(datadogCheckResp.Body).Decode(&datadogCheckPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/check response: %v", err)
+	}
+	if datadogCheckPayload["status"] != "ok" {
+		t.Fatalf("datadog check status = %#v, want %q", datadogCheckPayload["status"], "ok")
+	}
+	datadogDiscoverResp, err := sourceGet(t, server, "/sources/datadog/discover?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/discover error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogDiscoverResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/discover response body: %v", closeErr)
+		}
+	}()
+	var datadogDiscoverPayload map[string]any
+	if err := json.NewDecoder(datadogDiscoverResp.Body).Decode(&datadogDiscoverPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/discover response: %v", err)
+	}
+	datadogURNs, ok := datadogDiscoverPayload["urns"].([]any)
+	if !ok || len(datadogURNs) != 1 {
+		t.Fatalf("datadog discover urns = %#v, want 1 entry", datadogDiscoverPayload["urns"])
+	}
+	if got := datadogURNs[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+		t.Fatalf("datadog discover urns[0] = %#v, want Datadog users URN", got)
+	}
+	datadogReadResp, err := sourceGet(t, server, "/sources/datadog/read?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/read error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogReadResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/read response body: %v", closeErr)
+		}
+	}()
+	var datadogReadPayload map[string]any
+	if err := json.NewDecoder(datadogReadResp.Body).Decode(&datadogReadPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/read response: %v", err)
+	}
+	datadogEvents, ok := datadogReadPayload["events"].([]any)
+	if !ok || len(datadogEvents) != 1 {
+		t.Fatalf("datadog read events = %#v, want 1 entry", datadogReadPayload["events"])
+	}
+	datadogEvent, ok := datadogEvents[0].(map[string]any)
+	if !ok || datadogEvent["kind"] != "datadog.users" {
+		t.Fatalf("datadog read event = %#v, want kind datadog.users", datadogEvents[0])
+	}
+	datadogPreviewEvents, ok := datadogReadPayload["preview_events"].([]any)
+	if !ok || len(datadogPreviewEvents) != 1 {
+		t.Fatalf("datadog read preview_events = %#v, want 1 entry", datadogReadPayload["preview_events"])
+	}
+	datadogPreviewEvent, ok := datadogPreviewEvents[0].(map[string]any)
+	if !ok || datadogPreviewEvent["payload_decoded"] != true {
+		t.Fatalf("datadog read preview_event = %#v, want decoded payload", datadogPreviewEvents[0])
+	}
 	leakyQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=secret")
 	if err != nil {
 		t.Fatalf("GET /sources/github/check leaky query error = %v", err)
@@ -1916,8 +1983,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 6 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 6", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 7 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 7", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -7838,6 +7905,10 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	datadog, err := datadogsource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
 	sdk, err := sdksource.New()
 	if err != nil {
 		return nil, err
@@ -7846,7 +7917,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, okta, pagerDuty, sdk, slack)
+	return sourcecdk.NewRegistry(source, auth0, datadog, okta, pagerDuty, sdk, slack)
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

@@ -1,0 +1,31 @@
+[
+  {
+    "id": "datadog-teams-team-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.teams",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/teams/v1",
+    "payload": {
+      "id": "team-1",
+      "type": "team",
+      "attributes": {
+        "name": "Platform",
+        "handle": "platform",
+        "description": "Platform owners"
+      }
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "team-1",
+      "external_id": "team-1",
+      "family": "teams",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "team_id": "team-1",
+      "name": "Platform",
+      "handle": "platform",
+      "description": "Platform owners"
+    }
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "datadog-slos-slo-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.slos",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/slos/v1",
+    "payload": {
+      "id": "slo-1",
+      "name": "Checkout availability",
+      "type": "monitor",
+      "target_threshold": 99.9,
+      "monitor_ids": [123],
+      "tags": ["service:checkout", "team:platform"]
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "slo-1",
+      "external_id": "slo-1",
+      "family": "slos",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "slo_id": "slo-1",
+      "name": "Checkout availability",
+      "type": "monitor",
+      "target": "99.9",
+      "monitor_ids": "123",
+      "tags": "service:checkout,team:platform"
+    }
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "datadog-audit-audit-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.audit_events",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/audit_events/v1",
+    "payload": {
+      "id": "audit-1",
+      "type": "audit_events",
+      "attributes": {
+        "timestamp": "2026-06-02T00:00:00Z",
+        "evt": {"name": "role.updated"},
+        "usr": {"id": "user-1", "email": "alice@example.test"},
+        "resource": {"id": "role-1", "name": "Datadog Admin", "type": "role"}
+      }
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "audit-1",
+      "external_id": "audit-1",
+      "family": "audit_events",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "audit_id": "audit-1",
+      "event_type": "role.updated",
+      "action": "role.updated",
+      "actor_id": "user-1",
+      "actor_email": "alice@example.test",
+      "resource_id": "role-1",
+      "resource_name": "Datadog Admin",
+      "resource_type": "role",
+      "timestamp": "2026-06-02T00:00:00Z"
+    }
+  }
+]
