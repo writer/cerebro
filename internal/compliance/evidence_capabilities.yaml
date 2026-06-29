@@ -17,6 +17,22 @@ sources:
         control_refs:
           - framework: SOC 2
             control_id: CC6.1
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: SOC 2
+            control_id: CC6.2
       - dimension_id: iam_policy
         dimension_type: app_entitlement
         support_level: supported
@@ -32,6 +48,30 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC6.2
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: effective_permission
         dimension_type: app_entitlement
         support_level: supported
@@ -82,6 +122,18 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC6.6
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
       - dimension_id: s3_bucket
         dimension_type: entity_family
         support_level: supported
@@ -101,6 +153,28 @@ sources:
             control_id: C1.1
           - framework: SOC 2
             control_id: CC6.6
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.7
       - dimension_id: public_endpoint
         dimension_type: entity_family
         support_level: supported
@@ -116,6 +190,14 @@ sources:
             control_id: A.8.20
           - framework: SOC 2
             control_id: CC6.6
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
       - dimension_id: resource_exposure
         dimension_type: relationship
         support_level: supported
@@ -147,6 +229,16 @@ sources:
             control_id: A.8.20
           - framework: SOC 2
             control_id: CC6.6
+          - framework: CIS Controls v8
+            control_id: "13"
+          - framework: ISO 27001:2022
+            control_id: A.8.22
+          - framework: NIST 800-53 r5
+            control_id: SC-7
+          - framework: PCI DSS v4.0.1
+            control_id: "1.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "1.4"
       - dimension_id: cloudtrail
         dimension_type: audit_event
         support_level: supported
@@ -164,6 +256,18 @@ sources:
             control_id: CC7.2
           - framework: SOC 2
             control_id: CC7.3
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: AU-2
+          - framework: NIST 800-53 r5
+            control_id: AU-6
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
       - dimension_id: guardduty_finding
         dimension_type: entity_family
         support_level: supported
@@ -182,6 +286,26 @@ sources:
             control_id: CC7.2
           - framework: SOC 2
             control_id: CC7.3
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.5.24
+          - framework: ISO 27001:2022
+            control_id: A.5.25
+          - framework: ISO 27001:2022
+            control_id: A.5.26
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: AU-6
+          - framework: NIST 800-53 r5
+            control_id: IR-4
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.4
       - dimension_id: securityhub_finding
         dimension_type: entity_family
         support_level: supported
@@ -249,6 +373,18 @@ sources:
             control_id: A.8.24
           - framework: SOC 2
             control_id: C1.1
+          - framework: CIS Controls v8
+            control_id: "3"
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: NIST 800-53 r5
+            control_id: SC-13
+          - framework: NIST 800-53 r5
+            control_id: SC-28
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: SOC 2
+            control_id: CC6.1
       - dimension_id: secret
         dimension_type: entity_family
         support_level: supported
@@ -265,6 +401,28 @@ sources:
             control_id: A.8.24
           - framework: SOC 2
             control_id: CC6.1
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: NIST 800-53 r5
+            control_id: SC-12
+          - framework: PCI DSS v4.0.1
+            control_id: "3.5"
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: config_recorder
         dimension_type: entity_family
         support_level: supported
@@ -280,6 +438,758 @@ sources:
         control_refs:
           - framework: SOC 2
             control_id: CC7.2
+      - dimension_id: access_analyzer
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - access_analyzer
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: access_key
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - access_key
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: apigateway_method
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - apigateway_method
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: backup_vault
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - backup_vault
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: bedrock_custom_model
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - bedrock_custom_model
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: cloudfront_distribution
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloudfront_distribution
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: cloudfront_origin_access_control
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloudfront_origin_access_control
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: cloudfront_response_headers_policy
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloudfront_response_headers_policy
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: codebuild_project
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - codebuild_project
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: ebs_snapshot
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ebs_snapshot
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: ebs_volume
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ebs_volume
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ec2_ami
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ec2_ami
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: ec2_instance
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ec2_instance
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ecr_public_repository
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecr_public_repository
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: ecr_repository
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecr_repository
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "2"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ecs_service
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecs_service
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ecs_task
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecs_task
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: ecs_task_definition
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecs_task_definition
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: efs_file_system
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - efs_file_system
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: efs_mount_target
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - efs_mount_target
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: eks_cluster
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - eks_cluster
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: eks_node
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ec2_instance
+          - eks_nodegroup
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: elasticache_cluster
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - elasticache_cluster
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: elbv2_load_balancer
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - elbv2_load_balancer
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: elbv2_target_group
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - elbv2_target_group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: eventbridge_rule
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - eventbridge_rule
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: fargate_service
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ecs_service
+          - ecs_task
+          - ecs_task_definition
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: iam_account_password_policy
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_account_password_policy
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: iam_account_summary
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_account_summary
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: iam_role
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_role
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: iam_user
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: lambda_function
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - lambda_function
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: opensearch_domain
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - opensearch_domain
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: organizations_policy
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - organizations_policy
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: rds_db_snapshot
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - rds_db_snapshot
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: redshift_cluster
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - redshift_cluster
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: route53_resolver_rule
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - route53_resolver_rule
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: s3_object
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - asset_metadata
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: sagemaker_model
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sagemaker_model
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: sagemaker_notebook_instance
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sagemaker_notebook_instance
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: sagemaker_training_job
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sagemaker_training_job
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: sns_topic
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sns_topic
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: sqs_queue
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sqs_queue
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: ssm_document
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ssm_document
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: subnet
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - subnet
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: support_role
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - iam_role
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: vpc
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vpc
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
   - source_id: github
     name: GitHub
     purpose: Declare source-backed code security, repository governance, change review, remediation, access, and audit-event evidence lanes.
@@ -302,6 +1212,16 @@ sources:
             control_id: CC7.1
           - framework: SOC 2
             control_id: CC7.5
+          - framework: CIS Controls v8
+            control_id: "7"
+          - framework: NIST 800-53 r5
+            control_id: RA-5
+          - framework: NIST 800-53 r5
+            control_id: SI-2
+          - framework: PCI DSS v4.0.1
+            control_id: "11.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "6.3"
       - dimension_id: remediation_state
         dimension_type: remediation_state
         support_level: partial
@@ -321,6 +1241,18 @@ sources:
             control_id: A.8.8
           - framework: SOC 2
             control_id: CC7.5
+          - framework: CIS Controls v8
+            control_id: "7"
+          - framework: NIST 800-53 r5
+            control_id: RA-5
+          - framework: NIST 800-53 r5
+            control_id: SI-2
+          - framework: PCI DSS v4.0.1
+            control_id: "11.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "6.3"
+          - framework: SOC 2
+            control_id: CC7.1
       - dimension_id: repositories
         dimension_type: entity_family
         support_level: supported
@@ -336,6 +1268,26 @@ sources:
         control_refs:
           - framework: SOC 2
             control_id: CC8.1
+          - framework: CIS Controls v8
+            control_id: "16"
+          - framework: CIS Controls v8
+            control_id: "2"
+          - framework: ISO 27001:2022
+            control_id: A.8.25
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: PCI DSS v4.0.1
+            control_id: "6.3"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
       - dimension_id: pull_requests
         dimension_type: lifecycle_state
         support_level: supported
@@ -351,6 +1303,14 @@ sources:
             control_id: A.8.32
           - framework: SOC 2
             control_id: CC8.1
+          - framework: CIS Controls v8
+            control_id: "16"
+          - framework: ISO 27001:2022
+            control_id: A.8.25
+          - framework: NIST 800-53 r5
+            control_id: CM-3
+          - framework: PCI DSS v4.0.1
+            control_id: "6.3"
       - dimension_id: audit_events
         dimension_type: audit_event
         support_level: supported
@@ -368,6 +1328,14 @@ sources:
             control_id: CC7.2
           - framework: SOC 2
             control_id: CC7.3
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: NIST 800-53 r5
+            control_id: AU-2
+          - framework: NIST 800-53 r5
+            control_id: AU-6
+          - framework: SOC 2
+            control_id: CC7.1
       - dimension_id: fine_grained_permissions
         dimension_type: app_entitlement
         support_level: partial
@@ -386,6 +1354,19 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC6.2
+      - dimension_id: organization_members
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - org_inventory
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
   - source_id: okta
     name: Okta
     purpose: Declare source-backed identity lifecycle, access review, authentication policy, group membership, admin role, and audit-event evidence lanes.
@@ -408,6 +1389,24 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC6.2
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: SOC 2
+            control_id: CC6.6
       - dimension_id: audit_events
         dimension_type: audit_event
         support_level: supported
@@ -425,6 +1424,14 @@ sources:
             control_id: CC7.2
           - framework: SOC 2
             control_id: CC7.3
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
       - dimension_id: authenticators
         dimension_type: entity_family
         support_level: supported
@@ -440,6 +1447,8 @@ sources:
             control_id: A.8.5
           - framework: SOC 2
             control_id: CC6.1
+          - framework: ISO 27001:2022
+            control_id: A.5.17
       - dimension_id: policy_rules
         dimension_type: entity_family
         support_level: supported
@@ -455,6 +1464,10 @@ sources:
             control_id: A.8.5
           - framework: SOC 2
             control_id: CC6.1
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: SOC 2
+            control_id: CC6.2
       - dimension_id: admin_roles
         dimension_type: relationship
         support_level: partial
@@ -473,6 +1486,8 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC6.2
+          - framework: ISO 27001:2022
+            control_id: A.5.17
       - dimension_id: group_memberships
         dimension_type: relationship
         support_level: supported
@@ -489,6 +1504,1678 @@ sources:
             control_id: A.5.18
           - framework: SOC 2
             control_id: CC6.2
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: api_tokens
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - api_token
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: app_assignments
+        dimension_type: app_entitlement
+        support_level: partial
+        high_value: true
+        families:
+          - app_assignment
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+      - dimension_id: applications
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - application
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: groups
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: identity_providers
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - identity_provider
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+      - dimension_id: network_zones
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - network_zone
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+      - dimension_id: threat_insight
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - threat_insight
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: anthropic
+    name: Anthropic
+    purpose: Declare source-backed Anthropic asset_inventory, identity_access evidence lanes.
+    dimensions:
+      - dimension_id: api_keys
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - api_key
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: organization_profile
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - organization
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: users_and_access
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - invite
+          - user
+          - workspace_member
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: workload_identity
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - federation_issuer
+          - federation_rule
+          - service_account
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: archetype
+    name: Archetype
+    purpose: Declare source-backed Archetype asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: library_notes
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vulnerability
+        evidence_types:
+          - knowledge_context
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: vulnerabilities
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vulnerability
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: aurelius
+    name: Aurelius
+    purpose: Declare source-backed Aurelius asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: findings
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - finding
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: azure
+    name: Azure
+    purpose: Declare source-backed Azure asset_inventory, logging_monitoring evidence lanes.
+    dimensions:
+      - dimension_id: activity_log
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - activity_log
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: activity_log_alert
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - activity_log_alert
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: application
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - application
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: application_insight
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - activity_log_alert
+          - application_insight
+          - log_alert
+          - metric_alert_rule
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: cognitive_services_account
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cognitive_services_account
+          - cognitive_services_deployment
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: credential
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - credential
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: database
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cosmos_postgresql
+          - mysql_server
+          - postgresql_server
+          - sql_database
+          - sql_managed_instance
+          - synapse_sql_pool
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: defender_config
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - defender_config
+          - security_setting
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: diagnostic_setting
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - diagnostic_setting
+          - diagnostic_setting_resource
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: function_app
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - function_app
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: group
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: key_vault
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - key_vault
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: key_vault_secret
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - key_vault_secret
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: log_alert
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - log_alert
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: machine_learning_workspace
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - machine_learning_compute
+          - machine_learning_workspace
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: network_security_group
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - network_security_group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: security_contact
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - security_contact
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: service_principal
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - service_principal
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: sql_database
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sql_database
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: sql_server
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - sql_server
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: storage_account
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - storage_account
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: storage_blob
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - asset_metadata
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: storage_container
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - storage_container
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: subscription
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - asset_metadata
+          - policy_assignment
+          - security_contact
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: user
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: virtual_machine
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - virtual_machine
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: virtual_machine_extension
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - virtual_machine_extension
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: cosmo
+    name: Cosmo
+    purpose: Declare source-backed Cosmo asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: facts
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - fact
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: sessions
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - session
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: duo
+    name: Duo
+    purpose: Declare source-backed Duo asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: groups
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: gcp
+    name: GCP
+    purpose: Declare source-backed GCP asset_inventory, logging_monitoring evidence lanes.
+    dimensions:
+      - dimension_id: aiplatform_dataset
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - aiplatform_dataset
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: aiplatform_endpoint
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - aiplatform_endpoint
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+      - dimension_id: audit
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - audit
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "8"
+          - framework: ISO 27001:2022
+            control_id: A.8.15
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: AU-2
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC7.2
+          - framework: SOC 2
+            control_id: CC7.3
+      - dimension_id: bigquery_dataset
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - bigquery_dataset
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: bigquery_table
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - bigquery_table
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: cloud_function
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloud_function
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: cloud_run_service
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloud_run_service
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: compute_instance
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - compute_instance
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: compute_subnetwork
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - compute_subnetwork
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: container_registry
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - container_registry
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: gcs_bucket
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - gcs_bucket
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: gke_node_pool
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - gke_node_pool
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: kms_key
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - kms_key
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: logging_project_sink
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - logging_project_sink
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: org_policy
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - org_policy
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: resourcemanager_project
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - resourcemanager_project
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: secret_manager_secret
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - secret_manager_secret
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: service_account
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - service_account
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: service_account_key
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - service_account_key
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: google_workspace
+    name: Google Workspace
+    purpose: Declare source-backed Google Workspace asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: group_memberships
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - group_member
+        evidence_types:
+          - relationship_evidence
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: groups
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - group
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: grc
+    name: GRC
+    purpose: Declare source-backed GRC asset_inventory, compliance_operations, vendor_risk, vulnerability_management evidence lanes.
+    dimensions:
+      - dimension_id: control_tests
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - control_test
+        evidence_types:
+          - control_assessment
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.35
+          - framework: ISO 27001:2022
+            control_id: A.5.36
+          - framework: SOC 2
+            control_id: CC1.2
+      - dimension_id: controls
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - control
+        evidence_types:
+          - control_catalog
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.35
+          - framework: ISO 27001:2022
+            control_id: A.5.36
+          - framework: SOC 2
+            control_id: CC1.2
+      - dimension_id: integrations
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - integration
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: people
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - person
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: security_reviews
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - security_review
+        evidence_types:
+          - security_review
+          - third_party_risk
+        control_domains:
+          - vendor_risk
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.19
+          - framework: ISO 27001:2022
+            control_id: A.5.20
+          - framework: SOC 2
+            control_id: CC9.2
+      - dimension_id: vendors
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vendor
+        evidence_types:
+          - third_party_risk
+        control_domains:
+          - vendor_risk
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.19
+          - framework: ISO 27001:2022
+            control_id: A.5.20
+          - framework: SOC 2
+            control_id: CC9.2
+      - dimension_id: vulnerabilities
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vulnerability
+        evidence_types:
+          - vulnerability_management
+        control_domains:
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: vulnerable_assets
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - vulnerable_asset
+        evidence_types:
+          - relationship_evidence
+          - vulnerability_management
+        control_domains:
+          - vulnerability_management
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: kandji
+    name: Kandji / Iru
+    purpose: Declare source-backed Kandji / Iru asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: devices
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - device
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "1"
+          - framework: NIST 800-53 r5
+            control_id: CM-8
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: kolide
+    name: Kolide
+    purpose: Declare source-backed Kolide asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: devices
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - device
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: openai
+    name: OpenAI
+    purpose: Declare source-backed OpenAI asset_inventory, identity_access evidence lanes.
+    dimensions:
+      - dimension_id: identity_access
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - group
+          - group_role
+          - group_user
+          - invite
+          - role
+          - user
+          - user_role
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: service_accounts
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - project_service_account
+          - service_account
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: tokens_and_keys
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - admin_api_key
+          - api_key
+          - project_api_key
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: pagerduty
+    name: PagerDuty
+    purpose: Declare source-backed PagerDuty security_operations evidence lanes.
+    dimensions:
+      - dimension_id: escalation_policies
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - escalation_policy
+        evidence_types:
+          - configuration_state
+        control_domains:
+          - security_operations
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.26
+          - framework: SOC 2
+            control_id: CC7.4
+  - source_id: panopticon
+    name: Panopticon
+    purpose: Declare source-backed Panopticon logging_monitoring, security_operations evidence lanes.
+    dimensions:
+      - dimension_id: alerts
+        dimension_type: audit_event
+        support_level: supported
+        high_value: false
+        families:
+          - alert
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.2
+      - dimension_id: cases
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - case
+        evidence_types:
+          - configuration_state
+        control_domains:
+          - security_operations
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.5.24
+          - framework: SOC 2
+            control_id: CC7.2
+  - source_id: sentinelone
+    name: SentinelOne
+    purpose: Declare source-backed SentinelOne asset_inventory, logging_monitoring, remediation evidence lanes.
+    dimensions:
+      - dimension_id: activities
+        dimension_type: audit_event
+        support_level: supported
+        high_value: true
+        families:
+          - activity
+        evidence_types:
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.16
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: SOC 2
+            control_id: CC7.2
+      - dimension_id: agents
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - agent
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "1"
+          - framework: NIST 800-53 r5
+            control_id: CM-8
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: exclusions
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - exclusion
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.9
+      - dimension_id: remediation_state
+        dimension_type: remediation_state
+        support_level: partial
+        high_value: true
+        families:
+          - threat
+        evidence_types:
+          - remediation_state
+        control_domains:
+          - remediation
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.4
+      - dimension_id: threats
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - threat
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: slack
+    name: Slack
+    purpose: Declare source-backed Slack asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: channels
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - channel
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+  - source_id: tailscale
+    name: Tailscale
+    purpose: Declare source-backed Tailscale asset_inventory evidence lanes.
+    dimensions:
+      - dimension_id: devices
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - device
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: tailnet
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - tailnet
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+      - dimension_id: users
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - user
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: SOC 2
+            control_id: CC6.1
+  - source_id: vulnview
+    name: VulnView
+    purpose: Declare source-backed VulnView asset_inventory, remediation evidence lanes.
+    dimensions:
+      - dimension_id: assets
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - asset
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: dns_alerts
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - dns_alert
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
+      - dimension_id: remediation_state
+        dimension_type: remediation_state
+        support_level: partial
+        high_value: true
+        families:
+          - dns_alert
+          - vulnerability
+        evidence_types:
+          - remediation_state
+        control_domains:
+          - remediation
+        control_refs:
+          - framework: ISO 27001:2022
+            control_id: A.8.8
+      - dimension_id: vulnerabilities
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vulnerability
+        evidence_types:
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+        control_refs:
+          - framework: SOC 2
+            control_id: CC7.1
   - source_id: email_domain_health
     name: Email Domain Health
     purpose: Declare source-backed SPF, DKIM, DMARC, MX, and related mail-security DNS evidence for trustworthy email controls.
