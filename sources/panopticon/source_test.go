@@ -14,6 +14,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
@@ -231,6 +232,107 @@ func TestReadExistingAlertsAPIPaginatesAndMapsNativeFields(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestReadAlertAPIPromotesClosureFields(t *testing.T) {
+	fixed := fixedTime()
+	observedAt := fixed.Add(30 * time.Minute).Format(time.RFC3339Nano)
+	createdAt := fixed.Add(-time.Hour).Format(time.RFC3339Nano)
+	closedAt := fixed.Add(2 * time.Hour).Format(time.RFC3339Nano)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alert := validNativeAlert("closed-1", fixed)
+		delete(alert, "alert_source_event_time")
+		alert["observed_at"] = observedAt
+		alert["created_at"] = createdAt
+		alert["status"] = map[string]interface{}{"status_name": "closed"}
+		alert["close_date"] = closedAt
+		alert["updated_at"] = fixed.Add(time.Hour).Format(time.RFC3339Nano)
+		alert["case_id"] = "case-1"
+		writePage(w, []map[string]interface{}{alert}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert, "runtime_id": "writer-panopticon-alerts"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want one alert event", len(pull.Events))
+	}
+	attrs := pull.Events[0].GetAttributes()
+	if got := attrs["status"]; got != "closed" {
+		t.Fatalf("status = %q, want closed", got)
+	}
+	if got := attrs["closed_at"]; got != closedAt {
+		t.Fatalf("closed_at = %q, want %q", got, closedAt)
+	}
+	if got := attrs["observed_at"]; got != observedAt {
+		t.Fatalf("observed_at = %q, want %q", got, observedAt)
+	}
+	if got := attrs["created_at"]; got != createdAt {
+		t.Fatalf("created_at = %q, want %q", got, createdAt)
+	}
+	if got := attrs["case_id"]; got != "case-1" {
+		t.Fatalf("case_id = %q, want case-1", got)
+	}
+	if got := attrs["runtime_id"]; got != "writer-panopticon-alerts" {
+		t.Fatalf("runtime_id = %q, want writer-panopticon-alerts", got)
+	}
+	if got := attrs[ports.EventAttributeSourceRuntimeID]; got != "writer-panopticon-alerts" {
+		t.Fatalf("source_runtime_id = %q, want writer-panopticon-alerts", got)
+	}
+}
+
+func TestReadAlertAPIPreservesSourceEventTimeForOccurredAt(t *testing.T) {
+	fixed := fixedTime()
+	observedAt := fixed.Add(30 * time.Minute).Format(time.RFC3339Nano)
+	sourceEventAt := fixed.Format(time.RFC3339Nano)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alert := validNativeAlert("mixed-times-1", fixed)
+		alert["alert_source_event_time"] = sourceEventAt
+		alert["observed_at"] = observedAt
+		writePage(w, []map[string]interface{}{alert}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want one alert event", len(pull.Events))
+	}
+	if got := pull.Events[0].GetOccurredAt().AsTime(); !got.Equal(fixed) {
+		t.Fatalf("occurred_at = %s, want %s", got.Format(time.RFC3339Nano), sourceEventAt)
+	}
+	if got := pull.Events[0].GetAttributes()["observed_at"]; got != observedAt {
+		t.Fatalf("observed_at = %q, want %q", got, observedAt)
+	}
+}
+
+func TestReadCaseAPIPromotesResolvedAt(t *testing.T) {
+	fixed := fixedTime()
+	resolvedAt := fixed.Add(3 * time.Hour).Format(time.RFC3339Nano)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		item := validNativeCase("resolved-1", fixed)
+		item["resolved_date"] = resolvedAt
+		writePage(w, []map[string]interface{}{item}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyCase}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want one case event", len(pull.Events))
+	}
+	if got := pull.Events[0].GetAttributes()["resolved_at"]; got != resolvedAt {
+		t.Fatalf("resolved_at = %q, want %q", got, resolvedAt)
 	}
 }
 

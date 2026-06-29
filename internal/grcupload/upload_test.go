@@ -20,11 +20,22 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 		ContentType: "application/pdf",
 		FileSize:    42,
 		Fields: map[string]string{
-			"policy_id":          "access-policy",
-			"title":              "Access Policy",
-			"owner_id":           "owner-1",
-			"next_review_due_at": "2026-12-31",
-			"ignored":            "drop-me",
+			"policy_id":                "access-policy",
+			"title":                    "Access Policy",
+			"policy_type":              "access_control",
+			"owner_id":                 "owner-1",
+			"approving_authority":      "Security Steering Committee",
+			"approved_at":              "2026-06-01",
+			"effective_at":             "2026-06-15",
+			"review_cadence":           "annual",
+			"last_reviewed_at":         "2026-06-01",
+			"next_review_due_at":       "2026-12-31",
+			"acknowledgement_evidence": "attestation-campaign-1",
+			"exception_path":           "Submit a waiver request",
+			"control_ids":              "CC6.1",
+			"question_ids":             "q-access-1",
+			"source_provenance":        "manual upload",
+			"ignored":                  "drop-me",
 		},
 	}, ParsedDocument{
 		ProviderFileID:    "file-1",
@@ -40,6 +51,11 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 			{Key: "summary", Label: "Summary", Value: "Access policy summary"},
 			{Key: "owner", Value: "Owner 1"},
 		},
+		Chunks: []ParsedChunk{{
+			Index:       1,
+			Page:        2,
+			TextPreview: "Access reviews are performed before privileged access is approved.",
+		}},
 	}, now)
 	if err != nil {
 		t.Fatalf("BuildEvents() error = %v", err)
@@ -71,8 +87,8 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if len(response.EntityMatchHints) == 0 || response.EntityMatchHints[0].MatchKey != "policy:access-policy" {
 		t.Fatalf("entity match hints = %#v", response.EntityMatchHints)
 	}
-	if len(events) != 2 || len(response.Events) != 2 {
-		t.Fatalf("events length = %d, response refs = %d, want 2", len(events), len(response.Events))
+	if len(events) != 3 || len(response.Events) != 3 {
+		t.Fatalf("events length = %d, response refs = %d, want 3", len(events), len(response.Events))
 	}
 
 	policy := events[0]
@@ -87,6 +103,21 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	}
 	if got := policy.GetAttributes()["policy_id"]; got != "access-policy" {
 		t.Fatalf("policy_id attr = %q, want access-policy", got)
+	}
+	if got := policy.GetAttributes()["policy_type"]; got != "policy" {
+		t.Fatalf("policy_type attr = %q, want graph discriminator", got)
+	}
+	if got := policy.GetAttributes()["policy_document_type"]; got != "access_control" {
+		t.Fatalf("policy_document_type attr = %q, want configured policy type", got)
+	}
+	if got := policy.GetAttributes()["approving_authority"]; got != "Security Steering Committee" {
+		t.Fatalf("approving_authority attr = %q, want configured authority", got)
+	}
+	if got := policy.GetAttributes()["acknowledgement_evidence"]; got != "attestation-campaign-1" {
+		t.Fatalf("acknowledgement_evidence attr = %q, want configured evidence", got)
+	}
+	if got := policy.GetAttributes()["exception_path"]; got != "Submit a waiver request" {
+		t.Fatalf("exception_path attr = %q, want configured path", got)
 	}
 	if got := policy.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "runtime-1" {
 		t.Fatalf("runtime attr = %q, want runtime-1", got)
@@ -124,6 +155,9 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if got := document.GetAttributes()["document_type"]; got != "policy" {
 		t.Fatalf("document_type = %q, want policy", got)
 	}
+	if got := document.GetAttributes()["policy_document_type"]; got != "access_control" {
+		t.Fatalf("document policy_document_type = %q, want access_control", got)
+	}
 	if got := document.GetAttributes()["upload_status"]; got != "parsed" {
 		t.Fatalf("document upload_status = %q, want parsed", got)
 	}
@@ -132,6 +166,9 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	}
 	if got := document.GetAttributes()["owner_id"]; got != "owner-1" {
 		t.Fatalf("owner_id = %q, want owner-1", got)
+	}
+	if got := document.GetAttributes()["source_provenance"]; got != "manual upload" {
+		t.Fatalf("source_provenance = %q, want manual upload", got)
 	}
 	if got := document.GetAttributes()["upload_review_state"]; got != response.ReviewState {
 		t.Fatalf("document upload_review_state = %q, want response value", got)
@@ -149,6 +186,26 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	}
 	if payload["parsed"] != true || payload["file_name"] != "Access Policy.pdf" {
 		t.Fatalf("document payload = %#v", payload)
+	}
+
+	firstSnippet := events[2]
+	if firstSnippet.GetKind() != "grc.policy_evidence_snippet" || firstSnippet.GetSchemaRef() != SchemaRefPolicySnippet {
+		t.Fatalf("snippet event = %#v, ref = %#v", firstSnippet, response.Events[2])
+	}
+	if got := firstSnippet.GetAttributes()["snippet_text"]; got != "Access reviews are performed before privileged access is approved." {
+		t.Fatalf("snippet_text = %q, want parsed policy section text", got)
+	}
+	if got := firstSnippet.GetAttributes()["review_state"]; got != "ready_to_project" {
+		t.Fatalf("snippet review_state = %q, want ready_to_project", got)
+	}
+	if got := firstSnippet.GetAttributes()["control_ids"]; got != "CC6.1" {
+		t.Fatalf("snippet control_ids = %q, want CC6.1", got)
+	}
+	if got := firstSnippet.GetAttributes()["question_ids"]; got != "q-access-1" {
+		t.Fatalf("snippet question_ids = %q, want q-access-1", got)
+	}
+	if got := firstSnippet.GetAttributes()["confidence"]; got == "" {
+		t.Fatal("snippet confidence is empty")
 	}
 }
 
@@ -355,6 +412,27 @@ func TestNewUploadIDDefaultsSourceID(t *testing.T) {
 	})
 	if withoutSource == "" || withoutSource != withDefaultSource {
 		t.Fatalf("NewUploadID() = %q without source, %q with default source; want same non-empty ID", withoutSource, withDefaultSource)
+	}
+}
+
+func TestPolicyEvidenceSnippetsOnlyUsesCitationLikeStructuredFields(t *testing.T) {
+	snippets := policyEvidenceSnippets(ParsedDocument{
+		StructuredFields: []StructuredField{
+			{Key: "summary", Label: "Summary", Value: "Access policy summary"},
+			{Key: "owner", Label: "Owner", Value: "Owner 1"},
+			{Key: "approved_at", Label: "Approved", Value: "2026-06-01"},
+			{Key: "policy_text", Label: "Policy text", Value: "Access reviews are performed before privileged access is approved."},
+			{Key: "requirement_excerpt", Label: "Requirement excerpt", Value: "Privileged access must be approved before use."},
+		},
+	})
+	if len(snippets) != 2 {
+		t.Fatalf("snippets = %+v, want only citation-like structured fields", snippets)
+	}
+	if snippets[0].sectionID != "policy-text" || snippets[0].text != "Access reviews are performed before privileged access is approved." {
+		t.Fatalf("first snippet = %+v, want policy_text citation", snippets[0])
+	}
+	if snippets[1].sectionID != "requirement-excerpt" || snippets[1].text != "Privileged access must be approved before use." {
+		t.Fatalf("second snippet = %+v, want requirement_excerpt citation", snippets[1])
 	}
 }
 

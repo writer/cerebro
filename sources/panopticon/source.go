@@ -24,36 +24,19 @@ var catalogFS embed.FS
 const (
 	sourceID = "panopticon"
 
-	defaultPageSize  = 100
-	maxPageSize      = 1000
-	maxEventsPerPull = 1000
-	cursorSourceAPI  = "panopticon/api/v1"
-	modeAPI          = "api"
+	defaultPageSize, maxPageSize, maxEventsPerPull = 100, 1000, 1000
+	cursorSourceAPI, modeAPI                       = "panopticon/api/v1", "api"
 
-	familyAlert = "alert"
-	familyCase  = "case"
-	familyIOC   = "ioc"
-
-	schemaRefAlert = "panopticon/alert/v1"
-	schemaRefCase  = "panopticon/case/v1"
-	schemaRefIOC   = "panopticon/ioc/v1"
-
-	kindAlert = "panopticon.alert"
-	kindCase  = "panopticon.case"
-	kindIOC   = "panopticon.ioc"
-
-	urnPrefixAlert = "urn:cerebro:panopticon:alert:"
-	urnPrefixCase  = "urn:cerebro:panopticon:case:"
-	urnPrefixIOC   = "urn:cerebro:panopticon:ioc:"
+	familyAlert, familyCase, familyIOC          = "alert", "case", "ioc"
+	schemaRefAlert, schemaRefCase, schemaRefIOC = "panopticon/alert/v1", "panopticon/case/v1", "panopticon/ioc/v1"
+	kindAlert, kindCase, kindIOC                = "panopticon.alert", "panopticon.case", "panopticon.ioc"
+	urnPrefixAlert, urnPrefixCase, urnPrefixIOC = "urn:cerebro:panopticon:alert:", "urn:cerebro:panopticon:case:", "urn:cerebro:panopticon:ioc:"
 )
 
 var (
-	ErrInvalidPageSize   = errors.New("invalid page_size")
-	ErrTenantIDRequired  = errors.New("tenant_id is required")
-	ErrUnsupportedFamily = errors.New("unsupported family")
-	ErrBaseURLRequired   = errors.New("base_url is required")
-	ErrTokenRequired     = errors.New("token is required")
-	ErrUnsupportedMode   = errors.New("unsupported mode")
+	ErrInvalidPageSize, ErrTenantIDRequired  = errors.New("invalid page_size"), errors.New("tenant_id is required")
+	ErrUnsupportedFamily, ErrBaseURLRequired = errors.New("unsupported family"), errors.New("base_url is required")
+	ErrTokenRequired, ErrUnsupportedMode     = errors.New("token is required"), errors.New("unsupported mode")
 )
 
 type Source struct {
@@ -65,14 +48,10 @@ type Source struct {
 }
 
 type settings struct {
-	family                   string
-	baseURL                  string
-	apiPath                  string
-	token                    string
-	tenantID                 string
-	runtimeID                string
-	privateEndpointAllowlist []string
-	perPage                  int32
+	family, baseURL, apiPath   string
+	token, tenantID, runtimeID string
+	privateEndpointAllowlist   []string
+	perPage                    int32
 }
 
 type panopticonRecord struct {

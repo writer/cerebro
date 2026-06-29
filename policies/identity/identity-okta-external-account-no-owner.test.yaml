@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: external account with access and no owner fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-vendor
+        primary_label: vendor@gmail.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-vendor
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-vendor
+          - urn:cerebro:writer:okta_application:app-finance
+        severity: MEDIUM
+        summary: Okta external account vendor@gmail.com has access but no owner evidence
+        action: Assign an internal owner or disable the account
+        evidence:
+          - urn: urn:cerebro:writer:okta_application:app-finance
+    wantFinding: true
+  - name: owned external account passes
+    resource:
+      placeholder: true
+    wantFinding: false

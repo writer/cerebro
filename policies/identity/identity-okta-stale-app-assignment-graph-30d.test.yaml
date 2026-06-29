@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: assigned app without recent activity fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-stale
+        primary_label: stale-user@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-stale|urn:cerebro:writer:okta_application:app-crm
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-stale
+          - urn:cerebro:writer:okta_application:app-crm
+        severity: MEDIUM
+        summary: Okta app assignment for stale-user@example.com has no recent activity on CRM
+        action: Review business need and remove unused application access
+        evidence:
+          - urn: urn:cerebro:writer:okta_application:app-crm
+    wantFinding: true
+  - name: recent app activity passes
+    resource:
+      placeholder: true
+    wantFinding: false

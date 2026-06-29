@@ -1,0 +1,21 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: sign-on rule without MFA fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_policy_rule:allow-without-mfa
+        primary_label: Allow password only
+        primary_type: okta.policy_rule
+        fingerprint_key: urn:cerebro:writer:okta_policy_rule:allow-without-mfa
+        resource_urns:
+          - urn:cerebro:writer:okta_policy_rule:allow-without-mfa
+        severity: HIGH
+        summary: Okta sign-on rule Allow password only allows access without MFA
+        action: Require MFA or disable the rule
+        evidence:
+          - urn: urn:cerebro:writer:okta_policy_rule:allow-without-mfa
+    wantFinding: true
+  - name: sign-on rule requiring MFA passes
+    resource:
+      placeholder: true
+    wantFinding: false

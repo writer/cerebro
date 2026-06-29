@@ -502,13 +502,15 @@ func postProcessAskRows(conversion conversionResult, rows []map[string]any) []ma
 		return postProcessFindingSourceRows(conversion.Plan, rows)
 	case IntentTopRiskFindings:
 		return postProcessTopRiskFindingRows(conversion.Plan, rows)
+	case IntentFailingControls:
+		return postProcessFailingControlRows(conversion.Plan, rows)
 	default:
 		return rows
 	}
 }
 
 func usesPostProcessingCandidates(conversion conversionResult) bool {
-	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings)
+	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings || conversion.Plan.Intent == IntentFailingControls)
 }
 
 func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
@@ -573,6 +575,27 @@ type topRiskFindingRow struct {
 	riskScore      int
 	severityRank   int
 	seenResources  map[string]struct{}
+}
+
+type failingControlRef struct {
+	FrameworkName string
+	ControlID     string
+}
+
+type failingControlRow struct {
+	FrameworkName    string
+	ControlID        string
+	FindingURNs      []string
+	FindingLabels    []string
+	ResourceURNs     []string
+	ResourceLabels   []string
+	OpenFindings     int
+	CriticalFindings int
+	HighFindings     int
+	riskScore        int
+	severityRank     int
+	seenFindings     map[string]struct{}
+	seenResources    map[string]struct{}
 }
 
 func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
@@ -665,6 +688,150 @@ func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity strin
 		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), want)
 	}
 	return true
+}
+
+func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	byControl := map[string]*failingControlRow{}
+	for index, row := range rows {
+		findingURN := stringRowValue(row, "finding_urn")
+		if findingURN == "" {
+			findingURN = fmt.Sprintf("row:%d", index)
+		}
+		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
+		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		status := firstNonEmpty(
+			firstAttributeString(relationAttrs, "status"),
+			firstAttributeString(findingAttrs, "status"),
+		)
+		if status != "" && !strings.EqualFold(status, "open") {
+			continue
+		}
+		refs := failingControlRefsFromAttributes(relationAttrs, findingAttrs)
+		if len(refs) == 0 {
+			continue
+		}
+		severity := firstNonEmpty(
+			firstAttributeString(relationAttrs, "effective_severity"),
+			firstAttributeString(findingAttrs, "effective_severity"),
+			firstAttributeString(relationAttrs, "severity"),
+			firstAttributeString(findingAttrs, "severity"),
+		)
+		riskScore := firstAttributeInt(relationAttrs, findingAttrs, "risk_score")
+		resourceURN := stringRowValue(row, "resource_urn")
+		resourceLabel := firstNonEmpty(stringRowValue(row, "resource_label"), resourceURN)
+		for _, ref := range refs {
+			key := ref.FrameworkName + "|" + ref.ControlID
+			current := byControl[key]
+			if current == nil {
+				current = &failingControlRow{
+					FrameworkName: ref.FrameworkName,
+					ControlID:     ref.ControlID,
+					seenFindings:  map[string]struct{}{},
+					seenResources: map[string]struct{}{},
+				}
+				byControl[key] = current
+			}
+			if _, seen := current.seenFindings[findingURN]; !seen {
+				current.seenFindings[findingURN] = struct{}{}
+				current.FindingURNs = append(current.FindingURNs, findingURN)
+				current.FindingLabels = append(current.FindingLabels, firstNonEmpty(stringRowValue(row, "finding_label"), findingURN))
+				current.OpenFindings++
+				switch severityRank(severity) {
+				case 4:
+					current.CriticalFindings++
+				case 3:
+					current.HighFindings++
+				}
+				if riskScore > current.riskScore {
+					current.riskScore = riskScore
+				}
+				if rank := severityRank(severity); rank > current.severityRank {
+					current.severityRank = rank
+				}
+			}
+			if resourceURN != "" {
+				if _, seen := current.seenResources[resourceURN]; !seen {
+					current.seenResources[resourceURN] = struct{}{}
+					current.ResourceURNs = append(current.ResourceURNs, resourceURN)
+					current.ResourceLabels = append(current.ResourceLabels, resourceLabel)
+				}
+			}
+		}
+	}
+	controls := make([]*failingControlRow, 0, len(byControl))
+	for _, control := range byControl {
+		controls = append(controls, control)
+	}
+	sort.Slice(controls, func(i, j int) bool {
+		left, right := controls[i], controls[j]
+		if left.OpenFindings != right.OpenFindings {
+			return left.OpenFindings > right.OpenFindings
+		}
+		if left.severityRank != right.severityRank {
+			return left.severityRank > right.severityRank
+		}
+		if left.riskScore != right.riskScore {
+			return left.riskScore > right.riskScore
+		}
+		if left.FrameworkName != right.FrameworkName {
+			return left.FrameworkName < right.FrameworkName
+		}
+		return left.ControlID < right.ControlID
+	})
+	limit := postProcessedRowLimit(plan)
+	if len(controls) < limit {
+		limit = len(controls)
+	}
+	result := make([]map[string]any, 0, limit)
+	for _, control := range controls[:limit] {
+		result = append(result, map[string]any{
+			"framework_name":    control.FrameworkName,
+			"control_id":        control.ControlID,
+			"status":            "failing",
+			"open_findings":     control.OpenFindings,
+			"critical_findings": control.CriticalFindings,
+			"high_findings":     control.HighFindings,
+			"finding_urns":      append([]string(nil), control.FindingURNs...),
+			"finding_labels":    append([]string(nil), control.FindingLabels...),
+			"resource_urns":     append([]string(nil), control.ResourceURNs...),
+			"resource_labels":   append([]string(nil), control.ResourceLabels...),
+			"risk_score":        control.riskScore,
+			"severity":          severityName(control.severityRank),
+		})
+	}
+	return result
+}
+
+func failingControlRefsFromAttributes(attrs ...map[string]any) []failingControlRef {
+	seen := map[string]struct{}{}
+	var refs []failingControlRef
+	for _, attr := range attrs {
+		raw := firstAttributeString(attr, "control_refs", "controlRefs")
+		for _, item := range strings.Split(raw, ",") {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			separator := strings.LastIndex(item, ":")
+			if separator <= 0 || separator == len(item)-1 {
+				continue
+			}
+			ref := failingControlRef{
+				FrameworkName: strings.TrimSpace(item[:separator]),
+				ControlID:     strings.TrimSpace(item[separator+1:]),
+			}
+			if ref.FrameworkName == "" || ref.ControlID == "" {
+				continue
+			}
+			key := ref.FrameworkName + "|" + ref.ControlID
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			refs = append(refs, ref)
+		}
+	}
+	return refs
 }
 
 func resourceTypeMatchesFilter(resourceType string, filter string) bool {
@@ -982,9 +1149,10 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
+			"Show controls with open findings and cite the affected resources.",
 			"Count findings by source family.",
 			"Show source health and freshness for security integrations.",
 			"Explain the evidence for a specific finding URN.",

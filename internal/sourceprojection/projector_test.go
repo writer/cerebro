@@ -1132,6 +1132,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 		SourceId: "okta",
 		Kind:     "okta.policy_rule",
 		Attributes: map[string]string{
+			"access":                   "ALLOW",
 			"app_exclude_ids":          "app-legacy",
 			"app_include_ids":          "app-prod",
 			"client_include_ids":       "0oa-client,ALL_CLIENTS",
@@ -1146,6 +1147,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 			"policy_rule_id":           "rul-1",
 			"policy_type":              "OKTA_SIGN_ON",
 			"priority":                 "1",
+			"requires_mfa":             "false",
 			"resource_type":            "PolicyRule",
 			"status":                   "INACTIVE",
 			"system":                   "false",
@@ -1178,6 +1180,8 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 		"status":         "INACTIVE",
 		"priority":       "1",
 		"system":         "false",
+		"access":         "ALLOW",
+		"requires_mfa":   "false",
 	}
 	for key, want := range wantAttributes {
 		if got := entity.Attributes[key]; got != want {
@@ -1206,6 +1210,69 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_oauth_client:0oa-client")
 	assertProjectedLinkMissing(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_group:EVERYONE")
 	assertProjectedLinkMissing(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_oauth_client:ALL_CLIENTS")
+}
+
+func TestProjectOktaUserCarriesLifecycleMFAAndSourceFacts(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	observed := time.Date(2026, time.June, 20, 12, 30, 0, 0, time.UTC)
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-user-00u1",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.user",
+		OccurredAt: timestamppb.New(observed),
+		Attributes: map[string]string{
+			"domain":                 "writer.okta.com",
+			"email":                  "admin@writer.com",
+			"employee_number":        "E-123",
+			"login":                  "admin@writer.com",
+			"mfa_enrolled":           "true",
+			"mfa_factor_count":       "2",
+			"mfa_factor_types":       "okta_verify,webauthn",
+			"mfa_phishing_resistant": "true",
+			"status":                 "ACTIVE",
+			"user_id":                "00u1",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"timestamps": map[string]any{
+				"activated_at":      "2026-01-02T03:04:05Z",
+				"created_at":        "2026-01-01T03:04:05Z",
+				"last_login_at":     "2026-05-01T03:04:05Z",
+				"last_updated_at":   "2026-05-02T03:04:05Z",
+				"status_changed_at": "2026-01-03T03:04:05Z",
+			},
+		}),
+	}); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	entity := state.entities["urn:cerebro:writer:okta_user:00u1"]
+	if entity == nil {
+		t.Fatal("projected Okta user missing")
+	}
+	for key, want := range map[string]string{
+		"activated_at":           "2026-01-02T03:04:05Z",
+		"created_at":             "2026-01-01T03:04:05Z",
+		"email":                  "admin@writer.com",
+		"employee_number":        "E-123",
+		"event_kind":             "okta.user",
+		"last_login_at":          "2026-05-01T03:04:05Z",
+		"last_updated_at":        "2026-05-02T03:04:05Z",
+		"mfa_enrolled":           "true",
+		"mfa_factor_count":       "2",
+		"mfa_factor_types":       "okta_verify,webauthn",
+		"mfa_phishing_resistant": "true",
+		"observed_at":            observed.Format(time.RFC3339),
+		"source_event_id":        "okta-user-00u1",
+		"status":                 "ACTIVE",
+		"status_changed_at":      "2026-01-03T03:04:05Z",
+	} {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("entity.Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
 }
 
 func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
@@ -3778,6 +3845,10 @@ func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
 	assertProjectedLink(t, state, groupURN, relationAssignedTo, appURN)
 	assertProjectedLink(t, state, appURN, relationGrantsEntitlement, appEntitlementURN)
 	assertProjectedLink(t, state, appEntitlementURN, relationConfersCapability, cloudAdminCapabilityURN)
+	assignmentLink := state.links[groupURN+"|"+relationAssignedTo+"|"+appURN]
+	if assignmentLink.Attributes["status"] != "ACTIVE" {
+		t.Fatalf("assignment link status = %q, want ACTIVE", assignmentLink.Attributes["status"])
+	}
 	link := state.links[appURN+"|"+relationGrantsEntitlement+"|"+appEntitlementURN]
 	if link.Attributes["event_id"] != "okta-group-app-assignment" || link.Attributes["at"] != occurred.Format(time.RFC3339Nano) {
 		t.Fatalf("entitlement link attributes = %#v, want source event context", link.Attributes)
@@ -3795,6 +3866,26 @@ func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
 	}
 	if entity := state.entities[cloudAdminCapabilityURN]; entity == nil || entity.EntityType != "privileged.capability" {
 		t.Fatalf("capability entity missing or wrong type: %#v", entity)
+	}
+}
+
+func TestIdentityAssignmentLinkAttributesScopesStatusToOkta(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "assignment-1",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.app_assignment",
+		Attributes: map[string]string{
+			"status": "ACTIVE",
+		},
+	}
+	oktaAttrs := identityAssignmentLinkAttributes(event, oktaIdentityProfile)
+	if oktaAttrs["status"] != "ACTIVE" {
+		t.Fatalf("okta assignment link status = %q, want ACTIVE", oktaAttrs["status"])
+	}
+	googleAttrs := identityAssignmentLinkAttributes(event, googleWorkspaceIdentityProfile)
+	if _, ok := googleAttrs["status"]; ok {
+		t.Fatalf("non-okta assignment link attrs = %#v, want no status", googleAttrs)
 	}
 }
 

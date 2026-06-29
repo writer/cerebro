@@ -1,0 +1,112 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-okta-group-grants-admin-app-graph
+    name: Okta Group Grants Admin-Like Application Access Graph Evidence
+    description: Graph-backed companion to identity-okta-group-grants-admin-app; detects Okta groups assigned to admin-like applications or privileged app entitlements with graph context for the access path.
+    tags:
+        - okta
+        - identity
+        - group-access
+        - least-privilege
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: okta_app_assignment
+    remediation:
+        summary: Review group-to-app assignments and split broad admin app access into least-privilege, purpose-scoped groups.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+        - name: ISO 27001:2022
+          controls:
+            - A.8.2
+    input:
+        sourceKinds:
+            - okta.app_assignment
+            - okta.group
+            - okta.application
+        requiredFields:
+            - group_id
+            - app_id
+            - scope
+        freshnessSLA: 24h
+    evidence:
+        type: access_review
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - okta
+        requiredFields:
+            - group_id
+            - app_id
+            - graph_evidence_count
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+    audit:
+        evidenceType: access_review
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: Group-assigned privileged application access should be purpose-scoped and reviewed.
+        riskStatement: Broad group assignment to admin-like applications can grant elevated access to every group member.
+        remediationIntent: Review the group purpose, entitlement, and members; split or remove broad admin application access.
+        auditorGuidance: Use the group-to-application-to-entitlement graph path before assigning remediation.
+        falsePositives:
+            - Application labels may contain admin-like terms for read-only tools; review entitlement scope and capability evidence.
+    verification:
+        fixtures:
+            - name: group grants admin app access
+              expect: finding
+              description: Okta group has an application assignment path to an admin-like app or privileged capability.
+            - name: group scoped away from admin app
+              expect: pass
+              description: Group assignment is removed or the app entitlement is not admin-like.
+        mutationChecks:
+            - remove_group_app_assignment_edge
+            - reduce_entitlement_scope
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (group:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.group'})-[:RELATION {relation: 'assigned_to'}]->(app:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.application'})
+            OPTIONAL MATCH (app)-[:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})
+            OPTIONAL MATCH (entitlement)-[:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+            WITH group, app, collect(DISTINCT entitlement) AS entitlements, collect(DISTINCT capability) AS capabilities,
+                 toLower(coalesce(app.label, '')) AS app_text
+            WHERE app_text CONTAINS 'admin'
+               OR app_text CONTAINS 'administrator'
+               OR app_text CONTAINS 'console'
+               OR app_text CONTAINS 'root'
+               OR app_text CONTAINS 'super'
+               OR size([c IN capabilities WHERE coalesce(c.urn, '') CONTAINS 'cloud_admin' OR coalesce(c.urn, '') CONTAINS 'identity_admin']) > 0
+            RETURN group.urn AS primary_urn,
+                   group.label AS primary_label,
+                   group.entity_type AS primary_type,
+                   group.urn + '|' + app.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta group ' + coalesce(group.label, group.urn) + ' grants admin-like access to ' + coalesce(app.label, app.urn) AS summary,
+                   'Review group membership and split broad admin application access into purpose-scoped groups' AS action,
+                   [group.urn, app.urn] AS resource_urns,
+                   [{urn: app.urn, label: app.label, entity_type: app.entity_type, relation: 'assigned_to', attributes_json: coalesce(app.attributes_json, '')}] +
+                   [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
+                   [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
+                   {evidence_basis: 'okta_group_to_admin_app_entitlement_graph_path', confidence: 'medium', remediation_intent: 'Review group membership and split broad admin application access into purpose-scoped groups', source_provenance: 'okta.group assigned_to okta.application plus entitlement/capability edges when present', limitation: 'Admin-like app naming is a review signal unless capability evidence confirms privileged entitlement.'} AS finding_attributes
+            ORDER BY group.urn, app.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
+    enabled: true

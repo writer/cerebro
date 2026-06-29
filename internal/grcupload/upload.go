@@ -24,9 +24,12 @@ const (
 	maxStructuredFields          = 12
 	maxStructuredFieldValueChars = 300
 	maxStructuredSummaryChars    = 600
+	maxPolicyEvidenceSnippets    = 6
+	maxPolicySnippetChars        = 700
 
 	SchemaRefPolicy            = "grc/policy/v1"
 	SchemaRefDocument          = "grc/document/v1"
+	SchemaRefPolicySnippet     = "grc/policy_evidence_snippet/v1"
 	SchemaRefVendor            = "grc/vendor/v1"
 	SchemaRefAssuranceDocument = "grc/assurance_document/v1"
 )
@@ -315,15 +318,18 @@ func policyEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 	status := firstNonEmpty(request.Fields["status"], "uploaded")
 	documentType := firstNonEmpty(request.Fields["document_type"], "policy")
 	documentClass := firstNonEmpty(request.Fields["document_class"], "policy")
+	policyDocumentType := firstNonEmpty(request.Fields["policy_type"], request.Fields["policy_document_type"], documentType)
 
 	common := commonAttrs(request, parsed, uploadID, now)
 	policyAttrs := mergeAttrs(common, allowedAttrs(request.Fields), map[string]string{
-		"policy_id":     policyID,
-		"name":          title,
-		"title":         title,
-		"policy_name":   title,
-		"status":        status,
-		"policy_status": status,
+		"policy_id":            policyID,
+		"name":                 title,
+		"title":                title,
+		"policy_name":          title,
+		"policy_type":          "policy",
+		"policy_document_type": policyDocumentType,
+		"status":               status,
+		"policy_status":        status,
 	})
 	documentAttrs := mergeAttrs(common, allowedAttrs(request.Fields), map[string]string{
 		"document_id":          documentID,
@@ -331,16 +337,146 @@ func policyEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID str
 		"document_title":       documentTitle,
 		"document_type":        documentType,
 		"document_class":       documentClass,
-		"policy_document_type": documentType,
+		"policy_document_type": policyDocumentType,
 		"policy_id":            policyID,
 		"policy_name":          title,
 		"status":               status,
 		"upload_status":        "parsed",
 	})
-	return []eventSpec{
+	specs := []eventSpec{
 		recordEventSpec(request, "grc.policy", SchemaRefPolicy, policyID, policyAttrs),
 		recordEventSpec(request, "grc.document", SchemaRefDocument, documentID, documentAttrs),
 	}
+	specs = append(specs, policyEvidenceSnippetSpecs(request, parsed, common, policyID, documentID, title, policyDocumentType)...)
+	return specs
+}
+
+func policyEvidenceSnippetSpecs(request UploadRequest, parsed ParsedDocument, common map[string]string, policyID string, documentID string, policyTitle string, policyDocumentType string) []eventSpec {
+	snippets := policyEvidenceSnippets(parsed)
+	if len(snippets) == 0 {
+		return nil
+	}
+	controlIDs := firstNonEmpty(request.Fields["control_ids"], request.Fields["control_id"], request.Fields["related_controls"])
+	questionIDs := firstNonEmpty(request.Fields["question_ids"], request.Fields["question_id"])
+	unsupportedClaims := firstNonEmpty(request.Fields["unsupported_claims"], request.Fields["unsupported_claim"])
+	reviewState := "ready_to_project"
+	confidence := "0.82"
+	if strings.TrimSpace(controlIDs) == "" && strings.TrimSpace(questionIDs) == "" {
+		reviewState = "needs_review"
+		confidence = "0.64"
+	}
+	specs := make([]eventSpec, 0, len(snippets))
+	for index, snippet := range snippets {
+		snippetID := policySnippetID(policyID, documentID, index+1, snippet.text)
+		sectionID := firstNonEmpty(snippet.sectionID, fmt.Sprintf("section-%d", index+1))
+		attrs := mergeAttrs(common, allowedAttrs(request.Fields), map[string]string{
+			"snippet_id":           snippetID,
+			"policy_id":            policyID,
+			"policy_name":          policyTitle,
+			"document_id":          documentID,
+			"policy_document_type": policyDocumentType,
+			"section_id":           sectionID,
+			"section_title":        firstNonEmpty(snippet.sectionTitle, sectionID),
+			"page":                 intString(snippet.page),
+			"snippet_text":         snippet.text,
+			"citation_text":        snippet.text,
+			"policy_citations":     snippet.text,
+			"evidence_type":        "policy_document_snippet",
+			"confidence":           confidence,
+			"review_state":         reviewState,
+			"manual_review_state":  reviewState,
+			"control_ids":          controlIDs,
+			"question_ids":         questionIDs,
+			"unsupported_claims":   unsupportedClaims,
+			"source_provenance":    firstNonEmpty(request.Fields["source_provenance"], request.Fields["source_url"], "uploaded policy document"),
+			"status":               "parsed",
+		})
+		specs = append(specs, recordEventSpec(request, "grc.policy_evidence_snippet", SchemaRefPolicySnippet, snippetID, attrs))
+	}
+	return specs
+}
+
+type policyEvidenceSnippet struct {
+	sectionID    string
+	sectionTitle string
+	page         int
+	text         string
+}
+
+func policyEvidenceSnippets(parsed ParsedDocument) []policyEvidenceSnippet {
+	items := make([]policyEvidenceSnippet, 0, maxPolicyEvidenceSnippets)
+	for _, field := range parsed.StructuredFields {
+		if len(items) >= maxPolicyEvidenceSnippets {
+			break
+		}
+		snippet, ok := policyStructuredFieldEvidenceSnippet(field)
+		if !ok {
+			continue
+		}
+		items = append(items, snippet)
+	}
+	for _, chunk := range parsed.Chunks {
+		if len(items) >= maxPolicyEvidenceSnippets {
+			break
+		}
+		text := truncateRunes(compactWhitespace(chunk.TextPreview), maxPolicySnippetChars)
+		if text == "" {
+			continue
+		}
+		sectionID := fmt.Sprintf("chunk-%d", chunk.Index)
+		if chunk.Index <= 0 {
+			sectionID = fmt.Sprintf("chunk-%d", len(items)+1)
+		}
+		items = append(items, policyEvidenceSnippet{
+			sectionID:    sectionID,
+			sectionTitle: fmt.Sprintf("Parsed chunk %d", len(items)+1),
+			page:         chunk.Page,
+			text:         text,
+		})
+	}
+	if len(items) == 0 && strings.TrimSpace(parsed.TextPreview) != "" {
+		items = append(items, policyEvidenceSnippet{
+			sectionID:    "text-preview",
+			sectionTitle: "Parsed text preview",
+			text:         truncateRunes(compactWhitespace(parsed.TextPreview), maxPolicySnippetChars),
+		})
+	}
+	return items
+}
+
+func policyStructuredFieldEvidenceSnippet(field StructuredField) (policyEvidenceSnippet, bool) {
+	if !policyStructuredFieldLooksLikeCitation(field) {
+		return policyEvidenceSnippet{}, false
+	}
+	value := truncateRunes(compactWhitespace(field.Value), maxPolicySnippetChars)
+	if value == "" {
+		return policyEvidenceSnippet{}, false
+	}
+	label := firstNonEmpty(field.Label, field.Key)
+	return policyEvidenceSnippet{
+		sectionID:    slug(firstNonEmpty(field.Key, label)),
+		sectionTitle: label,
+		text:         value,
+	}, true
+}
+
+func policyStructuredFieldLooksLikeCitation(field StructuredField) bool {
+	key := strings.ToLower(strings.TrimSpace(field.Key))
+	label := strings.ToLower(strings.TrimSpace(field.Label))
+	switch key {
+	case "summary", "owner", "owner_id", "approver", "approving_authority", "status", "version", "effective_at", "approved_at", "last_reviewed_at", "next_review_due_at", "review_cadence", "source_url", "source_provenance", "control_ids", "question_ids":
+		return false
+	}
+	for _, token := range []string{"citation", "excerpt", "section", "requirement", "procedure", "standard", "policy_text", "policy_statement"} {
+		if strings.Contains(key, token) || strings.Contains(label, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func policySnippetID(policyID string, documentID string, index int, text string) string {
+	return slug(strings.Join([]string{"snippet", firstNonEmpty(policyID, "policy"), firstNonEmpty(documentID, "document"), fmt.Sprintf("%d", index), shortHash(text, 10)}, "-"))
 }
 
 func vendorEventSpecs(request UploadRequest, parsed ParsedDocument, uploadID string, now time.Time) []eventSpec {
@@ -490,6 +626,8 @@ func mintRecordURN(request UploadRequest, kind string, recordID string) string {
 		urn, err = cerebrourn.Mint(request.TenantID, "policy", uploadProvider, recordID)
 	case "grc.document":
 		urn, err = cerebrourn.Mint(request.TenantID, "document", uploadProvider, recordID)
+	case "grc.policy_evidence_snippet":
+		urn, err = cerebrourn.Mint(request.TenantID, "policy_evidence_snippet", uploadProvider, recordID)
 	case "grc.vendor":
 		urn, err = cerebrourn.Mint(request.TenantID, "vendor", uploadProvider, recordID)
 	case "grc.assurance_document":
@@ -573,8 +711,15 @@ func analyzeUpload(request UploadRequest, parsed ParsedDocument, specs []eventSp
 		case "grc.policy":
 			analysis.addField("policy_id", spec.RecordID, sourceFor(request.Fields, "policy_id", "derived"), 0.96, "")
 			analysis.addField("policy_name", spec.Attrs["policy_name"], sourceForAny(request.Fields, []string{"policy_name", "title"}, "file_name"), 0.90, snippet)
+			analysis.addField("policy_type", firstNonEmpty(spec.Attrs["policy_document_type"], spec.Attrs["policy_type"]), sourceForAny(request.Fields, []string{"policy_type", "policy_document_type", "document_type"}, ""), 0.86, snippet)
 			analysis.addField("owner_id", firstNonEmpty(spec.Attrs["owner_id"], spec.Attrs["policy_owner_user_id"]), sourceForAny(request.Fields, []string{"owner_id", "policy_owner_user_id"}, ""), 0.92, "")
+			analysis.addField("approving_authority", spec.Attrs["approving_authority"], sourceForAny(request.Fields, []string{"approving_authority", "approval_authority"}, ""), 0.86, snippet)
+			analysis.addField("effective_at", spec.Attrs["effective_at"], sourceFor(request.Fields, "effective_at", ""), 0.88, "")
+			analysis.addField("last_reviewed_at", firstNonEmpty(spec.Attrs["last_reviewed_at"], spec.Attrs["reviewed_at"]), sourceForAny(request.Fields, []string{"last_reviewed_at", "reviewed_at"}, ""), 0.88, "")
+			analysis.addField("review_cadence", spec.Attrs["review_cadence"], sourceFor(request.Fields, "review_cadence", ""), 0.84, "")
 			analysis.addField("next_review_due_at", firstNonEmpty(spec.Attrs["next_review_due_at"], spec.Attrs["review_due_at"]), sourceForAny(request.Fields, []string{"next_review_due_at", "review_due_at"}, ""), 0.88, "")
+			analysis.addField("acknowledgement_evidence", firstNonEmpty(spec.Attrs["acknowledgement_evidence"], spec.Attrs["attestation_evidence"]), sourceForAny(request.Fields, []string{"acknowledgement_evidence", "attestation_evidence"}, ""), 0.82, snippet)
+			analysis.addField("exception_path", firstNonEmpty(spec.Attrs["exception_path"], spec.Attrs["exception_procedure"]), sourceForAny(request.Fields, []string{"exception_path", "exception_procedure"}, ""), 0.82, snippet)
 			analysis.addMatchHint(spec.Kind, spec.RecordID, normalizedMatchKey("policy", spec.Attrs["policy_name"], spec.RecordID), "policy_id_or_title")
 			if firstNonEmpty(spec.Attrs["owner_id"], spec.Attrs["policy_owner_user_id"]) == "" {
 				analysis.addReviewItem("policy_owner_missing", spec.Kind, spec.RecordID, "owner_id", "Policy owner is missing.", "Add an owner before relying on the policy for audit evidence.", snippet)
@@ -582,10 +727,20 @@ func analyzeUpload(request UploadRequest, parsed ParsedDocument, specs []eventSp
 			if firstNonEmpty(spec.Attrs["next_review_due_at"], spec.Attrs["review_due_at"]) == "" {
 				analysis.addReviewItem("policy_review_due_missing", spec.Kind, spec.RecordID, "next_review_due_at", "Policy review date is missing.", "Add the next review date or review cadence.", snippet)
 			}
+			if firstNonEmpty(spec.Attrs["approved_at"], spec.Attrs["approving_authority"]) == "" {
+				analysis.addReviewItem("policy_approval_missing", spec.Kind, spec.RecordID, "approved_at", "Policy approval evidence is missing.", "Add the approval date or approving authority.", snippet)
+			}
+			if firstNonEmpty(spec.Attrs["acknowledgement_evidence"], spec.Attrs["attestation_evidence"]) == "" {
+				analysis.addReviewItem("policy_acknowledgement_missing", spec.Kind, spec.RecordID, "acknowledgement_evidence", "Staff acknowledgement evidence is missing.", "Add the acknowledgement campaign or attestation evidence.", snippet)
+			}
+			if firstNonEmpty(spec.Attrs["exception_path"], spec.Attrs["exception_procedure"]) == "" {
+				analysis.addReviewItem("policy_exception_path_missing", spec.Kind, spec.RecordID, "exception_path", "Exception path is missing.", "Add the exception request or waiver process.", snippet)
+			}
 		case "grc.document":
 			analysis.addField("document_id", spec.RecordID, sourceFor(request.Fields, "document_id", "upload_id"), 0.94, "")
 			analysis.addField("document_title", spec.Attrs["document_title"], sourceForAny(request.Fields, []string{"document_title", "title"}, "file_name"), 0.86, snippet)
 			analysis.addField("document_type", spec.Attrs["document_type"], sourceFor(request.Fields, "document_type", "default"), 0.80, snippet)
+			analysis.addField("source_provenance", firstNonEmpty(spec.Attrs["source_provenance"], spec.Attrs["source_system"], spec.Attrs["provider"]), sourceForAny(request.Fields, []string{"source_provenance", "source_system"}, "upload"), 0.90, "")
 			analysis.addMatchHint(spec.Kind, spec.RecordID, normalizedMatchKey("document", spec.Attrs["document_title"], spec.RecordID), "document_id_or_title")
 		case "grc.vendor":
 			analysis.addField("vendor_id", spec.RecordID, sourceFor(request.Fields, "vendor_id", "derived"), 0.96, "")
@@ -767,14 +922,19 @@ func (a uploadAnalysis) detailAttributes() map[string]string {
 
 func allowedAttrs(fields map[string]string) map[string]string {
 	allowed := map[string]struct{}{
-		"approved_at": {}, "business_owner_user_id": {}, "category": {}, "control_id": {},
+		"acknowledgement_evidence": {}, "acknowledgment_evidence": {}, "approved_at": {},
+		"approving_authority": {}, "approval_authority": {}, "attestation_evidence": {},
+		"business_owner_user_id": {}, "category": {}, "control_id": {},
 		"control_ids": {}, "data_sensitivity": {}, "document_url": {}, "domain": {},
 		"due_at": {}, "effective_at": {}, "framework": {}, "frameworks": {},
-		"lifecycle_reason": {}, "lifecycle_state": {}, "next_review_due_at": {},
-		"owner_id": {}, "policy_owner_user_id": {}, "review_cadence": {},
-		"review_due_at": {}, "reviewer": {}, "reviewer_user_id": {},
+		"evidence_id": {}, "evidence_ids": {}, "exception_path": {}, "exception_procedure": {},
+		"last_review_at": {}, "last_reviewed_at": {}, "lifecycle_reason": {}, "lifecycle_state": {},
+		"next_review_due_at": {}, "owner_id": {}, "policy_owner_user_id": {}, "policy_type": {},
+		"question_id": {}, "question_ids": {}, "related_controls": {}, "review_cadence": {}, "review_due_at": {}, "reviewed_at": {},
+		"reviewer": {}, "reviewer_user_id": {},
 		"risk_level": {}, "security_owner_user_id": {}, "services_provided": {},
-		"source_url": {}, "tags": {}, "url": {}, "version": {}, "version_number": {},
+		"source_document_id": {}, "source_provenance": {}, "source_url": {},
+		"tags": {}, "unsupported_claim": {}, "unsupported_claims": {}, "url": {}, "version": {}, "version_number": {},
 		"website": {}, "website_url": {},
 	}
 	attrs := map[string]string{}
