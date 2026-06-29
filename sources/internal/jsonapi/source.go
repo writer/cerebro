@@ -87,6 +87,7 @@ type Options struct {
 	ConfigHeaders                     map[string]string
 	DiscoverURNScope                  string
 	PrivateEndpointAllowlistConfigKey string
+	ResponseError                     func([]byte) error
 	Families                          []Family
 }
 
