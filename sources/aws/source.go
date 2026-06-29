@@ -33,7 +33,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	cloudformationtypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -105,6 +104,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/awsaccount"
 	"github.com/writer/cerebro/sources/internal/awsappsync"
+	"github.com/writer/cerebro/sources/internal/awscloudformation"
 	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -125,7 +125,7 @@ const (
 	awsAssumeRoleSessionName                 = "cerebro-source-runtime"
 	familyAccessKey                          = "access_key"
 	familyACMCertificate                     = "acm_certificate"
-	familyAccountContact                     = "account_contact"
+	familyAccountContact                     = awsaccount.FamilyAccountContact
 	familyAppRunnerService                   = "apprunner_service"
 	familyAppSyncGraphQLAPI                  = "appsync_graphql_api"
 	familyAssetMetadata                      = "asset_metadata"
@@ -141,7 +141,7 @@ const (
 	familyBedrockProvisionedModelThroughput  = "bedrock_provisioned_model_throughput"
 	familyCodeBuildProject                   = "codebuild_project"
 	familyCodeBuildSourceCredential          = "codebuild_source_credential"
-	familyCloudFormationStack                = "cloudformation_stack"
+	familyCloudFormationStack                = awscloudformation.FamilyStack
 	familyCloudTrail                         = "cloudtrail"
 	familyCloudWatchAlarm                    = "cloudwatch_alarm"
 	familyCloudWatchLogGroup                 = "cloudwatch_log_group"
@@ -335,18 +335,13 @@ type awsACMAPI interface {
 	ListTagsForCertificate(context.Context, *acm.ListTagsForCertificateInput, ...func(*acm.Options)) (*acm.ListTagsForCertificateOutput, error)
 }
 
-type awsAccountAPI interface {
-	GetAlternateContact(context.Context, *accountsvc.GetAlternateContactInput, ...func(*accountsvc.Options)) (*accountsvc.GetAlternateContactOutput, error)
-	GetContactInformation(context.Context, *accountsvc.GetContactInformationInput, ...func(*accountsvc.Options)) (*accountsvc.GetContactInformationOutput, error)
-}
-
 type awsPlatformClients struct {
 	cfg             awssdk.Config
 	acm             awsACMAPI
-	account         awsAccountAPI
+	account         awsaccount.AccountClient
 	iam             awsIAMAPI
 	cloudTrail      awsCloudTrailAPI
-	cloudFormation  awsCloudFormationAPI
+	cloudFormation  awscloudformation.Client
 	ec2             awsEC2API
 	route53         awsRoute53API
 	route53Resolver awsRoute53ResolverAPI
@@ -477,10 +472,6 @@ type awsIAMAPI interface {
 
 type awsCloudTrailAPI interface {
 	LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error)
-}
-
-type awsCloudFormationAPI interface {
-	DescribeStacks(context.Context, *cloudformation.DescribeStacksInput, ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error)
 }
 
 type awsRedshiftAPI interface {
@@ -1097,16 +1088,6 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(certificate.Certificate.CertificateArn), awssdk.ToString(certificate.Certificate.DomainName))
 			},
 		}),
-		awsFamily(s.clients, awsFamilyOptions[awsAccountContact]{
-			Name:  familyAccountContact,
-			Label: "aws account contacts",
-			List:  listAccountContacts,
-			Event: accountContactEvent,
-			URN: func(settings settings, record awsAccountContact) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:aws_account_contact:%s", settings.accountID, firstNonEmpty(record.AccountID, settings.accountID)), nil
-			},
-			CursorFallback: func(record awsAccountContact) string { return firstNonEmpty(record.AccountID, "account") },
-		}),
 		awsFamily(s.clients, awsFamilyOptions[awsAssetMetadata]{
 			Name:  familyAssetMetadata,
 			Label: "aws asset metadata",
@@ -1258,18 +1239,6 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(record awsCodeBuildSourceCredential) string {
 				return codeBuildSourceCredentialIdentity(record.Credential)
-			},
-		}),
-		awsFamily(s.clients, awsFamilyOptions[cloudformationtypes.Stack]{
-			Name:  familyCloudFormationStack,
-			Label: "aws cloudformation stacks",
-			List:  listCloudFormationStacks,
-			Event: cloudFormationStackEvent,
-			URN: func(settings settings, stack cloudformationtypes.Stack) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:aws_cloudformation_stack:%s", settings.accountID, firstNonEmpty(awssdk.ToString(stack.StackId), cloudFormationStackARN(settings, awssdk.ToString(stack.StackName)), awssdk.ToString(stack.StackName))), nil
-			},
-			CursorFallback: func(stack cloudformationtypes.Stack) string {
-				return firstNonEmpty(awssdk.ToString(stack.StackId), awssdk.ToString(stack.StackName))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
@@ -2675,7 +2644,10 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		}),
 	} // awscollectorgen:family-register
 	families = append(families, awsSecurityFamilies(s.clients)...)
-	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(settings settings) string { return settings.accountID })...)
+	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(clients awsClients) any { return clients.account }, func(settings settings) string { return settings.accountID })...)
+	families = append(families, awscloudformation.Family(s.clients, func(clients awsClients) any { return clients.cloudFormation }, func(settings settings) awscloudformation.Settings {
+		return awscloudformation.Settings{AccountID: settings.accountID, Region: settings.region}
+	}))
 	return sourcecdk.NewFamilyEngineWithSourceID("aws", parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 

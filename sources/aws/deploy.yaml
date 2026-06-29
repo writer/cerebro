@@ -18,6 +18,13 @@ runtimes:
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
+  - localId: account-contact
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: account_contact
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
   - localId: acm-certificate
     config:
       account_id: env:AWS_ACCOUNT_ID
@@ -120,6 +127,13 @@ runtimes:
     config:
       account_id: env:AWS_ACCOUNT_ID
       family: cloudtrail
+      per_page: "100"
+      region: env:AWS_REGION
+      role_arn: env:AWS_ROLE_ARN
+  - localId: cloudformation-stack
+    config:
+      account_id: env:AWS_ACCOUNT_ID
+      family: cloudformation_stack
       per_page: "100"
       region: env:AWS_REGION
       role_arn: env:AWS_ROLE_ARN
