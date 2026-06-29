@@ -1287,6 +1287,12 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Reviews, func(i, j int) bool {
 		return grcPolicySortDate(policy.Reviews[i].ReviewDueAt, policy.Reviews[i].ReviewedAt).Before(grcPolicySortDate(policy.Reviews[j].ReviewDueAt, policy.Reviews[j].ReviewedAt))
 	})
+	lastReviewedAt := ""
+	if policy.LastReviewedAt == "" {
+		for _, review := range policy.Reviews {
+			lastReviewedAt = grcPolicyLaterDateString(lastReviewedAt, review.ReviewedAt)
+		}
+	}
 	for _, review := range policy.Reviews {
 		if policy.Reviewer == "" {
 			policy.Reviewer = firstNonEmpty(review.Reviewers...)
@@ -1294,15 +1300,15 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 		if policy.ReviewCadence == "" {
 			policy.ReviewCadence = review.Cadence
 		}
-		if policy.LastReviewedAt == "" {
-			policy.LastReviewedAt = review.ReviewedAt
-		}
 		if policy.NextReviewDueAt == "" {
 			policy.NextReviewDueAt = review.ReviewDueAt
 		}
-		if policy.Reviewer != "" && policy.ReviewCadence != "" && policy.LastReviewedAt != "" && policy.NextReviewDueAt != "" {
+		if policy.Reviewer != "" && policy.ReviewCadence != "" && policy.NextReviewDueAt != "" {
 			break
 		}
+	}
+	if policy.LastReviewedAt == "" {
+		policy.LastReviewedAt = lastReviewedAt
 	}
 	sort.Slice(policy.Exceptions, func(i, j int) bool {
 		return grcPolicySortDate(policy.Exceptions[i].ExpiresAt, policy.Exceptions[i].ApprovedAt).Before(grcPolicySortDate(policy.Exceptions[j].ExpiresAt, policy.Exceptions[j].ApprovedAt))
@@ -2882,6 +2888,18 @@ func grcPolicySortDate(values ...string) time.Time {
 		return value
 	}
 	return time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+}
+
+func grcPolicyLaterDateString(current string, candidate string) string {
+	candidateDate, candidateOK := grcPolicyFirstDate(candidate)
+	if !candidateOK {
+		return current
+	}
+	currentDate, currentOK := grcPolicyFirstDate(current)
+	if !currentOK || candidateDate.After(currentDate) {
+		return candidate
+	}
+	return current
 }
 
 func grcPolicyFirstDate(values ...string) (time.Time, bool) {

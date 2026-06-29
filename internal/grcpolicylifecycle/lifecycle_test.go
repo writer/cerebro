@@ -581,8 +581,8 @@ func TestExceptionRollupSkipsMissingStatus(t *testing.T) {
 func TestFinalizeUsesSortedReviewMetadata(t *testing.T) {
 	policy := grcPolicyLifecyclePolicy{
 		Reviews: []grcPolicyReviewItem{
-			{ID: "later", ReviewDueAt: "2026-06-15", Cadence: "quarterly", Reviewers: []string{"later@example.com"}},
-			{ID: "earlier", ReviewDueAt: "2026-01-15", Cadence: "monthly", Reviewers: []string{"earlier@example.com"}},
+			{ID: "later", ReviewDueAt: "2026-06-15", ReviewedAt: "2026-06-01", Cadence: "quarterly", Reviewers: []string{"later@example.com"}},
+			{ID: "earlier", ReviewDueAt: "2026-01-15", ReviewedAt: "2026-01-10", Cadence: "monthly", Reviewers: []string{"earlier@example.com"}},
 		},
 	}
 
@@ -593,6 +593,9 @@ func TestFinalizeUsesSortedReviewMetadata(t *testing.T) {
 	}
 	if policy.Reviewer != "earlier@example.com" || policy.ReviewCadence != "monthly" || policy.NextReviewDueAt != "2026-01-15" {
 		t.Fatalf("review metadata = %q/%q/%q, want earliest review metadata", policy.Reviewer, policy.ReviewCadence, policy.NextReviewDueAt)
+	}
+	if policy.LastReviewedAt != "2026-06-01" {
+		t.Fatalf("last reviewed at = %q, want latest reviewed date", policy.LastReviewedAt)
 	}
 }
 
