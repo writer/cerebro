@@ -350,11 +350,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4298")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "349")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4304")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "346")
 	assertOverviewMetric(t, overviewRows, "detections source-backed", "409")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "828")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "349")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "831")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "346")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
