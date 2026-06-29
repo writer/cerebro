@@ -665,6 +665,15 @@ func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
 				Status:         "open",
 				LastObservedAt: now,
 			},
+			"finding-2": {
+				ID:             "finding-2",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 2",
+				Severity:       "LOW",
+				Status:         "open",
+				LastObservedAt: now.Add(-time.Hour),
+			},
 		},
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
 			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
@@ -685,12 +694,20 @@ func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
 	}
 	var payload struct {
 		Findings []grcFindingItem `json:"findings"`
+		Meta     struct {
+			Limit     uint32 `json:"limit"`
+			Returned  int    `json:"returned"`
+			Truncated bool   `json:"truncated"`
+		} `json:"meta"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode /grc/findings: %v", err)
 	}
 	if len(payload.Findings) != 1 || payload.Findings[0].EvidenceCount != 2 {
 		t.Fatalf("findings = %+v, want grouped evidence count 2", payload.Findings)
+	}
+	if payload.Meta.Limit != 1 || payload.Meta.Returned != 1 || !payload.Meta.Truncated {
+		t.Fatalf("meta = %+v, want one truncated row", payload.Meta)
 	}
 	if store.groupedCountCalls != 1 {
 		t.Fatalf("grouped count calls = %d, want 1", store.groupedCountCalls)
@@ -703,6 +720,67 @@ func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
 	}
 	if len(store.groupedCountRequest.FindingIDs) != 1 || store.groupedCountRequest.FindingIDs[0] != "finding-1" {
 		t.Fatalf("grouped count finding ids = %#v, want finding-1", store.groupedCountRequest.FindingIDs)
+	}
+}
+
+func TestGRCEvidenceIncludesListMetadata(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	tenantID := "tenant"
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now.Add(-time.Minute))},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/evidence?tenant_id=" + tenantID + "&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/evidence error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/evidence status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Evidence []grcEvidenceItem `json:"evidence"`
+		Meta     struct {
+			Limit     uint32 `json:"limit"`
+			Returned  int    `json:"returned"`
+			Truncated bool   `json:"truncated"`
+		} `json:"meta"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/evidence: %v", err)
+	}
+	if len(payload.Evidence) != 1 {
+		t.Fatalf("evidence length = %d, want 1", len(payload.Evidence))
+	}
+	if payload.Meta.Limit != 1 || payload.Meta.Returned != 1 || !payload.Meta.Truncated {
+		t.Fatalf("meta = %+v, want one truncated row", payload.Meta)
 	}
 }
 

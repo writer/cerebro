@@ -15,7 +15,7 @@ import (
 const grcExportLimit = grcMaxLimit
 
 func (a *App) handleGRCFindingsExport(w http.ResponseWriter, r *http.Request) {
-	items, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
+	items, _, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
 	if err != nil {
 		writeGRCError(w, err)
 		return
