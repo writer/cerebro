@@ -234,7 +234,7 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "dormant_user"},
 		{id: "mfa_posture", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
 		{id: "external_accounts", dimensionType: "entity_family", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "external_user"},
-		{id: "group_memberships", dimensionType: "relationship", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
+		{id: "group_memberships", dimensionType: "relationship", support: "supported", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
 		{id: "admin_membership", dimensionType: "relationship", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "privileged_role"},
 		{id: "app_access", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "app_assignment"},
 		{id: "identity_audit_events", dimensionType: "audit_event", support: "partial", evidenceType: "logging_configuration", controlDomain: "logging_monitoring", requiredFamily: "session"},
@@ -257,8 +257,8 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 		}
 	}
 	groupMemberships := dimensions["group_memberships"]
-	if !hasString(groupMemberships.Notes, "Generic group collection lists group records; full Okta source projection supports membership edges through dedicated group membership events.") {
-		t.Fatalf("group_memberships notes = %#v, want connector/source catalog support distinction", groupMemberships.Notes)
+	if !hasString(groupMemberships.Notes, "Okta membership coverage is supported through dedicated okta.group_membership events in the source projection; group records alone are not sufficient evidence for every membership claim.") {
+		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
 	}
 }
 

@@ -138,8 +138,8 @@ entries:
               high_value: true
               id: group_memberships
               notes:
-                - Generic group collection lists group records; full Okta source projection supports membership edges through dedicated group membership events.
-              support: partial
+                - Okta membership coverage is supported through dedicated okta.group_membership events in the source projection; group records alone are not sufficient evidence for every membership claim.
+              support: supported
               title: Group memberships
               type: relationship
           default_enabled: true
