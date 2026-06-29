@@ -330,6 +330,26 @@ func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
 	}
 }
 
+func TestOktaStaleAppAssignmentPolicyUsesStringSafeActivityCutoff(t *testing.T) {
+	config := generatedPolicyRuleConfigByID("identity-okta-stale-app-assignment-30d")
+	if config == nil {
+		t.Fatal("identity-okta-stale-app-assignment-30d missing from generated policy catalog")
+	}
+	query := config.Graph.Query
+	if strings.Contains(query, "datetime(split(split") {
+		t.Fatalf("query parses extracted activity timestamps with datetime():\n%s", query)
+	}
+	for _, want := range []string{
+		"=~ '^[0-9]{4}-",
+		"substring(toString(datetime() - duration('P30D')), 0, 19)",
+		"malformed activity timestamps are ignored",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("query missing %q:\n%s", want, query)
+		}
+	}
+}
+
 func TestOktaPrivilegedNoMFAPolicyCarriesDSLContractMetadata(t *testing.T) {
 	config := generatedPolicyRuleConfigByID("identity-okta-privileged-no-mfa")
 	if config == nil {
