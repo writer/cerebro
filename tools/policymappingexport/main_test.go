@@ -681,7 +681,12 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 }
 
 func TestGenerateFilesMapsOktaPolicyFindingsToSourceCoverage(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
+	root := repoRoot(t)
+	catalog, err := loadPublicDetectionCatalog(root)
+	if err != nil {
+		t.Fatalf("load public detection catalog: %v", err)
+	}
+	files, err := generateFiles(root)
 	if err != nil {
 		t.Fatalf("generateFiles() error = %v", err)
 	}
@@ -706,6 +711,8 @@ func TestGenerateFilesMapsOktaPolicyFindingsToSourceCoverage(t *testing.T) {
 	signOnRow := findRow(t, findingRows, findingIDCol, "identity-okta-sign-on-rule-without-mfa")
 	assertCellContains(t, findingHeader, signOnRow, "source_capability_refs", "okta/policy_rules")
 	assertCellContains(t, findingHeader, signOnRow, "control_refs", "NIST 800-53 r5 IA-2")
+	assertPublicDetectionEvidenceType(t, catalog, "identity-okta-sign-on-rule-without-mfa", "identity_configuration")
+	// finding_map evidence_type is the compliance review class; the public catalog assertion above keeps the rule evidence contract pinned.
 	assertCellContains(t, findingHeader, signOnRow, "evidence_type", "identity_governance")
 
 	assignmentRow := findRow(t, findingRows, findingIDCol, "identity-okta-suspended-user-active-assignment")
@@ -1268,6 +1275,19 @@ func findRow(t *testing.T, rows [][]string, column int, value string) []string {
 	}
 	t.Fatalf("row with column %d = %s not found", column, value)
 	return nil
+}
+
+func assertPublicDetectionEvidenceType(t *testing.T, catalog publicDetectionCatalog, id string, want string) {
+	t.Helper()
+	for _, detection := range catalog.Detections {
+		if detection.ID == id {
+			if detection.EvidenceType != want {
+				t.Fatalf("%s public detection evidence_type = %q, want %q", id, detection.EvidenceType, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("public detection %s not found", id)
 }
 
 func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, profileCol int, sourceCol int, framework string, controlID string, profile string, source string) []string {
