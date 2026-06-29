@@ -25,6 +25,19 @@ type evidenceCapabilityDimensionForTest struct {
 	ControlDomains []string `yaml:"control_domains"`
 }
 
+type sourceCoverageCatalogForTest struct {
+	CoverageContract sourceCoverageContractForTest `yaml:"coverage_contract"`
+}
+
+type sourceCoverageContractForTest struct {
+	Dimensions []sourceCoverageDimensionForTest `yaml:"dimensions"`
+}
+
+type sourceCoverageDimensionForTest struct {
+	ID      string `yaml:"id"`
+	Support string `yaml:"support"`
+}
+
 func TestOktaEvidenceCapabilitiesDeclareComplianceIdentityDepth(t *testing.T) {
 	payload, err := os.ReadFile("evidence_capabilities.yaml")
 	if err != nil {
@@ -45,6 +58,18 @@ func TestOktaEvidenceCapabilitiesDeclareComplianceIdentityDepth(t *testing.T) {
 	}
 	if len(dimensions) == 0 {
 		t.Fatal("okta evidence capabilities not found")
+	}
+	sourcePayload, err := os.ReadFile("../../sources/okta/catalog.yaml")
+	if err != nil {
+		t.Fatalf("read sources/okta/catalog.yaml: %v", err)
+	}
+	var sourceCatalog sourceCoverageCatalogForTest
+	if err := yaml.Unmarshal(sourcePayload, &sourceCatalog); err != nil {
+		t.Fatalf("unmarshal sources/okta/catalog.yaml: %v", err)
+	}
+	sourceDimensions := map[string]sourceCoverageDimensionForTest{}
+	for _, dimension := range sourceCatalog.CoverageContract.Dimensions {
+		sourceDimensions[dimension.ID] = dimension
 	}
 	for _, want := range []struct {
 		id             string
@@ -69,6 +94,13 @@ func TestOktaEvidenceCapabilitiesDeclareComplianceIdentityDepth(t *testing.T) {
 		}
 		if dimension.DimensionType != want.dimensionType || dimension.SupportLevel != want.support {
 			t.Fatalf("dimension %s type/support = %s/%s, want %s/%s", want.id, dimension.DimensionType, dimension.SupportLevel, want.dimensionType, want.support)
+		}
+		sourceDimension, ok := sourceDimensions[want.id]
+		if !ok {
+			t.Fatalf("okta source catalog dimension %q not found", want.id)
+		}
+		if sourceDimension.Support != want.support {
+			t.Fatalf("source catalog dimension %s support = %s, want %s to match evidence capabilities", want.id, sourceDimension.Support, want.support)
 		}
 		if !stringSliceContains(dimension.EvidenceTypes, want.evidenceType) {
 			t.Fatalf("dimension %s evidence types = %#v, want %q", want.id, dimension.EvidenceTypes, want.evidenceType)
