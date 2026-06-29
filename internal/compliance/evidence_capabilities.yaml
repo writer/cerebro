@@ -33,6 +33,40 @@ sources:
             control_id: "8.3"
           - framework: SOC 2
             control_id: CC6.2
+      - dimension_id: account_contact
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - account_contact
+          - aws_account_alternate_contact
+          - aws_account_security_contact
+        evidence_types:
+          - cloud_configuration
+          - source_snapshot
+        control_domains:
+          - cloud_security
+          - identity_access
+          - security_operations
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC8.1
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: CIS Controls v8
+            control_id: "8"
       - dimension_id: iam_policy
         dimension_type: app_entitlement
         support_level: supported
@@ -208,6 +242,32 @@ sources:
             control_id: CC6.6
           - framework: SOC 2
             control_id: CC6.7
+      - dimension_id: s3_bucket_mfa_delete
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - s3_bucket_mfa_delete
+          - mfa_delete
+        evidence_types:
+          - cloud_configuration
+          - identity_configuration
+          - resilience_control
+        control_domains:
+          - availability_resilience
+          - data_protection
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: NIST 800-53 r5
+            control_id: IA-2
+          - framework: NIST 800-53 r5
+            control_id: IA-5
+          - framework: PCI DSS v4.0.1
+            control_id: "8.3"
+          - framework: PCI DSS v4.0.1
+            control_id: "8.4"
       - dimension_id: public_endpoint
         dimension_type: entity_family
         support_level: supported
@@ -816,6 +876,40 @@ sources:
             control_id: CC6.2
           - framework: SOC 2
             control_id: CC6.6
+      - dimension_id: cloudformation_stack
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloudformation_stack
+          - stack_drift
+          - termination_protection
+        evidence_types:
+          - cloud_configuration
+          - configuration_state
+          - source_snapshot
+        control_domains:
+          - cloud_security
+          - security_operations
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC7.1
+          - framework: SOC 2
+            control_id: CC8.1
+          - framework: NIST 800-53 r5
+            control_id: AC-3
+          - framework: NIST 800-53 r5
+            control_id: CM-6
+          - framework: NIST 800-53 r5
+            control_id: SI-4
+          - framework: CIS Controls v8
+            control_id: "4"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: CIS Controls v8
+            control_id: "8"
       - dimension_id: dynamodb_table
         dimension_type: entity_family
         support_level: supported

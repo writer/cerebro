@@ -13,6 +13,8 @@ import (
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	accountsvc "github.com/aws/aws-sdk-go-v2/service/account"
+	accounttypes "github.com/aws/aws-sdk-go-v2/service/account/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
@@ -29,6 +31,8 @@ import (
 	batchtypes "github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	cloudformationtypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -392,6 +396,45 @@ func TestIAMAccountPostureCollectors(t *testing.T) {
 	}
 }
 
+func TestReadAWSAccountContactPosture(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		primaryContact: &accounttypes.ContactInformation{
+			CountryCode: awssdk.String("US"),
+			FullName:    awssdk.String("Security Operations"),
+			PhoneNumber: awssdk.String("+1 555 0100"),
+		},
+		securityContact: &accounttypes.AlternateContact{
+			AlternateContactType: accounttypes.AlternateContactTypeSecurity,
+			EmailAddress:         awssdk.String("security@example.com"),
+			Name:                 awssdk.String("Security Operations"),
+			PhoneNumber:          awssdk.String("+1 555 0101"),
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAccountContact}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyAccountContact, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("account contact events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.account_contact" {
+		t.Fatalf("kind = %q, want aws.account_contact", got)
+	}
+	if got := event.Attributes["account_security_contact_configured"]; got != "true" {
+		t.Fatalf("account_security_contact_configured = %q, want true", got)
+	}
+	if got := event.Attributes["account_alternate_contact_security_compliant"]; got != "true" {
+		t.Fatalf("account_alternate_contact_security_compliant = %q, want true", got)
+	}
+	if got := event.Attributes["security_contact_email_present"]; got != "true" {
+		t.Fatalf("security_contact_email_present = %q, want true", got)
+	}
+	if strings.Contains(string(event.Payload), "security@example.com") {
+		t.Fatal("account contact payload should not include raw contact email")
+	}
+}
+
 func TestIAMCredentialReportCollectorSkipsWhileGenerating(t *testing.T) {
 	source := newTestSource(t, fakeAWS{credentialReport: fakeCredentialReport{state: iamtypes.ReportStateTypeInprogress}})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": "iam_credential_report"}), nil)
@@ -482,6 +525,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAccessAnalyzer, kind: "aws.access_analyzer"},
+		{family: familyAccountContact, kind: "aws.account_contact"},
 		{family: familyAppSyncGraphQLAPI, kind: "aws.appsync_graphql_api"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyConfigRecorder, kind: "aws.config_recorder"},
@@ -497,6 +541,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyBedrockProvisionedModelThroughput, kind: "aws.bedrock_provisioned_model_throughput"},
 		{family: familyCodeBuildProject, kind: "aws.codebuild_project"},
 		{family: familyCodeBuildSourceCredential, kind: "aws.codebuild_source_credential"},
+		{family: familyCloudFormationStack, kind: "aws.cloudformation_stack"},
 		{family: familyDataSyncLocation, kind: "aws.datasync_location"},
 		{family: familyDataSyncTask, kind: "aws.datasync_task"},
 		{family: familyDocDBCluster, kind: "aws.docdb_cluster"},
@@ -1465,6 +1510,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 					}},
 				}},
 				s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+				s3MFADelete:  map[string]s3types.MFADeleteStatus{"prod-data": s3types.MFADeleteStatusEnabled},
 				s3Logging:    map[string]bool{"prod-data": true},
 				s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
 					BlockPublicAcls:       awssdk.Bool(true),
@@ -1761,7 +1807,7 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		attr   string
 		want   string
 	}{
-		{family: familyS3Bucket, kind: "aws.s3_bucket", attr: "versioning", want: "Enabled"},
+		{family: familyS3Bucket, kind: "aws.s3_bucket", attr: "versioning_mfa_delete", want: "Enabled"},
 		{family: familyS3AccessPoint, kind: "aws.s3_access_point", attr: "public", want: "false"},
 		{family: familyS3MultiRegionAccessPoint, kind: "aws.s3_multi_region_access_point", attr: "backups", want: "true"},
 		{family: familyEBSVolume, kind: "aws.ebs_volume", attr: "backups", want: "true"},
@@ -3720,6 +3766,44 @@ func TestSQSQueueEventEncryptionHonorsManagedSSEValue(t *testing.T) {
 	}
 }
 
+func TestReadAWSCloudFormationStackPosture(t *testing.T) {
+	stackID := "arn:aws:cloudformation:us-east-1:123456789012:stack/prod-app/stack-123"
+	source := newTestSource(t, fakeAWS{
+		cloudFormationStacks: []cloudformationtypes.Stack{{
+			CreationTime:                timePtr("2026-04-23T00:00:00Z"),
+			DriftInformation:            &cloudformationtypes.StackDriftInformation{LastCheckTimestamp: timePtr("2026-06-01T00:00:00Z"), StackDriftStatus: cloudformationtypes.StackDriftStatusDrifted},
+			EnableTerminationProtection: awssdk.Bool(false),
+			StackId:                     awssdk.String(stackID),
+			StackName:                   awssdk.String("prod-app"),
+			StackStatus:                 cloudformationtypes.StackStatusUpdateComplete,
+			Tags:                        []cloudformationtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+		}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudFormationStack}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyCloudFormationStack, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("cloudformation stack events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Kind; got != "aws.cloudformation_stack" {
+		t.Fatalf("kind = %q, want aws.cloudformation_stack", got)
+	}
+	if got := event.Attributes["drift_status"]; got != "DRIFTED" {
+		t.Fatalf("drift_status = %q, want DRIFTED", got)
+	}
+	if got := event.Attributes["cloudformation_stack_drift_detected_compliant"]; got != "false" {
+		t.Fatalf("cloudformation_stack_drift_detected_compliant = %q, want false", got)
+	}
+	if got := event.Attributes["cloudformation_stack_termination_protection_compliant"]; got != "false" {
+		t.Fatalf("cloudformation_stack_termination_protection_compliant = %q, want false", got)
+	}
+	if got := event.Attributes["owner"]; got != "platform@writer.com" {
+		t.Fatalf("owner = %q, want platform@writer.com", got)
+	}
+}
+
 func TestS3BucketLocationRegionHandlesLegacyEU(t *testing.T) {
 	if got := s3BucketLocationRegion(s3types.BucketLocationConstraint("EU")); got != "eu-west-1" {
 		t.Fatalf("legacy EU region = %q, want eu-west-1", got)
@@ -3748,6 +3832,7 @@ func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
 			}}}},
 			s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+			s3MFADelete:  map[string]s3types.MFADeleteStatus{"legacy-eu": s3types.MFADeleteStatusEnabled},
 			s3Logging:    map[string]bool{"legacy-eu": true},
 		},
 	}}
@@ -3780,6 +3865,9 @@ func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	}
 	if records[0].Versioning != string(s3types.BucketVersioningStatusEnabled) {
 		t.Fatalf("versioning = %q, want Enabled", records[0].Versioning)
+	}
+	if records[0].VersioningMFADelete != string(s3types.MFADeleteStatusEnabled) {
+		t.Fatalf("versioning mfa delete = %q, want Enabled", records[0].VersioningMFADelete)
 	}
 	if !records[0].LoggingEnabled {
 		t.Fatalf("logging enabled = false, want true")
@@ -4299,6 +4387,19 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.inlinePolicyNames = []string{"InlineAdmin"}
 		fake.inlinePolicyDocuments = map[string]string{"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`}
 	}
+	accountContactData := func(fake *recordingAWS) {
+		fake.primaryContact = &accounttypes.ContactInformation{
+			CountryCode: awssdk.String("US"),
+			FullName:    awssdk.String("Security Operations"),
+			PhoneNumber: awssdk.String("+1 555 0100"),
+		}
+		fake.securityContact = &accounttypes.AlternateContact{
+			AlternateContactType: accounttypes.AlternateContactTypeSecurity,
+			EmailAddress:         awssdk.String("security@example.com"),
+			Name:                 awssdk.String("Security Operations"),
+			PhoneNumber:          awssdk.String("+1 555 0101"),
+		}
+	}
 	publicEndpointData := func(fake *recordingAWS) {
 		fake.hostedZones = []route53types.HostedZone{{
 			Id:     awssdk.String("/hostedzone/Z123"),
@@ -4455,6 +4556,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
 		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
 		fake.s3Versioning = map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled}
+		fake.s3MFADelete = map[string]s3types.MFADeleteStatus{"prod-data": s3types.MFADeleteStatusDisabled}
 		fake.s3PublicAccessBlocks = map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {}}
 		fake.rdsInstances = []rdstypes.DBInstance{{DBInstanceArn: awssdk.String("arn:aws:rds:us-east-1:123456789012:db:orders-db"), DBInstanceIdentifier: awssdk.String("orders-db")}}
 		fake.rdsDBSnapshots = []rdstypes.DBSnapshot{{DBSnapshotArn: awssdk.String("arn:aws:rds:us-east-1:123456789012:snapshot:orders-public-snapshot"), DBSnapshotIdentifier: awssdk.String("orders-public-snapshot")}}
@@ -4522,6 +4624,14 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			Arn:        awssdk.String("arn:aws:codebuild:us-east-1:123456789012:source/github"),
 			AuthType:   codebuildtypes.AuthTypeBasicAuth,
 			ServerType: codebuildtypes.ServerTypeGithub,
+		}}
+		fake.cloudFormationStacks = []cloudformationtypes.Stack{{
+			CreationTime:                timePtr("2026-04-23T00:00:00Z"),
+			DriftInformation:            &cloudformationtypes.StackDriftInformation{StackDriftStatus: cloudformationtypes.StackDriftStatusInSync},
+			EnableTerminationProtection: awssdk.Bool(true),
+			StackId:                     awssdk.String("arn:aws:cloudformation:us-east-1:123456789012:stack/prod-app/stack-123"),
+			StackName:                   awssdk.String("prod-app"),
+			StackStatus:                 cloudformationtypes.StackStatusUpdateComplete,
 		}}
 		openSearchARN := "arn:aws:es:us-east-1:123456789012:domain/search-prod"
 		aossARN := "arn:aws:aoss:us-east-1:123456789012:collection/col-123"
@@ -4645,6 +4755,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"iam:ListAccessKeys", "iam:ListUsers"},
 		},
 		{
+			family:  familyAccountContact,
+			seed:    accountContactData,
+			wantAPI: []string{"account:GetAlternateContact", "account:GetContactInformation"},
+		},
+		{
 			family:  familyAssetMetadata,
 			seed:    assetMetadataData,
 			wantAPI: []string{"tagging:GetResources"},
@@ -4668,6 +4783,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyCodeBuildSourceCredential,
 			seed:    cloudAssetData,
 			wantAPI: []string{"codebuild:ListSourceCredentials"},
+		},
+		{
+			family:  familyCloudFormationStack,
+			seed:    cloudAssetData,
+			wantAPI: []string{"cloudformation:DescribeStacks"},
 		},
 		{
 			family:  familyAppSyncGraphQLAPI,
@@ -5539,23 +5659,25 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
 		return awsClients{
 			awsPlatformClients: awsPlatformClients{
-				iam:          fakeIAM{fakeAWS: &fake},
-				cloudTrail:   fake,
-				ec2:          fake,
-				route53:      fake,
-				cloudFront:   fake,
-				elbv2:        fake,
-				globalAccel:  fakeGlobalAccelerator{network: fake.fakeAWSNetwork},
-				vpcLattice:   fakeVPCLattice{network: fake.fakeAWSNetwork},
-				ecs:          fake,
-				eks:          fakeEKS{compute: fake.compute},
-				ecr:          fakeECR{fake: &fake},
-				ecrPublic:    fakeECRPublic{fake: &fake},
-				apiGateway:   fakeAPIGateway{network: fake.fakeAWSNetwork},
-				apiGatewayV2: fakeAPIGatewayV2{network: fake.fakeAWSNetwork},
-				lambda:       fake,
-				tagging:      fake,
-				s3:           fake,
+				iam:            fakeIAM{fakeAWS: &fake},
+				account:        fake,
+				cloudTrail:     fake,
+				cloudFormation: fake,
+				ec2:            fake,
+				route53:        fake,
+				cloudFront:     fake,
+				elbv2:          fake,
+				globalAccel:    fakeGlobalAccelerator{network: fake.fakeAWSNetwork},
+				vpcLattice:     fakeVPCLattice{network: fake.fakeAWSNetwork},
+				ecs:            fake,
+				eks:            fakeEKS{compute: fake.compute},
+				ecr:            fakeECR{fake: &fake},
+				ecrPublic:      fakeECRPublic{fake: &fake},
+				apiGateway:     fakeAPIGateway{network: fake.fakeAWSNetwork},
+				apiGatewayV2:   fakeAPIGatewayV2{network: fake.fakeAWSNetwork},
+				lambda:         fake,
+				tagging:        fake,
+				s3:             fake,
 			},
 			awsRuntimeClients: awsRuntimeClients{
 				batch:          fake,
@@ -5601,23 +5723,25 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
 		return awsClients{
 			awsPlatformClients: awsPlatformClients{
-				iam:          recordingIAM{recordingAWS: fake},
-				cloudTrail:   fake,
-				ec2:          fake,
-				route53:      fake,
-				cloudFront:   fake,
-				elbv2:        fake,
-				globalAccel:  recordingGlobalAccelerator{fake: fake},
-				vpcLattice:   recordingVPCLattice{fake: fake},
-				ecs:          fake,
-				eks:          recordingEKS{fake: fake},
-				ecr:          recordingECR{fake: fake},
-				ecrPublic:    recordingECRPublic{fake: fake},
-				apiGateway:   recordingAPIGateway{fake: fake},
-				apiGatewayV2: recordingAPIGatewayV2{fake: fake},
-				lambda:       fake,
-				tagging:      fake,
-				s3:           fake,
+				iam:            recordingIAM{recordingAWS: fake},
+				account:        fake,
+				cloudTrail:     fake,
+				cloudFormation: fake,
+				ec2:            fake,
+				route53:        fake,
+				cloudFront:     fake,
+				elbv2:          fake,
+				globalAccel:    recordingGlobalAccelerator{fake: fake},
+				vpcLattice:     recordingVPCLattice{fake: fake},
+				ecs:            fake,
+				eks:            recordingEKS{fake: fake},
+				ecr:            recordingECR{fake: fake},
+				ecrPublic:      recordingECRPublic{fake: fake},
+				apiGateway:     recordingAPIGateway{fake: fake},
+				apiGatewayV2:   recordingAPIGatewayV2{fake: fake},
+				lambda:         fake,
+				tagging:        fake,
+				s3:             fake,
 			},
 			awsRuntimeClients: awsRuntimeClients{
 				batch:          fake,
@@ -5707,12 +5831,17 @@ type fakeAWS struct {
 	accessKeys            []iamtypes.AccessKeyMetadata
 	accountSummary        map[string]int32
 	accountPasswordPolicy *iamtypes.PasswordPolicy
+	primaryContact        *accounttypes.ContactInformation
+	securityContact       *accounttypes.AlternateContact
+	primaryContactErr     error
+	securityContactErr    error
 	credentialReport      fakeCredentialReport
 	attachedPolicies      []iamtypes.AttachedPolicy
 	fakeAWSIAMDocuments
-	cloudTrailEvents []cloudtrailtypes.Event
-	cloudTrailLookup func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
-	compute          fakeAWSCompute
+	cloudTrailEvents     []cloudtrailtypes.Event
+	cloudTrailLookup     func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	cloudFormationStacks []cloudformationtypes.Stack
+	compute              fakeAWSCompute
 	fakeAWSNetwork
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
@@ -5829,6 +5958,7 @@ type fakeAWSCoreData struct {
 	s3Tags               map[string][]s3types.Tag
 	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
 	s3Versioning         map[string]s3types.BucketVersioningStatus
+	s3MFADelete          map[string]s3types.MFADeleteStatus
 	s3Logging            map[string]bool
 	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
 	s3OptionalError      error
@@ -6172,6 +6302,16 @@ func (f *recordingAWS) GetAccountSummary(ctx context.Context, input *iam.GetAcco
 	return f.fakeAWS.GetAccountSummary(ctx, input, options...)
 }
 
+func (f *recordingAWS) GetContactInformation(ctx context.Context, input *accountsvc.GetContactInformationInput, options ...func(*accountsvc.Options)) (*accountsvc.GetContactInformationOutput, error) {
+	f.record("account:GetContactInformation")
+	return f.fakeAWS.GetContactInformation(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetAlternateContact(ctx context.Context, input *accountsvc.GetAlternateContactInput, options ...func(*accountsvc.Options)) (*accountsvc.GetAlternateContactOutput, error) {
+	f.record("account:GetAlternateContact")
+	return f.fakeAWS.GetAlternateContact(ctx, input, options...)
+}
+
 func (f *recordingAWS) GetAccountPasswordPolicy(ctx context.Context, input *iam.GetAccountPasswordPolicyInput, options ...func(*iam.Options)) (*iam.GetAccountPasswordPolicyOutput, error) {
 	f.record("iam:GetAccountPasswordPolicy")
 	return f.fakeAWS.GetAccountPasswordPolicy(ctx, input, options...)
@@ -6250,6 +6390,11 @@ func (f *recordingAWS) ListAccountAssignments(ctx context.Context, input *ssoadm
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
 	f.record("cloudtrail:LookupEvents")
 	return f.fakeAWS.LookupEvents(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeStacks(ctx context.Context, input *cloudformation.DescribeStacksInput, options ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error) {
+	f.record("cloudformation:DescribeStacks")
+	return f.fakeAWS.DescribeStacks(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListTables(ctx context.Context, input *dynamodb.ListTablesInput, options ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
@@ -8424,6 +8569,23 @@ func (f fakeAWS) GetAccountPasswordPolicy(context.Context, *iam.GetAccountPasswo
 	return &iam.GetAccountPasswordPolicyOutput{PasswordPolicy: f.accountPasswordPolicy}, nil
 }
 
+func (f fakeAWS) GetContactInformation(context.Context, *accountsvc.GetContactInformationInput, ...func(*accountsvc.Options)) (*accountsvc.GetContactInformationOutput, error) {
+	if f.primaryContactErr != nil {
+		return nil, f.primaryContactErr
+	}
+	return &accountsvc.GetContactInformationOutput{ContactInformation: f.primaryContact}, nil
+}
+
+func (f fakeAWS) GetAlternateContact(_ context.Context, input *accountsvc.GetAlternateContactInput, _ ...func(*accountsvc.Options)) (*accountsvc.GetAlternateContactOutput, error) {
+	if f.securityContactErr != nil {
+		return nil, f.securityContactErr
+	}
+	if input == nil || input.AlternateContactType != accounttypes.AlternateContactTypeSecurity {
+		return &accountsvc.GetAlternateContactOutput{}, nil
+	}
+	return &accountsvc.GetAlternateContactOutput{AlternateContact: f.securityContact}, nil
+}
+
 func (f fakeAWS) GenerateCredentialReport(context.Context, *iam.GenerateCredentialReportInput, ...func(*iam.Options)) (*iam.GenerateCredentialReportOutput, error) {
 	state := f.credentialReport.state
 	if len(f.credentialReport.states) > 0 {
@@ -8810,6 +8972,10 @@ func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEvent
 	return &cloudtrail.LookupEventsOutput{Events: f.cloudTrailEvents}, nil
 }
 
+func (f fakeAWS) DescribeStacks(context.Context, *cloudformation.DescribeStacksInput, ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error) {
+	return &cloudformation.DescribeStacksOutput{Stacks: f.cloudFormationStacks}, nil
+}
+
 func (f fakeAWS) DescribeComputeEnvironments(_ context.Context, input *batch.DescribeComputeEnvironmentsInput, _ ...func(*batch.Options)) (*batch.DescribeComputeEnvironmentsOutput, error) {
 	environments, next := paginateBatchComputeEnvironments(f.compute.batchComputeEnvironments, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
 	return &batch.DescribeComputeEnvironmentsOutput{ComputeEnvironments: environments, NextToken: stringPtr(next)}, nil
@@ -9125,7 +9291,8 @@ func (f fakeAWS) GetBucketVersioning(_ context.Context, input *s3.GetBucketVersi
 	if f.s3OptionalError != nil {
 		return nil, f.s3OptionalError
 	}
-	return &s3.GetBucketVersioningOutput{Status: f.s3Versioning[awssdk.ToString(input.Bucket)]}, nil
+	bucket := awssdk.ToString(input.Bucket)
+	return &s3.GetBucketVersioningOutput{Status: f.s3Versioning[bucket], MFADelete: f.s3MFADelete[bucket]}, nil
 }
 
 func (f fakeAWS) GetBucketLogging(_ context.Context, input *s3.GetBucketLoggingInput, _ ...func(*s3.Options)) (*s3.GetBucketLoggingOutput, error) {

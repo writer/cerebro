@@ -7,6 +7,49 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
+func TestProjectAWSAccountContactUpdatesCloudAccountPosture(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aws-account-contact",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.account_contact",
+		Attributes: map[string]string{
+			"account_alternate_contact_security_compliant": "true",
+			"account_id":                          "123456789012",
+			"account_security_contact_configured": "true",
+			"resource_id":                         "123456789012",
+			"resource_name":                       "123456789012",
+			"resource_provider":                   "aws",
+			"resource_type":                       "aws_account",
+			"security_alternate_contact_complete": "true",
+			"security_alternate_contact_present":  "true",
+		},
+	}); err != nil {
+		t.Fatalf("Project(account_contact) error = %v", err)
+	}
+
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
+	entity := state.entities[accountURN]
+	if entity == nil {
+		t.Fatalf("missing projected account %s", accountURN)
+	}
+	if entity.EntityType != "cloud.account" {
+		t.Fatalf("account entity type = %q, want cloud.account", entity.EntityType)
+	}
+	if got := entity.Attributes["account_security_contact_configured"]; got != "true" {
+		t.Fatalf("account_security_contact_configured = %q, want true", got)
+	}
+	if got := entity.Attributes["account_alternate_contact_security_compliant"]; got != "true" {
+		t.Fatalf("account_alternate_contact_security_compliant = %q, want true", got)
+	}
+	if unexpected := state.entities["urn:cerebro:writer:aws_aws_account:123456789012"]; unexpected != nil {
+		t.Fatalf("unexpected synthetic AWS account resource = %#v", unexpected)
+	}
+}
+
 func TestProjectAWSSSOAccountAssignmentLinksPrincipalPermissionSetAndAccount(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

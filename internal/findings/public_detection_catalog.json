@@ -12254,6 +12254,67 @@
           "framework_name": "CIS Controls v8",
           "control_id": "8"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "account_contact",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account_contact",
+            "aws_account_alternate_contact",
+            "aws_account_security_contact"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "cloud_security",
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "4"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "CM-6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-4"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        }
       ]
     },
     {
@@ -12339,6 +12400,67 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "8"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "account_contact",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account_contact",
+            "aws_account_alternate_contact",
+            "aws_account_security_contact"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "cloud_security",
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "4"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "CM-6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-4"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
         }
       ]
     },
@@ -14271,6 +14393,67 @@
           "framework_name": "CIS Controls v8",
           "control_id": "8"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "cloudformation_stack",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cloudformation_stack",
+            "stack_drift",
+            "termination_protection"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "configuration_state",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "cloud_security",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "4"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "CM-6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-4"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        }
       ]
     },
     {
@@ -14356,6 +14539,67 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "8"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "cloudformation_stack",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cloudformation_stack",
+            "stack_drift",
+            "termination_protection"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "configuration_state",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "cloud_security",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "4"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "CM-6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-4"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
         }
       ]
     },
@@ -32814,6 +33058,51 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "6"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "s3_bucket_mfa_delete",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "mfa_delete",
+            "s3_bucket_mfa_delete"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "identity_configuration",
+            "resilience_control"
+          ],
+          "control_domains": [
+            "availability_resilience",
+            "data_protection",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-5"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.3"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
+            }
+          ]
         }
       ]
     },

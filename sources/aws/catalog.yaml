@@ -4,6 +4,7 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - aws.access_analyzer
+  - aws.account_contact
   - aws.acm_certificate
   - aws.apprunner_service
   - aws.appsync_graphql_api
@@ -18,6 +19,7 @@ emitted_kinds:
   - aws.bedrock_provisioned_model_throughput
   - aws.codebuild_project
   - aws.codebuild_source_credential
+  - aws.cloudformation_stack
   - aws.cloudtrail
   - aws.config_recorder
   - aws.dynamodb_backup
@@ -169,6 +171,7 @@ emitted_kinds:
 runtime_families:
   - access_key
   - access_analyzer
+  - account_contact
   - acm_certificate
   - apprunner_service
   - appsync_graphql_api
@@ -183,6 +186,7 @@ runtime_families:
   - bedrock_provisioned_model_throughput
   - codebuild_project
   - codebuild_source_credential
+  - cloudformation_stack
   - cloudtrail
   - config_recorder
   - dynamodb_backup
@@ -331,6 +335,10 @@ event_contracts:
       - family
   - kind: aws.access_analyzer
     schema_ref: aws/access_analyzer/v1
+    required_attributes:
+      - family
+  - kind: aws.account_contact
+    schema_ref: aws/account_contact/v1
     required_attributes:
       - family
   - kind: aws.acm_certificate
@@ -679,6 +687,10 @@ event_contracts:
       - family
   - kind: aws.glue_table
     schema_ref: aws/glue_table/v1
+    required_attributes:
+      - family
+  - kind: aws.cloudformation_stack
+    schema_ref: aws/cloudformation_stack/v1
     required_attributes:
       - family
   - kind: aws.iam_account_password_policy
@@ -1259,6 +1271,33 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration, secrets_management, source_snapshot]
       control_domains: [asset_inventory, data_protection, identity_access]
+    - id: cloudformation_stack
+      type: entity_family
+      title: AWS CloudFormation stacks
+      families: [cloudformation_stack, stack_drift, termination_protection]
+      support: supported
+      high_value: true
+      evidence_types: [cloud_configuration, configuration_state, source_snapshot]
+      control_domains: [cloud_security, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: CIS Controls v8
+          control_id: "4"
+        - framework_name: CIS Controls v8
+          control_id: "6"
+        - framework_name: CIS Controls v8
+          control_id: "8"
     - id: config_recorder
       type: entity_family
       title: AWS Config recorders
@@ -1734,6 +1773,33 @@ coverage_contract:
           control_id: CC6.1
         - framework_name: "ISO 27001:2022"
           control_id: A.8.5
+    - id: account_contact
+      type: entity_family
+      title: AWS account contacts
+      families: [account_contact, aws_account_alternate_contact, aws_account_security_contact]
+      support: supported
+      high_value: true
+      evidence_types: [cloud_configuration, source_snapshot]
+      control_domains: [cloud_security, identity_access, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: CIS Controls v8
+          control_id: "4"
+        - framework_name: CIS Controls v8
+          control_id: "6"
+        - framework_name: CIS Controls v8
+          control_id: "8"
     - id: iam_group
       type: entity_family
       title: AWS IAM groups
@@ -2132,6 +2198,25 @@ coverage_contract:
           control_id: A.5.29
         - framework_name: "ISO 27001:2022"
           control_id: A.8.24
+    - id: s3_bucket_mfa_delete
+      type: entity_family
+      title: AWS S3 bucket MFA Delete
+      families: [s3_bucket_mfa_delete, mfa_delete]
+      support: supported
+      high_value: true
+      evidence_types: [cloud_configuration, identity_configuration, resilience_control]
+      control_domains: [availability_resilience, data_protection, identity_access]
+      control_refs:
+        - framework_name: CIS Controls v8
+          control_id: "6"
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: PCI DSS v4.0.1
+          control_id: "8.3"
+        - framework_name: PCI DSS v4.0.1
+          control_id: "8.4"
     - id: s3_access_point
       type: entity_family
       title: AWS S3 access points

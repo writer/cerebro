@@ -258,6 +258,42 @@ func TestProjectCloudFindingsCorrelatesSecurityFindingAndAffectedResource(t *tes
 	}
 }
 
+func TestProjectAWSCloudFormationStackLinksAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	stackARN := "arn:aws:cloudformation:us-east-1:123456789012:stack/prod-app/stack-123"
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aws-cloudformation-stack",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.cloudformation_stack",
+		Attributes: map[string]string{
+			"account_id": "123456789012",
+			"arn":        stackARN,
+			"cloudformation_stack_drift_detected_compliant":         "false",
+			"cloudformation_stack_termination_protection_compliant": "false",
+			"resource_id":       stackARN,
+			"resource_name":     "prod-app",
+			"resource_provider": "aws",
+			"resource_type":     "aws_cloudformation_stack",
+			"stack_name":        "prod-app",
+		},
+	}); err != nil {
+		t.Fatalf("Project(cloudformation_stack) error = %v", err)
+	}
+
+	stackURN := "urn:cerebro:writer:aws_cloudformation_stack:" + stackARN
+	entity := state.entities[stackURN]
+	if entity == nil {
+		t.Fatalf("missing projected stack %s", stackURN)
+	}
+	if entity.EntityType != "aws.cloudformation.stack" {
+		t.Fatalf("stack entity type = %q, want aws.cloudformation.stack", entity.EntityType)
+	}
+	assertProjectedLink(t, state, stackURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestCloudFindingAffectedResourceTypeUsesCanonicalGraphNamespaces(t *testing.T) {
 	for _, tt := range []struct {
 		name     string

@@ -9,10 +9,11 @@ replace github.com/WriterInternal/event-registry/clients/go => ./internal/eventr
 require (
 	connectrpc.com/connect v1.20.0
 	github.com/WriterInternal/event-registry/clients/go v0.0.0-20260523045044-47084e3345ce
-	github.com/aws/aws-sdk-go-v2 v1.41.12
+	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.23
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.22
 	github.com/aws/aws-sdk-go-v2/service/accessanalyzer v1.49.4
+	github.com/aws/aws-sdk-go-v2/service/account v1.32.4
 	github.com/aws/aws-sdk-go-v2/service/acm v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
@@ -23,6 +24,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/batch v1.65.5
 	github.com/aws/aws-sdk-go-v2/service/bedrock v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
+	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.72.1
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
@@ -115,8 +117,8 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.28 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.28 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.28 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.29 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.21 // indirect
