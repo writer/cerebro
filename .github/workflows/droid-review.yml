@@ -214,6 +214,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           DROID_SAST_OUT: tmp/droid-sast-context.md
           DROID_CI_OUT: tmp/droid-ci-context.md
           DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
@@ -225,8 +227,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/droid_review_context.py \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
+            --base "${PR_BASE_SHA}" \
+            --head "${PR_HEAD_SHA}" \
             --preflight-json "${DROID_PREFLIGHT_JSON_OUT}" \
             --sast-json "${DROID_SAST_JSON_OUT}" \
             --ci-json "${DROID_CI_JSON_OUT}" \
@@ -276,12 +278,46 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 1
+      - name: Fetch org-level secrets from Infisical
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
+        with:
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          env-slug: prod
+          export-type: env
+      - name: Fetch repo-level secrets from Infisical
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
+        with:
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          export-type: env
+      - name: Assert required Infisical secrets
+        shell: bash
+        env:
+          REQUIRED_KEYS: FACTORY_API_KEY
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in ${REQUIRED_KEYS}; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Infisical required keys missing: ${missing[*]}"
+            exit 1
+          fi
       - name: Run Droid Auto Review
         id: droid-review-first
         continue-on-error: true
         uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
         with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
           # Fast deterministic preflight runs first; use GLM-5.2 for the actual
@@ -295,7 +331,7 @@ jobs:
         continue-on-error: true
         uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
         with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
           review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'glm-5.2' }}
