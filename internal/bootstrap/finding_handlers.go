@@ -350,11 +350,13 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 		RuleIDs:    request.GetRuleIds(),
 		EventLimit: request.GetEventLimit(),
 	})
+	if response != nil {
+		bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
+	}
 	if err != nil {
 		writeFindingError(w, err)
 		return
 	}
-	bumpGRCCacheForRuntime(r.Context(), a.deps, request.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	writeProtoJSON(w, http.StatusOK, findingRulesResponse(response))
 }
 
