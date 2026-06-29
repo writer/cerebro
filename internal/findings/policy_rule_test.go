@@ -330,6 +330,58 @@ func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
 	}
 }
 
+func TestOktaStaleAppAssignmentPolicyUsesStringSafeActivityCutoff(t *testing.T) {
+	config := generatedPolicyRuleConfigByID("identity-okta-stale-app-assignment-graph-30d")
+	if config == nil {
+		t.Fatal("identity-okta-stale-app-assignment-graph-30d missing from generated policy catalog")
+	}
+	query := config.Graph.Query
+	if strings.Contains(query, "datetime(split(split") {
+		t.Fatalf("query parses extracted activity timestamps with datetime():\n%s", query)
+	}
+	for _, want := range []string{
+		"=~ '^[0-9]{4}-",
+		"substring(toString(datetime() - duration('P30D')), 0, 19)",
+		"malformed activity timestamps are ignored",
+		"activity.attributes_json, '') CONTAINS '\"event_type\":\"app.oauth2.token.grant.",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("query missing %q:\n%s", want, query)
+		}
+	}
+	if strings.Contains(query, "CONTAINS '\"event_type\":\"app.oauth2.token.grant\"'") {
+		t.Fatalf("query must match OAuth token grant event prefixes with a suffix separator:\n%s", query)
+	}
+}
+
+func TestOktaLastLoginPoliciesUseStringSafeCutoffs(t *testing.T) {
+	for _, tc := range []struct {
+		id       string
+		duration string
+	}{
+		{id: "identity-okta-dormant-admin-role-assignment", duration: "P30D"},
+		{id: "identity-okta-stale-group-membership-graph-90d", duration: "P90D"},
+	} {
+		config := generatedPolicyRuleConfigByID(tc.id)
+		if config == nil {
+			t.Fatalf("%s missing from generated policy catalog", tc.id)
+		}
+		query := config.Graph.Query
+		if strings.Contains(query, "datetime(last_login_at)") {
+			t.Fatalf("%s query parses extracted login timestamps with datetime():\n%s", tc.id, query)
+		}
+		for _, want := range []string{
+			"last_login_at =~ '^[0-9]{4}-",
+			"substring(toString(datetime() - duration('" + tc.duration + "')), 0, 19)",
+			"malformed login timestamps are ignored",
+		} {
+			if !strings.Contains(query, want) {
+				t.Fatalf("%s query missing %q:\n%s", tc.id, want, query)
+			}
+		}
+	}
+}
+
 func TestOktaPrivilegedNoMFAPolicyCarriesDSLContractMetadata(t *testing.T) {
 	config := generatedPolicyRuleConfigByID("identity-okta-privileged-no-mfa")
 	if config == nil {

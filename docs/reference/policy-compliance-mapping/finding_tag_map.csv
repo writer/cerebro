@@ -150,6 +150,7 @@ access-review,routing,catalog,identity-kolide-stale-login-90d,Kolide Stale Activ
 access-review,routing,catalog,identity-okta-active-no-employee-record,Okta Active Accounts Without Employee Record,policy,policy,event,medium,active,candidate
 access-review,routing,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 access-review,routing,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+access-review,routing,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 access-review,routing,catalog,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 access-review,routing,catalog,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 access-review,routing,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
@@ -1549,12 +1550,15 @@ assessment:examine,assessment,catalog,identity-okta-api-token-created-30d,Okta A
 assessment:examine,assessment,catalog,identity-okta-api-token-revoked-30d,Okta API Token Revoked (30 days),policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-application-lifecycle-tampering-30d,Okta Application Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 assessment:examine,assessment,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -1571,19 +1575,25 @@ assessment:examine,assessment,catalog,identity-okta-personal-email-domain,Okta A
 assessment:examine,assessment,catalog,identity-okta-policy-lifecycle-tampering-30d,Okta Policy Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+assessment:examine,assessment,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,identity-okta-unauthorized-app-access-attempts-7d,Okta Repeated Unauthorized App Access Attempts (7 days),policy,policy,event,medium,active,candidate
@@ -2904,6 +2914,7 @@ assessment:test,assessment,catalog,identity-google-workspace-mfa,Google Workspac
 assessment:test,assessment,catalog,identity-idp-risky-user-unresolved,Identity Idp Risky User Unresolved,policy,policy,event,medium,active,candidate
 assessment:test,assessment,catalog,identity-offboarding-sla,Offboarding Completed Within SLA,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+assessment:test,assessment,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 assessment:test,assessment,catalog,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
 assessment:test,assessment,catalog,identity-privileged-access-review-overdue,Identity Privileged Access Review Overdue,policy,policy,event,high,active,candidate
@@ -6955,9 +6966,11 @@ control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -6966,16 +6979,22 @@ control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-never-logged-in-90d,Okta Accounts Never Used (90 days),policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-oauth-public-client-review-needed,Okta OAuth Or Public Client Needs Review,identity,okta,graph,medium,open,test
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-personal-email-domain,Okta Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-vendor-app-broad-group-access,Okta Vendor App Assigned to Broad Group,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,identity-okta-vendor-app-review-overdue,Okta Vendor App Linked to Overdue Vendor Review,policy,policy,event,high,active,candidate
@@ -7726,7 +7745,9 @@ control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,ide
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-api-token-revoked-30d,Okta API Token Revoked (30 days),policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-application-lifecycle-tampering-30d,Okta Application Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
+control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-network-zone-deactivation-30d,Okta Network Zone Deactivation (30 days),policy,policy,event,high,active,candidate
@@ -7740,6 +7761,7 @@ control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,ide
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
@@ -8981,6 +9003,7 @@ control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,co
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-google-workspace-mfa,Google Workspace MFA Enforced,policy,policy,event,high,active,candidate
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-idp-risky-user-unresolved,Identity Idp Risky User Unresolved,policy,policy,event,medium,active,candidate
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
 control-family:nist-800-53-r5-ia-identification-and-authentication,compliance,control_ref,identity-privileged-access-review-overdue,Identity Privileged Access Review Overdue,policy,policy,event,high,active,candidate
@@ -11836,12 +11859,15 @@ control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,iden
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -11858,18 +11884,24 @@ control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,iden
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-policy-lifecycle-tampering-30d,Okta Policy Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,identity-okta-unauthorized-app-access-attempts-7d,Okta Repeated Unauthorized App Access Attempts (7 days),policy,policy,event,medium,active,candidate
@@ -15220,6 +15252,7 @@ control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-active-no-emp
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-missing-email,Okta Active Accounts Missing Email,policy,policy,event,medium,active,candidate
@@ -15231,6 +15264,7 @@ control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-privileged-no
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-17,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
@@ -15442,10 +15476,17 @@ control:iso-27001-2022:a-5-18,compliance,control_ref,identity-idp-risky-user-unr
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-okta-vendor-app-broad-group-access,Okta Vendor App Assigned to Broad Group,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-18,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
@@ -15853,7 +15894,9 @@ control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-admin-plus-app
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-admin-privilege-grant-events-30d,Okta Admin Privilege Grant Events (30 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-api-token-created-30d,Okta API Token Created (30 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-api-token-revoked-30d,Okta API Token Revoked (30 days),policy,policy,event,medium,active,candidate
+control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,openai-orphaned-privileged-api-key,OpenAI Orphaned Privileged API Key,openai,openai,event,high,open,test
@@ -16156,6 +16199,7 @@ control:iso-27001-2022:a-8-5,compliance,control_ref,identity-okta-admin-no-mfa-g
 control:iso-27001-2022:a-8-5,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 control:iso-27001-2022:a-8-5,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-5,compliance,control_ref,identity-okta-password-view-events-30d,Okta Password View Events (30 days),policy,policy,event,high,active,candidate
+control:iso-27001-2022:a-8-5,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:iso-27001-2022:a-8-5,compliance,control_ref,identity-saas-mfa-enforced,MFA Enforced on SaaS Applications,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-5,compliance,control_ref,m365-conditional-access-disabled,M365 Conditional Access Policies Disabled,policy,policy,event,medium,active,candidate
 control:iso-27001-2022:a-8-5,compliance,control_ref,m365-legacy-auth-signins,M365 Legacy Authentication Sign-ins Detected,policy,policy,event,high,active,candidate
@@ -18321,6 +18365,7 @@ control:nist-800-53-r5:ia-2,compliance,control_ref,identity-conditional-access-h
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-google-workspace-mfa,Google Workspace MFA Enforced,policy,policy,event,high,active,candidate
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-idp-risky-user-unresolved,Identity Idp Risky User Unresolved,policy,policy,event,medium,active,candidate
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+control:nist-800-53-r5:ia-2,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
 control:nist-800-53-r5:ia-2,compliance,control_ref,identity-privileged-access-review-overdue,Identity Privileged Access Review Overdue,policy,policy,event,high,active,candidate
@@ -18417,6 +18462,7 @@ control:nist-800-53-r5:ia-5,compliance,control_ref,github-org-2fa-disabled,GitHu
 control:nist-800-53-r5:ia-5,compliance,control_ref,github-repo-secrets-exposure,GitHub Repository Secrets in Workflow Logs,policy,policy,event,high,active,candidate
 control:nist-800-53-r5:ia-5,compliance,control_ref,github-secret-scanning-alert,GitHub Secret Scanning Alert,policy,policy,event,critical,active,candidate
 control:nist-800-53-r5:ia-5,compliance,control_ref,gke-secrets-access,User/service account with get/list/watch permissions on secrets in a GKE cluster,policy,policy,event,medium,active,candidate
+control:nist-800-53-r5:ia-5,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:nist-800-53-r5:ia-5,compliance,control_ref,internal-vm-cross-account-keys,Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges,policy,policy,event,high,active,candidate
 control:nist-800-53-r5:ia-5,compliance,control_ref,k8s-ingress-no-authentication,Kubernetes Ingress No Authentication,policy,policy,event,medium,active,candidate
 control:nist-800-53-r5:ia-5,compliance,control_ref,k8s-ingress-public,Kubernetes Ingress Exposes Sensitive Service,policy,policy,event,high,active,candidate
@@ -21504,11 +21550,14 @@ control:soc-2:cc6-1,compliance,control_ref,identity-okta-admin-plus-app-owner,Ok
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-api-token-created-30d,Okta API Token Created (30 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-api-token-revoked-30d,Okta API Token Revoked (30 days),policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-missing-email,Okta Active Accounts Missing Email,policy,policy,event,medium,active,candidate
@@ -21517,13 +21566,17 @@ control:soc-2:cc6-1,compliance,control_ref,identity-okta-never-logged-in-90d,Okt
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-oauth-public-client-review-needed,Okta OAuth Or Public Client Needs Review,identity,okta,graph,medium,open,test
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-password-view-events-30d,Okta Password View Events (30 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-personal-email-domain,Okta Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
@@ -21967,6 +22020,8 @@ control:soc-2:cc6-2,compliance,control_ref,identity-okta-admin-privilege-grant-e
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+control:soc-2:cc6-2,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+control:soc-2:cc6-2,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-network-zone-deactivation-30d,Okta Network Zone Deactivation (30 days),policy,policy,event,high,active,candidate
@@ -21976,7 +22031,10 @@ control:soc-2:cc6-2,compliance,control_ref,identity-okta-org2org-lifecycle-chang
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-policy-lifecycle-tampering-30d,Okta Policy Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
+control:soc-2:cc6-2,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+control:soc-2:cc6-2,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+control:soc-2:cc6-2,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-oracle-idcs-deprovision,Oracle IDCS Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
@@ -22082,6 +22140,8 @@ control:soc-2:cc6-3,compliance,control_ref,identity-idp-risky-user-unresolved,Id
 control:soc-2:cc6-3,compliance,control_ref,identity-jumpcloud-deprovision,JumpCloud Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 control:soc-2:cc6-3,compliance,control_ref,identity-offboarding-sla,Offboarding Completed Within SLA,policy,policy,event,high,active,candidate
 control:soc-2:cc6-3,compliance,control_ref,identity-office365-deprovision,Office 365 Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
+control:soc-2:cc6-3,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+control:soc-2:cc6-3,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-3,compliance,control_ref,identity-oracle-idcs-deprovision,Oracle IDCS Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 control:soc-2:cc6-3,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 control:soc-2:cc6-3,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
@@ -22233,6 +22293,7 @@ control:soc-2:cc6-6,compliance,control_ref,github-webhook-modified,GitHub Webhoo
 control:soc-2:cc6-6,compliance,control_ref,grc-inactive-identity-active-access,Inactive GRC Identity Still Has Active Access,grc,grc,graph,critical,open,test
 control:soc-2:cc6-6,compliance,control_ref,identity-github-active-without-okta-link,Active GitHub Identity With No Linked Okta Identity,identity,github,graph,high,open,test
 control:soc-2:cc6-6,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
+control:soc-2:cc6-6,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 control:soc-2:cc6-6,compliance,control_ref,identity-tailscale-deprovision,Tailscale Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 control:soc-2:cc6-6,compliance,control_ref,k8s-ingress-no-wildcard-host,Kubernetes Ingress Avoids Wildcard Hosts,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-6,compliance,control_ref,k8s-ingress-public,Kubernetes Ingress Exposes Sensitive Service,policy,policy,event,high,active,candidate
@@ -24348,6 +24409,10 @@ evidence,routing,catalog,evidence-cas-unresolved-linkage,Evidence CAS Object Wit
 evidence,routing,catalog,grc-control-missing-evidence-coverage,GRC Control Missing Evidence Coverage,grc,grc,graph,medium,open,test
 evidence,routing,catalog,runtime-active-threat-evidence,Runtime Active Threat Evidence,runtime,runtime,event,high,open,test
 evidence-cas,routing,catalog,evidence-cas-unresolved-linkage,Evidence CAS Object With Unresolved Linkage,evidence_cas,evidence_cas,event,medium,open,test
+evidence:access_review,evidence,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+evidence:access_review,evidence,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
+evidence:access_review,evidence,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
+evidence:access_review,evidence,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 evidence:ai_governance,evidence,catalog,ai-agent-human-approval-destructive-actions,AI Agent Human Approval Destructive Actions,policy,policy,event,high,active,candidate
 evidence:ai_governance,evidence,catalog,ai-agent-secret-redaction,AI Agent Secret Redaction,policy,policy,event,medium,active,candidate
 evidence:ai_governance,evidence,catalog,ai-agent-tool-allowlist-required,AI Agent Tool Allowlist Required,policy,policy,event,medium,active,candidate
@@ -25229,6 +25294,7 @@ evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-repo-sc
 evidence:github_self_hosted_runner,evidence,catalog,github-secops-runner-untrusted-host,GitHub Self-hosted Runner On Untrusted Host,policy,policy,event,critical,active,candidate
 evidence:graph_state,evidence,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
 evidence:identity_configuration,evidence,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+evidence:identity_configuration,evidence,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-account-deprovision,Terminated User Accounts Deprovisioned,policy,policy,event,critical,active,candidate
 evidence:identity_governance,evidence,catalog,identity-atlassian-active-no-employee-record,Atlassian Active Accounts Without Employee Record,policy,policy,event,medium,active,candidate
 evidence:identity_governance,evidence,catalog,identity-atlassian-duplicate-email,Atlassian Duplicate Account Emails,policy,policy,event,high,active,candidate
@@ -25422,6 +25488,7 @@ evidence:identity_governance,evidence,catalog,identity-okta-application-lifecycl
 evidence:identity_governance,evidence,catalog,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+evidence:identity_governance,evidence,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
@@ -25441,6 +25508,7 @@ evidence:identity_governance,evidence,catalog,identity-okta-personal-email-domai
 evidence:identity_governance,evidence,catalog,identity-okta-policy-lifecycle-tampering-30d,Okta Policy Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+evidence:identity_governance,evidence,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
@@ -25453,6 +25521,8 @@ evidence:identity_governance,evidence,catalog,identity-okta-stale-login-365d,Okt
 evidence:identity_governance,evidence,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+evidence:identity_governance,evidence,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+evidence:identity_governance,evidence,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
 evidence:identity_governance,evidence,catalog,identity-okta-unauthorized-app-access-attempts-7d,Okta Repeated Unauthorized App Access Attempts (7 days),policy,policy,event,medium,active,candidate
@@ -27438,12 +27508,15 @@ framework:iso-27001-2022,compliance,control_ref,identity-okta-application-lifecy
 framework:iso-27001-2022,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 framework:iso-27001-2022,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 framework:iso-27001-2022,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+framework:iso-27001-2022,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -27462,19 +27535,25 @@ framework:iso-27001-2022,compliance,control_ref,identity-okta-policy-lifecycle-t
 framework:iso-27001-2022,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 framework:iso-27001-2022,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+framework:iso-27001-2022,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
 framework:iso-27001-2022,compliance,control_ref,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
@@ -28621,6 +28700,7 @@ framework:nist-800-53-r5,compliance,control_ref,identity-jumpcloud-deprovision,J
 framework:nist-800-53-r5,compliance,control_ref,identity-offboarding-sla,Offboarding Completed Within SLA,policy,policy,event,high,active,candidate
 framework:nist-800-53-r5,compliance,control_ref,identity-office365-deprovision,Office 365 Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 framework:nist-800-53-r5,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+framework:nist-800-53-r5,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 framework:nist-800-53-r5,compliance,control_ref,identity-oracle-idcs-deprovision,Oracle IDCS Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 framework:nist-800-53-r5,compliance,control_ref,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 framework:nist-800-53-r5,compliance,control_ref,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
@@ -30289,12 +30369,15 @@ framework:soc-2,compliance,control_ref,identity-okta-application-lifecycle-tampe
 framework:soc-2,compliance,control_ref,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 framework:soc-2,compliance,control_ref,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 framework:soc-2,compliance,control_ref,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+framework:soc-2,compliance,control_ref,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -30313,19 +30396,25 @@ framework:soc-2,compliance,control_ref,identity-okta-policy-lifecycle-tampering-
 framework:soc-2,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 framework:soc-2,compliance,control_ref,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+framework:soc-2,compliance,control_ref,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
 framework:soc-2,compliance,control_ref,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
@@ -31977,6 +32066,15 @@ governance,routing,catalog,identity-zoom-privileged-personal-email,Zoom Privileg
 governance,routing,catalog,ml-model-registry-no-versioning,ML Model Registry No Versioning,policy,policy,event,medium,active,candidate
 graph,generated,catalog,graph-aws-ec2-eni-link-missing,AWS EC2 ENI Link Missing,grc,graph,graph,low,open,test
 graph,generated,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
+graph,generated,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
+graph,generated,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
+graph,generated,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+graph,generated,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 graph,generated,catalog,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
 graph-backed,routing,catalog,github-secops-app-installation-all-repos-actions-read,GitHub App Installation All Repos Actions Read,policy,policy,event,medium,active,candidate
 graph-backed,routing,catalog,github-secops-app-installation-all-repos-actions-write,GitHub App Installation All Repos Actions Write,policy,policy,event,critical,active,candidate
@@ -32295,6 +32393,15 @@ graph-backed,routing,catalog,github-secops-secret-twilio-api-key-resolution-fals
 graph-backed,routing,catalog,github-secops-secret-twilio-api-key-resolution-used-in-tests,GitHub Secret Scanning Twilio Api Key Resolution Used In Tests,policy,policy,event,medium,active,candidate
 graph-backed,routing,catalog,github-secops-secret-twilio-api-key-resolution-wont-fix,GitHub Secret Scanning Twilio Api Key Resolution Wont Fix,policy,policy,event,medium,active,candidate
 graph-backed,routing,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
+graph-backed,routing,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
+graph-backed,routing,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
+graph-backed,routing,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+graph-backed,routing,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 graph-hygiene,routing,catalog,finding-isolated-open-anchor,Open Finding Isolated From Resources,grc,graph,graph,low,open,test
 graph-hygiene,routing,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
 graph-hygiene,routing,catalog,grc-isolated-target-enrichment-gap,GRC Target Enrichment Gap,grc,grc,graph,low,open,test
@@ -32342,8 +32449,11 @@ group,routing,catalog,group-excessive-data-priv,Group with excessive data privil
 group,routing,catalog,group-excessive-high-priv,Group with excessive high privileges,policy,policy,event,high,active,candidate
 group,routing,catalog,identity-external-or-personal-group-member,Identity External Or Personal Group Member,identity,identity,event,medium,open,test
 group-access,routing,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+group-access,routing,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 group-access,routing,catalog,identity-okta-vendor-app-broad-group-access,Okta Vendor App Assigned to Broad Group,policy,policy,event,high,active,candidate
 group-membership,routing,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+group-membership,routing,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
+group-membership,routing,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 groups,routing,catalog,aws-iam-users-via-groups,IAM Users Receive Permissions Only Through Groups,policy,policy,event,low,active,candidate
 groups,routing,catalog,identity-atlassian-duplicate-group-name,Atlassian Duplicate Group Names,policy,policy,event,medium,active,candidate
 groups,routing,catalog,identity-atlassian-duplicate-membership-assignment,Atlassian Duplicate Membership Assignments,policy,policy,event,low,active,candidate
@@ -32833,12 +32943,15 @@ identity,routing,catalog,identity-okta-application-lifecycle-tampering-30d,Okta 
 identity,routing,catalog,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
 identity,routing,catalog,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 identity,routing,catalog,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+identity,routing,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 identity,routing,catalog,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+identity,routing,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 identity,routing,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 identity,routing,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+identity,routing,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -32857,19 +32970,25 @@ identity,routing,catalog,identity-okta-policy-lifecycle-tampering-30d,Okta Polic
 identity,routing,catalog,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 identity,routing,catalog,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+identity,routing,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 identity,routing,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+identity,routing,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 identity,routing,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+identity,routing,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 identity,routing,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+identity,routing,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+identity,routing,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+identity,routing,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 identity,routing,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 identity,routing,catalog,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
 identity,routing,catalog,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
@@ -33481,6 +33600,7 @@ least-privilege,risk,catalog,identity-entra-never-logged-in-90d,Entra ID Account
 least-privilege,risk,catalog,identity-google-workspace-never-logged-in-30d,Google Workspace Accounts Never Used After Provisioning,policy,policy,event,medium,active,candidate
 least-privilege,risk,catalog,identity-google-workspace-never-logged-in-90d,Google Workspace Accounts Never Used (90 days),policy,policy,event,medium,active,candidate
 least-privilege,risk,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+least-privilege,risk,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 least-privilege,risk,catalog,identity-okta-never-logged-in-30d,Okta Accounts Never Used After Provisioning,policy,policy,event,medium,active,candidate
 least-privilege,risk,catalog,identity-okta-never-logged-in-90d,Okta Accounts Never Used (90 days),policy,policy,event,medium,active,candidate
 least-privilege,risk,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
@@ -33670,6 +33790,7 @@ mfa,routing,catalog,identity-okta-authenticator-weak-factor-enabled,Okta Authent
 mfa,routing,catalog,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 mfa,routing,catalog,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
 mfa,routing,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
+mfa,routing,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 mfa,routing,catalog,identity-passkey-enrollment-admins,Identity Passkey Enrollment Admins,policy,policy,event,high,active,candidate
 mfa,routing,catalog,identity-phishing-resistant-mfa-admins,Identity Phishing Resistant MFA Admins,policy,policy,event,high,active,candidate
 mfa,routing,catalog,identity-privileged-account-without-mfa,Identity Privileged Account Without MFA,identity,identity,event,high,open,test
@@ -33877,6 +33998,8 @@ offboarding,routing,catalog,identity-offboarding-sla,Offboarding Completed Withi
 offboarding,routing,catalog,identity-office365-deprovision,Office 365 Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
 offboarding,routing,catalog,identity-okta-deprovisioned-active-cloud-access,Deprovisioned Okta Identity Still Has Cloud Access,identity,okta,graph,critical,open,test
 offboarding,routing,catalog,identity-okta-deprovisioned-active-in-github,Deprovisioned Okta Identity Still Active In GitHub,identity,okta,graph,critical,open,test
+offboarding,routing,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+offboarding,routing,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 offboarding,routing,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 offboarding,routing,catalog,identity-onelogin-terminated-active-account,Onelogin Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 offboarding,routing,catalog,identity-oracle-idcs-deprovision,Oracle IDCS Accounts Deprovisioned on Termination,policy,policy,event,high,active,candidate
@@ -33924,12 +34047,15 @@ okta,routing,catalog,identity-okta-api-token-revoked-30d,Okta API Token Revoked 
 okta,routing,catalog,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-application-lifecycle-tampering-30d,Okta Application Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-authenticator-weak-factor-enabled,Okta Authenticator Weak Factor Enabled,identity,okta,graph,medium,open,test
+okta,routing,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 okta,routing,catalog,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+okta,routing,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 okta,routing,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 okta,routing,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+okta,routing,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -33948,19 +34074,25 @@ okta,routing,catalog,identity-okta-policy-lifecycle-tampering-30d,Okta Policy Li
 okta,routing,catalog,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 okta,routing,catalog,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+okta,routing,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 okta,routing,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+okta,routing,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 okta,routing,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+okta,routing,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 okta,routing,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+okta,routing,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+okta,routing,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+okta,routing,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 okta,routing,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 okta,routing,catalog,identity-okta-threat-insight-not-blocking,Okta ThreatInsight Not Blocking,identity,okta,graph,high,open,test
 okta,routing,catalog,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
@@ -34085,6 +34217,8 @@ orphan,routing,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Nod
 osquery,routing,catalog,kolide-host-failing-compliance-checks,Kolide Host Failing Compliance Checks,kolide,kolide,event,medium,open,test
 output-filtering,routing,catalog,ai-sensitive-output-filtering,AI Sensitive Output Filtering,policy,policy,event,medium,active,candidate
 overly-permissive,routing,catalog,gcp-iam-binding-no-allAuthenticatedUsers,GCP IAM Binding No allAuthenticatedUsers,policy,policy,event,high,active,candidate
+owner-evidence,routing,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
+owner-evidence,routing,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 owner-login-missing,routing,catalog,github-secops-repo-owner-login-missing,GitHub Repository owner login should be projected for ownership routing,policy,policy,event,low,active,candidate
 ownership,routing,catalog,ai-system-owner-assigned,AI System Owner Assigned,policy,policy,event,medium,active,candidate
 ownership,routing,catalog,anthropic-unmanaged-active-api-key,Anthropic Unmanaged Active API Key,anthropic,anthropic,event,high,open,test
@@ -35272,12 +35406,15 @@ policy,generated,catalog,identity-okta-api-token-created-30d,Okta API Token Crea
 policy,generated,catalog,identity-okta-api-token-revoked-30d,Okta API Token Revoked (30 days),policy,policy,event,medium,active,candidate
 policy,generated,catalog,identity-okta-app-access-without-assignment,Okta App Access Without Assignment,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-application-lifecycle-tampering-30d,Okta Application Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
+policy,generated,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-duplicate-email,Okta Duplicate Account Emails,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-duplicate-group-name,Okta Duplicate Group Names,policy,policy,event,medium,active,candidate
 policy,generated,catalog,identity-okta-duplicate-username,Okta Duplicate Usernames,policy,policy,event,medium,active,candidate
+policy,generated,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 policy,generated,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-group-description-missing,Okta Groups Missing Description,policy,policy,event,low,active,candidate
 policy,generated,catalog,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,policy,policy,event,high,active,candidate
+policy,generated,catalog,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,policy,policy,event,high,active,candidate
@@ -35295,19 +35432,25 @@ policy,generated,catalog,identity-okta-policy-lifecycle-tampering-30d,Okta Polic
 policy,generated,catalog,identity-okta-policy-rule-lifecycle-tampering,Okta Policy Rule Lifecycle Tampering,identity,okta,event,high,open,test
 policy,generated,catalog,identity-okta-policy-rule-lifecycle-tampering-30d,Okta Policy Rule Lifecycle Tampering (30 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-possible-dos-attack-1h,Okta Possible DoS Attack Signals (1 hour),policy,policy,event,medium,active,candidate
+policy,generated,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 policy,generated,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),policy,policy,event,medium,active,candidate
+policy,generated,catalog,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 policy,generated,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+policy,generated,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 policy,generated,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+policy,generated,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-superadmin-count,Excessive Okta Super Admins,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-support-session-impersonation-30d,Okta Support Session Impersonation Events (30 days),policy,policy,event,high,active,candidate
+policy,generated,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
+policy,generated,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 policy,generated,catalog,identity-okta-terminated-active-account,Okta Terminated Accounts Still Active,policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-threatinsight-detected-30d,Okta ThreatInsight Suspected Threats Not Blocked (30 days),policy,policy,event,high,active,candidate
 policy,generated,catalog,identity-okta-unauthorized-app-access-attempts-7d,Okta Repeated Unauthorized App Access Attempts (7 days),policy,policy,event,medium,active,candidate
@@ -35872,6 +36015,8 @@ privileged-access,risk,catalog,identity-kandji-privileged-personal-email,Kandji 
 privileged-access,risk,catalog,identity-kandji-privileged-recently-created-7d,Kandji Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
 privileged-access,risk,catalog,identity-kolide-privileged-personal-email,Kolide Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 privileged-access,risk,catalog,identity-kolide-privileged-stale-login-30d,Kolide Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
+privileged-access,risk,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
+privileged-access,risk,catalog,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,policy,okta,graph,high,active,candidate
 privileged-access,risk,catalog,identity-okta-privileged-no-mfa,Okta Privileged Accounts Without MFA,policy,policy,event,high,active,candidate
 privileged-access,risk,catalog,identity-okta-privileged-personal-email,Okta Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 privileged-access,risk,catalog,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,policy,policy,event,medium,active,candidate
@@ -37799,7 +37944,10 @@ ssrf,routing,catalog,gcp-compute-metadata-v1,GCP Instance Metadata v1 Enabled,po
 stability,routing,catalog,gcp-gke-no-alpha-clusters,GKE Clusters No Alpha Features,policy,policy,event,medium,active,candidate
 stale-access,routing,catalog,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),policy,policy,event,medium,active,candidate
 stale-access,routing,catalog,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),policy,policy,event,high,active,candidate
+stale-access,routing,catalog,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),policy,okta,graph,medium,active,candidate
 stale-access,routing,catalog,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),policy,policy,event,high,active,candidate
+stale-access,routing,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),policy,okta,graph,high,active,candidate
+stale-access,routing,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
 stale-accounts,routing,catalog,identity-auth0-never-logged-in-30d,Auth0 Accounts Never Used After Provisioning,policy,policy,event,medium,active,candidate
 stale-accounts,routing,catalog,identity-auth0-never-logged-in-90d,Auth0 Accounts Never Used (90 days),policy,policy,event,medium,active,candidate
 stale-accounts,routing,catalog,identity-auth0-stale-login-180d,Auth0 Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
@@ -37826,6 +37974,7 @@ stale-accounts,routing,catalog,identity-kolide-privileged-stale-login-30d,Kolide
 stale-accounts,routing,catalog,identity-kolide-stale-login-180d,Kolide Stale Active Accounts (180 days),policy,policy,event,high,active,candidate
 stale-accounts,routing,catalog,identity-kolide-stale-login-365d,Kolide Stale Active Accounts (365 days),policy,policy,event,high,active,candidate
 stale-accounts,routing,catalog,identity-kolide-stale-login-90d,Kolide Stale Active Accounts (90 days),policy,policy,event,high,active,candidate
+stale-accounts,routing,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
 stale-accounts,routing,catalog,identity-okta-never-logged-in-30d,Okta Accounts Never Used After Provisioning,policy,policy,event,medium,active,candidate
 stale-accounts,routing,catalog,identity-okta-never-logged-in-90d,Okta Accounts Never Used (90 days),policy,policy,event,medium,active,candidate
 stale-accounts,routing,catalog,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),policy,policy,event,high,active,candidate
@@ -37989,6 +38138,7 @@ third-party,routing,catalog,api-third-party-tls-validation-disabled,API Third Pa
 third-party,routing,catalog,third-party-sa-admin,Third party service account with admin privileges,policy,policy,event,high,active,candidate
 third-party,routing,catalog,third-party-sa-privileged,Third party service account with high privileges,policy,policy,event,high,active,candidate
 third-party,routing,catalog,vendor-security-review-complete,Vendor Security Review Completed,policy,policy,event,high,active,candidate
+third-party-access,routing,catalog,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,policy,okta,graph,medium,active,candidate
 third-party-access,routing,catalog,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,policy,policy,event,high,active,candidate
 third-party-access,routing,catalog,identity-okta-vendor-app-broad-group-access,Okta Vendor App Assigned to Broad Group,policy,policy,event,high,active,candidate
 third-party-risk,risk,catalog,identity-okta-vendor-app-review-overdue,Okta Vendor App Linked to Overdue Vendor Review,policy,policy,event,high,active,candidate

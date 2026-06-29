@@ -1135,7 +1135,7 @@ func TestGenerateFindingOnlyScaffold(t *testing.T) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
 	}
-	if strings.Contains(projection, "demoSourceAssetProjections") {
+	if strings.Contains(projection, "demoSourceGenericAssetProjections") {
 		t.Fatalf("finding-only projection emitted unused asset helper:\n%s", projection)
 	}
 	projectionTest := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source_test.go")

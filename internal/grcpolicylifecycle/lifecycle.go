@@ -38,6 +38,7 @@ var grcPolicyLifecycleEntityTypes = []string{
 	"policy.exception",
 	"policy.reminder",
 	"policy.lifecycle.event",
+	"policy.evidence_snippet",
 }
 
 var grcPolicyLifecycleAnchorEntityTypes = []string{
@@ -168,23 +169,24 @@ ORDER BY left.urn, r.relation, right.urn
 LIMIT $limit`
 
 type Response struct {
-	Summary           grcPolicyLifecycleSummary     `json:"summary"`
-	Templates         []grcPolicyTemplateItem       `json:"templates"`
-	Policies          []grcPolicyLifecyclePolicy    `json:"policies"`
-	Documents         []grcPolicyDocumentItem       `json:"documents"`
-	RiskRegister      []grcPolicyRiskRegisterItem   `json:"risk_register"`
-	GovernanceGaps    []grcPolicyGovernanceGap      `json:"governance_gaps"`
-	GovernanceRules   []grcPolicyGovernanceRule     `json:"governance_rules,omitempty"`
-	GapRollups        grcPolicyGovernanceGapRollups `json:"governance_gap_rollups"`
-	WorkQueue         []grcPolicyLifecycleWork      `json:"work_queue"`
-	DocumentWorkQueue []grcPolicyDocumentWork       `json:"document_work_queue"`
-	Reminders         []grcPolicyReminderItem       `json:"reminders"`
-	Events            []grcPolicyLifecycleEventItem `json:"events,omitempty"`
-	AvailableActions  []ActionDefinition            `json:"available_actions,omitempty"`
-	VersionDiffs      []grcPolicyVersionDiffItem    `json:"version_diffs,omitempty"`
-	ReminderPlan      []grcPolicyReminderPlanItem   `json:"reminder_plan,omitempty"`
-	Mappings          []grcPolicyLifecycleMapping   `json:"mappings"`
-	GeneratedAt       time.Time                     `json:"generated_at"`
+	Summary           grcPolicyLifecycleSummary      `json:"summary"`
+	Templates         []grcPolicyTemplateItem        `json:"templates"`
+	Policies          []grcPolicyLifecyclePolicy     `json:"policies"`
+	Documents         []grcPolicyDocumentItem        `json:"documents"`
+	RiskRegister      []grcPolicyRiskRegisterItem    `json:"risk_register"`
+	EvidenceSnippets  []grcPolicyEvidenceSnippetItem `json:"evidence_snippets,omitempty"`
+	GovernanceGaps    []grcPolicyGovernanceGap       `json:"governance_gaps"`
+	GovernanceRules   []grcPolicyGovernanceRule      `json:"governance_rules,omitempty"`
+	GapRollups        grcPolicyGovernanceGapRollups  `json:"governance_gap_rollups"`
+	WorkQueue         []grcPolicyLifecycleWork       `json:"work_queue"`
+	DocumentWorkQueue []grcPolicyDocumentWork        `json:"document_work_queue"`
+	Reminders         []grcPolicyReminderItem        `json:"reminders"`
+	Events            []grcPolicyLifecycleEventItem  `json:"events,omitempty"`
+	AvailableActions  []ActionDefinition             `json:"available_actions,omitempty"`
+	VersionDiffs      []grcPolicyVersionDiffItem     `json:"version_diffs,omitempty"`
+	ReminderPlan      []grcPolicyReminderPlanItem    `json:"reminder_plan,omitempty"`
+	Mappings          []grcPolicyLifecycleMapping    `json:"mappings"`
+	GeneratedAt       time.Time                      `json:"generated_at"`
 }
 
 type grcPolicyLifecycleSummary struct {
@@ -237,6 +239,8 @@ type GRCPolicyLifecycleEvidenceSummary struct {
 	NextReminders          int `json:"next_reminders"`
 	MappedControls         int `json:"mapped_controls"`
 	EvidenceItems          int `json:"evidence_items"`
+	EvidenceSnippets       int `json:"evidence_snippets"`
+	SnippetsNeedingReview  int `json:"snippets_needing_review"`
 }
 
 type grcPolicyTemplateItem struct {
@@ -253,24 +257,35 @@ type grcPolicyTemplateItem struct {
 }
 
 type grcPolicyDocumentItem struct {
-	ID              string                 `json:"id"`
-	URN             string                 `json:"urn"`
-	Title           string                 `json:"title"`
-	DocumentType    string                 `json:"document_type,omitempty"`
-	DocumentClass   string                 `json:"document_class,omitempty"`
-	Status          string                 `json:"status,omitempty"`
-	Owner           string                 `json:"owner,omitempty"`
-	Version         string                 `json:"version,omitempty"`
-	ReviewCadence   string                 `json:"review_cadence,omitempty"`
-	NextReviewDueAt string                 `json:"next_review_due_at,omitempty"`
-	ApprovedAt      string                 `json:"approved_at,omitempty"`
-	EffectiveAt     string                 `json:"effective_at,omitempty"`
-	SourceURL       string                 `json:"source_url,omitempty"`
-	Policies        []grcPolicyDocumentRef `json:"policies,omitempty"`
-	Risks           []grcPolicyRiskRef     `json:"risks,omitempty"`
-	Controls        []grcPolicyControlRef  `json:"controls,omitempty"`
-	Evidence        []grcPolicyEvidenceRef `json:"evidence,omitempty"`
-	Attributes      map[string]string      `json:"attributes,omitempty"`
+	ID    string `json:"id"`
+	URN   string `json:"urn"`
+	Title string `json:"title"`
+	grcPolicyDocumentMetadata
+	Policies         []grcPolicyDocumentRef         `json:"policies,omitempty"`
+	Risks            []grcPolicyRiskRef             `json:"risks,omitempty"`
+	Controls         []grcPolicyControlRef          `json:"controls,omitempty"`
+	Evidence         []grcPolicyEvidenceRef         `json:"evidence,omitempty"`
+	EvidenceSnippets []grcPolicyEvidenceSnippetItem `json:"evidence_snippets,omitempty"`
+	Attributes       map[string]string              `json:"attributes,omitempty"`
+}
+
+type grcPolicyDocumentMetadata struct {
+	PolicyType              string `json:"policy_type,omitempty"`
+	DocumentType            string `json:"document_type,omitempty"`
+	DocumentClass           string `json:"document_class,omitempty"`
+	Status                  string `json:"status,omitempty"`
+	Owner                   string `json:"owner,omitempty"`
+	ApprovingAuthority      string `json:"approving_authority,omitempty"`
+	Version                 string `json:"version,omitempty"`
+	ReviewCadence           string `json:"review_cadence,omitempty"`
+	LastReviewedAt          string `json:"last_reviewed_at,omitempty"`
+	NextReviewDueAt         string `json:"next_review_due_at,omitempty"`
+	ApprovedAt              string `json:"approved_at,omitempty"`
+	EffectiveAt             string `json:"effective_at,omitempty"`
+	AcknowledgementEvidence string `json:"acknowledgement_evidence,omitempty"`
+	ExceptionPath           string `json:"exception_path,omitempty"`
+	SourceProvenance        string `json:"source_provenance,omitempty"`
+	SourceURL               string `json:"source_url,omitempty"`
 }
 
 type grcPolicyDocumentRef struct {
@@ -371,17 +386,13 @@ type grcPolicyGovernanceGapRollup struct {
 }
 
 type grcPolicyLifecyclePolicy struct {
-	ID                string                     `json:"id"`
-	URN               string                     `json:"urn"`
-	Title             string                     `json:"title"`
-	Status            string                     `json:"status,omitempty"`
-	Owner             string                     `json:"owner,omitempty"`
-	Reviewer          string                     `json:"reviewer,omitempty"`
-	ReviewCadence     string                     `json:"review_cadence,omitempty"`
-	NextReviewDueAt   string                     `json:"next_review_due_at,omitempty"`
-	LatestVersion     string                     `json:"latest_version,omitempty"`
-	VersionStatus     string                     `json:"version_status,omitempty"`
-	ApprovalStatus    string                     `json:"approval_status,omitempty"`
+	ID             string `json:"id"`
+	URN            string `json:"urn"`
+	Title          string `json:"title"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	VersionStatus  string `json:"version_status,omitempty"`
+	ApprovalStatus string `json:"approval_status,omitempty"`
+	grcPolicyLifecyclePolicyMetadata
 	AcceptanceSummary grcPolicyAcceptanceSummary `json:"acceptance_summary"`
 	ExceptionSummary  grcPolicyExceptionSummary  `json:"exception_summary"`
 	Versions          []grcPolicyVersionItem     `json:"versions,omitempty"`
@@ -390,10 +401,45 @@ type grcPolicyLifecyclePolicy struct {
 	Reviews           []grcPolicyReviewItem      `json:"reviews,omitempty"`
 	Exceptions        []grcPolicyExceptionItem   `json:"exceptions,omitempty"`
 	grcPolicyLifecyclePolicyActivity
-	Assignments []grcPolicyAssignmentItem `json:"assignments,omitempty"`
-	Controls    []grcPolicyControlRef     `json:"controls,omitempty"`
-	Evidence    []grcPolicyEvidenceRef    `json:"evidence,omitempty"`
-	Attributes  map[string]string         `json:"attributes,omitempty"`
+	Assignments      []grcPolicyAssignmentItem      `json:"assignments,omitempty"`
+	Controls         []grcPolicyControlRef          `json:"controls,omitempty"`
+	Evidence         []grcPolicyEvidenceRef         `json:"evidence,omitempty"`
+	EvidenceSnippets []grcPolicyEvidenceSnippetItem `json:"evidence_snippets,omitempty"`
+	Attributes       map[string]string              `json:"attributes,omitempty"`
+}
+
+type grcPolicyEvidenceSnippetItem struct {
+	ID                string                `json:"id"`
+	URN               string                `json:"urn"`
+	Title             string                `json:"title"`
+	PolicyID          string                `json:"policy_id,omitempty"`
+	DocumentID        string                `json:"document_id,omitempty"`
+	SectionID         string                `json:"section_id,omitempty"`
+	SectionTitle      string                `json:"section_title,omitempty"`
+	Page              string                `json:"page,omitempty"`
+	Text              string                `json:"text,omitempty"`
+	PolicyCitations   []string              `json:"policy_citations,omitempty"`
+	Confidence        string                `json:"confidence,omitempty"`
+	ReviewState       string                `json:"review_state,omitempty"`
+	ManualReviewState string                `json:"manual_review_state,omitempty"`
+	UnsupportedClaims []string              `json:"unsupported_claims,omitempty"`
+	SourceProvenance  string                `json:"source_provenance,omitempty"`
+	Controls          []grcPolicyControlRef `json:"controls,omitempty"`
+	QuestionIDs       []string              `json:"question_ids,omitempty"`
+	Attributes        map[string]string     `json:"attributes,omitempty"`
+}
+
+type grcPolicyLifecyclePolicyMetadata struct {
+	PolicyType         string `json:"policy_type,omitempty"`
+	Status             string `json:"status,omitempty"`
+	Owner              string `json:"owner,omitempty"`
+	Reviewer           string `json:"reviewer,omitempty"`
+	ApprovingAuthority string `json:"approving_authority,omitempty"`
+	ReviewCadence      string `json:"review_cadence,omitempty"`
+	LastReviewedAt     string `json:"last_reviewed_at,omitempty"`
+	NextReviewDueAt    string `json:"next_review_due_at,omitempty"`
+	EffectiveAt        string `json:"effective_at,omitempty"`
+	ExceptionPath      string `json:"exception_path,omitempty"`
 }
 
 type grcPolicyLifecyclePolicyActivity struct {
@@ -438,15 +484,16 @@ type grcPolicyApprovalItem struct {
 }
 
 type grcPolicyAcceptanceItem struct {
-	ID         string   `json:"id"`
-	URN        string   `json:"urn"`
-	PolicyID   string   `json:"policy_id,omitempty"`
-	VersionID  string   `json:"policy_version_id,omitempty"`
-	Person     string   `json:"person,omitempty"`
-	Assignees  []string `json:"assignees,omitempty"`
-	Status     string   `json:"status,omitempty"`
-	AcceptedAt string   `json:"accepted_at,omitempty"`
-	DueAt      string   `json:"due_at,omitempty"`
+	ID                      string   `json:"id"`
+	URN                     string   `json:"urn"`
+	PolicyID                string   `json:"policy_id,omitempty"`
+	VersionID               string   `json:"policy_version_id,omitempty"`
+	Person                  string   `json:"person,omitempty"`
+	Assignees               []string `json:"assignees,omitempty"`
+	Status                  string   `json:"status,omitempty"`
+	AcceptedAt              string   `json:"accepted_at,omitempty"`
+	DueAt                   string   `json:"due_at,omitempty"`
+	AcknowledgementEvidence string   `json:"acknowledgement_evidence,omitempty"`
 }
 
 type grcPolicyReviewItem struct {
@@ -760,18 +807,25 @@ func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relation
 			continue
 		}
 		item := grcPolicyLifecyclePolicy{
-			ID:              grcPolicyPolicyID(node),
-			URN:             node.URN,
-			Title:           grcPolicyNodeTitle(node),
-			Status:          grcPolicyAttr(node, "status", "policy_status", "lifecycle_state"),
-			Owner:           grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationOwnedBy, true),
-			Reviewer:        firstNonEmptyWith(grcPolicyAttr(node, "reviewer", "reviewer_user_id"), grcPolicyActionActors(node.URN, relations, "reviewed")),
-			ReviewCadence:   grcPolicyAttr(node, "review_cadence", "cadence"),
-			NextReviewDueAt: grcPolicyAttr(node, "next_review_due_at", "review_due_at", "due_at"),
-			Controls:        grcPolicyControlsFor(node.URN, relations),
-			Evidence:        grcPolicyEvidenceFor(node.URN, relations),
-			Assignments:     grcPolicyAssignmentsFor(node.URN, relations),
-			Attributes:      grcPolicyPublicAttrs(node.Attrs),
+			ID:    grcPolicyPolicyID(node),
+			URN:   node.URN,
+			Title: grcPolicyNodeTitle(node),
+			grcPolicyLifecyclePolicyMetadata: grcPolicyLifecyclePolicyMetadata{
+				PolicyType:         grcPolicyAttr(node, "policy_document_type", "policy_category", "category", "document_type", "policy_type"),
+				Status:             grcPolicyAttr(node, "status", "policy_status", "lifecycle_state"),
+				Owner:              grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationOwnedBy, true),
+				Reviewer:           firstNonEmptyWith(grcPolicyAttr(node, "reviewer", "reviewer_user_id"), grcPolicyActionActors(node.URN, relations, "reviewed")),
+				ApprovingAuthority: grcPolicyAttr(node, "approving_authority", "approval_authority", "authority"),
+				ReviewCadence:      grcPolicyAttr(node, "review_cadence", "cadence"),
+				LastReviewedAt:     grcPolicyAttr(node, "last_reviewed_at", "reviewed_at", "last_review_at"),
+				NextReviewDueAt:    grcPolicyAttr(node, "next_review_due_at", "review_due_at", "due_at"),
+				EffectiveAt:        grcPolicyAttr(node, "effective_at"),
+				ExceptionPath:      grcPolicyAttr(node, "exception_path", "exception_procedure", "waiver_path"),
+			},
+			Controls:    grcPolicyControlsFor(node.URN, relations),
+			Evidence:    grcPolicyEvidenceFor(node.URN, relations),
+			Assignments: grcPolicyAssignmentsFor(node.URN, relations),
+			Attributes:  grcPolicyPublicAttrs(node.Attrs),
 		}
 		if item.ID == "" {
 			item.ID = node.URN
@@ -798,6 +852,7 @@ func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relation
 	templates := []grcPolicyTemplateItem{}
 	documents := []grcPolicyDocumentItem{}
 	riskRegister := []grcPolicyRiskRegisterItem{}
+	evidenceSnippets := []grcPolicyEvidenceSnippetItem{}
 	reminders := []grcPolicyReminderItem{}
 	events := []grcPolicyLifecycleEventItem{}
 	mappings := []grcPolicyLifecycleMapping{}
@@ -866,6 +921,14 @@ func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relation
 				policy.Events = append(policy.Events, item)
 			}
 			events = append(events, item)
+		case "policy.evidence_snippet":
+			item := grcPolicyEvidenceSnippetFromNode(node, relations)
+			policy := ensurePolicy(firstNonEmpty(item.PolicyID, grcPolicyPolicyIDFromRelations(node.URN, relations, policyURNToID)), grcPolicyAttr(node, "policy_name"))
+			item.PolicyID = policy.ID
+			policy.EvidenceSnippets = appendPolicyEvidenceSnippets(policy.EvidenceSnippets, []grcPolicyEvidenceSnippetItem{item})
+			policy.Controls = appendPolicyControls(policy.Controls, item.Controls)
+			evidenceSnippets = append(evidenceSnippets, item)
+			mappings = append(mappings, grcPolicyMappingForNode(node, policy.ID, policy.Title, relations)...)
 		}
 	}
 
@@ -895,6 +958,13 @@ func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relation
 		}
 		return left.Before(right)
 	})
+	sort.Slice(evidenceSnippets, func(i, j int) bool {
+		if evidenceSnippets[i].DocumentID == evidenceSnippets[j].DocumentID {
+			return evidenceSnippets[i].SectionID < evidenceSnippets[j].SectionID
+		}
+		return evidenceSnippets[i].DocumentID < evidenceSnippets[j].DocumentID
+	})
+	grcPolicyAttachEvidenceSnippetsToDocuments(documents, evidenceSnippets)
 	sort.Slice(reminders, func(i, j int) bool {
 		return grcPolicySortDate(reminders[i].DueAt, reminders[i].SentAt).Before(grcPolicySortDate(reminders[j].DueAt, reminders[j].SentAt))
 	})
@@ -930,6 +1000,7 @@ func grcPolicyLifecycleFromGraphWithScope(entityRows []ports.CypherRow, relation
 		Policies:          policies,
 		Documents:         documents,
 		RiskRegister:      riskRegister,
+		EvidenceSnippets:  evidenceSnippets,
 		GovernanceGaps:    governanceGaps,
 		GovernanceRules:   governanceRules,
 		GapRollups:        grcPolicyGovernanceGapRollupsFrom(governanceGaps),
@@ -978,24 +1049,32 @@ func grcPolicyTemplateFromNode(node *grcPolicyGraphNode, relations []grcPolicyGr
 
 func grcPolicyDocumentFromNode(node *grcPolicyGraphNode, relations []grcPolicyGraphRelation, policyURNToID map[string]string) grcPolicyDocumentItem {
 	return grcPolicyDocumentItem{
-		ID:              grcPolicyNodeID(node, "document_id", "policy_document_id", "external_id"),
-		URN:             node.URN,
-		Title:           grcPolicyNodeTitle(node),
-		DocumentType:    firstNonEmpty(grcPolicyAttr(node, "document_type", "file_type", "policy_document_type"), grcPolicyAttr(node, "category")),
-		DocumentClass:   grcPolicyDocumentClass(node),
-		Status:          grcPolicyAttr(node, "status", "document_status", "lifecycle_state"),
-		Owner:           firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationOwnedBy, true), grcPolicyAttr(node, "owner", "owner_email")),
-		Version:         grcPolicyAttr(node, "version", "version_number"),
-		ReviewCadence:   grcPolicyAttr(node, "review_cadence", "cadence"),
-		NextReviewDueAt: grcPolicyAttr(node, "next_review_due_at", "review_due_at", "due_at"),
-		ApprovedAt:      grcPolicyAttr(node, "approved_at"),
-		EffectiveAt:     grcPolicyAttr(node, "effective_at"),
-		SourceURL:       grcPolicyAttr(node, "url", "document_url", "file_url", "download_url", "source_url"),
-		Policies:        grcPolicyDocumentPoliciesFor(node.URN, relations, policyURNToID),
-		Risks:           grcPolicyDocumentRisksFor(node.URN, relations),
-		Controls:        grcPolicyControlsFor(node.URN, relations),
-		Evidence:        grcPolicyEvidenceFor(node.URN, relations),
-		Attributes:      grcPolicyPublicAttrs(node.Attrs),
+		ID:    grcPolicyNodeID(node, "document_id", "policy_document_id", "external_id"),
+		URN:   node.URN,
+		Title: grcPolicyNodeTitle(node),
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			PolicyType:              grcPolicyAttr(node, "policy_document_type", "policy_category", "category", "policy_type"),
+			DocumentType:            firstNonEmpty(grcPolicyAttr(node, "document_type", "file_type", "policy_document_type"), grcPolicyAttr(node, "category")),
+			DocumentClass:           grcPolicyDocumentClass(node),
+			Status:                  grcPolicyAttr(node, "status", "document_status", "lifecycle_state"),
+			Owner:                   firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationOwnedBy, true), grcPolicyAttr(node, "owner", "owner_email")),
+			ApprovingAuthority:      grcPolicyAttr(node, "approving_authority", "approval_authority", "authority"),
+			Version:                 grcPolicyAttr(node, "version", "version_number"),
+			ReviewCadence:           grcPolicyAttr(node, "review_cadence", "cadence"),
+			LastReviewedAt:          grcPolicyAttr(node, "last_reviewed_at", "reviewed_at", "last_review_at"),
+			NextReviewDueAt:         grcPolicyAttr(node, "next_review_due_at", "review_due_at", "due_at"),
+			ApprovedAt:              grcPolicyAttr(node, "approved_at"),
+			EffectiveAt:             grcPolicyAttr(node, "effective_at"),
+			AcknowledgementEvidence: grcPolicyAttr(node, "acknowledgement_evidence", "acknowledgment_evidence", "attestation_evidence", "acceptance_evidence"),
+			ExceptionPath:           grcPolicyAttr(node, "exception_path", "exception_procedure", "waiver_path"),
+			SourceProvenance:        grcPolicyAttr(node, "source_provenance", "source_system", "provider", "parse_provider"),
+			SourceURL:               grcPolicyAttr(node, "url", "document_url", "file_url", "download_url", "source_url"),
+		},
+		Policies:   grcPolicyDocumentPoliciesFor(node.URN, relations, policyURNToID),
+		Risks:      grcPolicyDocumentRisksFor(node.URN, relations),
+		Controls:   grcPolicyControlsFor(node.URN, relations),
+		Evidence:   grcPolicyEvidenceFor(node.URN, relations),
+		Attributes: grcPolicyPublicAttrs(node.Attrs),
 	}
 }
 
@@ -1072,15 +1151,16 @@ func grcPolicyApprovalFromNode(node *grcPolicyGraphNode, relations []grcPolicyGr
 
 func grcPolicyAcceptanceFromNode(node *grcPolicyGraphNode, relations []grcPolicyGraphRelation) grcPolicyAcceptanceItem {
 	return grcPolicyAcceptanceItem{
-		ID:         grcPolicyNodeID(node, "acceptance_id", "policy_acceptance_id", "attestation_id"),
-		URN:        node.URN,
-		PolicyID:   grcPolicyAttr(node, "policy_id"),
-		VersionID:  grcPolicyAttr(node, "policy_version_id", "version_id"),
-		Person:     firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationHasEvidence, false), grcPolicyAttr(node, "person_name", "email", "person_id", "user_id")),
-		Assignees:  grcPolicyAssignmentLabelsFor(node.URN, relations),
-		Status:     grcPolicyAttr(node, "status", "acceptance_status"),
-		AcceptedAt: grcPolicyAttr(node, "accepted_at", "completed_at"),
-		DueAt:      grcPolicyAttr(node, "due_at", "acceptance_due_at"),
+		ID:                      grcPolicyNodeID(node, "acceptance_id", "policy_acceptance_id", "attestation_id"),
+		URN:                     node.URN,
+		PolicyID:                grcPolicyAttr(node, "policy_id"),
+		VersionID:               grcPolicyAttr(node, "policy_version_id", "version_id"),
+		Person:                  firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationHasEvidence, false), grcPolicyAttr(node, "person_name", "email", "person_id", "user_id")),
+		Assignees:               grcPolicyAssignmentLabelsFor(node.URN, relations),
+		Status:                  grcPolicyAttr(node, "status", "acceptance_status"),
+		AcceptedAt:              grcPolicyAttr(node, "accepted_at", "completed_at"),
+		DueAt:                   grcPolicyAttr(node, "due_at", "acceptance_due_at"),
+		AcknowledgementEvidence: grcPolicyAttr(node, "acknowledgement_evidence", "acknowledgment_evidence", "attestation_evidence", "acceptance_evidence"),
 	}
 }
 
@@ -1151,6 +1231,43 @@ func grcPolicyLifecycleEventFromNode(node *grcPolicyGraphNode, relations []grcPo
 	}
 }
 
+func grcPolicyEvidenceSnippetFromNode(node *grcPolicyGraphNode, relations []grcPolicyGraphRelation) grcPolicyEvidenceSnippetItem {
+	return grcPolicyEvidenceSnippetItem{
+		ID:                grcPolicyNodeID(node, "snippet_id", "evidence_snippet_id"),
+		URN:               node.URN,
+		Title:             grcPolicyNodeTitle(node),
+		PolicyID:          grcPolicyAttr(node, "policy_id"),
+		DocumentID:        grcPolicyAttr(node, "document_id"),
+		SectionID:         grcPolicyAttr(node, "section_id"),
+		SectionTitle:      grcPolicyAttr(node, "section_title"),
+		Page:              grcPolicyAttr(node, "page"),
+		Text:              grcPolicyAttr(node, "policy_citations", "snippet_text", "citation_text"),
+		PolicyCitations:   grcPolicyCitationList(node),
+		Confidence:        grcPolicyAttr(node, "confidence"),
+		ReviewState:       grcPolicyAttr(node, "review_state", "manual_review_state"),
+		ManualReviewState: grcPolicyAttr(node, "manual_review_state", "review_state"),
+		UnsupportedClaims: grcPolicyListAttr(node, "unsupported_claims", "unsupported_claim"),
+		SourceProvenance:  grcPolicyAttr(node, "source_provenance", "source_system", "provider"),
+		Controls:          grcPolicyControlsFor(node.URN, relations),
+		QuestionIDs:       grcPolicyListAttr(node, "question_ids", "question_id"),
+		Attributes:        grcPolicyPublicAttrs(node.Attrs),
+	}
+}
+
+func grcPolicyAttachEvidenceSnippetsToDocuments(documents []grcPolicyDocumentItem, snippets []grcPolicyEvidenceSnippetItem) {
+	if len(documents) == 0 || len(snippets) == 0 {
+		return
+	}
+	for index := range documents {
+		for _, snippet := range snippets {
+			if snippet.DocumentID != "" && snippet.DocumentID == documents[index].ID {
+				documents[index].EvidenceSnippets = append(documents[index].EvidenceSnippets, snippet)
+			}
+		}
+		documents[index].EvidenceSnippets = uniquePolicyEvidenceSnippets(documents[index].EvidenceSnippets)
+	}
+}
+
 func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Versions, func(i, j int) bool {
 		iDate, iOK := grcPolicyFirstDate(policy.Versions[i].ApprovedAt, policy.Versions[i].CreatedAt, policy.Versions[i].EffectiveAt)
@@ -1172,6 +1289,12 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	sort.Slice(policy.Reviews, func(i, j int) bool {
 		return grcPolicySortDate(policy.Reviews[i].ReviewDueAt, policy.Reviews[i].ReviewedAt).Before(grcPolicySortDate(policy.Reviews[j].ReviewDueAt, policy.Reviews[j].ReviewedAt))
 	})
+	lastReviewedAt := ""
+	if policy.LastReviewedAt == "" {
+		for _, review := range policy.Reviews {
+			lastReviewedAt = grcPolicyLaterDateString(lastReviewedAt, review.ReviewedAt)
+		}
+	}
 	for _, review := range policy.Reviews {
 		if policy.Reviewer == "" {
 			policy.Reviewer = firstNonEmpty(review.Reviewers...)
@@ -1186,6 +1309,9 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 			break
 		}
 	}
+	if policy.LastReviewedAt == "" {
+		policy.LastReviewedAt = lastReviewedAt
+	}
 	sort.Slice(policy.Exceptions, func(i, j int) bool {
 		return grcPolicySortDate(policy.Exceptions[i].ExpiresAt, policy.Exceptions[i].ApprovedAt).Before(grcPolicySortDate(policy.Exceptions[j].ExpiresAt, policy.Exceptions[j].ApprovedAt))
 	})
@@ -1197,14 +1323,26 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 		}
 		return left.After(right)
 	})
+	sort.Slice(policy.EvidenceSnippets, func(i, j int) bool {
+		if policy.EvidenceSnippets[i].DocumentID == policy.EvidenceSnippets[j].DocumentID {
+			return policy.EvidenceSnippets[i].SectionID < policy.EvidenceSnippets[j].SectionID
+		}
+		return policy.EvidenceSnippets[i].DocumentID < policy.EvidenceSnippets[j].DocumentID
+	})
 	if len(policy.Versions) > 0 {
 		policy.LatestVersion = firstNonEmpty(policy.Versions[0].Version, policy.Versions[0].ID)
 		policy.VersionStatus = policy.Versions[0].Status
 		if policy.Owner == "" {
 			policy.Owner = policy.Versions[0].Owner
 		}
+		if policy.EffectiveAt == "" {
+			policy.EffectiveAt = policy.Versions[0].EffectiveAt
+		}
 	}
 	for _, approval := range policy.Approvals {
+		if policy.ApprovingAuthority == "" {
+			policy.ApprovingAuthority = firstNonEmpty(approval.Step, firstNonEmpty(approval.Approvers...))
+		}
 		if grcPolicyPendingStatus(approval.Status) {
 			policy.ApprovalStatus = approval.Status
 			break
@@ -1221,6 +1359,7 @@ func grcPolicyFinalize(policy *grcPolicyLifecyclePolicy, now time.Time) {
 	policy.Assignments = uniqueAssignments(policy.Assignments)
 	policy.Controls = uniqueControls(policy.Controls)
 	policy.Evidence = uniqueEvidence(policy.Evidence)
+	policy.EvidenceSnippets = uniquePolicyEvidenceSnippets(policy.EvidenceSnippets)
 }
 
 func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, templates []grcPolicyTemplateItem, documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, mappings []grcPolicyLifecycleMapping, governanceGaps []grcPolicyGovernanceGap, now time.Time) grcPolicyLifecycleSummary {
@@ -1236,6 +1375,7 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 	totalAttestations := 0
 	mappedControls := map[string]struct{}{}
 	evidence := map[string]struct{}{}
+	snippetsSeen := map[string]struct{}{}
 	for _, template := range templates {
 		for _, control := range template.Controls {
 			if control.ControlID != "" {
@@ -1263,6 +1403,18 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 		for _, item := range document.Evidence {
 			if item.URN != "" {
 				evidence[item.URN] = struct{}{}
+			}
+		}
+		for _, snippet := range document.EvidenceSnippets {
+			if snippet.URN != "" {
+				evidence[snippet.URN] = struct{}{}
+				if _, ok := snippetsSeen[snippet.URN]; !ok {
+					snippetsSeen[snippet.URN] = struct{}{}
+					summary.EvidenceSnippets++
+					if grcPolicySnippetNeedsReview(snippet) {
+						summary.SnippetsNeedingReview++
+					}
+				}
 			}
 		}
 	}
@@ -1330,6 +1482,18 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 				evidence[item.URN] = struct{}{}
 			}
 		}
+		for _, snippet := range policy.EvidenceSnippets {
+			if snippet.URN != "" {
+				evidence[snippet.URN] = struct{}{}
+				if _, ok := snippetsSeen[snippet.URN]; !ok {
+					snippetsSeen[snippet.URN] = struct{}{}
+					summary.EvidenceSnippets++
+					if grcPolicySnippetNeedsReview(snippet) {
+						summary.SnippetsNeedingReview++
+					}
+				}
+			}
+		}
 	}
 	if totalAttestations > 0 {
 		summary.AttestationCoveragePct = int(float64(accepted) / float64(totalAttestations) * 100)
@@ -1369,6 +1533,11 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 	return grcPolicyGovernanceGapsFor(documents, riskRegister, grcPolicyGovernanceRules(""), nil, time.Time{})
 }
 
+func grcPolicySnippetNeedsReview(snippet grcPolicyEvidenceSnippetItem) bool {
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(snippet.ManualReviewState, snippet.ReviewState)))
+	return state == "needs_review" || strings.HasPrefix(state, "needs_")
+}
+
 func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, rules []grcPolicyGovernanceRule, events []grcPolicyLifecycleEventItem, now time.Time) []grcPolicyGovernanceGap {
 	gaps := []grcPolicyGovernanceGap{}
 	rulesByID := grcPolicyGovernanceRuleMap(rules)
@@ -1392,7 +1561,7 @@ func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister 
 		if rule, ok := rulesByID["document.controls"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
 			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "controls", "No mapped controls"))
 		}
-		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Evidence) == 0 {
+		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && !grcPolicyDocumentHasEvidence(document) {
 			gap := grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "evidence", "No evidence")
 			gap.SourceFields = sourceFields
 			gaps = append(gaps, gap)
@@ -1540,17 +1709,22 @@ func grcPolicyGovernanceRuleProfile(profile string) string {
 	}
 }
 
+func grcPolicyDocumentHasEvidence(document grcPolicyDocumentItem) bool {
+	return len(document.Evidence) > 0 || len(document.EvidenceSnippets) > 0
+}
+
 func grcPolicyDocumentGapSourceFields(document grcPolicyDocumentItem) map[string]string {
 	return map[string]string{
-		"document_id":        document.ID,
-		"document_class":     document.DocumentClass,
-		"document_type":      document.DocumentType,
-		"status":             document.Status,
-		"owner":              document.Owner,
-		"next_review_due_at": document.NextReviewDueAt,
-		"policy_count":       fmt.Sprint(len(document.Policies)),
-		"control_count":      fmt.Sprint(len(document.Controls)),
-		"evidence_count":     fmt.Sprint(len(document.Evidence)),
+		"document_id":            document.ID,
+		"document_class":         document.DocumentClass,
+		"document_type":          document.DocumentType,
+		"status":                 document.Status,
+		"owner":                  document.Owner,
+		"next_review_due_at":     document.NextReviewDueAt,
+		"policy_count":           fmt.Sprint(len(document.Policies)),
+		"control_count":          fmt.Sprint(len(document.Controls)),
+		"evidence_count":         fmt.Sprint(len(document.Evidence)),
+		"evidence_snippet_count": fmt.Sprint(len(document.EvidenceSnippets)),
 	}
 }
 
@@ -2601,9 +2775,17 @@ func grcPolicyListAttr(node *grcPolicyGraphNode, keys ...string) []string {
 	return uniqueStrings(values)
 }
 
+func grcPolicyCitationList(node *grcPolicyGraphNode) []string {
+	citation := grcPolicyAttr(node, "policy_citations", "snippet_text", "citation_text")
+	if citation == "" {
+		return nil
+	}
+	return []string{citation}
+}
+
 func grcPolicyPublicAttrs(attrs map[string]string) map[string]string {
 	allowed := map[string]string{}
-	for _, key := range []string{"action", "assigned_user_ids", "category", "control_ids", "document_class", "document_id", "document_type", "due_at", "event_kind", "evidence_cas_uri", "expires_at", "framework", "frameworks", "gap_id", "gap_ids", "gap_state", "impact", "inherent_risk", "inherent_risk_level", "likelihood", "lifecycle_action", "policy_id", "policy_version_id", "reason", "record_id", "record_type", "record_urn", "residual_risk", "residual_risk_level", "review_cadence", "review_due_at", "risk_category", "risk_id", "source_document_id", "source_event_id", "source_system", "state_updated_at", "status", "target_policy_id", "treatment", "treatment_due_at"} {
+	for _, key := range []string{"action", "assigned_user_ids", "category", "confidence", "control_ids", "created_at", "document_class", "document_id", "document_type", "due_at", "event_kind", "evidence_cas_uri", "expires_at", "framework", "frameworks", "gap_id", "gap_ids", "gap_state", "impact", "inherent_risk", "inherent_risk_level", "likelihood", "lifecycle_action", "manual_review_state", "observed_at", "policy_citations", "policy_id", "policy_version_id", "question_ids", "reason", "record_id", "record_type", "record_urn", "residual_risk", "residual_risk_level", "review_cadence", "review_due_at", "review_state", "reviewed_at", "risk_category", "risk_id", "section_id", "section_title", "source_document_id", "source_event_id", "source_observed_at", "source_provenance", "source_system", "state_updated_at", "status", "target_policy_id", "treatment", "treatment_due_at", "updated_at", "uploaded_at", "unsupported_claims"} {
 		if value := strings.TrimSpace(attrs[key]); value != "" {
 			allowed[key] = value
 		}
@@ -2720,6 +2902,18 @@ func grcPolicySortDate(values ...string) time.Time {
 	return time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 }
 
+func grcPolicyLaterDateString(current string, candidate string) string {
+	candidateDate, candidateOK := grcPolicyFirstDate(candidate)
+	if !candidateOK {
+		return current
+	}
+	currentDate, currentOK := grcPolicyFirstDate(current)
+	if !currentOK || candidateDate.After(currentDate) {
+		return candidate
+	}
+	return current
+}
+
 func grcPolicyFirstDate(values ...string) (time.Time, bool) {
 	for _, value := range values {
 		if parsed, ok := grcPolicyTime(value); ok {
@@ -2753,6 +2947,10 @@ func appendPolicyControls(left []grcPolicyControlRef, right []grcPolicyControlRe
 
 func appendPolicyEvidence(left []grcPolicyEvidenceRef, right []grcPolicyEvidenceRef) []grcPolicyEvidenceRef {
 	return uniqueEvidence(append(left, right...))
+}
+
+func appendPolicyEvidenceSnippets(left []grcPolicyEvidenceSnippetItem, right []grcPolicyEvidenceSnippetItem) []grcPolicyEvidenceSnippetItem {
+	return uniquePolicyEvidenceSnippets(append(left, right...))
 }
 
 func uniqueAssignments(items []grcPolicyAssignmentItem) []grcPolicyAssignmentItem {
@@ -2800,6 +2998,23 @@ func uniqueEvidence(items []grcPolicyEvidenceRef) []grcPolicyEvidenceRef {
 	out := []grcPolicyEvidenceRef{}
 	for _, item := range items {
 		key := item.URN
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func uniquePolicyEvidenceSnippets(items []grcPolicyEvidenceSnippetItem) []grcPolicyEvidenceSnippetItem {
+	seen := map[string]struct{}{}
+	out := []grcPolicyEvidenceSnippetItem{}
+	for _, item := range items {
+		key := firstNonEmpty(item.URN, item.ID, item.DocumentID+"|"+item.SectionID+"|"+item.Text)
 		if key == "" {
 			continue
 		}

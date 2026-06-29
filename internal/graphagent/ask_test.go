@@ -214,6 +214,9 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "validator_refusal" || len(summary.UnsupportedQuery.SuggestedRewrites) == 0 {
 		t.Fatalf("unsupported query rescue = %#v, want validator refusal with structured suggestions", summary.UnsupportedQuery)
 	}
+	if !stringSliceContains(summary.UnsupportedQuery.SupportedIntents, IntentFailingControls) {
+		t.Fatalf("supported intents = %#v, want failing controls intent", summary.UnsupportedQuery.SupportedIntents)
+	}
 	done := events[6].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")
@@ -845,6 +848,15 @@ func assertEventNames(t *testing.T, events []Event, want []string) {
 			t.Fatalf("event[%d] = %q, want %q", i, events[i].Name, name)
 		}
 	}
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type askStore struct {

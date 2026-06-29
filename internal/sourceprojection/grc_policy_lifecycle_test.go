@@ -333,6 +333,53 @@ func TestProjectGRCPolicyLifecycleEventLinksTargetPolicyWithoutContextPolicy(t *
 	assertProjectedLink(t, state, lifecycleEventURN, relationAssociatedWith, targetPolicyURN)
 }
 
+func TestProjectGRCPolicyEvidenceSnippetLinksDocumentPolicyControlAndQuestion(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "snippet-event-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.policy_evidence_snippet",
+		Attributes: map[string]string{
+			"provider":            "policyops",
+			"snippet_id":          "snippet-1",
+			"policy_id":           "access-policy",
+			"document_id":         "access-policy-doc",
+			"section_id":          "access-review",
+			"section_title":       "Access reviews",
+			"snippet_text":        "Access reviews are performed quarterly.",
+			"policy_citations":    "Access reviews are performed quarterly.",
+			"confidence":          "0.82",
+			"review_state":        "ready_to_project",
+			"manual_review_state": "ready_to_project",
+			"control_ids":         "CC6.1",
+			"question_ids":        "q-1",
+			"unsupported_claims":  "Access reviews are automated",
+			"source_provenance":   "uploaded policy document",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	snippetURN := "urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-1"
+	documentURN := "urn:cerebro:writer:document:policyops:access-policy-doc"
+	policyURN := "urn:cerebro:writer:policy:policyops:policy:access-policy"
+	controlURN := "urn:cerebro:writer:policy:policyops:control:CC6.1"
+	questionURN := "urn:cerebro:writer:compliance_question:policyops:q-1"
+	if entity := state.entities[snippetURN]; entity == nil || entity.EntityType != "policy.evidence_snippet" || entity.Attributes["snippet_text"] == "" {
+		t.Fatalf("snippet entity = %#v, want policy evidence snippet with text", entity)
+	} else if entity.Attributes["policy_citations"] == "" || entity.Attributes["manual_review_state"] != "ready_to_project" || entity.Attributes["unsupported_claims"] == "" || entity.Attributes["source_provenance"] == "" {
+		t.Fatalf("snippet attrs = %#v, want QAuto citation fields", entity.Attributes)
+	}
+	assertProjectedLink(t, state, documentURN, relationHasEvidence, snippetURN)
+	assertProjectedLink(t, state, policyURN, relationHasEvidence, snippetURN)
+	assertProjectedLink(t, state, snippetURN, relationSupports, controlURN)
+	assertProjectedLink(t, state, snippetURN, relationSupports, questionURN)
+}
+
 func TestProjectGRCPolicyAcceptanceLinksEmployeeAndAssignment(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -113,7 +113,7 @@ jobs:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
@@ -130,12 +130,12 @@ jobs:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: v2.16.0
           args: release --clean --parallelism 1
@@ -153,7 +153,7 @@ jobs:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
@@ -171,7 +171,7 @@ jobs:
           done
 
       - name: Attest runtime binaries
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             .dist/linux-amd64/cerebro
@@ -311,7 +311,7 @@ jobs:
           cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
 
       - name: Attest release image provenance
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
@@ -333,7 +333,7 @@ jobs:
             apply_mode: pull_request
     steps:
       - name: Fetch org-level secrets from Infisical
-        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
@@ -342,7 +342,7 @@ jobs:
           env-slug: prod
           export-type: env
       - name: Fetch repo-level secrets from Infisical
-        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
@@ -478,7 +478,7 @@ jobs:
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
