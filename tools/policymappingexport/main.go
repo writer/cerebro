@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	coverageops "github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/findingdsl"
 	"gopkg.in/yaml.v3"
 )
@@ -528,6 +529,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 	controlRequirementRows := controlEvidenceRequirementRows(controlRequirementItems, frameworkSourceIndex)
 	findingRequirementRows := findingEvidenceRequirementRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
 	findingTagContractRows := findingComplianceTagContractRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
+	coverageExplanationRows := coverageGapExplanationRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems)
 	coverageCandidateRows := frameworkCoverageCandidateRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
 	if err := validateControlEvidenceRequirementCoverage(controlCatalogRefs(controlCatalog), controlRequirementItems); err != nil {
 		return nil, err
@@ -560,6 +562,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 		{Name: "framework_control_gap_map.csv", Content: csvBytes(append([][]string{frameworkControlGapMapHeader()}, frameworkControlGapRows...))},
 		{Name: "control_evidence_requirements.csv", Content: csvBytes(append([][]string{controlEvidenceRequirementsHeader()}, controlRequirementRows...))},
 		{Name: "finding_evidence_requirement_map.csv", Content: csvBytes(append([][]string{findingEvidenceRequirementMapHeader()}, findingRequirementRows...))},
+		{Name: "coverage_gap_explanations.csv", Content: csvBytes(append([][]string{coverageGapExplanationsHeader()}, coverageExplanationRows...))},
 		{Name: "framework_coverage_candidates.csv", Content: csvBytes(append([][]string{frameworkCoverageCandidatesHeader()}, coverageCandidateRows...))},
 		{Name: "workbook_manifest.csv", Content: csvBytes(workbookManifestRows())},
 		{Name: "yaml_layers.csv", Content: csvBytes(yamlLayerRows(extensions))},
@@ -1400,7 +1403,7 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
 		evidenceBackingLevel := findingEvidenceBackingLevel(complianceReview, sourceCapabilityStatus, auditDepth)
 		evidenceBackingGaps := findingEvidenceBackingGaps(controlRefs, detection.SourceCoverageRefs, complianceReview, sourceCapabilityStatus, auditDepth)
-		operationalReview := findingOperationalReviewFor(detection, controlRefs, complianceReview, sourceCapabilityStatus, evidenceBackingLevel, requirementsByControl)
+		operationalReview := findingOperationalReviewFromExplanations(detection, controlRefs, complianceReview, sourceCapabilityStatus, requirementsByControl)
 		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
 		qualityIssueRows = append(qualityIssueRows, findingQualityIssueRows(detection, controlRefs, complianceTags, auditDepth, sourceCapabilityStatus)...)
 
@@ -1661,6 +1664,128 @@ func findingOperationalReviewFor(detection publicDetection, controlRefs []contro
 		EvidencePacketReadiness:     evidencePacketReadiness(evidenceBackingLevel, missingDimensions),
 		NextRemediationAction:       nextRemediationAction(review.ComplianceEvidenceStatus, sourceCapabilityStatus, evidenceBackingLevel, missingDimensions),
 	}
+}
+
+func findingOperationalReviewFromExplanations(detection publicDetection, controlRefs []controlRef, review findingComplianceReview, sourceCapabilityStatus string, requirementsByControl map[string][]expandedControlEvidenceRequirement) findingOperationalReview {
+	var explanations []coverageops.CoverageGapExplanation
+	for _, ref := range controlRefs {
+		requirements := requirementsByControl[controlRefKey(ref)]
+		if len(requirements) == 0 {
+			explanations = append(explanations, coverageops.BuildCoverageGapExplanation(coverageops.CoverageGapExplanationInput{
+				CoverageFindingContext: coverageops.CoverageFindingContext{
+					FindingID:             strings.TrimSpace(detection.ID),
+					FindingName:           strings.TrimSpace(detection.Name),
+					FindingSourceID:       strings.TrimSpace(detection.SourceID),
+					FindingEvaluationMode: strings.TrimSpace(detection.EvaluationMode),
+					FindingPackID:         strings.TrimSpace(detection.PackID),
+					Control:               coverageControlRef(ref),
+					ControlFamily:         strings.TrimSpace(ref.Family),
+				},
+				CoverageClaimContext: coverageops.CoverageClaimContext{
+					ComplianceEvidenceStatus: strings.TrimSpace(review.ComplianceEvidenceStatus),
+					SourceCapabilityStatus:   strings.TrimSpace(sourceCapabilityStatus),
+					ClaimStatus:              "requirement_missing",
+				},
+				CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
+					SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}),
+				},
+			}))
+			continue
+		}
+		for _, requirement := range requirements {
+			matchStatus := findingRequirementMatchStatus(detection, requirement)
+			claimStatus := findingRequirementClaimStatus(review.ComplianceEvidenceStatus, matchStatus, sourceCapabilityStatus)
+			explanations = append(explanations, coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus))
+		}
+	}
+	return operationalReviewFromCoverageExplanations(explanations)
+}
+
+func operationalReviewFromCoverageExplanations(explanations []coverageops.CoverageGapExplanation) findingOperationalReview {
+	if len(explanations) == 0 {
+		return findingOperationalReview{
+			SourceFreshnessStatus:   "freshness_requirement_missing",
+			ManualReviewOwner:       "control_owner",
+			EvidencePacketReadiness: "manual_packet_required",
+			NextRemediationAction:   "Map source facts, evidence packets, policy documents, exceptions, or remediation before claiming coverage.",
+		}
+	}
+	var freshnessRequirements []string
+	var missingDimensions []string
+	owner := ""
+	ownerProfilePriority := 1000
+	freshnessStatus := ""
+	readiness := ""
+	nextAction := ""
+	for _, explanation := range explanations {
+		if explanation.Freshness.Requirement != "" {
+			label := explanation.Freshness.Requirement
+			if explanation.RequirementSourceID != "" {
+				label = explanation.RequirementSourceID + "=" + label
+			}
+			freshnessRequirements = append(freshnessRequirements, label)
+		}
+		missingDimensions = append(missingDimensions, coverageMissingDimensionLabels(explanation.MissingDimensions)...)
+		if explanation.RequirementProfile != "" && strings.TrimSpace(explanation.Owner) != "" && requirementProfilePriority(explanation.RequirementProfile) < ownerProfilePriority {
+			owner = explanation.Owner
+			ownerProfilePriority = requirementProfilePriority(explanation.RequirementProfile)
+		}
+		freshnessStatus = worseFreshnessStatus(freshnessStatus, explanation.Freshness.Status)
+		readiness = worsePacketReadiness(readiness, explanation.EvidencePacketReadiness)
+		if nextAction == "" || readiness == explanation.EvidencePacketReadiness {
+			nextAction = explanation.NextAction
+		}
+	}
+	return findingOperationalReview{
+		SourceFreshnessRequirements: uniqueSorted(freshnessRequirements),
+		SourceFreshnessStatus:       firstNonEmpty(freshnessStatus, "freshness_requirement_missing"),
+		RequiredMissingDimensions:   uniqueSorted(missingDimensions),
+		ManualReviewOwner:           firstNonEmpty(owner, "control_owner"),
+		EvidencePacketReadiness:     firstNonEmpty(readiness, "manual_packet_required"),
+		NextRemediationAction:       nextAction,
+	}
+}
+
+func worseFreshnessStatus(current string, next string) string {
+	rank := map[string]int{
+		"stale_source":                  0,
+		"freshness_review_required":     1,
+		"freshness_requirement_missing": 2,
+		"freshness_requirement_defined": 3,
+	}
+	current = strings.TrimSpace(current)
+	next = strings.TrimSpace(next)
+	if current == "" {
+		return next
+	}
+	if next == "" {
+		return current
+	}
+	if rank[next] < rank[current] {
+		return next
+	}
+	return current
+}
+
+func worsePacketReadiness(current string, next string) string {
+	rank := map[string]int{
+		"missing_required_source_dimensions": 0,
+		"manual_packet_required":             1,
+		"needs_source_review":                2,
+		"ready_for_packet":                   3,
+	}
+	current = strings.TrimSpace(current)
+	next = strings.TrimSpace(next)
+	if current == "" {
+		return next
+	}
+	if next == "" {
+		return current
+	}
+	if rank[next] < rank[current] {
+		return next
+	}
+	return current
 }
 
 func requirementsForControlRefs(controlRefs []controlRef, requirementsByControl map[string][]expandedControlEvidenceRequirement) []expandedControlEvidenceRequirement {
@@ -3518,10 +3643,7 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 			for _, item := range byControl[controlRefKey(ref)] {
 				requirementMatchStatus := findingRequirementMatchStatus(detection, item)
 				claimStatus := findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus)
-				missingDimensions := findingRequiredMissingDimensions(detection, []expandedControlEvidenceRequirement{item})
-				freshnessRequirements := requirementFreshnessWindows([]expandedControlEvidenceRequirement{item})
-				freshnessStatus := sourceFreshnessStatusForClaimStatus(claimStatus, freshnessRequirements, sourceCapabilityStatus)
-				packetReadiness := evidencePacketReadinessForClaimStatus(claimStatus, missingDimensions)
+				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus)
 				row := []string{
 					detection.ID,
 					detection.Name,
@@ -3538,9 +3660,9 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					item.SourceRequirement.EntityType,
 					joinList(item.SourceRequirement.RequiredFields),
 					item.SourceRequirement.FreshnessWindow,
-					freshnessStatus,
-					joinList(missingDimensions),
-					manualReviewOwner([]expandedControlEvidenceRequirement{item}, complianceReview.ComplianceEvidenceStatus),
+					explanation.Freshness.Status,
+					joinList(coverageMissingDimensionLabels(explanation.MissingDimensions)),
+					explanation.Owner,
 					item.ClaimRuleID,
 					item.SourceRequirement.ClaimStrength,
 					item.SourceRequirement.SufficiencyRule,
@@ -3550,8 +3672,8 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					requirementMatchStatus,
 					claimStatus,
 					findingRequirementEvidenceBasis(requirementMatchStatus, complianceReview.ComplianceEvidenceStatus, sourceCapabilityStatus),
-					packetReadiness,
-					nextRemediationActionForClaimStatus(claimStatus, sourceCapabilityStatus, missingDimensions),
+					explanation.EvidencePacketReadiness,
+					explanation.NextAction,
 					item.SourceRequirement.OverclaimGuard,
 					item.SourceRequirement.AdjacentControlRationale,
 				}
@@ -3576,10 +3698,7 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 			requirements := byControl[controlRefKey(ref)]
 			claimStatus := bestFindingRequirementClaimStatus(detection, requirements, complianceReview, sourceCapabilityStatus)
 			sourceCoverageLabels := complianceReview.SourceCoverageRefsByControlKey[controlRefKey(ref)]
-			missingDimensions := findingRequiredMissingDimensions(detection, requirements)
-			freshnessRequirements := requirementFreshnessWindows(requirements)
-			freshnessStatus := sourceFreshnessStatusForClaimStatus(claimStatus, freshnessRequirements, sourceCapabilityStatus)
-			packetReadiness := evidencePacketReadinessForClaimStatus(claimStatus, missingDimensions)
+			explanation := bestCoverageExplanationForRequirements(detection, ref, requirements, complianceReview, sourceCapabilityStatus)
 			for _, tag := range complianceReviewTags([]controlRef{ref}) {
 				tagSource := "control_ref"
 				if _, ok := catalogTagSet[tag]; ok {
@@ -3606,12 +3725,12 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 					complianceReview.ComplianceEvidenceStatus,
 					joinList(requirementProfileIDs(requirements)),
 					joinList(requirementSourceIDs(requirements)),
-					joinList(freshnessRequirements),
-					freshnessStatus,
-					joinList(missingDimensions),
-					manualReviewOwner(requirements, complianceReview.ComplianceEvidenceStatus),
-					packetReadiness,
-					nextRemediationActionForClaimStatus(claimStatus, sourceCapabilityStatus, missingDimensions),
+					joinList(requirementFreshnessWindows(requirements)),
+					explanation.Freshness.Status,
+					joinList(coverageMissingDimensionLabels(explanation.MissingDimensions)),
+					explanation.Owner,
+					explanation.EvidencePacketReadiness,
+					explanation.NextAction,
 					joinList(requirementOverclaimGuards(requirements)),
 					joinList(requirementAdjacentControlRationales(requirements)),
 				}
@@ -3622,6 +3741,331 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 	}
 	sortRows(rows)
 	return rows
+}
+
+func coverageGapExplanationRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement) [][]string {
+	byControl := expandedRequirementsByControl(items)
+	var rows [][]string
+	for _, detection := range catalog.Detections {
+		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
+		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
+		sourceCapabilityStatus := sourceCapabilityStatusForDetection(detection, capabilitySources)
+		for _, ref := range controlRefs {
+			for _, item := range byControl[controlRefKey(ref)] {
+				requirementMatchStatus := findingRequirementMatchStatus(detection, item)
+				claimStatus := findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus)
+				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus)
+				rows = append(rows, coverageGapExplanationRow(explanation, requirementMatchStatus))
+			}
+		}
+	}
+	sortRows(rows)
+	return rows
+}
+
+func coverageGapExplanationRow(explanation coverageops.CoverageGapExplanation, requirementMatchStatus string) []string {
+	return []string{
+		explanation.FindingID,
+		explanation.FindingName,
+		explanation.FindingPackID,
+		explanation.FindingSourceID,
+		explanation.FindingEvaluationMode,
+		explanation.ControlRef,
+		explanation.ControlFamily,
+		explanation.RequirementProfile,
+		explanation.RequirementSourceID,
+		explanation.RequirementEntityType,
+		string(explanation.CoverageState),
+		explanation.ClaimStatus,
+		requirementMatchStatus,
+		explanation.ComplianceEvidenceStatus,
+		explanation.SourceCapabilityStatus,
+		abbreviateCSVCell(explanation.Explanation, 96),
+		joinLimitedStrings(coverageGraphFactLabels(explanation.GraphEvidence), 3),
+		joinLimitedStrings(coverageEvidenceFactLabels(explanation.BoundedEvidence), 2),
+		joinLimitedStrings(coverageCitationLabels(explanation.SourceCitations), 2),
+		joinLimitedStrings(coverageCitationLabels(explanation.PolicyCitations), 2),
+		joinList(coverageMissingDimensionLabels(explanation.MissingDimensions)),
+		coverageFreshnessLabel(explanation.Freshness),
+		joinLimitedStrings(coverageProvenanceLabels(explanation.Provenance), 1),
+		explanation.Confidence,
+		joinList(explanation.UnsupportedClaims),
+		explanation.Owner,
+		explanation.ManualReviewState,
+		explanation.EvidencePacketReadiness,
+		explanation.NextAction,
+		abbreviateCSVCell(explanation.OverclaimGuard, 96),
+		"",
+		explanation.LLMContext.Question,
+		joinList(explanation.LLMContext.AnswerBasis),
+		joinList(explanation.LLMContext.MissingDimensions),
+		"",
+		"",
+		joinList(explanation.PolicyDocumentRefs),
+		joinList(explanation.ExceptionRefs),
+		joinList(explanation.RemediationRefs),
+	}
+}
+
+func coverageExplanationForRequirement(detection publicDetection, ref controlRef, item expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string, claimStatus string) coverageops.CoverageGapExplanation {
+	return coverageops.BuildCoverageGapExplanation(coverageops.CoverageGapExplanationInput{
+		CoverageFindingContext: coverageops.CoverageFindingContext{
+			FindingID:             strings.TrimSpace(detection.ID),
+			FindingName:           strings.TrimSpace(detection.Name),
+			FindingSourceID:       strings.TrimSpace(detection.SourceID),
+			FindingEvaluationMode: strings.TrimSpace(detection.EvaluationMode),
+			FindingPackID:         strings.TrimSpace(detection.PackID),
+			Control:               coverageControlRef(ref),
+			ControlFamily:         strings.TrimSpace(ref.Family),
+		},
+		CoverageRequirementContext: coverageops.CoverageRequirementContext{
+			RequirementProfile:      strings.TrimSpace(item.ProfileID),
+			RequirementSourceID:     strings.TrimSpace(item.SourceRequirement.SourceID),
+			RequirementEntityType:   strings.TrimSpace(item.SourceRequirement.EntityType),
+			RequiredFields:          item.SourceRequirement.RequiredFields,
+			FreshnessWindow:         strings.TrimSpace(item.SourceRequirement.FreshnessWindow),
+			PolicyDocumentRequired:  policyDocumentRequiredForRequirement(item),
+			ManualReviewRequired:    manualReviewRequiredForRequirement(item),
+			ExceptionReviewRequired: false,
+		},
+		CoverageClaimContext: coverageops.CoverageClaimContext{
+			ClaimRuleID:              strings.TrimSpace(item.ClaimRuleID),
+			ClaimStrength:            strings.TrimSpace(item.SourceRequirement.ClaimStrength),
+			CoverageClaim:            strings.TrimSpace(item.SourceRequirement.CoverageClaim),
+			OverclaimGuard:           strings.TrimSpace(item.SourceRequirement.OverclaimGuard),
+			AdjacentControlRationale: strings.TrimSpace(item.SourceRequirement.AdjacentControlRationale),
+			ComplianceEvidenceStatus: strings.TrimSpace(review.ComplianceEvidenceStatus),
+			SourceCapabilityStatus:   strings.TrimSpace(sourceCapabilityStatus),
+			ClaimStatus:              strings.TrimSpace(claimStatus),
+		},
+		CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
+			SourceFacts:        coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, item),
+			PolicyDocumentRefs: policyDocumentRefsForRequirement(detection, item),
+		},
+	})
+}
+
+func bestCoverageExplanationForRequirements(detection publicDetection, ref controlRef, requirements []expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string) coverageops.CoverageGapExplanation {
+	var best coverageops.CoverageGapExplanation
+	bestRank := 1000
+	for _, requirement := range requirements {
+		matchStatus := findingRequirementMatchStatus(detection, requirement)
+		claimStatus := findingRequirementClaimStatus(review.ComplianceEvidenceStatus, matchStatus, sourceCapabilityStatus)
+		explanation := coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus)
+		rank := claimStatusRank(claimStatus)
+		if best.Version == "" || rank < bestRank {
+			best = explanation
+			bestRank = rank
+		}
+	}
+	if best.Version != "" {
+		return best
+	}
+	return coverageops.BuildCoverageGapExplanation(coverageops.CoverageGapExplanationInput{
+		CoverageFindingContext: coverageops.CoverageFindingContext{
+			FindingID:             strings.TrimSpace(detection.ID),
+			FindingName:           strings.TrimSpace(detection.Name),
+			FindingSourceID:       strings.TrimSpace(detection.SourceID),
+			FindingEvaluationMode: strings.TrimSpace(detection.EvaluationMode),
+			FindingPackID:         strings.TrimSpace(detection.PackID),
+			Control:               coverageControlRef(ref),
+			ControlFamily:         strings.TrimSpace(ref.Family),
+		},
+		CoverageClaimContext: coverageops.CoverageClaimContext{
+			ComplianceEvidenceStatus: strings.TrimSpace(review.ComplianceEvidenceStatus),
+			SourceCapabilityStatus:   strings.TrimSpace(sourceCapabilityStatus),
+			ClaimStatus:              "requirement_missing",
+		},
+		CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
+			SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}),
+		},
+	})
+}
+
+func policyDocumentRequiredForRequirement(item expandedControlEvidenceRequirement) bool {
+	sourceID := strings.TrimSpace(item.SourceRequirement.SourceID)
+	profileID := strings.TrimSpace(item.ProfileID)
+	return sourceID == "grc_policy_repository" ||
+		strings.Contains(profileID, "governance") ||
+		strings.Contains(profileID, "change")
+}
+
+func manualReviewRequiredForRequirement(item expandedControlEvidenceRequirement) bool {
+	sourceID := strings.TrimSpace(item.SourceRequirement.SourceID)
+	return sourceID == "control_owner_review" || sourceID == "manual_review"
+}
+
+func policyDocumentRefsForRequirement(detection publicDetection, item expandedControlEvidenceRequirement) []string {
+	if !policyDocumentRequiredForRequirement(item) {
+		return nil
+	}
+	if id := strings.TrimSpace(detection.ID); id != "" {
+		return []string{"policy-placeholder:" + id}
+	}
+	return nil
+}
+
+func coverageSourceFactsForRequirement(refs []publicDetectionSourceCoverageRef, control controlRef, item expandedControlEvidenceRequirement) []coverageops.CoverageSourceFactInput {
+	var facts []coverageops.CoverageSourceFactInput
+	requiredSource := strings.TrimSpace(item.SourceRequirement.SourceID)
+	controlKey := controlRefKey(control)
+	for _, ref := range refs {
+		sourceID := strings.TrimSpace(ref.SourceID)
+		matchedRefs := publicDetectionControlRefs(ref.MatchedControlRefs, nil)
+		matchesControl := false
+		for _, matched := range matchedRefs {
+			if controlRefKey(matched) == controlKey {
+				matchesControl = true
+				break
+			}
+		}
+		if requiredSource != "" && !strings.EqualFold(sourceID, requiredSource) && !matchesControl {
+			continue
+		}
+		facts = append(facts, coverageops.CoverageSourceFactInput{
+			SourceID:      sourceID,
+			DimensionID:   strings.TrimSpace(ref.DimensionID),
+			DimensionType: strings.TrimSpace(ref.DimensionType),
+			SupportLevel:  strings.TrimSpace(ref.SupportLevel),
+			HighValue:     ref.HighValue,
+			EvidenceTypes: ref.EvidenceTypes,
+			ControlRefs:   coverageControlRefs(matchedRefs),
+			ProvenanceURNs: []string{
+				"coverage:" + sourceCoverageRefLabel(ref),
+			},
+		})
+	}
+	return facts
+}
+
+func coverageControlRef(ref controlRef) coverageops.ControlRef {
+	return coverageops.ControlRef{FrameworkName: strings.TrimSpace(ref.Framework), ControlID: strings.TrimSpace(ref.ControlID)}
+}
+
+func coverageControlRefs(refs []controlRef) []coverageops.ControlRef {
+	out := make([]coverageops.ControlRef, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, coverageControlRef(ref))
+	}
+	return out
+}
+
+func coverageGraphFactLabels(facts []coverageops.CoverageGraphFact) []string {
+	labels := make([]string, 0, len(facts))
+	for _, fact := range facts {
+		label := strings.TrimSpace(shortCoverageNode(fact.From) + ">" + fact.Relation + ">" + shortCoverageNode(fact.To))
+		if fact.Basis != "" && len(fact.Basis) <= 48 {
+			label += " [" + fact.Basis + "]"
+		}
+		labels = append(labels, label)
+	}
+	return uniqueSorted(labels)
+}
+
+func shortCoverageNode(node string) string {
+	kind, value, ok := strings.Cut(strings.TrimSpace(node), ":")
+	if !ok {
+		return strings.TrimSpace(node)
+	}
+	switch kind {
+	case "finding":
+		return "finding"
+	case "control":
+		return "control"
+	case "requirement":
+		return "requirement"
+	case "source_fact":
+		return "source:" + value
+	case "source_requirement":
+		return "source_requirement:" + value
+	default:
+		return kind + ":" + value
+	}
+}
+
+func coverageEvidenceFactLabels(facts []coverageops.CoverageEvidenceFact) []string {
+	labels := make([]string, 0, len(facts))
+	for _, fact := range facts {
+		parts := []string{strings.TrimSpace(fact.SourceID + "/" + fact.DimensionID)}
+		if fact.DimensionType != "" {
+			parts = append(parts, "type="+fact.DimensionType)
+		}
+		if fact.SupportLevel != "" {
+			parts = append(parts, "support="+fact.SupportLevel)
+		}
+		if len(fact.EvidenceTypes) != 0 {
+			parts = append(parts, "evidence_types="+fmt.Sprint(len(fact.EvidenceTypes)))
+		}
+		labels = append(labels, strings.Join(parts, " "))
+	}
+	return uniqueSorted(labels)
+}
+
+func coverageCitationLabels(citations []coverageops.CoverageCitation) []string {
+	labels := make([]string, 0, len(citations))
+	for _, citation := range citations {
+		parts := []string{strings.TrimSpace(citation.Surface + ":" + citation.Reference)}
+		if citation.Status != "" {
+			parts = append(parts, "status="+citation.Status)
+		}
+		if len(citation.URNs) != 0 {
+			parts = append(parts, "urn_count="+fmt.Sprint(len(citation.URNs)))
+		}
+		labels = append(labels, strings.TrimSpace(strings.Join(parts, " ")))
+	}
+	return uniqueSorted(labels)
+}
+
+func coverageFreshnessLabel(freshness coverageops.CoverageFreshness) string {
+	parts := []string{}
+	if freshness.Requirement != "" {
+		parts = append(parts, "requirement="+freshness.Requirement)
+	}
+	if freshness.Status != "" {
+		parts = append(parts, "status="+freshness.Status)
+	}
+	if len(freshness.Signals) != 0 {
+		parts = append(parts, "signals="+joinList(freshness.Signals))
+	}
+	return strings.Join(parts, " ")
+}
+
+func coverageMissingDimensionLabels(dimensions []coverageops.CoverageMissingDimension) []string {
+	labels := make([]string, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		parts := []string{strings.TrimSpace(dimension.SourceID + " " + dimension.EntityType)}
+		labels = append(labels, strings.TrimSpace(strings.Join(parts, " ")))
+	}
+	return uniqueSorted(labels)
+}
+
+func coverageProvenanceLabels(items []coverageops.CoverageProvenance) []string {
+	labels := make([]string, 0, len(items))
+	for _, item := range items {
+		parts := []string{strings.TrimSpace(item.Surface)}
+		if item.Scope != "" {
+			parts = append(parts, "scope="+item.Scope)
+		}
+		if item.Status != "" {
+			parts = append(parts, "status="+item.Status)
+		}
+		if len(item.URNs) != 0 {
+			parts = append(parts, "urn_count="+fmt.Sprint(len(item.URNs)))
+		}
+		labels = append(labels, strings.Join(parts, " "))
+	}
+	return uniqueSorted(labels)
+}
+
+func abbreviateCSVCell(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return strings.TrimSpace(value[:limit-3]) + "..."
 }
 
 func bestFindingRequirementClaimStatus(detection publicDetection, requirements []expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string) string {
@@ -4296,24 +4740,25 @@ func workbookManifestRows() [][]string {
 		workbookManifestRow(6, "Coverage Candidates", "framework_coverage_candidates.csv", "framework control work item", "framework; control_id; candidate_type", "What author or evidence work should happen next?", "derived from framework control enrichment", true),
 		workbookManifestRow(7, "Control Requirements", "control_evidence_requirements.csv", "control evidence requirement", "framework; control_id; requirement_profile; requirement_source_id", "What evidence does each control require?", "internal/compliance/control_evidence_requirements.yaml plus framework_sources.yaml", true),
 		workbookManifestRow(8, "Finding Requirements", "finding_evidence_requirement_map.csv", "finding-control-requirement link", "finding_id; framework; control_id; requirement_profile; requirement_source_id", "Which requirement source does each mapped finding point toward?", "public catalog plus control evidence requirements", true),
-		workbookManifestRow(9, "Finding Map", "finding_map.csv", "public finding", "finding_id", "What controls, tags, evidence, and review signals attach to each finding?", "internal/findings/public_detection_catalog.json", true),
-		workbookManifestRow(10, "Finding Controls", "finding_control_map.csv", "finding-control link", "finding_id; framework; control_id", "Which control links are source-backed, direct-only, or review-needed?", "public catalog source coverage refs", true),
-		workbookManifestRow(11, "Finding Tag Contract", "finding_compliance_tag_contract.csv", "finding-control compliance tag", "finding_id; tag; control_ref", "Which compliance tags can become runtime metadata and which remain review-only?", "public catalog control refs plus control evidence requirements", true),
-		workbookManifestRow(12, "Finding Review", "finding_compliance_review_map.csv", "public finding review row", "finding_id", "Which findings need audit-language, source, or control review?", "policy_rule_extensions.yaml plus public catalog", true),
-		workbookManifestRow(13, "Source Coverage", "source_coverage_map.csv", "finding source coverage ref", "finding_id; coverage_source_id; coverage_dimension_id", "Which source coverage refs support or extend finding controls?", "public catalog source coverage refs", true),
-		workbookManifestRow(14, "Source Capability Review", "source_capability_review_map.csv", "source capability", "source_id; dimension_id", "Where do YAML capabilities and catalog coverage differ?", "internal/compliance/evidence_capabilities.yaml", true),
-		workbookManifestRow(15, "Evidence Capabilities", "evidence_capabilities.csv", "YAML source capability", "source_id; dimension_id", "What can each source and dimension support?", "internal/compliance/evidence_capabilities.yaml", true),
-		workbookManifestRow(16, "Framework Enrichment", "framework_control_enrichment_map.csv", "framework control", "framework; control_id", "What direct findings, source capabilities, and review context enrich each control?", "derived from all mapping layers", true),
-		workbookManifestRow(17, "Review Areas", "framework_review_areas.csv", "framework review area", "framework; area_id", "How should controls be grouped for reviewer queues?", "internal/compliance/framework_review_areas.yaml", false),
-		workbookManifestRow(18, "Control Relationships", "control_relationships.csv", "control relationship", "framework; control_id; related_framework; related_control_id", "Which controls should be reviewed together?", "internal/compliance/control_relationships.yaml", false),
-		workbookManifestRow(19, "Finding Review Areas", "finding_review_area_map.csv", "finding review-area link", "finding_id; framework; area_id", "Which findings enter each framework review queue?", "review areas plus direct control refs", false),
-		workbookManifestRow(20, "Finding Relationships", "finding_control_relationship_map.csv", "finding control relationship link", "finding_id; framework; control_id; related_control_id", "Which related controls should be inspected with each finding?", "control relationships plus direct control refs", false),
-		workbookManifestRow(21, "Policy Map", "policy_map.csv", "policy rule", "rule_id", "What YAML policy metadata, controls, tags, and audit language exist?", "policies/**/*.yaml", false),
-		workbookManifestRow(22, "Policy Controls", "control_map.csv", "policy-control link", "rule_id; framework; control_id", "Which policy rules map to each framework control?", "policies/**/*.yaml", false),
-		workbookManifestRow(23, "Policy Tags", "tag_map.csv", "policy-tag link", "rule_id; tag", "Which metadata and derived tags route each policy?", "policies/**/*.yaml", false),
-		workbookManifestRow(24, "Finding Tags", "finding_tag_map.csv", "finding-tag link", "finding_id; tag", "Which catalog and derived review tags attach to each finding?", "public catalog plus control refs", false),
-		workbookManifestRow(25, "Domain Aliases", "finding_domain_aliases.csv", "finding domain alias", "match_type; match_value", "How are non-policy findings assigned audit domains?", "internal/compliance/policy_rule_extensions.yaml", false),
-		workbookManifestRow(26, "YAML Layers", "yaml_layers.csv", "audit language layer", "scope_type; scope", "Which YAML layer supplied default audit language?", "internal/compliance/policy_rule_extensions.yaml", false),
+		workbookManifestRow(9, "Coverage Explanations", "coverage_gap_explanations.csv", "finding-control-requirement explanation", "finding_id; control_ref; requirement_profile; requirement_source_id", "Why is coverage source-backed, partial, or missing, and what bounded evidence can an agent cite?", "internal/compliance coverage explanation contract plus generated mapping layers", true),
+		workbookManifestRow(10, "Finding Map", "finding_map.csv", "public finding", "finding_id", "What controls, tags, evidence, and review signals attach to each finding?", "internal/findings/public_detection_catalog.json", true),
+		workbookManifestRow(11, "Finding Controls", "finding_control_map.csv", "finding-control link", "finding_id; framework; control_id", "Which control links are source-backed, direct-only, or review-needed?", "public catalog source coverage refs", true),
+		workbookManifestRow(12, "Finding Tag Contract", "finding_compliance_tag_contract.csv", "finding-control compliance tag", "finding_id; tag; control_ref", "Which compliance tags can become runtime metadata and which remain review-only?", "public catalog control refs plus control evidence requirements", true),
+		workbookManifestRow(13, "Finding Review", "finding_compliance_review_map.csv", "public finding review row", "finding_id", "Which findings need audit-language, source, or control review?", "policy_rule_extensions.yaml plus public catalog", true),
+		workbookManifestRow(14, "Source Coverage", "source_coverage_map.csv", "finding source coverage ref", "finding_id; coverage_source_id; coverage_dimension_id", "Which source coverage refs support or extend finding controls?", "public catalog source coverage refs", true),
+		workbookManifestRow(15, "Source Capability Review", "source_capability_review_map.csv", "source capability", "source_id; dimension_id", "Where do YAML capabilities and catalog coverage differ?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(16, "Evidence Capabilities", "evidence_capabilities.csv", "YAML source capability", "source_id; dimension_id", "What can each source and dimension support?", "internal/compliance/evidence_capabilities.yaml", true),
+		workbookManifestRow(17, "Framework Enrichment", "framework_control_enrichment_map.csv", "framework control", "framework; control_id", "What direct findings, source capabilities, and review context enrich each control?", "derived from all mapping layers", true),
+		workbookManifestRow(18, "Review Areas", "framework_review_areas.csv", "framework review area", "framework; area_id", "How should controls be grouped for reviewer queues?", "internal/compliance/framework_review_areas.yaml", false),
+		workbookManifestRow(19, "Control Relationships", "control_relationships.csv", "control relationship", "framework; control_id; related_framework; related_control_id", "Which controls should be reviewed together?", "internal/compliance/control_relationships.yaml", false),
+		workbookManifestRow(20, "Finding Review Areas", "finding_review_area_map.csv", "finding review-area link", "finding_id; framework; area_id", "Which findings enter each framework review queue?", "review areas plus direct control refs", false),
+		workbookManifestRow(21, "Finding Relationships", "finding_control_relationship_map.csv", "finding control relationship link", "finding_id; framework; control_id; related_control_id", "Which related controls should be inspected with each finding?", "control relationships plus direct control refs", false),
+		workbookManifestRow(22, "Policy Map", "policy_map.csv", "policy rule", "rule_id", "What YAML policy metadata, controls, tags, and audit language exist?", "policies/**/*.yaml", false),
+		workbookManifestRow(23, "Policy Controls", "control_map.csv", "policy-control link", "rule_id; framework; control_id", "Which policy rules map to each framework control?", "policies/**/*.yaml", false),
+		workbookManifestRow(24, "Policy Tags", "tag_map.csv", "policy-tag link", "rule_id; tag", "Which metadata and derived tags route each policy?", "policies/**/*.yaml", false),
+		workbookManifestRow(25, "Finding Tags", "finding_tag_map.csv", "finding-tag link", "finding_id; tag", "Which catalog and derived review tags attach to each finding?", "public catalog plus control refs", false),
+		workbookManifestRow(26, "Domain Aliases", "finding_domain_aliases.csv", "finding domain alias", "match_type; match_value", "How are non-policy findings assigned audit domains?", "internal/compliance/policy_rule_extensions.yaml", false),
+		workbookManifestRow(27, "YAML Layers", "yaml_layers.csv", "audit language layer", "scope_type; scope", "Which YAML layer supplied default audit language?", "internal/compliance/policy_rule_extensions.yaml", false),
 	)
 	return rows
 }
@@ -4352,10 +4797,11 @@ func logicRows() [][]string {
 		{"16", "control evidence requirements", "Expand first-class evidence requirements from internal/compliance/control_evidence_requirements.yaml across every framework control, then join them with source capabilities, catalog evidence expectations, and framework source metadata."},
 		{"17", "claim rules", "Apply framework-specific claim strength, sufficiency rule, coverage claim, overclaim guard, and adjacent-control rationale before exporting requirement rows."},
 		{"18", "claim status", "Compute claim status from source coverage, requirement matches, and framework control coverage instead of letting a control reference imply coverage."},
-		{"19", "tag contract", "Export control-derived compliance tags with runtime export policy, claim status, source basis, and guardrails. Runtime candidates require source evidence or partial source evidence."},
-		{"20", "coverage candidates", "Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."},
-		{"21", "workbook manifest", "Emit a sheet-order manifest with row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table."},
-		{"22", "spreadsheet", "Generate CSV rows from YAML, the public catalog, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
+		{"19", "coverage explanations", "Build internal/compliance CoverageGapExplanation objects with graph path facts, bounded evidence, missing dimensions, freshness, provenance, owner state, next action, and overclaim guard before writing spreadsheet rows."},
+		{"20", "tag contract", "Export control-derived compliance tags with runtime export policy, claim status, source basis, and guardrails. Runtime candidates require source evidence or partial source evidence."},
+		{"21", "coverage candidates", "Create author review rows for controls that need source backing, source-backed findings, mapping review, or scope decisions before coverage can be claimed."},
+		{"22", "workbook manifest", "Emit a sheet-order manifest with row grain, primary keys, review questions, source authority, and default workbook inclusion for every generated table."},
+		{"23", "spreadsheet", "Generate CSV rows from YAML, the public catalog, coverage explanations, and derived review layers. Do not edit spreadsheet rows back into source by hand."},
 	}
 }
 
@@ -4554,6 +5000,24 @@ func findingEvidenceRequirementMapHeader() []string {
 		"framework_version", "framework_lifecycle", "framework_authority",
 		"framework_source_type", "framework_source_status", "framework_source_url",
 		"framework_evidence_model",
+	}
+}
+
+func coverageGapExplanationsHeader() []string {
+	return []string{
+		"finding_id", "name", "pack_id", "source_id", "evaluation_mode",
+		"control_ref", "control_family", "requirement_profile",
+		"requirement_source_id", "requirement_entity_type",
+		"coverage_state", "claim_status", "requirement_match_status",
+		"compliance_evidence_status", "source_capability_status",
+		"explanation", "graph_evidence", "bounded_evidence",
+		"source_citations", "policy_citations", "missing_dimensions",
+		"freshness", "provenance", "confidence", "unsupported_claims",
+		"owner", "manual_review_state",
+		"evidence_packet_readiness", "next_action", "overclaim_guard",
+		"adjacent_control_rationale", "llm_question", "llm_answer_basis",
+		"llm_missing_dimensions", "llm_next_action", "llm_overclaim_guard",
+		"policy_document_refs", "exception_refs", "remediation_refs",
 	}
 }
 
