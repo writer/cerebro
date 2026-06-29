@@ -1063,6 +1063,28 @@ func TestGenerateAssetOnlySkipsUnusedFindingHelper(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectionTestsEveryFamily(t *testing.T) {
+	outputDir := t.TempDir()
+	if _, err := Generate(Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host", "database"},
+		OutputDir:    outputDir,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	projectionTest := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source_test.go")
+	for _, want := range []string{
+		"TestDemoSourceAssetProjection",
+		"TestDemoSourceAssetDatabaseProjection",
+		"demoSourceAssetHostProjections",
+		"demoSourceAssetDatabaseProjections",
+	} {
+		if !strings.Contains(projectionTest, want) {
+			t.Fatalf("projection test missing %q:\n%s", want, projectionTest)
+		}
+	}
+}
+
 func FuzzGenerateDryRun(f *testing.F) {
 	f.Add("demo_source", AuthModelBearerToken, "host", "vulnerability", "2h", "/readyz", "auth_error")
 	f.Add("demo-source", AuthModelAPIToken, "asset", "", "24h", "/healthz", "rate_limit")
