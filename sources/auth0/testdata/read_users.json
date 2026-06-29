@@ -1,14 +1,32 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "auth0-user-auth0-user-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/users/v1",
+    "payload": {
+      "user_id": "auth0|user-1",
+      "name": "User One",
+      "email": "user@example.test",
+      "created_at": "2026-05-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "blocked": false,
+      "email_verified": true
+    },
+    "attributes": {
+      "display_name": "User One",
+      "email": "user@example.test",
+      "primary_email": "user@example.test",
+      "resource_id": "auth0|user-1",
+      "resource_name": "User One",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:runtime_users:auth0%7Cuser-1",
+      "source_event_id": "auth0|user-1",
+      "status": "active",
+      "tenant_id": "tenant",
+      "user_id": "auth0|user-1"
     }
-  ]
-}
+  }
+]
