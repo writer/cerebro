@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const ContractVersion = "2026-06-24"
+const ContractVersion = "2026-06-29"
 
 type Response struct {
 	Version     string                `json:"version"`

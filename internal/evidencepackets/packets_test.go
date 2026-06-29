@@ -11,6 +11,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func TestContractVersionIncludesQuestionnaireAnswerFields(t *testing.T) {
+	if ContractVersion < "2026-06-29" {
+		t.Fatalf("contract version = %q, want questionnaire answer fields advertised in 2026-06-29 or later", ContractVersion)
+	}
+}
+
 func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 	observedAt := time.Unix(90, 0).UTC()
 	response := Build(grccontrol.PacketResult{
