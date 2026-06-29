@@ -166,9 +166,10 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	links := map[string]*ports.ProjectedLink{}
 	alertURN := panopticonAddAlertEntity(entities, tenantID, event.GetSourceId(), event.GetId(), attrs)
 	caseURN := panopticonAddCaseEntity(entities, tenantID, event.GetSourceId(), event.GetId(), map[string]string{
-		"case_id": firstNonEmpty(firstAttribute(attrs, "case_id"), stringValue(payload, "case_id")),
-		"title":   firstNonEmpty(firstAttribute(attrs, "case_title"), stringValue(payload, "case_title")),
-		"status":  firstNonEmpty(firstAttribute(attrs, "case_status"), stringValue(payload, "case_status")),
+		"case_id":                           firstNonEmpty(firstAttribute(attrs, "case_id"), stringValue(payload, "case_id")),
+		"title":                             firstNonEmpty(firstAttribute(attrs, "case_title"), stringValue(payload, "case_title")),
+		"status":                            firstNonEmpty(firstAttribute(attrs, "case_status"), stringValue(payload, "case_status")),
+		ports.EventAttributeSourceRuntimeID: firstAttribute(attrs, ports.EventAttributeSourceRuntimeID),
 	})
 	if caseURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), caseURN, alertURN, relationContains, panopticonLinkAttributes(event, "panopticon_case_alert")))
@@ -246,13 +247,15 @@ func panopticonIOCProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	links := map[string]*ports.ProjectedLink{}
 	iocURN := panopticonAddIOCEntity(entities, tenantID, event.GetSourceId(), event.GetId(), attrs)
 	caseURN := panopticonAddCaseEntity(entities, tenantID, event.GetSourceId(), event.GetId(), map[string]string{
-		"case_id": firstNonEmpty(firstAttribute(attrs, "case_id"), stringValue(payload, "case_id")),
+		"case_id":                           firstNonEmpty(firstAttribute(attrs, "case_id"), stringValue(payload, "case_id")),
+		ports.EventAttributeSourceRuntimeID: firstAttribute(attrs, ports.EventAttributeSourceRuntimeID),
 	})
 	if caseURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), iocURN, caseURN, relationBelongsTo, panopticonLinkAttributes(event, "panopticon_ioc_case")))
 	}
 	alertURN := panopticonAddAlertEntity(entities, tenantID, event.GetSourceId(), event.GetId(), map[string]string{
-		"alert_id": firstNonEmpty(firstAttribute(attrs, "alert_id"), stringValue(payload, "alert_id")),
+		"alert_id":                          firstNonEmpty(firstAttribute(attrs, "alert_id"), stringValue(payload, "alert_id")),
+		ports.EventAttributeSourceRuntimeID: firstAttribute(attrs, ports.EventAttributeSourceRuntimeID),
 	})
 	if alertURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, iocURN, relationHasEvidence, panopticonLinkAttributes(event, "panopticon_alert_ioc")))
@@ -295,18 +298,19 @@ func panopticonAddAlertEntity(entities map[string]*ports.ProjectedEntity, tenant
 		EntityType: "panopticon.alert",
 		Label:      firstAttribute(attrs, "title", "alert_id", "id"),
 		Attributes: compactAttributes(map[string]string{
-			"alert_id":        alertID,
-			"case_id":         firstAttribute(attrs, "case_id"),
-			"severity":        firstAttribute(attrs, "severity"),
-			"status":          firstAttribute(attrs, "status"),
-			"title":           firstAttribute(attrs, "title"),
-			"created_at":      firstAttribute(attrs, "created_at", "alert_creation_time", "initial_date", "open_date"),
-			"updated_at":      firstAttribute(attrs, "updated_at"),
-			"observed_at":     firstAttribute(attrs, "observed_at", "alert_source_event_time"),
-			"closed_at":       firstAttribute(attrs, "closed_at", "alert_closed_time", "close_date"),
-			"resolved_at":     firstAttribute(attrs, "resolved_at", "alert_resolved_time", "resolved_date"),
-			"source_event_id": firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
-			"event_id":        eventID,
+			"alert_id":                          alertID,
+			"case_id":                           firstAttribute(attrs, "case_id"),
+			"severity":                          firstAttribute(attrs, "severity"),
+			"status":                            firstAttribute(attrs, "status"),
+			"title":                             firstAttribute(attrs, "title"),
+			"created_at":                        firstAttribute(attrs, "created_at", "alert_creation_time", "initial_date", "open_date"),
+			"updated_at":                        firstAttribute(attrs, "updated_at"),
+			"observed_at":                       firstAttribute(attrs, "observed_at", "alert_source_event_time"),
+			"closed_at":                         firstAttribute(attrs, "closed_at", "alert_closed_time", "close_date"),
+			"resolved_at":                       firstAttribute(attrs, "resolved_at", "alert_resolved_time", "resolved_date"),
+			"source_event_id":                   firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
+			ports.EventAttributeSourceRuntimeID: firstAttribute(attrs, ports.EventAttributeSourceRuntimeID),
+			"event_id":                          eventID,
 		}),
 	})
 	return alertURN
@@ -325,16 +329,17 @@ func panopticonAddCaseEntity(entities map[string]*ports.ProjectedEntity, tenantI
 		EntityType: "panopticon.case",
 		Label:      firstAttribute(attrs, "title", "case_id", "id"),
 		Attributes: compactAttributes(map[string]string{
-			"case_id":         caseID,
-			"status":          firstAttribute(attrs, "status"),
-			"title":           firstAttribute(attrs, "title"),
-			"created_at":      firstAttribute(attrs, "created_at", "initial_date", "open_date"),
-			"updated_at":      firstAttribute(attrs, "updated_at"),
-			"observed_at":     firstAttribute(attrs, "observed_at"),
-			"closed_at":       firstAttribute(attrs, "closed_at", "close_date"),
-			"resolved_at":     firstAttribute(attrs, "resolved_at", "resolved_date"),
-			"source_event_id": firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
-			"event_id":        eventID,
+			"case_id":                           caseID,
+			"status":                            firstAttribute(attrs, "status"),
+			"title":                             firstAttribute(attrs, "title"),
+			"created_at":                        firstAttribute(attrs, "created_at", "initial_date", "open_date"),
+			"updated_at":                        firstAttribute(attrs, "updated_at"),
+			"observed_at":                       firstAttribute(attrs, "observed_at"),
+			"closed_at":                         firstAttribute(attrs, "closed_at", "close_date"),
+			"resolved_at":                       firstAttribute(attrs, "resolved_at", "resolved_date"),
+			"source_event_id":                   firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
+			ports.EventAttributeSourceRuntimeID: firstAttribute(attrs, ports.EventAttributeSourceRuntimeID),
+			"event_id":                          eventID,
 		}),
 	})
 	return caseURN
@@ -1880,11 +1885,15 @@ func panopticonObjects(payload map[string]any, keys ...string) []map[string]any 
 
 func panopticonCaseAlertAttributes(attrs map[string]string, payload map[string]any) []map[string]string {
 	seen := map[string]struct{}{}
+	sourceRuntimeID := firstAttribute(attrs, ports.EventAttributeSourceRuntimeID)
 	var results []map[string]string
 	add := func(values map[string]string) {
 		alertID := strings.TrimSpace(values["alert_id"])
 		if alertID == "" {
 			return
+		}
+		if sourceRuntimeID != "" && strings.TrimSpace(values[ports.EventAttributeSourceRuntimeID]) == "" {
+			values[ports.EventAttributeSourceRuntimeID] = sourceRuntimeID
 		}
 		if _, ok := seen[alertID]; ok {
 			return

@@ -351,6 +351,9 @@ func TestProjectPanopticonAlertBuildsEvidenceGraphContext(t *testing.T) {
 		t.Fatalf("alert source_runtime_id = %q, want writer-panopticon-alerts", got)
 	}
 	assertProjectedEntityType(t, state, caseURN, "panopticon.case")
+	if got := state.entities[caseURN].Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-panopticon-alerts" {
+		t.Fatalf("case source_runtime_id = %q, want writer-panopticon-alerts", got)
+	}
 	assertProjectedEntityType(t, state, iocURN, "panopticon.ioc")
 	assertProjectedEntityType(t, state, assetURN, "panopticon.asset")
 	assertProjectedLink(t, state, caseURN, relationContains, alertURN)
