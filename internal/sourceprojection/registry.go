@@ -1605,6 +1605,26 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"callfire.call":       callfireCallProjections,
 	"callfire.credential": callfireCredentialProjections,
 
+	// fire generated projectors (sourcegen promotion)
+	"fire.account": fireAccountProjections,
+	"fire.aspsp":   fireAspspProjections,
+	"fire.batche":  fireBatcheProjections,
+	"fire.user":    fireUserProjections,
+
+	// front generated projectors (sourcegen promotion)
+	"front.audit_events": frontAuditEventsProjections,
+	"front.documents":    frontDocumentsProjections,
+	"front.groups":       frontGroupsProjections,
+	"front.users":        frontUsersProjections,
+	"front.workspaces":   frontWorkspacesProjections,
+
+	// workfront generated projectors (sourcegen promotion)
+	"workfront.audit_events": workfrontAuditEventsProjections,
+	"workfront.documents":    workfrontDocumentsProjections,
+	"workfront.groups":       workfrontGroupsProjections,
+	"workfront.users":        workfrontUsersProjections,
+	"workfront.workspaces":   workfrontWorkspacesProjections,
+
 	// callrail generated projectors (sourcegen promotion)
 	"callrail.accounts":     callrailAccountsProjections,
 	"callrail.audit_events": callrailAuditEventsProjections,

@@ -22,7 +22,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("api-key"+" = %q", r.Header.Get("api-key"))
 		}
 		if r.URL.RequestURI() == "/agents?api-version=v1" {
-			w.WriteHeader(http.StatusNoContent)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
 			return
 		}
 		if r.URL.Path != "/agents" {
