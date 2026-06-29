@@ -697,10 +697,7 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 	kind := firstNonEmpty(family.URNKind, family.Name)
 	urns := make([]sourcecdk.URN, 0, len(records))
 	for _, record := range dedupeRecords(records) {
-		recordID := record.ID
-		if family.Config.EncodeURNID {
-			recordID = cerebrourn.EncodeSegment(recordID)
-		}
+		recordID := urnRecordID(family, record.ID)
 		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
 		if err != nil {
 			return nil, err
@@ -776,8 +773,36 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	for attr, path := range family.Attributes {
 		addAttribute(attrs, attr, firstValueString(record.Values, path))
 	}
+	if strings.TrimSpace(attrs["resource_urn"]) == "" {
+		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record))
+	}
 	trimEmptyAttributes(attrs)
 	return attrs
+}
+
+func urnRecordID(family Family, recordID string) string {
+	if family.Config.EncodeURNID {
+		return cerebrourn.EncodeSegment(recordID)
+	}
+	return recordID
+}
+
+func resourceURNFor(settings settings, family Family, attrs map[string]string, record record) string {
+	kind := strings.TrimSpace(family.Config.ResourceURNKind)
+	if kind == "" {
+		return ""
+	}
+	recordKind := firstNonEmpty(family.URNKind, family.Name)
+	recordID := firstNonEmpty(attrs["resource_id"], record.ID)
+	if strings.TrimSpace(attrs["resource_id"]) == "" && kind != recordKind {
+		return ""
+	}
+	recordID = urnRecordID(family, recordID)
+	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
+	if err != nil {
+		return ""
+	}
+	return urn.String()
 }
 
 func occurredAtFor(values map[string]any, keys []string) time.Time {
