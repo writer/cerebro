@@ -2287,6 +2287,27 @@ paths:
           description: Reducto parsing request failed.
         '503':
           description: Upload dependencies are unavailable.
+  /grc/policy-lifecycle/uploads/{uploadID}/replay:
+    post:
+      operationId: replayGRCPolicyUpload
+      summary: Replay uploaded policy events
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/uploadID'
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/uploadReplayLimitQuery'
+      responses:
+        '200':
+          description: Upload events replayed into the GRC graph.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCUploadReplayResponse'
+        '404':
+          description: Upload events were not found.
+        '503':
+          description: Replay dependencies are unavailable.
   /grc/dashboards:
     get:
       summary: List custom GRC dashboards
@@ -3090,6 +3111,27 @@ paths:
           description: Reducto parsing request failed.
         '503':
           description: Upload dependencies are unavailable.
+  /grc/vendors/uploads/{uploadID}/replay:
+    post:
+      operationId: replayGRCVendorUpload
+      summary: Replay uploaded vendor events
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/uploadID'
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/uploadReplayLimitQuery'
+      responses:
+        '200':
+          description: Upload events replayed into the GRC graph.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCUploadReplayResponse'
+        '404':
+          description: Upload events were not found.
+        '503':
+          description: Replay dependencies are unavailable.
   /grc/vendors/{vendorID}:
     get:
       summary: Vendor detail
@@ -4974,6 +5016,12 @@ components:
       required: true
       schema:
         type: string
+    uploadID:
+      name: uploadID
+      in: path
+      required: true
+      schema:
+        type: string
     entryID:
       name: entryID
       in: path
@@ -5020,6 +5068,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    uploadReplayLimitQuery:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
   schemas:
     A2AAgentCard:
       type: object
@@ -9695,6 +9750,8 @@ components:
           type: string
         record_urn:
           type: string
+        legacy_record_urn:
+          type: string
     GRCUploadStructuredField:
       type: object
       properties:
@@ -9704,17 +9761,126 @@ components:
           type: string
         value:
           type: string
+    GRCUploadJobRef:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+    GRCUploadParsedChunk:
+      type: object
+      properties:
+        index:
+          type: integer
+        page:
+          type: integer
+        text_preview:
+          type: string
+    GRCUploadParseArtifact:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [reducto]
+        provider_file_id:
+          type: string
+        parse_id:
+          type: string
+        status:
+          type: string
+        text_preview:
+          type: string
+        chunk_count:
+          type: integer
+        page_count:
+          type: integer
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadParsedChunk'
+    GRCUploadExtractedField:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        source:
+          type: string
+        confidence:
+          type: number
+          format: double
+        source_snippet:
+          type: string
+        review_state:
+          type: string
+          enum: [ready_to_project, needs_field_review]
+    GRCUploadReviewItem:
+      type: object
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum: [open, resolved]
+        record_kind:
+          type: string
+        record_id:
+          type: string
+        field:
+          type: string
+        value:
+          type: string
+        reason:
+          type: string
+        action:
+          type: string
+        source_snippet:
+          type: string
+    GRCUploadQualityCheck:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [passed, warning, needs_review]
+        message:
+          type: string
+        action:
+          type: string
+    GRCUploadEntityMatchHint:
+      type: object
+      properties:
+        record_kind:
+          type: string
+        record_id:
+          type: string
+        match_key:
+          type: string
+        strategy:
+          type: string
+        candidate_state:
+          type: string
+          enum: [dedupe_candidate]
     GRCUploadResponse:
       type: object
       properties:
         upload_id:
           type: string
+        status:
+          type: string
+          enum: [events_built, projected, projection_partial, needs_review, failed]
         target:
           type: string
           enum: [policy, vendor]
         file_name:
           type: string
         content_type:
+          type: string
+        file_sha256:
           type: string
         reducto_file_id:
           type: string
@@ -9738,6 +9904,39 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCUploadStructuredField'
+        projection_status:
+          type: string
+          enum: [projected, projection_partial]
+        projection_failures:
+          type: integer
+        review_state:
+          type: string
+          enum: [ready_to_project, needs_review]
+        quality_status:
+          type: string
+          enum: [passed, warning, needs_review]
+        replayable:
+          type: boolean
+        job:
+          $ref: '#/components/schemas/GRCUploadJobRef'
+        parse_artifact:
+          $ref: '#/components/schemas/GRCUploadParseArtifact'
+        extracted_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadExtractedField'
+        review_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadReviewItem'
+        quality_checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadQualityCheck'
+        entity_match_hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadEntityMatchHint'
         events:
           type: array
           items:
@@ -9745,6 +9944,24 @@ components:
         generated_at:
           type: string
           format: date-time
+    GRCUploadReplayResponse:
+      type: object
+      properties:
+        upload_id:
+          type: string
+        status:
+          type: string
+          enum: [projected, projection_partial]
+        events_found:
+          type: integer
+        events_projected:
+          type: integer
+        entities_projected:
+          type: integer
+        links_projected:
+          type: integer
+        projection_failures:
+          type: integer
     GRCPolicyVersionDiff:
       type: object
       properties:

@@ -1649,24 +1649,94 @@ export type GRCProgramReadinessResponse = {
   work_items?: Record<string, unknown>[];
 };
 
+export type GRCUploadEntityMatchHint = {
+  candidate_state?: "dedupe_candidate";
+  match_key?: string;
+  record_id?: string;
+  record_kind?: string;
+  strategy?: string;
+};
+
 export type GRCUploadEvent = {
   event_id?: string;
   event_kind?: string;
+  legacy_record_urn?: string;
   record_id?: string;
   record_urn?: string;
   schema_ref?: string;
 };
 
+export type GRCUploadExtractedField = {
+  confidence?: number;
+  name?: string;
+  review_state?: "ready_to_project" | "needs_field_review";
+  source?: string;
+  source_snippet?: string;
+  value?: string;
+};
+
+export type GRCUploadJobRef = {
+  id?: string;
+  status?: "queued" | "running" | "completed" | "failed" | "cancelled";
+};
+
+export type GRCUploadParseArtifact = {
+  chunk_count?: number;
+  chunks?: GRCUploadParsedChunk[];
+  page_count?: number;
+  parse_id?: string;
+  provider?: "reducto";
+  provider_file_id?: string;
+  status?: string;
+  text_preview?: string;
+};
+
+export type GRCUploadParsedChunk = {
+  index?: number;
+  page?: number;
+  text_preview?: string;
+};
+
+export type GRCUploadQualityCheck = {
+  action?: string;
+  id?: string;
+  message?: string;
+  status?: "passed" | "warning" | "needs_review";
+};
+
+export type GRCUploadReplayResponse = {
+  entities_projected?: number;
+  events_found?: number;
+  events_projected?: number;
+  links_projected?: number;
+  projection_failures?: number;
+  status?: "projected" | "projection_partial";
+  upload_id?: string;
+};
+
 export type GRCUploadResponse = {
   chunk_count?: number;
   content_type?: string;
+  entity_match_hints?: GRCUploadEntityMatchHint[];
   events?: GRCUploadEvent[];
+  extracted_fields?: GRCUploadExtractedField[];
   file_name?: string;
+  file_sha256?: string;
   generated_at?: string;
+  job?: GRCUploadJobRef;
   page_count?: number;
+  parse_artifact?: GRCUploadParseArtifact;
   parse_status?: string;
+  projection_failures?: number;
+  projection_status?: "projected" | "projection_partial";
+  quality_checks?: GRCUploadQualityCheck[];
+  quality_status?: "passed" | "warning" | "needs_review";
   reducto_file_id?: string;
   reducto_parse_id?: string;
+  replayable?: boolean;
+  review_items?: GRCUploadReviewItem[];
+  review_state?: "ready_to_project" | "needs_review";
+  status?: "events_built" | "projected" | "projection_partial" | "needs_review" | "failed";
   structure_schema?: string;
   structure_status?: string;
   structured_fields?: GRCUploadStructuredField[];
@@ -1674,6 +1744,18 @@ export type GRCUploadResponse = {
   target?: "policy" | "vendor";
   text_preview?: string;
   upload_id?: string;
+};
+
+export type GRCUploadReviewItem = {
+  action?: string;
+  field?: string;
+  id?: string;
+  reason?: string;
+  record_id?: string;
+  record_kind?: string;
+  source_snippet?: string;
+  state?: "open" | "resolved";
+  value?: string;
 };
 
 export type GRCUploadStructuredField = {

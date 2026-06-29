@@ -53,6 +53,24 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if response.StructureStatus != "structured" || response.StructureSchema != "grc_upload_v1" || response.StructuredSummary != "Access policy summary" || len(response.StructuredFields) != 2 {
 		t.Fatalf("structured response fields = %#v", response)
 	}
+	if response.Status != "events_built" || response.ReviewState != "ready_to_project" || response.QualityStatus != "passed" {
+		t.Fatalf("upload states = status %q review %q quality %q", response.Status, response.ReviewState, response.QualityStatus)
+	}
+	if response.ParseArtifact == nil || response.ParseArtifact.Provider != "reducto" || response.ParseArtifact.TextPreview != "Access policy body." {
+		t.Fatalf("parse artifact = %#v", response.ParseArtifact)
+	}
+	if len(response.ExtractedFields) == 0 {
+		t.Fatal("extracted fields are empty")
+	}
+	if len(response.ReviewItems) != 0 {
+		t.Fatalf("review items = %#v, want none for complete policy fields", response.ReviewItems)
+	}
+	if len(response.QualityChecks) == 0 {
+		t.Fatal("quality checks are empty")
+	}
+	if len(response.EntityMatchHints) == 0 || response.EntityMatchHints[0].MatchKey != "policy:access-policy" {
+		t.Fatalf("entity match hints = %#v", response.EntityMatchHints)
+	}
 	if len(events) != 2 || len(response.Events) != 2 {
 		t.Fatalf("events length = %d, response refs = %d, want 2", len(events), len(response.Events))
 	}
@@ -82,6 +100,12 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if got := policy.GetAttributes()["structured_field_count"]; got != "2" {
 		t.Fatalf("structured_field_count = %q", got)
 	}
+	if got := policy.GetAttributes()["upload_review_state"]; got != response.ReviewState {
+		t.Fatalf("upload_review_state = %q, want response value", got)
+	}
+	if _, ok := policy.GetAttributes()["parse_artifact_json"]; ok {
+		t.Fatal("policy event included parse_artifact_json")
+	}
 	if _, ok := policy.GetAttributes()["ignored"]; ok {
 		t.Fatal("policy event included unapproved upload field")
 	}
@@ -100,11 +124,23 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if got := document.GetAttributes()["document_type"]; got != "policy" {
 		t.Fatalf("document_type = %q, want policy", got)
 	}
+	if got := document.GetAttributes()["upload_status"]; got != "parsed" {
+		t.Fatalf("document upload_status = %q, want parsed", got)
+	}
 	if _, ok := document.GetAttributes()["legacy_record_urn"]; ok {
 		t.Fatal("document included legacy_record_urn for unchanged encoding")
 	}
 	if got := document.GetAttributes()["owner_id"]; got != "owner-1" {
 		t.Fatalf("owner_id = %q, want owner-1", got)
+	}
+	if got := document.GetAttributes()["upload_review_state"]; got != response.ReviewState {
+		t.Fatalf("document upload_review_state = %q, want response value", got)
+	}
+	if got := document.GetAttributes()["parse_artifact_json"]; got == "" {
+		t.Fatal("document parse_artifact_json attr is empty")
+	}
+	if _, ok := document.GetAttributes()["review_items_json"]; ok {
+		t.Fatal("document included review_items_json for upload with no review items")
 	}
 
 	var payload map[string]any
@@ -159,6 +195,9 @@ func TestBuildEventsBuildsVendorAndAssuranceDocumentEvents(t *testing.T) {
 	}
 	if got := vendor.GetAttributes()["website_url"]; got != "https://contoso.example" {
 		t.Fatalf("website_url = %q, want configured value", got)
+	}
+	if len(response.ReviewItems) < 2 {
+		t.Fatalf("review items = %#v, want missing risk and owner items", response.ReviewItems)
 	}
 
 	document := events[1]
@@ -261,10 +300,61 @@ func TestStableUploadIDIgnoresParserIDsAndClock(t *testing.T) {
 		},
 	})
 
-	left := stableUploadID(request, ParsedDocument{ProviderFileID: "file-1"}, time.Date(2026, 6, 28, 10, 30, 0, 0, time.UTC))
-	right := stableUploadID(request, ParsedDocument{ProviderFileID: "file-2"}, time.Date(2026, 6, 28, 10, 31, 0, 0, time.UTC))
+	left := stableUploadID(request)
+	right := stableUploadID(request)
 	if left != right {
 		t.Fatalf("stableUploadID() = %q then %q, want retry-stable ID", left, right)
+	}
+}
+
+func TestNewUploadIDIgnoresParserIDsAndClock(t *testing.T) {
+	left := NewUploadID(UploadRequest{
+		Target:      TargetPolicy,
+		TenantID:    "tenant-1",
+		SourceID:    "upload-source",
+		RuntimeID:   "runtime-1",
+		FileName:    "Access Policy.pdf",
+		ContentType: "application/pdf",
+		FileSize:    42,
+		Fields:      map[string]string{"policy_id": "access-policy"},
+	})
+	right := NewUploadID(UploadRequest{
+		Target:      TargetPolicy,
+		TenantID:    "tenant-1",
+		SourceID:    "upload-source",
+		RuntimeID:   "runtime-1",
+		FileName:    "Access Policy.pdf",
+		ContentType: "application/pdf",
+		FileSize:    42,
+		Fields:      map[string]string{"policy_id": "access-policy"},
+	})
+	if left == "" || left != right {
+		t.Fatalf("NewUploadID() = %q then %q, want stable non-empty ID", left, right)
+	}
+}
+
+func TestNewUploadIDDefaultsSourceID(t *testing.T) {
+	withoutSource := NewUploadID(UploadRequest{
+		Target:      TargetPolicy,
+		TenantID:    "tenant-1",
+		RuntimeID:   "runtime-1",
+		FileName:    "Access Policy.pdf",
+		ContentType: "application/pdf",
+		FileSize:    42,
+		Fields:      map[string]string{"policy_id": "access-policy"},
+	})
+	withDefaultSource := NewUploadID(UploadRequest{
+		Target:      TargetPolicy,
+		TenantID:    "tenant-1",
+		SourceID:    "grc",
+		RuntimeID:   "runtime-1",
+		FileName:    "Access Policy.pdf",
+		ContentType: "application/pdf",
+		FileSize:    42,
+		Fields:      map[string]string{"policy_id": "access-policy"},
+	})
+	if withoutSource == "" || withoutSource != withDefaultSource {
+		t.Fatalf("NewUploadID() = %q without source, %q with default source; want same non-empty ID", withoutSource, withDefaultSource)
 	}
 }
 

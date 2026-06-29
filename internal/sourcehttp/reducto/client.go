@@ -293,6 +293,7 @@ func parsedDocumentFromPayload(payload any) grcupload.ParsedDocument {
 		StructureSchema:   grcUploadStructureSchema,
 		StructuredSummary: structuredSummary,
 		StructuredFields:  structuredFields,
+		Chunks:            parsedChunks(chunks),
 	}
 }
 
@@ -327,7 +328,27 @@ func mergeParsedDocument(left grcupload.ParsedDocument, right grcupload.ParsedDo
 	if len(left.StructuredFields) == 0 {
 		left.StructuredFields = right.StructuredFields
 	}
+	if len(left.Chunks) == 0 {
+		left.Chunks = right.Chunks
+	}
 	return left
+}
+
+func parsedChunks(chunks []any) []grcupload.ParsedChunk {
+	result := make([]grcupload.ParsedChunk, 0, len(chunks))
+	for index, chunk := range chunks {
+		text := truncateRunes(compactWhitespace(strings.Join(contentStrings(chunk), " ")), 240)
+		page := lookupFirstInt(chunk, "page", "page_number")
+		if text == "" && page == 0 {
+			continue
+		}
+		result = append(result, grcupload.ParsedChunk{
+			Index:       index + 1,
+			Page:        page,
+			TextPreview: text,
+		})
+	}
+	return result
 }
 
 func readJSON(reader io.Reader, maxBytes int64) (any, error) {
