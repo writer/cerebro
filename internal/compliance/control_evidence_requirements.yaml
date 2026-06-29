@@ -532,6 +532,7 @@ profiles:
       frameworks:
         - CCPA
         - GDPR
+        - HIPAA
         - ISO 27701
         - ISO 27701:2025
       family_keywords:
@@ -568,11 +569,94 @@ profiles:
         freshness_window: 30d
         assessment_methods: [examine, test]
         auditor_grade_evidence: Request evidence shows intake, identity verification, response state, completion time, and any approved exception.
+      - source_id: consent_preference_platform
+        entity_type: privacy_preference_record
+        required_fields:
+          - subject_id
+          - jurisdiction
+          - preference_type
+          - collection_notice_version
+          - consent_state
+          - opt_out_state
+          - effective_at
+          - last_synced_at
+        freshness_window: 30d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Preference evidence ties the person, jurisdiction, notice version, consent or opt-out state, effective date, and sync status to the privacy obligation.
+      - source_id: breach_response_system
+        entity_type: privacy_incident_record
+        required_fields:
+          - incident_id
+          - affected_data_categories
+          - affected_subject_count
+          - discovered_at
+          - notification_deadline
+          - regulator_notice_state
+          - subject_notice_state
+          - closure_state
+        freshness_window: 24h
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: Privacy incident evidence shows affected data, discovery time, notification clocks, regulator and subject notice states, closure state, and approved exceptions.
+  - profile_id: hipaa-safeguards
+    name: HIPAA Safeguard Evidence
+    applies_to:
+      frameworks:
+        - HIPAA
+      family_keywords:
+        - Safeguards
+        - Breach
+        - Documentation
+        - Organizational
+    source_requirements:
+      - source_id: phi_system_inventory
+        entity_type: phi_system_record
+        required_fields:
+          - system_id
+          - owner
+          - phi_data_categories
+          - access_control_state
+          - audit_control_state
+          - encryption_state
+          - transmission_security_state
+          - last_reviewed_at
+        freshness_window: 30d
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: PHI system evidence identifies the system, owner, PHI categories, access controls, audit controls, encryption, transmission security, and review date.
+      - source_id: hipaa_risk_assessment
+        entity_type: hipaa_risk_record
+        required_fields:
+          - risk_id
+          - safeguard_ref
+          - system_id
+          - likelihood
+          - impact
+          - treatment_plan
+          - owner
+          - reviewed_at
+        freshness_window: 365d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: HIPAA risk evidence shows the safeguard, affected system, risk rating, treatment plan, owner, review date, and acceptance or remediation state.
+      - source_id: business_associate_register
+        entity_type: business_associate_agreement
+        required_fields:
+          - vendor_id
+          - phi_access_scope
+          - agreement_id
+          - effective_at
+          - renewal_at
+          - security_obligations
+          - breach_notice_terms
+          - owner
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Business associate evidence ties the vendor, PHI access scope, agreement period, security obligations, breach notice terms, and accountable owner to the safeguard.
   - profile_id: ai-governance
     name: AI Governance Evidence
     applies_to:
       frameworks:
+        - EU AI Act
         - ISO 42001
+        - NIST AI RMF 1.0
       family_keywords:
         - Artificial Intelligence
         - Model
@@ -604,6 +688,34 @@ profiles:
         freshness_window: 90d
         assessment_methods: [examine, test]
         auditor_grade_evidence: AI evaluation evidence shows the tested system, risk area, method, result, mitigation, owner, and evaluation date.
+      - source_id: ai_control_runtime
+        entity_type: ai_runtime_control_state
+        required_fields:
+          - system_id
+          - model_version
+          - control_name
+          - control_state
+          - threshold
+          - observed_value
+          - alert_route
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Runtime AI control evidence shows the system, model version, configured control, threshold, observed value, alert route, and observation time.
+      - source_id: ai_deployer_review
+        entity_type: ai_deployer_obligation_record
+        required_fields:
+          - system_id
+          - deployer_role
+          - risk_class
+          - transparency_notice_state
+          - human_oversight_state
+          - operator_training_state
+          - monitoring_owner
+          - last_reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: Deployer evidence shows system role, risk class, transparency notice state, human oversight, operator training, monitoring owner, and review date.
   - profile_id: payment-card-security
     name: Payment Card Evidence
     applies_to:

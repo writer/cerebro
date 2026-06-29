@@ -4682,3 +4682,344 @@ sources:
             control_id: A.5.14
           - framework: SOC 2
             control_id: CC6.6
+  - source_id: data_inventory
+    name: Data Inventory
+    purpose: Declare source-backed processing activity, personal data category, purpose, legal basis, retention, and owner evidence for privacy obligations.
+    dimensions:
+      - dimension_id: processing_activities
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - processing_activity
+        evidence_types:
+          - privacy_inventory
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - compliance_operations
+        control_refs:
+          - framework: GDPR
+            control_id: Article 5
+          - framework: GDPR
+            control_id: Article 6
+          - framework: GDPR
+            control_id: Article 24
+          - framework: GDPR
+            control_id: Article 30
+          - framework: CCPA
+            control_id: 1798.100
+          - framework: CCPA
+            control_id: 1798.110
+          - framework: CCPA
+            control_id: 1798.115
+  - source_id: privacy_request_system
+    name: Privacy Request System
+    purpose: Declare source-backed data subject and consumer request intake, verification, response, exception, and completion evidence.
+    dimensions:
+      - dimension_id: rights_requests
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - data_subject_request
+          - consumer_request
+        evidence_types:
+          - privacy_request
+          - workflow_state
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: GDPR
+            control_id: Article 12
+          - framework: GDPR
+            control_id: Article 15
+          - framework: GDPR
+            control_id: Article 16
+          - framework: GDPR
+            control_id: Article 17
+          - framework: GDPR
+            control_id: Article 18
+          - framework: GDPR
+            control_id: Article 20
+          - framework: GDPR
+            control_id: Article 21
+          - framework: CCPA
+            control_id: 1798.105
+          - framework: CCPA
+            control_id: 1798.106
+          - framework: CCPA
+            control_id: 1798.120
+          - framework: CCPA
+            control_id: 1798.121
+          - framework: CCPA
+            control_id: 1798.125
+          - framework: CCPA
+            control_id: 1798.130
+  - source_id: consent_preference_platform
+    name: Consent Preference Platform
+    purpose: Declare source-backed notice version, consent, opt-out, sensitive-use limitation, and preference sync evidence.
+    dimensions:
+      - dimension_id: consent_preferences
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - privacy_preference
+        evidence_types:
+          - privacy_preference
+          - consent_record
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: GDPR
+            control_id: Article 7
+          - framework: GDPR
+            control_id: Article 13
+          - framework: GDPR
+            control_id: Article 14
+          - framework: CCPA
+            control_id: 1798.120
+          - framework: CCPA
+            control_id: 1798.121
+          - framework: CCPA
+            control_id: 1798.135
+  - source_id: breach_response_system
+    name: Breach Response System
+    purpose: Declare source-backed privacy incident, notification clock, affected subject, regulator notice, subject notice, and closure evidence.
+    dimensions:
+      - dimension_id: privacy_incidents
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - privacy_incident
+          - breach_notification
+        evidence_types:
+          - incident_response
+          - privacy_breach
+        control_domains:
+          - security_operations
+        control_refs:
+          - framework: GDPR
+            control_id: Article 32
+          - framework: GDPR
+            control_id: Article 33
+          - framework: GDPR
+            control_id: Article 34
+          - framework: CCPA
+            control_id: 1798.150
+          - framework: HIPAA
+            control_id: 164.308(a)(6)
+          - framework: HIPAA
+            control_id: 164.404(a)
+          - framework: HIPAA
+            control_id: 164.406(a)
+          - framework: HIPAA
+            control_id: 164.408(a)
+  - source_id: phi_system_inventory
+    name: PHI System Inventory
+    purpose: Declare source-backed PHI system owner, data category, access control, audit control, encryption, and transmission security evidence.
+    dimensions:
+      - dimension_id: phi_systems
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - phi_system
+        evidence_types:
+          - regulated_data_control
+          - source_snapshot
+        control_domains:
+          - data_protection
+          - logging_monitoring
+        control_refs:
+          - framework: HIPAA
+            control_id: 164.312
+          - framework: HIPAA
+            control_id: 164.312(a)(1)
+          - framework: HIPAA
+            control_id: 164.312(a)(2)(i)
+          - framework: HIPAA
+            control_id: 164.312(a)(2)(iii)
+          - framework: HIPAA
+            control_id: 164.312(a)(2)(iv)
+          - framework: HIPAA
+            control_id: 164.312(b)
+          - framework: HIPAA
+            control_id: 164.312(c)(1)
+          - framework: HIPAA
+            control_id: 164.312(d)
+          - framework: HIPAA
+            control_id: 164.312(e)(1)
+          - framework: HIPAA
+            control_id: 164.312(e)(2)(ii)
+  - source_id: hipaa_risk_assessment
+    name: HIPAA Risk Assessment
+    purpose: Declare source-backed HIPAA risk analysis, risk treatment, safeguard owner, review date, and acceptance evidence.
+    dimensions:
+      - dimension_id: safeguard_risk_records
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - hipaa_risk_record
+        evidence_types:
+          - risk_assessment
+          - control_owner_review
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: HIPAA
+            control_id: 164.308(a)(1)(i)
+          - framework: HIPAA
+            control_id: 164.308(a)(1)(ii)(A)
+          - framework: HIPAA
+            control_id: 164.308(a)(1)(ii)(B)
+          - framework: HIPAA
+            control_id: 164.316(a)
+  - source_id: business_associate_register
+    name: Business Associate Register
+    purpose: Declare source-backed business associate agreement, PHI access scope, security obligation, breach term, renewal, and owner evidence.
+    dimensions:
+      - dimension_id: business_associate_agreements
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - business_associate_agreement
+        evidence_types:
+          - third_party_risk
+          - contract_evidence
+        control_domains:
+          - vendor_risk
+        control_refs:
+          - framework: HIPAA
+            control_id: 164.308(b)(1)
+          - framework: HIPAA
+            control_id: 164.314(a)(1)
+  - source_id: ai_system_register
+    name: AI System Register
+    purpose: Declare source-backed AI system identity, owner, intended use, risk class, data source, approval, and review evidence.
+    dimensions:
+      - dimension_id: ai_system_records
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - ai_system
+          - ai_model
+        evidence_types:
+          - ai_inventory
+          - ai_governance
+        control_domains:
+          - asset_inventory
+          - compliance_operations
+        control_refs:
+          - framework: ISO 42001
+            control_id: 6.1
+          - framework: ISO 42001
+            control_id: 6.2
+          - framework: ISO 42001
+            control_id: A.2.2
+          - framework: ISO 42001
+            control_id: A.5.2
+          - framework: EU AI Act
+            control_id: Art.9
+          - framework: EU AI Act
+            control_id: Art.11
+          - framework: EU AI Act
+            control_id: Art.16
+          - framework: EU AI Act
+            control_id: Art.26
+  - source_id: ai_evaluation_store
+    name: AI Evaluation Store
+    purpose: Declare source-backed AI risk evaluation, test method, result, mitigation, and evaluation-date evidence.
+    dimensions:
+      - dimension_id: ai_risk_evaluations
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - ai_risk_evaluation
+          - model_evaluation
+        evidence_types:
+          - ai_evaluation
+          - risk_assessment
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: ISO 42001
+            control_id: 8.4
+          - framework: ISO 42001
+            control_id: 9.4
+          - framework: ISO 42001
+            control_id: A.6.2.4
+          - framework: ISO 42001
+            control_id: A.7.4
+          - framework: EU AI Act
+            control_id: Art.10
+          - framework: EU AI Act
+            control_id: Art.15
+          - framework: EU AI Act
+            control_id: Art.27
+  - source_id: ai_control_runtime
+    name: AI Control Runtime
+    purpose: Declare source-backed AI runtime control state, thresholds, observed values, alert route, and observation-time evidence.
+    dimensions:
+      - dimension_id: ai_runtime_control_states
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - ai_runtime_control
+          - model_monitoring
+        evidence_types:
+          - ai_monitoring
+          - logging_configuration
+        control_domains:
+          - logging_monitoring
+          - security_operations
+        control_refs:
+          - framework: ISO 42001
+            control_id: 9.1
+          - framework: ISO 42001
+            control_id: 10.1
+          - framework: ISO 42001
+            control_id: A.8.2
+          - framework: EU AI Act
+            control_id: Art.12
+          - framework: EU AI Act
+            control_id: Art.72
+  - source_id: ai_deployer_review
+    name: AI Deployer Review
+    purpose: Declare source-backed deployer role, transparency notice, human oversight, operator training, monitoring owner, and review evidence.
+    dimensions:
+      - dimension_id: ai_deployer_obligations
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - ai_deployer_obligation
+        evidence_types:
+          - ai_governance
+          - control_owner_review
+        control_domains:
+          - compliance_operations
+        control_refs:
+          - framework: ISO 42001
+            control_id: 7.2
+          - framework: ISO 42001
+            control_id: 7.3
+          - framework: ISO 42001
+            control_id: A.8.3
+          - framework: ISO 42001
+            control_id: A.9.2
+          - framework: EU AI Act
+            control_id: Art.13
+          - framework: EU AI Act
+            control_id: Art.14
+          - framework: EU AI Act
+            control_id: Art.26
+          - framework: EU AI Act
+            control_id: Art.50
