@@ -53,7 +53,7 @@ spec:
                 - scoped_applications
                 - source_policy_rule
     evidence:
-        type: identity_governance
+        type: identity_configuration
         assessmentMethods:
             - examine
             - test
@@ -73,7 +73,7 @@ spec:
             - policy_id
             - policy_rule_id
     audit:
-        evidenceType: identity_governance
+        evidenceType: identity_configuration
         assessmentMethods:
             - examine
             - test
@@ -133,7 +133,7 @@ spec:
                    'Require MFA on the sign-on policy rule or narrow the scope to an approved exception' AS action,
                    [rule.urn, policy.urn] AS resource_urns,
                    [{urn: policy.urn, label: policy.label, entity_type: policy.entity_type, relation: 'belongs_to', attributes_json: coalesce(policy.attributes_json, '')}] + scoped_targets AS evidence,
-                   {evidence_basis: 'okta_sign_on_policy_rule_scope_graph_path', confidence: 'high', remediation_intent: 'Require MFA on the Okta sign-on policy rule or narrow exception scope', mfa_state: 'rule_requires_mfa_false', source_provenance: 'okta.policy_rule graph node with projected policy_type, access, and requires_mfa source attributes plus scoped targeted/depends_on edges for OKTA_SIGN_ON policy_type', limitation: 'Requires the Okta policy_rule source family to project actions.signon.access and actions.signon.requireFactor into graph attributes; ACCESS_POLICY app sign-on MFA/factor sequence data is not evaluated until the Okta source extracts actions.appSignOn evidence.'} AS finding_attributes
+                   {evidence_basis: 'okta_sign_on_policy_rule_scope_graph_path', confidence: 'high', remediation_intent: 'Require MFA on the Okta sign-on policy rule or narrow exception scope', mfa_state: 'rule_requires_mfa_false', source_provenance: 'okta.policy_rule graph node with projected policy_type/access/requires_mfa fields plus scoped targeted/depends_on edges for OKTA_SIGN_ON policy_type', limitation: 'Requires Okta policy_rule projection to carry actions.signon.access and actions.signon.requireFactor; ACCESS_POLICY app sign-on MFA/factor sequence data is not evaluated until actions.appSignOn evidence is extracted.'} AS finding_attributes
             ORDER BY rule.urn
             LIMIT $row_limit
         rowLimit: 500
