@@ -613,6 +613,47 @@ func TestFinalizeUsesSortedReviewMetadata(t *testing.T) {
 	}
 }
 
+func TestPolicySnippetNeedsReviewUsesActionableStates(t *testing.T) {
+	tests := []struct {
+		name    string
+		snippet grcPolicyEvidenceSnippetItem
+		want    bool
+	}{
+		{
+			name:    "needs review",
+			snippet: grcPolicyEvidenceSnippetItem{ManualReviewState: "needs_review", ReviewState: "ready_to_project"},
+			want:    true,
+		},
+		{
+			name:    "field review",
+			snippet: grcPolicyEvidenceSnippetItem{ManualReviewState: "needs_field_review"},
+			want:    true,
+		},
+		{
+			name:    "ready",
+			snippet: grcPolicyEvidenceSnippetItem{ManualReviewState: "ready_to_project"},
+			want:    false,
+		},
+		{
+			name:    "reviewed",
+			snippet: grcPolicyEvidenceSnippetItem{ManualReviewState: "reviewed"},
+			want:    false,
+		},
+		{
+			name:    "peer reviewed",
+			snippet: grcPolicyEvidenceSnippetItem{ManualReviewState: "peer_reviewed"},
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := grcPolicySnippetNeedsReview(tt.snippet); got != tt.want {
+				t.Fatalf("grcPolicySnippetNeedsReview(%+v) = %t, want %t", tt.snippet, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPolicyIDFallsBackToURNWhenPolicyIDMissing(t *testing.T) {
 	left := policyLifecycleTestRow("urn:source-a:policy:policy-1", "policy", "Access A", map[string]string{"policy_type": "policy"})
 	right := policyLifecycleTestRow("urn:source-b:policy:policy-1", "policy", "Access B", map[string]string{"policy_type": "policy"})
@@ -948,6 +989,31 @@ func TestAuditExportRowsIncludesUndatedGovernanceGapsInWindow(t *testing.T) {
 		}
 	}
 	t.Fatalf("rows = %+v, want undated governance gap in windowed export", rows)
+}
+
+func TestAuditExportRowsIncludesEvidenceSnippetsInWindow(t *testing.T) {
+	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)
+	response := Response{
+		Policies: []grcPolicyLifecyclePolicy{{
+			ID:    "access-policy",
+			Title: "Access Policy",
+		}},
+		EvidenceSnippets: []grcPolicyEvidenceSnippetItem{{
+			ID:                "snippet-ready",
+			PolicyID:          "access-policy",
+			PolicyCitations:   []string{"Access reviews are performed quarterly."},
+			ManualReviewState: "ready_to_project",
+		}},
+	}
+
+	rows := AuditExportRows(response, ExportWindow{Start: &start, End: &end})
+	for _, row := range rows {
+		if row[0] == "policy.evidence_snippet" && row[1] == "snippet-ready" {
+			return
+		}
+	}
+	t.Fatalf("rows = %+v, want policy evidence snippet in windowed export", rows)
 }
 
 func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {

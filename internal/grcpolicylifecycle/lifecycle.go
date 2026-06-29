@@ -1532,8 +1532,8 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 }
 
 func grcPolicySnippetNeedsReview(snippet grcPolicyEvidenceSnippetItem) bool {
-	state := firstNonEmpty(snippet.ManualReviewState, snippet.ReviewState)
-	return strings.Contains(strings.ToLower(state), "review")
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(snippet.ManualReviewState, snippet.ReviewState)))
+	return state == "needs_review" || strings.HasPrefix(state, "needs_")
 }
 
 func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, rules []grcPolicyGovernanceRule, events []grcPolicyLifecycleEventItem, now time.Time) []grcPolicyGovernanceGap {

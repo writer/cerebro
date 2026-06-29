@@ -51,6 +51,11 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 			{Key: "summary", Label: "Summary", Value: "Access policy summary"},
 			{Key: "owner", Value: "Owner 1"},
 		},
+		Chunks: []ParsedChunk{{
+			Index:       1,
+			Page:        2,
+			TextPreview: "Access reviews are performed before privileged access is approved.",
+		}},
 	}, now)
 	if err != nil {
 		t.Fatalf("BuildEvents() error = %v", err)
@@ -82,8 +87,8 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if len(response.EntityMatchHints) == 0 || response.EntityMatchHints[0].MatchKey != "policy:access-policy" {
 		t.Fatalf("entity match hints = %#v", response.EntityMatchHints)
 	}
-	if len(events) != 4 || len(response.Events) != 4 {
-		t.Fatalf("events length = %d, response refs = %d, want 4", len(events), len(response.Events))
+	if len(events) != 3 || len(response.Events) != 3 {
+		t.Fatalf("events length = %d, response refs = %d, want 3", len(events), len(response.Events))
 	}
 
 	policy := events[0]
@@ -187,8 +192,8 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	if firstSnippet.GetKind() != "grc.policy_evidence_snippet" || firstSnippet.GetSchemaRef() != SchemaRefPolicySnippet {
 		t.Fatalf("snippet event = %#v, ref = %#v", firstSnippet, response.Events[2])
 	}
-	if got := firstSnippet.GetAttributes()["snippet_text"]; got != "Access policy summary" {
-		t.Fatalf("snippet_text = %q, want structured field text", got)
+	if got := firstSnippet.GetAttributes()["snippet_text"]; got != "Access reviews are performed before privileged access is approved." {
+		t.Fatalf("snippet_text = %q, want parsed policy section text", got)
 	}
 	if got := firstSnippet.GetAttributes()["review_state"]; got != "ready_to_project" {
 		t.Fatalf("snippet review_state = %q, want ready_to_project", got)

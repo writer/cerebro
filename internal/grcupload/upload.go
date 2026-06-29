@@ -409,16 +409,11 @@ func policyEvidenceSnippets(parsed ParsedDocument) []policyEvidenceSnippet {
 		if len(items) >= maxPolicyEvidenceSnippets {
 			break
 		}
-		value := truncateRunes(compactWhitespace(field.Value), maxPolicySnippetChars)
-		if value == "" {
+		snippet, ok := policyStructuredFieldEvidenceSnippet(field)
+		if !ok {
 			continue
 		}
-		label := firstNonEmpty(field.Label, field.Key)
-		items = append(items, policyEvidenceSnippet{
-			sectionID:    slug(firstNonEmpty(field.Key, label)),
-			sectionTitle: label,
-			text:         value,
-		})
+		items = append(items, snippet)
 	}
 	for _, chunk := range parsed.Chunks {
 		if len(items) >= maxPolicyEvidenceSnippets {
@@ -447,6 +442,37 @@ func policyEvidenceSnippets(parsed ParsedDocument) []policyEvidenceSnippet {
 		})
 	}
 	return items
+}
+
+func policyStructuredFieldEvidenceSnippet(field StructuredField) (policyEvidenceSnippet, bool) {
+	if !policyStructuredFieldLooksLikeCitation(field) {
+		return policyEvidenceSnippet{}, false
+	}
+	value := truncateRunes(compactWhitespace(field.Value), maxPolicySnippetChars)
+	if value == "" {
+		return policyEvidenceSnippet{}, false
+	}
+	label := firstNonEmpty(field.Label, field.Key)
+	return policyEvidenceSnippet{
+		sectionID:    slug(firstNonEmpty(field.Key, label)),
+		sectionTitle: label,
+		text:         value,
+	}, true
+}
+
+func policyStructuredFieldLooksLikeCitation(field StructuredField) bool {
+	key := strings.ToLower(strings.TrimSpace(field.Key))
+	label := strings.ToLower(strings.TrimSpace(field.Label))
+	switch key {
+	case "summary", "owner", "owner_id", "approver", "approving_authority", "status", "version", "effective_at", "approved_at", "last_reviewed_at", "next_review_due_at", "review_cadence", "source_url", "source_provenance", "control_ids", "question_ids":
+		return false
+	}
+	for _, token := range []string{"citation", "excerpt", "section", "requirement", "procedure", "standard", "policy_text", "policy_statement"} {
+		if strings.Contains(key, token) || strings.Contains(label, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func policySnippetID(policyID string, documentID string, index int, text string) string {
