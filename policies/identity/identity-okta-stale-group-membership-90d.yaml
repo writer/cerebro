@@ -90,7 +90,8 @@ spec:
                  CASE WHEN attrs CONTAINS '"last_login_at":"' THEN split(split(attrs, '"last_login_at":"')[1], '"')[0] ELSE '' END AS last_login_at
             WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
               AND last_login_at <> ''
-              AND datetime(last_login_at) < datetime() - duration('P90D')
+              AND last_login_at =~ '^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9].*'
+              AND last_login_at < substring(toString(datetime() - duration('P90D')), 0, 19)
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,
                    user.entity_type AS primary_type,
@@ -101,7 +102,7 @@ spec:
                    [user.urn, group.urn] AS resource_urns,
                    [{urn: group.urn, label: group.label, entity_type: group.entity_type, relation: 'member_of', attributes_json: coalesce(group.attributes_json, '')}] +
                    [a IN apps | {urn: a.urn, label: a.label, entity_type: a.entity_type, relation: 'assigned_to', attributes_json: coalesce(a.attributes_json, '')}] AS evidence,
-                   {evidence_basis: 'okta_last_login_at_to_group_membership_graph_path', confidence: 'medium', remediation_intent: 'Review group access and remove stale Okta membership when no business need remains', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus okta.group_membership member_of edge', limitation: 'Requires last_login_at source evidence; stale login is review evidence, not proof the account is unused in every downstream system.'} AS finding_attributes
+                   {evidence_basis: 'okta_last_login_at_to_group_membership_graph_path', confidence: 'medium', remediation_intent: 'Review group access and remove stale Okta membership when no business need remains', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user ISO-shaped last_login_at source fact plus okta.group_membership member_of edge', limitation: 'Requires last_login_at source evidence; malformed login timestamps are ignored instead of parsed. Stale login is review evidence, not proof the account is unused in every downstream system.'} AS finding_attributes
             ORDER BY user.urn, group.urn
             LIMIT $row_limit
         rowLimit: 500
