@@ -256,6 +256,10 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 			t.Fatalf("dimension %s families = %#v, want %q", want.id, dimension.Families, want.requiredFamily)
 		}
 	}
+	groupMemberships := dimensions["group_memberships"]
+	if !hasString(groupMemberships.Notes, "Generic group collection lists group records; full Okta source projection supports membership edges through dedicated group membership events.") {
+		t.Fatalf("group_memberships notes = %#v, want connector/source catalog support distinction", groupMemberships.Notes)
+	}
 }
 
 func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {

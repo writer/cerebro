@@ -137,6 +137,8 @@ entries:
                 - group_membership
               high_value: true
               id: group_memberships
+              notes:
+                - Generic group collection lists group records; full Okta source projection supports membership edges through dedicated group membership events.
               support: partial
               title: Group memberships
               type: relationship
