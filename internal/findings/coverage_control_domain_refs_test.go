@@ -167,6 +167,104 @@ func TestSourceCoverageExplicitRefsCanMatchSourceWithoutDimensionOrEvidence(t *t
 	}
 }
 
+func TestSourceCoveragePrefersSpecificDimensionOverSourceOnlyExactControl(t *testing.T) {
+	detection := PublicDetection{
+		ID:       "github-webhook-modified",
+		SourceID: "github",
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "source_control_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "github",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{
+				ID:            "programmatic_credentials",
+				Type:          "app_entitlement",
+				Families:      []string{"personal_access_token"},
+				Support:       sourcecdk.CoverageSupportPartial,
+				EvidenceTypes: []string{"identity_configuration"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+			{
+				ID:            "webhooks",
+				Type:          "app_entitlement",
+				Families:      []string{"webhook"},
+				Support:       sourcecdk.CoverageSupportPartial,
+				EvidenceTypes: []string{"change_management"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+		},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want only webhook-specific coverage: %#v", len(refs), refs)
+	}
+	if refs[0].DimensionID != "webhooks" {
+		t.Fatalf("DimensionID = %q, want webhooks", refs[0].DimensionID)
+	}
+}
+
+func TestPolicySourceCoverageIgnoresGenericAuditFamilyBoilerplate(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "github-actions-dangerous-trigger",
+		Description: "Flags failed resource-state evidence. Audit impact: source control evidence may not satisfy controls. Workflow uses pull_request_target.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"github", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "source_control_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "github",
+		Dimensions: []sourcecdk.CoverageDimension{
+			{
+				ID:            "organization_authentication_policy",
+				Type:          "entity_family",
+				Families:      []string{"audit"},
+				Support:       sourcecdk.CoverageSupportPartial,
+				EvidenceTypes: []string{"identity_configuration"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+			{
+				ID:            "actions_workflow_content",
+				Type:          "entity_family",
+				Families:      []string{"pull_request_target"},
+				Support:       sourcecdk.CoverageSupportPartial,
+				EvidenceTypes: []string{"change_management"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			},
+		},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want only workflow content coverage: %#v", len(refs), refs)
+	}
+	if refs[0].DimensionID != "actions_workflow_content" {
+		t.Fatalf("DimensionID = %q, want actions_workflow_content", refs[0].DimensionID)
+	}
+}
+
 func TestPolicySourceCoverageExplicitRefsRequireDimensionMatch(t *testing.T) {
 	detection := PublicDetection{
 		ID:       "aws-load-balancer-network-posture",

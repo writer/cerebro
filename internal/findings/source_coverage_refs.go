@@ -95,6 +95,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 	if len(candidates) == 0 {
 		return nil
 	}
+	candidates = pruneSourceOnlyCoverageCandidates(candidates)
 	sort.Slice(candidates, func(i int, j int) bool {
 		left := candidates[i]
 		right := candidates[j]
@@ -145,6 +146,26 @@ type sourceCoverageCandidate struct {
 	dimensionMatched   bool
 	evidenceMatched    bool
 	matchedControlRefs int
+}
+
+func pruneSourceOnlyCoverageCandidates(candidates []sourceCoverageCandidate) []sourceCoverageCandidate {
+	hasSpecificMatch := false
+	for _, candidate := range candidates {
+		if candidate.dimensionMatched || candidate.evidenceMatched {
+			hasSpecificMatch = true
+			break
+		}
+	}
+	if !hasSpecificMatch {
+		return candidates
+	}
+	pruned := candidates[:0]
+	for _, candidate := range candidates {
+		if candidate.dimensionMatched || candidate.evidenceMatched {
+			pruned = append(pruned, candidate)
+		}
+	}
+	return pruned
 }
 
 func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
@@ -277,11 +298,27 @@ func dimensionMatchesDetection(dimension sourcecdk.CoverageDimension, searchText
 		return true
 	}
 	for _, family := range dimension.Families {
+		if genericCoverageFamilyRequiresGenericDimension(dimension.ID, family) {
+			continue
+		}
 		if coverageTextContains(searchText, family) {
 			return true
 		}
 	}
 	return false
+}
+
+func genericCoverageFamilyRequiresGenericDimension(dimensionID string, family string) bool {
+	switch normalizeCoverageText(family) {
+	case "audit":
+		return normalizeCoverageText(dimensionID) != "audit_events"
+	case "repository":
+		return normalizeCoverageText(dimensionID) != "repositories"
+	case "org_inventory":
+		return normalizeCoverageText(dimensionID) != "organization_members"
+	default:
+		return false
+	}
 }
 
 func evidenceMatchesDetection(evidenceType string, dimensionEvidenceTypes []string) bool {
