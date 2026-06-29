@@ -1,34 +1,34 @@
 metric,value
-policy finding rules,1500
-policy-control rows,10021
-tag rows,14986
-unique tags,1021
+policy finding rules,1506
+policy-control rows,10044
+tag rows,15034
+unique tags,1023
 domains,36
 frameworks,23
 
 all finding metric,value
-public detections,1586
+public detections,1592
 non-policy detections,86
-finding-control rows,10205
-finding-tag rows,38451
-source-coverage rows,4304
-finding compliance review rows,1586
-unique finding review tags,1573
+finding-control rows,10228
+finding-tag rows,38550
+source-coverage rows,4213
+finding compliance review rows,1592
+unique finding review tags,1575
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,346
-detections source-backed,409
-detections partial source-backed,831
-detections control-only,346
+detections missing source coverage refs,393
+detections source-backed,415
+detections partial source-backed,784
+detections control-only,393
 
 evidence mode,rules
 cel,992
-query,507
+query,513
 graph,1
 
 domain,rules
-identity,427
+identity,433
 github,346
 aws,135
 cerebro,122
@@ -66,9 +66,9 @@ graph,1
 telemetry,1
 
 framework,rules
-SOC 2,1406
-NIST 800-53 r5,1029
-ISO 27001:2022,964
+SOC 2,1412
+NIST 800-53 r5,1030
+ISO 27001:2022,970
 CIS Controls v8,513
 PCI DSS v4.0.1,428
 CIS AWS Foundations Benchmark v2.0,50
@@ -91,11 +91,11 @@ CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1555
+event,1561
 graph,31
 
 finding pack,detections
-policy,1500
+policy,1506
 github,15
 grc,15
 identity,15
@@ -128,7 +128,7 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1499
+policy,1505
 github,16
 grc,12
 sentinelone,9
@@ -163,9 +163,9 @@ trivy,1
 trusted_endpoint,1
 
 finding framework,control rows
-NIST 800-53 r5,3014
-SOC 2,2738
-ISO 27001:2022,1855
+NIST 800-53 r5,3016
+SOC 2,2750
+ISO 27001:2022,1864
 CIS Controls v8,1136
 PCI DSS v4.0.1,962
 ISO 42001,139
@@ -189,7 +189,7 @@ CIS Google Workspace Benchmark,1
 NIST SP 800-177,1
 
 finding audit domain,detections
-identity,461
+identity,467
 github,307
 aws,142
 vulnerability,107

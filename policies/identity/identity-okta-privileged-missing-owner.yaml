@@ -1,0 +1,57 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-okta-privileged-missing-owner
+    name: Okta Privileged Account Missing Lifecycle Owner
+    description: Detects active Okta admin role assignments where the user record has no manager or owner evidence.
+    tags:
+        - okta
+        - identity
+        - privileged-access
+        - owner-evidence
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: okta_admin_role
+    match:
+        query: SELECT DISTINCT r.user_id AS id, COALESCE(u.login, r.user_login, r.user_id) AS account_name, r.role_type, r.role_label, u.manager, u.manager_id FROM okta_admin_roles r LEFT JOIN okta_users u ON u.id = r.user_id WHERE LOWER(COALESCE(u.status, 'active')) IN ('active','enabled','provisioned','onboarded') AND COALESCE(TRIM(u.manager_id), TRIM(u.manager), '') = ''
+    remediation:
+        summary: Assign a lifecycle owner or manager to the privileged account and review whether the admin role is still needed.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.2
+        - name: ISO 27001:2022
+          controls:
+            - A.5.18
+    input:
+        sourceKinds:
+            - okta.admin_role
+            - okta.user
+        requiredFields:
+            - user_id
+            - role_type
+            - status
+            - manager
+            - manager_id
+        freshnessSLA: 24h
+    evidence:
+        type: identity_governance
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - okta
+        requiredFields:
+            - user_id
+            - role_type
+            - manager
+            - manager_id
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+    enabled: true

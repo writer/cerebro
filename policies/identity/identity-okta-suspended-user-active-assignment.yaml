@@ -1,0 +1,57 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-okta-suspended-user-active-assignment
+    name: Okta Suspended User Has Active App Assignment
+    description: Detects suspended or deprovisioned Okta users that still have active application assignments.
+    tags:
+        - okta
+        - identity
+        - offboarding
+        - stale-access
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: okta_app_assignment
+    match:
+        query: SELECT a.assignee_id AS id, COALESCE(u.login, u.email, a.assignee_id) AS account_name, u.status AS user_status, a.app_id, COALESCE(a.app_label, app.label, app.name) AS app_name FROM okta_app_assignments a JOIN okta_users u ON u.id = a.assignee_id LEFT JOIN okta_applications app ON app.id = a.app_id WHERE UPPER(COALESCE(a.assignee_type, '')) = 'USER' AND LOWER(COALESCE(a.status, 'active')) IN ('active', 'assigned') AND LOWER(COALESCE(u.status, '')) IN ('suspended','deprovisioned','deactivated','locked_out')
+    remediation:
+        summary: Remove app assignments from suspended or deprovisioned users and verify downstream application access is revoked.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.2
+            - CC6.3
+        - name: ISO 27001:2022
+          controls:
+            - A.5.18
+    input:
+        sourceKinds:
+            - okta.app_assignment
+            - okta.user
+        requiredFields:
+            - assignee_id
+            - assignee_type
+            - status
+            - user_status
+            - app_id
+        freshnessSLA: 24h
+    evidence:
+        type: identity_governance
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - okta
+        requiredFields:
+            - user_id
+            - user_status
+            - app_id
+            - assignment_status
+            - observed_at
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+    enabled: true

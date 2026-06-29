@@ -7,7 +7,7 @@ profiles:
         selected_controls: 31
         mapped_controls: 31
         unmapped_controls: 0
-        mapped_rules: 1033
+        mapped_rules: 1034
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 31
@@ -1807,7 +1807,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 184
+          rule_count: 185
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -1936,6 +1936,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -4236,7 +4237,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 184
+          rule_count: 185
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -4365,6 +4366,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -4555,7 +4557,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -4694,6 +4696,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -12135,6 +12138,14 @@ profiles:
               control_id: 5.6.2.2
             - framework_name: CJIS Security Policy
               control_id: PA-6
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: CJIS Security Policy
+              control_id: 5.6.2.2
+            - framework_name: CJIS Security Policy
+              control_id: PA-6
+            - framework_name: CJIS Security Policy
+              control_id: PA-9
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: CJIS Security Policy
@@ -20417,7 +20428,7 @@ profiles:
         selected_controls: 52
         mapped_controls: 52
         unmapped_controls: 0
-        mapped_rules: 1017
+        mapped_rules: 1018
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 52
@@ -23511,7 +23522,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 107
+          rule_count: 108
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -23593,6 +23604,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -23638,7 +23650,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 107
+          rule_count: 108
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -23720,6 +23732,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -23765,7 +23778,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 118
+          rule_count: 119
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -23836,6 +23849,7 @@ profiles:
             - github-repo-secrets-exposure
             - github-secret-scanning-alert
             - gke-secrets-access
+            - identity-okta-sign-on-rule-without-mfa
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -23905,7 +23919,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 184
+          rule_count: 185
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -24034,6 +24048,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -24554,7 +24569,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -24693,6 +24708,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -24787,7 +24803,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -24926,6 +24942,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -25020,7 +25037,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -25159,6 +25176,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -25253,7 +25271,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -25392,6 +25410,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -25486,7 +25505,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -25625,6 +25644,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -25721,7 +25741,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -25860,6 +25880,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -41006,6 +41027,28 @@ profiles:
               control_id: IA.L1-3.5.1
             - framework_name: CMMC 2.0
               control_id: IA.L2
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: IA.L1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.2
+            - framework_name: CMMC 2.0
+              control_id: IA.L2
+            - framework_name: CMMC 2.0
+              control_id: PE.L1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.3
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.4
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.5
+            - framework_name: CMMC 2.0
+              control_id: PE.L2
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: CMMC 2.0
@@ -45815,7 +45858,7 @@ profiles:
         selected_controls: 23
         mapped_controls: 23
         unmapped_controls: 0
-        mapped_rules: 759
+        mapped_rules: 760
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 23
@@ -47470,7 +47513,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 107
+          rule_count: 108
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -47552,6 +47595,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -47597,7 +47641,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 107
+          rule_count: 108
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -47679,6 +47723,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -47724,7 +47769,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 118
+          rule_count: 119
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -47795,6 +47840,7 @@ profiles:
             - github-repo-secrets-exposure
             - github-secret-scanning-alert
             - gke-secrets-access
+            - identity-okta-sign-on-rule-without-mfa
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -47904,7 +47950,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -48043,6 +48089,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -48137,7 +48184,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -48276,6 +48323,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -48370,7 +48418,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -48509,6 +48557,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -48603,7 +48652,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -48742,6 +48791,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -48836,7 +48886,7 @@ profiles:
             - framework_name: SOC 2
               control_id: CC6.6
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -48975,6 +49025,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -56631,6 +56682,24 @@ profiles:
               control_id: IA.L1
             - framework_name: CMMC 2.0
               control_id: IA.L1-3.5.1
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: CMMC 2.0
+              control_id: IA.L1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.1
+            - framework_name: CMMC 2.0
+              control_id: IA.L1-3.5.2
+            - framework_name: CMMC 2.0
+              control_id: PE.L1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.1
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.3
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.4
+            - framework_name: CMMC 2.0
+              control_id: PE.L1-3.10.5
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: CMMC 2.0
@@ -73498,7 +73567,7 @@ profiles:
         selected_controls: 48
         mapped_controls: 47
         unmapped_controls: 1
-        mapped_rules: 1007
+        mapped_rules: 1008
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 48
@@ -75116,7 +75185,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 107
+          rule_count: 108
           mapped_rules:
             - aws-alb-no-authentication
             - aws-api-gateway-no-authorization
@@ -75198,6 +75267,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -75242,7 +75312,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-5
           coverage_status: mapped
-          rule_count: 118
+          rule_count: 119
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -75313,6 +75383,7 @@ profiles:
             - github-repo-secrets-exposure
             - github-secret-scanning-alert
             - gke-secrets-access
+            - identity-okta-sign-on-rule-without-mfa
             - internal-vm-cross-account-keys
             - k8s-ingress-no-authentication
             - k8s-ingress-public
@@ -81923,6 +81994,12 @@ profiles:
           controls:
             - framework_name: FedRAMP Rev. 5
               control_id: IA-2
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: FedRAMP Rev. 5
+              control_id: IA-2
+            - framework_name: FedRAMP Rev. 5
+              control_id: IA-5
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: FedRAMP Rev. 5
@@ -83819,7 +83896,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 22
         unmapped_controls: 14
-        mapped_rules: 588
+        mapped_rules: 590
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -84214,7 +84291,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 11
+          rule_count: 12
           mapped_rules:
             - anthropic-unmanaged-active-api-key
             - github-org-owner-role-review-needed
@@ -84222,6 +84299,7 @@ profiles:
             - identity-okta-admin-privilege-grant-events-30d
             - identity-okta-api-token-created-30d
             - identity-okta-api-token-revoked-30d
+            - identity-okta-dormant-admin-role-assignment
             - identity-okta-group-grants-admin-app
             - identity-okta-superadmin-count
             - identity-okta-support-session-impersonation-30d
@@ -84685,7 +84763,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 22
+          rule_count: 23
           mapped_rules:
             - duo-active-user-mfa-not-enforced
             - endpoint-kandji-password-manager
@@ -84696,6 +84774,7 @@ profiles:
             - identity-okta-authenticator-weak-factor-enabled
             - identity-okta-mfa-factor-reset-events-30d
             - identity-okta-password-view-events-30d
+            - identity-okta-sign-on-rule-without-mfa
             - identity-saas-mfa-enforced
             - m365-conditional-access-disabled
             - m365-legacy-auth-signins
@@ -87842,6 +87921,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.5
+        - rule_id: identity-okta-dormant-admin-role-assignment
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
         - rule_id: identity-okta-group-grants-admin-app
           controls:
             - framework_name: ISO 27001:2022
@@ -87898,6 +87981,10 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.16
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.5
         - rule_id: identity-okta-superadmin-count
           controls:
             - framework_name: ISO 27001:2022
@@ -88470,7 +88557,7 @@ profiles:
         selected_controls: 22
         mapped_controls: 22
         unmapped_controls: 0
-        mapped_rules: 837
+        mapped_rules: 838
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 22
@@ -89503,7 +89590,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: SC-8
           coverage_status: mapped
-          rule_count: 195
+          rule_count: 196
           mapped_rules:
             - admin-inactive-keys
             - admin-keys-unrotated
@@ -89640,6 +89727,7 @@ profiles:
             - identity-google-workspace-mfa
             - identity-idp-risky-user-unresolved
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
             - identity-privileged-access-review-overdue
@@ -89791,7 +89879,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 358
+          rule_count: 359
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -90006,6 +90094,7 @@ profiles:
             - identity-jumpcloud-deprovision
             - identity-office365-deprovision
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-oracle-idcs-deprovision
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
@@ -94881,6 +94970,12 @@ profiles:
               control_id: Art.21(2)(j)
             - framework_name: NIS2
               control_id: CIR-2024-2690-11
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: NIS2
+              control_id: Art.21(2)(j)
+            - framework_name: NIS2
+              control_id: CIR-2024-2690-11
         - rule_id: identity-oracle-idcs-deprovision
           controls:
             - framework_name: NIS2
@@ -96516,7 +96611,7 @@ profiles:
         selected_controls: 53
         mapped_controls: 51
         unmapped_controls: 2
-        mapped_rules: 1036
+        mapped_rules: 1037
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 53
@@ -98795,7 +98890,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 520
+          rule_count: 521
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -99155,6 +99250,7 @@ profiles:
             - identity-jumpcloud-deprovision
             - identity-office365-deprovision
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-oracle-idcs-deprovision
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
@@ -99337,7 +99433,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: IA-2
           coverage_status: mapped
-          rule_count: 318
+          rule_count: 319
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -99544,6 +99640,7 @@ profiles:
             - identity-jumpcloud-deprovision
             - identity-office365-deprovision
             - identity-okta-privileged-no-mfa
+            - identity-okta-sign-on-rule-without-mfa
             - identity-oracle-idcs-deprovision
             - identity-passkey-enrollment-admins
             - identity-phishing-resistant-mfa-admins
@@ -109084,6 +109181,12 @@ profiles:
             - framework_name: NIST CSF 2.0
               control_id: PR.AT-01
         - rule_id: identity-okta-privileged-no-mfa
+          controls:
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AA
+            - framework_name: NIST CSF 2.0
+              control_id: PR.AA-01
+        - rule_id: identity-okta-sign-on-rule-without-mfa
           controls:
             - framework_name: NIST CSF 2.0
               control_id: PR.AA
@@ -118944,7 +119047,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 32
         unmapped_controls: 4
-        mapped_rules: 1510
+        mapped_rules: 1516
         auditor_ready_controls: 36
         needs_enrichment_controls: 0
         placeholder_controls: 0
@@ -120653,7 +120756,7 @@ profiles:
             - framework_name: PCI DSS v4.0.1
               control_id: "7.2"
           coverage_status: mapped
-          rule_count: 998
+          rule_count: 1000
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -121294,6 +121397,7 @@ profiles:
             - identity-okta-duplicate-email
             - identity-okta-duplicate-group-name
             - identity-okta-duplicate-username
+            - identity-okta-external-account-no-owner
             - identity-okta-group-description-missing
             - identity-okta-mfa-missing-active
             - identity-okta-missing-email
@@ -121305,6 +121409,7 @@ profiles:
             - identity-okta-privileged-personal-email
             - identity-okta-privileged-recently-created-7d
             - identity-okta-privileged-stale-login-30d
+            - identity-okta-sign-on-rule-without-mfa
             - identity-okta-stale-login-180d
             - identity-okta-stale-login-365d
             - identity-okta-stale-login-90d
@@ -121718,7 +121823,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 1027
+          rule_count: 1031
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -122381,9 +122486,11 @@ profiles:
             - identity-okta-api-token-created-30d
             - identity-okta-api-token-revoked-30d
             - identity-okta-authenticator-weak-factor-enabled
+            - identity-okta-dormant-admin-role-assignment
             - identity-okta-duplicate-email
             - identity-okta-duplicate-group-name
             - identity-okta-duplicate-username
+            - identity-okta-external-account-no-owner
             - identity-okta-group-description-missing
             - identity-okta-group-grants-admin-app
             - identity-okta-mfa-factor-reset-events-30d
@@ -122394,10 +122501,12 @@ profiles:
             - identity-okta-oauth-public-client-review-needed
             - identity-okta-password-view-events-30d
             - identity-okta-personal-email-domain
+            - identity-okta-privileged-missing-owner
             - identity-okta-privileged-no-mfa
             - identity-okta-privileged-personal-email
             - identity-okta-privileged-recently-created-7d
             - identity-okta-privileged-stale-login-30d
+            - identity-okta-sign-on-rule-without-mfa
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
             - identity-okta-stale-group-membership-90d
@@ -122814,7 +122923,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 326
+          rule_count: 331
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -123025,6 +123134,8 @@ profiles:
             - identity-okta-app-access-without-assignment
             - identity-okta-deprovisioned-active-cloud-access
             - identity-okta-deprovisioned-active-in-github
+            - identity-okta-dormant-admin-role-assignment
+            - identity-okta-external-account-no-owner
             - identity-okta-external-user-internal-app
             - identity-okta-idp-lifecycle-changes-30d
             - identity-okta-network-zone-deactivation-30d
@@ -123034,10 +123145,13 @@ profiles:
             - identity-okta-policy-lifecycle-tampering-30d
             - identity-okta-policy-rule-lifecycle-tampering
             - identity-okta-policy-rule-lifecycle-tampering-30d
+            - identity-okta-privileged-missing-owner
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
             - identity-okta-stale-group-membership-90d
             - identity-okta-support-session-impersonation-30d
+            - identity-okta-suspended-user-active-assignment
+            - identity-okta-suspended-user-active-group-membership
             - identity-okta-vendor-app-broad-group-access
             - identity-oracle-idcs-deprovision
             - identity-passkey-enrollment-admins
@@ -123210,7 +123324,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
           coverage_status: mapped
-          rule_count: 305
+          rule_count: 310
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -123415,10 +123529,15 @@ profiles:
             - identity-okta-app-access-without-assignment
             - identity-okta-deprovisioned-active-cloud-access
             - identity-okta-deprovisioned-active-in-github
+            - identity-okta-dormant-admin-role-assignment
+            - identity-okta-external-account-no-owner
             - identity-okta-external-user-internal-app
+            - identity-okta-privileged-missing-owner
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
             - identity-okta-stale-group-membership-90d
+            - identity-okta-suspended-user-active-assignment
+            - identity-okta-suspended-user-active-group-membership
             - identity-okta-vendor-app-broad-group-access
             - identity-oracle-idcs-deprovision
             - identity-passkey-enrollment-admins
@@ -123705,7 +123824,7 @@ profiles:
             - framework_name: ISO 27001:2022
               control_id: A.8.20
           coverage_status: mapped
-          rule_count: 213
+          rule_count: 214
           mapped_rules:
             - api-admin-function-public
             - api-cors-wildcard-credentials
@@ -123844,6 +123963,7 @@ profiles:
             - grc-inactive-identity-active-access
             - identity-github-active-without-okta-link
             - identity-okta-deprovisioned-active-cloud-access
+            - identity-okta-sign-on-rule-without-mfa
             - identity-tailscale-deprovision
             - k8s-ingress-no-wildcard-host
             - k8s-ingress-public
@@ -138349,6 +138469,14 @@ profiles:
               control_id: CC6.2
             - framework_name: SOC 2
               control_id: CC6.3
+        - rule_id: identity-okta-dormant-admin-role-assignment
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: identity-okta-duplicate-email
           controls:
             - framework_name: SOC 2
@@ -138367,6 +138495,16 @@ profiles:
               control_id: CC6
             - framework_name: SOC 2
               control_id: CC6.1
+        - rule_id: identity-okta-external-account-no-owner
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: identity-okta-external-user-internal-app
           controls:
             - framework_name: SOC 2
@@ -138487,6 +138625,14 @@ profiles:
               control_id: CC7
             - framework_name: SOC 2
               control_id: CC7.2
+        - rule_id: identity-okta-privileged-missing-owner
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: identity-okta-privileged-no-mfa
           controls:
             - framework_name: SOC 2
@@ -138517,6 +138663,14 @@ profiles:
               control_id: CC7
             - framework_name: SOC 2
               control_id: CC7.2
+        - rule_id: identity-okta-sign-on-rule-without-mfa
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.6
         - rule_id: identity-okta-stale-app-assignment-30d
           controls:
             - framework_name: SOC 2
@@ -138567,6 +138721,18 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.2
+        - rule_id: identity-okta-suspended-user-active-assignment
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
+        - rule_id: identity-okta-suspended-user-active-group-membership
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: identity-okta-terminated-active-account
           controls:
             - framework_name: SOC 2

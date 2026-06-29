@@ -443,11 +443,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4304")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "346")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "409")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "831")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "346")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4213")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "393")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "415")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "784")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "393")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
@@ -678,6 +678,43 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	if !foundNone {
 		t.Fatal("framework_control_gap_map.csv missing ISO 27001:2022 A.7.8 no-coverage row")
 	}
+}
+
+func TestGenerateFilesMapsOktaPolicyFindingsToSourceCoverage(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	findingRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_map.csv"))
+	findingHeader := findingRows[0]
+	findingIDCol := columnIndex(t, findingHeader, "finding_id")
+	for _, findingID := range []string{
+		"identity-okta-sign-on-rule-without-mfa",
+		"identity-okta-privileged-missing-owner",
+		"identity-okta-suspended-user-active-assignment",
+		"identity-okta-suspended-user-active-group-membership",
+		"identity-okta-external-account-no-owner",
+		"identity-okta-dormant-admin-role-assignment",
+	} {
+		row := findRow(t, findingRows, findingIDCol, findingID)
+		assertCellContains(t, findingHeader, row, "source_capability_status", "source_capability_defined")
+		assertCellContains(t, findingHeader, row, "source_id", "policy")
+	}
+
+	signOnRow := findRow(t, findingRows, findingIDCol, "identity-okta-sign-on-rule-without-mfa")
+	assertCellContains(t, findingHeader, signOnRow, "source_capability_refs", "okta/policy_rules")
+	assertCellContains(t, findingHeader, signOnRow, "control_refs", "NIST 800-53 r5 IA-2")
+	assertCellContains(t, findingHeader, signOnRow, "evidence_type", "identity_configuration")
+
+	assignmentRow := findRow(t, findingRows, findingIDCol, "identity-okta-suspended-user-active-assignment")
+	assertCellContains(t, findingHeader, assignmentRow, "source_capability_refs", "okta/app_assignments")
+
+	groupRow := findRow(t, findingRows, findingIDCol, "identity-okta-suspended-user-active-group-membership")
+	assertCellContains(t, findingHeader, groupRow, "source_capability_refs", "okta/group_memberships")
+
+	ownerRow := findRow(t, findingRows, findingIDCol, "identity-okta-privileged-missing-owner")
+	assertCellContains(t, findingHeader, ownerRow, "source_capability_refs", "okta/admin_roles")
 }
 
 func TestGenerateFilesIncludesFrameworkSourceRegistry(t *testing.T) {

@@ -14,7 +14,7 @@ spec:
     category: identity
     resourceType: okta_group_membership
     match:
-        query: SELECT m.user_id AS id, COALESCE(m.user_login, u.login, m.user_id) AS account_name, m.group_id, g.name AS group_name, u.last_login FROM okta_group_memberships m LEFT JOIN okta_users u ON u.id = m.user_id LEFT JOIN okta_groups g ON g.id = m.group_id WHERE LOWER(COALESCE(u.status, 'active')) IN ('active','enabled','provisioned','onboarded') AND (u.last_login IS NULL OR u.last_login < CURRENT_TIMESTAMP() - INTERVAL '90 days')
+        query: SELECT m.member_user_id AS id, COALESCE(u.login, m.member_email, m.member_user_id) AS account_name, m.group_id, COALESCE(g.name, g.group_name, m.group_id) AS group_name, u.last_login FROM okta_group_memberships m LEFT JOIN okta_users u ON u.id = m.member_user_id LEFT JOIN okta_groups g ON g.id = m.group_id WHERE LOWER(COALESCE(u.status, m.member_status, 'active')) IN ('active','enabled','provisioned','onboarded') AND (u.last_login IS NULL OR u.last_login < CURRENT_TIMESTAMP() - INTERVAL '90 days')
     remediation:
         summary: Review stale memberships and remove users from groups they no longer need.
     frameworks:
