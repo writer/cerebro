@@ -1,5 +1,5 @@
 {
-  "items": [
+  "data": [
     {
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/record-1",

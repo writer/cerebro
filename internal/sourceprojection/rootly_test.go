@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestRootlyAssetProjection(t *testing.T) {
@@ -18,6 +19,7 @@ func TestRootlyAssetProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
 	}
+	assertRootlyEvidenceEntity(t, entities, "evidence-1")
 }
 
 func TestRootlyFindingProjection(t *testing.T) {
@@ -32,6 +34,7 @@ func TestRootlyFindingProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected finding links")
 	}
+	assertRootlyEvidenceEntity(t, entities, "evidence-1")
 }
 
 func TestRootlyAlertProjection(t *testing.T) {
@@ -46,6 +49,7 @@ func TestRootlyAlertProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
 	}
+	assertRootlyEvidenceEntity(t, entities, "evidence-1")
 }
 
 func TestRootlyAuditProjection(t *testing.T) {
@@ -57,4 +61,14 @@ func TestRootlyAuditProjection(t *testing.T) {
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
 	}
+}
+
+func assertRootlyEvidenceEntity(t *testing.T, entities []*ports.ProjectedEntity, evidenceID string) {
+	t.Helper()
+	for _, entity := range entities {
+		if entity.EntityType == "runtime.evidence" && entity.Attributes["evidence_id"] == evidenceID {
+			return
+		}
+	}
+	t.Fatalf("runtime.evidence entity for %q not found: %#v", evidenceID, entities)
 }
