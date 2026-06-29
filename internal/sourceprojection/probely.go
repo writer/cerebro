@@ -8,7 +8,7 @@ import (
 )
 
 func probelyNeedsAttentionTopProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return probelyFindingProjections(event)
+	return probelyGenericFindingProjections(event)
 }
 
 func probelyEventProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -20,10 +20,10 @@ func probelyUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 }
 
 func probelyFrameworkProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return probelyPolicyProjections(event)
+	return probelyGenericPolicyProjections(event)
 }
 
-func probelyFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func probelyGenericFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -44,7 +44,7 @@ func probelyFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	}
 	return identityProjectionResult(entities, links)
 }
-func probelyPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func probelyGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err

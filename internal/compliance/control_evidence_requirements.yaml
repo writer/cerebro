@@ -183,6 +183,76 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, and last observed access for the sampled principal.
+      - source_id: microsoft_entra_id
+        entity_type: directory_identity_posture
+        required_fields:
+          - user_id
+          - account_enabled
+          - user_type
+          - groups
+          - directory_roles
+          - authentication_methods
+          - last_sign_in_at
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Directory evidence ties each principal to current account state, user type, groups, privileged roles, authentication methods, last sign-in activity, and lifecycle state.
+      - source_id: microsoft_365
+        entity_type: collaboration_identity_access
+        required_fields:
+          - user_id
+          - account_type
+          - guest_or_external_state
+          - mailbox_permissions
+          - sharepoint_permissions
+          - teams_memberships
+          - forwarding_rules
+          - last_activity_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Collaboration evidence shows whether a user, guest, mailbox, team, or content permission remains active, externally shared, delegated, forwarded, or dormant.
+      - source_id: google_workspace
+        entity_type: workspace_identity_posture
+        required_fields:
+          - user_id
+          - suspended
+          - two_step_verification_enforced
+          - groups
+          - admin_roles
+          - last_login_at
+          - external_memberships
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Workspace identity evidence ties account state, two-step verification, group membership, admin role assignment, external membership, and last login to the sampled principal.
+      - source_id: tailscale
+        entity_type: tailnet_identity_access
+        required_fields:
+          - user_id
+          - user_role
+          - groups
+          - tag_owner_grants
+          - acl_grants
+          - devices
+          - last_seen_at
+          - lifecycle_state
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Tailnet evidence shows user role, group membership, ACL grants, tag ownership, device association, last-seen state, and lifecycle state for the sampled principal.
+      - source_id: hris_system
+        entity_type: workforce_identity_record
+        required_fields:
+          - employee_id
+          - work_email
+          - employment_status
+          - start_date
+          - termination_date
+          - manager_id
+          - department
+          - last_hr_update_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Workforce evidence ties the account to an employee record, employment status, dates, manager, department, and last HR update so lifecycle and deprovisioning claims are not made from IdP state alone.
       - source_id: github
         entity_type: repository_access
         required_fields:
@@ -532,6 +602,7 @@ profiles:
       frameworks:
         - CCPA
         - GDPR
+        - HIPAA
         - ISO 27701
         - ISO 27701:2025
       family_keywords:
@@ -568,11 +639,94 @@ profiles:
         freshness_window: 30d
         assessment_methods: [examine, test]
         auditor_grade_evidence: Request evidence shows intake, identity verification, response state, completion time, and any approved exception.
+      - source_id: consent_preference_platform
+        entity_type: privacy_preference_record
+        required_fields:
+          - subject_id
+          - jurisdiction
+          - preference_type
+          - collection_notice_version
+          - consent_state
+          - opt_out_state
+          - effective_at
+          - last_synced_at
+        freshness_window: 30d
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Preference evidence ties the person, jurisdiction, notice version, consent or opt-out state, effective date, and sync status to the privacy obligation.
+      - source_id: breach_response_system
+        entity_type: privacy_incident_record
+        required_fields:
+          - incident_id
+          - affected_data_categories
+          - affected_subject_count
+          - discovered_at
+          - notification_deadline
+          - regulator_notice_state
+          - subject_notice_state
+          - closure_state
+        freshness_window: 24h
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: Privacy incident evidence shows affected data, discovery time, notification clocks, regulator and subject notice states, closure state, and approved exceptions.
+  - profile_id: hipaa-safeguards
+    name: HIPAA Safeguard Evidence
+    applies_to:
+      frameworks:
+        - HIPAA
+      family_keywords:
+        - Safeguards
+        - Breach
+        - Documentation
+        - Organizational
+    source_requirements:
+      - source_id: phi_system_inventory
+        entity_type: phi_system_record
+        required_fields:
+          - system_id
+          - owner
+          - phi_data_categories
+          - access_control_state
+          - audit_control_state
+          - encryption_state
+          - transmission_security_state
+          - last_reviewed_at
+        freshness_window: 30d
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: PHI system evidence identifies the system, owner, PHI categories, access controls, audit controls, encryption, transmission security, and review date.
+      - source_id: hipaa_risk_assessment
+        entity_type: hipaa_risk_record
+        required_fields:
+          - risk_id
+          - safeguard_ref
+          - system_id
+          - likelihood
+          - impact
+          - treatment_plan
+          - owner
+          - reviewed_at
+        freshness_window: 365d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: HIPAA risk evidence shows the safeguard, affected system, risk rating, treatment plan, owner, review date, and acceptance or remediation state.
+      - source_id: business_associate_register
+        entity_type: business_associate_agreement
+        required_fields:
+          - vendor_id
+          - phi_access_scope
+          - agreement_id
+          - effective_at
+          - renewal_at
+          - security_obligations
+          - breach_notice_terms
+          - owner
+        freshness_window: 90d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Business associate evidence ties the vendor, PHI access scope, agreement period, security obligations, breach notice terms, and accountable owner to the safeguard.
   - profile_id: ai-governance
     name: AI Governance Evidence
     applies_to:
       frameworks:
+        - EU AI Act
         - ISO 42001
+        - NIST AI RMF 1.0
       family_keywords:
         - Artificial Intelligence
         - Model
@@ -604,6 +758,34 @@ profiles:
         freshness_window: 90d
         assessment_methods: [examine, test]
         auditor_grade_evidence: AI evaluation evidence shows the tested system, risk area, method, result, mitigation, owner, and evaluation date.
+      - source_id: ai_control_runtime
+        entity_type: ai_runtime_control_state
+        required_fields:
+          - system_id
+          - model_version
+          - control_name
+          - control_state
+          - threshold
+          - observed_value
+          - alert_route
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Runtime AI control evidence shows the system, model version, configured control, threshold, observed value, alert route, and observation time.
+      - source_id: ai_deployer_review
+        entity_type: ai_deployer_obligation_record
+        required_fields:
+          - system_id
+          - deployer_role
+          - risk_class
+          - transparency_notice_state
+          - human_oversight_state
+          - operator_training_state
+          - monitoring_owner
+          - last_reviewed_at
+        freshness_window: 90d
+        assessment_methods: [examine, interview, test]
+        auditor_grade_evidence: Deployer evidence shows system role, risk class, transparency notice state, human oversight, operator training, monitoring owner, and review date.
   - profile_id: payment-card-security
     name: Payment Card Evidence
     applies_to:
@@ -635,6 +817,51 @@ profiles:
         freshness_window: 30d
         assessment_methods: [examine, test]
         auditor_grade_evidence: Payment security evidence shows scan scope, affected asset, severity, scan date, current status, and remediation state.
+  - profile_id: policy-document-governance
+    name: Policy Document Evidence
+    applies_to:
+      frameworks:
+        - "*"
+      family_keywords:
+        - Awareness
+        - Control Activities
+        - Governance
+        - Management
+        - Policy
+        - Procedure
+        - Program
+        - Risk
+      control_id_prefixes:
+        - CC1
+        - CC2
+        - CC5
+        - A.5
+        - PM
+        - PL
+    source_requirements:
+      - source_id: grc_policy_lifecycle
+        entity_type: policy_document
+        required_fields:
+          - policy_id
+          - policy_type
+          - owner
+          - approving_authority
+          - version
+          - effective_at
+          - review_cadence
+          - last_reviewed_at
+          - acknowledgement_evidence
+          - controls
+          - exception_path
+          - source_provenance
+        freshness_window: 365d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Policy evidence shows the policy ID, type, owner, approving authority, version, effective date, review cadence, last review, staff acknowledgement evidence, mapped controls, exception path, and source provenance.
+        claim_strength: policy_document_backed
+        sufficiency_rule: approved_current_acknowledged_exception_path
+        coverage_claim: supports_policy_governance_control
+        overclaim_guard: Do not claim operating effectiveness from a policy document alone; require source evidence or sampled activity when the control asks whether the policy operated during the period.
+        adjacent_control_rationale: Use policy evidence for governance, approval, review, acknowledgement, and exception-path requirements; technical operation controls need their own source-backed evidence.
   - profile_id: baseline-control-review
     name: Baseline Control Review Evidence
     fallback: true

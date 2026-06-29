@@ -1,0 +1,13 @@
+sourceId: tines
+secretKeys:
+  - TINES_TOKEN
+runtimes:
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/user
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TINES_TOKEN

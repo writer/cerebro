@@ -1,0 +1,224 @@
+id: datadog
+name: "Datadog"
+description: "Datadog source runtime for identity, access, observability, incident, and audit records that operators use to connect users, teams, services, monitors, dashboards, SLOs, incidents, and administrative activity."
+emitted_kinds:
+  - datadog.users
+  - datadog.roles
+  - datadog.teams
+  - datadog.monitors
+  - datadog.slos
+  - datadog.dashboards
+  - datadog.incidents
+  - datadog.audit_events
+families:
+  - id: users
+    incremental: cursor
+  - id: roles
+    incremental: cursor
+  - id: teams
+    incremental: cursor
+  - id: monitors
+    incremental: cursor
+  - id: slos
+    incremental: cursor
+  - id: dashboards
+    incremental: snapshot
+  - id: incidents
+    incremental: cursor
+  - id: audit_events
+    incremental: cursor
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: datadog
+  dimensions:
+    - id: identity_users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, asset_inventory]
+      notes:
+        - Captures Datadog user ID, handle, email, verification state, disabled state, and lifecycle timestamps.
+    - id: identity_roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Captures Datadog role IDs, names, descriptions, and lifecycle timestamps for current-state access review.
+    - id: teams
+      type: entity_family
+      title: "Teams"
+      families: [teams]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Teams are projected as graph anchors and linked from tagged monitors, SLOs, dashboards, and incidents.
+    - id: monitors
+      type: alert_state
+      title: "Monitors"
+      families: [monitors]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [logging_monitoring, availability_resilience]
+      notes:
+        - Monitor events include type, query, priority, state, creator, tags, and timestamps.
+    - id: service_level_objectives
+      type: lifecycle_state
+      title: "SLOs"
+      families: [slos]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [availability_resilience, asset_inventory]
+      notes:
+        - SLO events include objective type, thresholds, linked monitor IDs, creator, tags, and timestamps.
+    - id: dashboards
+      type: entity_family
+      title: "Dashboards"
+      families: [dashboards]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [logging_monitoring, compliance_operations]
+      notes:
+        - Dashboard events preserve owner, layout, read-only posture, title, description, tags, and timestamps.
+    - id: incidents
+      type: lifecycle_state
+      title: "Incidents"
+      families: [incidents]
+      support: supported
+      high_value: true
+      evidence_types: [incident_record]
+      control_domains: [security_operations, availability_resilience]
+      notes:
+        - Incident events capture title, severity, state, customer-impact flag, commander, creator, team, service, and resolution timestamps.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
+      notes:
+        - Audit events project actors, targets, actions, services, tags, and timestamps into the graph for access and change investigations.
+    - id: pagination
+      type: incremental_sync
+      title: "Cursor and page sync"
+      families: [users, roles, teams, monitors, slos, incidents, audit_events]
+      support: supported
+      high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Datadog API and application-key headers are applied by the Source CDK runtime and provider cursors are preserved when returned.
+event_contracts:
+  - kind: datadog.users
+    schema_ref: datadog/users/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - user_id
+      - email
+    required_payload_fields:
+      - id
+      - attributes
+  - kind: datadog.roles
+    schema_ref: datadog/roles/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - role_id
+      - name
+    required_payload_fields:
+      - id
+      - attributes
+  - kind: datadog.teams
+    schema_ref: datadog/teams/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - team_id
+      - name
+    required_payload_fields:
+      - id
+      - attributes
+  - kind: datadog.monitors
+    schema_ref: datadog/monitors/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - monitor_id
+      - name
+      - type
+    required_payload_fields:
+      - id
+      - name
+  - kind: datadog.slos
+    schema_ref: datadog/slos/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - slo_id
+      - name
+      - type
+    required_payload_fields:
+      - id
+      - name
+  - kind: datadog.dashboards
+    schema_ref: datadog/dashboards/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - dashboard_id
+      - title
+    required_payload_fields:
+      - id
+      - title
+  - kind: datadog.incidents
+    schema_ref: datadog/incidents/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - incident_id
+      - title
+      - state
+    required_payload_fields:
+      - id
+      - attributes
+  - kind: datadog.audit_events
+    schema_ref: datadog/audit_events/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
+      - audit_id
+      - event_type
+      - timestamp
+    required_payload_fields:
+      - id
+      - attributes

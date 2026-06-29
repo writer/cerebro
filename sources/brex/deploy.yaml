@@ -1,0 +1,13 @@
+sourceId: brex
+secretKeys:
+  - BREX_TOKEN
+runtimes:
+  - localId: cards
+    config:
+      family: cards
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:BREX_TOKEN

@@ -1,0 +1,17 @@
+sourceId: microsoft_foundry
+secretKeys:
+  - MICROSOFT_FOUNDRY_ENDPOINT
+  - MICROSOFT_FOUNDRY_PROJECT_NAME
+  - MICROSOFT_FOUNDRY_API_TOKEN
+runtimes:
+  - localId: agents
+    config:
+      endpoint: env:MICROSOFT_FOUNDRY_ENDPOINT
+      project_name: env:MICROSOFT_FOUNDRY_PROJECT_NAME
+      family: agents
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /agents?api-version=v1
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:MICROSOFT_FOUNDRY_API_TOKEN

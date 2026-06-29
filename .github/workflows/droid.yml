@@ -132,11 +132,48 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 1
+      - name: Fetch org-level secrets from Infisical
+        if: steps.target.outputs.should_run == 'true'
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+        with:
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_ORG_PROJECT_SLUG }}
+          env-slug: prod
+          export-type: env
+      - name: Fetch repo-level secrets from Infisical
+        if: steps.target.outputs.should_run == 'true'
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+        with:
+          method: oidc
+          identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
+          oidc-audience: ${{ format('https://github.com/{0}', github.repository_owner) }}
+          project-slug: ${{ secrets.INFISICAL_REPO_PROJECT_SLUG }}
+          env-slug: prod
+          export-type: env
+      - name: Assert required Infisical secrets
+        if: steps.target.outputs.should_run == 'true'
+        shell: bash
+        env:
+          REQUIRED_KEYS: FACTORY_API_KEY
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in ${REQUIRED_KEYS}; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Infisical required keys missing: ${missing[*]}"
+            exit 1
+          fi
       - name: Run Droid Exec
         if: steps.target.outputs.should_run == 'true'
         uses: Factory-AI/droid-action@150e8c231191631016a9563bf5d8388e36382de9 # main
         with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          factory_api_key: ${{ env.FACTORY_API_KEY }}
           # Keep manual @droid reviews as the escalation path after the fast
           # preflight-backed automatic pass has already run.
           review_model: glm-5.2

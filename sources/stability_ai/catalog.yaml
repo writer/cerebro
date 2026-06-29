@@ -1,0 +1,85 @@
+id: stability_ai
+name: "Stability AI"
+description: "Collects engines, account, and account balance from Stability AI and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - stability_ai.engines
+  - stability_ai.account
+  - stability_ai.account_balance
+kind_lifecycle:
+  - kind: stability_ai.engines
+    status: active
+  - kind: stability_ai.account
+    status: active
+  - kind: stability_ai.account_balance
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: stability_ai
+  dimensions:
+    - id: engines
+      type: entity_family
+      title: "Engines"
+      families: [engines]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_balance
+      type: entity_family
+      title: "Account Balance"
+      families: [account_balance]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: stability_ai.engines
+    schema_ref: stability_ai/engines/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: stability_ai.account
+    schema_ref: stability_ai/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: stability_ai.account_balance
+    schema_ref: stability_ai/account_balance/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

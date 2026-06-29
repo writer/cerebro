@@ -1,0 +1,290 @@
+id: xtrf_eu
+name: "XTRF Home Portal API"
+description: "Collects user, active, all, customer, ID, and invoices ID from XTRF Home Portal API and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - xtrf_eu.user
+  - xtrf_eu.active
+  - xtrf_eu.all
+  - xtrf_eu.customer
+  - xtrf_eu.id
+  - xtrf_eu.invoices_id
+  - xtrf_eu.customers_id
+  - xtrf_eu.persons_id
+  - xtrf_eu.projects_id
+  - xtrf_eu.providers_id
+  - xtrf_eu.id_2
+  - xtrf_eu.quotes_id
+kind_lifecycle:
+  - kind: xtrf_eu.user
+    status: active
+  - kind: xtrf_eu.active
+    status: active
+  - kind: xtrf_eu.all
+    status: active
+  - kind: xtrf_eu.customer
+    status: active
+  - kind: xtrf_eu.id
+    status: active
+  - kind: xtrf_eu.invoices_id
+    status: active
+  - kind: xtrf_eu.customers_id
+    status: active
+  - kind: xtrf_eu.persons_id
+    status: active
+  - kind: xtrf_eu.projects_id
+    status: active
+  - kind: xtrf_eu.providers_id
+    status: active
+  - kind: xtrf_eu.id_2
+    status: active
+  - kind: xtrf_eu.quotes_id
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: xtrf_eu
+  dimensions:
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: active
+      type: entity_family
+      title: "Active"
+      families: [active]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: all
+      type: entity_family
+      title: "All"
+      families: [all]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customer
+      type: entity_family
+      title: "Customer"
+      families: [customer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: id
+      type: entity_family
+      title: "Id"
+      families: [id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: invoices_id
+      type: entity_family
+      title: "Invoices Id"
+      families: [invoices_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customers_id
+      type: entity_family
+      title: "Customers Id"
+      families: [customers_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: persons_id
+      type: entity_family
+      title: "Persons Id"
+      families: [persons_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects_id
+      type: entity_family
+      title: "Projects Id"
+      families: [projects_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: providers_id
+      type: entity_family
+      title: "Providers Id"
+      families: [providers_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: id_2
+      type: entity_family
+      title: "Id 2"
+      families: [id_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: quotes_id
+      type: entity_family
+      title: "Quotes Id"
+      families: [quotes_id]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: xtrf_eu.user
+    schema_ref: xtrf_eu/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.active
+    schema_ref: xtrf_eu/active/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.all
+    schema_ref: xtrf_eu/all/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.customer
+    schema_ref: xtrf_eu/customer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.id
+    schema_ref: xtrf_eu/id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.invoices_id
+    schema_ref: xtrf_eu/invoices_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.customers_id
+    schema_ref: xtrf_eu/customers_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.persons_id
+    schema_ref: xtrf_eu/persons_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.projects_id
+    schema_ref: xtrf_eu/projects_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.providers_id
+    schema_ref: xtrf_eu/providers_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.id_2
+    schema_ref: xtrf_eu/id_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xtrf_eu.quotes_id
+    schema_ref: xtrf_eu/quotes_id/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

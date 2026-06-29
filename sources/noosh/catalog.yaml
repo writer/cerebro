@@ -1,0 +1,272 @@
+id: noosh
+name: "Noosh"
+description: "Collects workgroup, projecthomeuserfield, automaticinvitation, clientworkgroup, supplierworkgroup, and teamtemplate from Noosh and projects them into the Cerebro graph as assets, groups, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - noosh.workgroup
+  - noosh.projecthomeuserfield
+  - noosh.automaticinvitation
+  - noosh.clientworkgroup
+  - noosh.supplierworkgroup
+  - noosh.teamtemplate
+  - noosh.workgroupmember
+  - noosh.clientworkgroups_projecthomeuserfield
+  - noosh.teammember
+  - noosh.teammembersofclientproject
+  - noosh.memberrole
+  - noosh.billingrecipient
+kind_lifecycle:
+  - kind: noosh.workgroup
+    status: active
+  - kind: noosh.projecthomeuserfield
+    status: active
+  - kind: noosh.automaticinvitation
+    status: active
+  - kind: noosh.clientworkgroup
+    status: active
+  - kind: noosh.supplierworkgroup
+    status: active
+  - kind: noosh.teamtemplate
+    status: active
+  - kind: noosh.workgroupmember
+    status: active
+  - kind: noosh.clientworkgroups_projecthomeuserfield
+    status: active
+  - kind: noosh.teammember
+    status: active
+  - kind: noosh.teammembersofclientproject
+    status: active
+  - kind: noosh.memberrole
+    status: active
+  - kind: noosh.billingrecipient
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: noosh
+  dimensions:
+    - id: workgroup
+      type: entity_family
+      title: "Workgroup"
+      families: [workgroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projecthomeuserfield
+      type: entity_family
+      title: "Projecthomeuserfield"
+      families: [projecthomeuserfield]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: automaticinvitation
+      type: entity_family
+      title: "Automaticinvitation"
+      families: [automaticinvitation]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: clientworkgroup
+      type: entity_family
+      title: "Clientworkgroup"
+      families: [clientworkgroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: supplierworkgroup
+      type: entity_family
+      title: "Supplierworkgroup"
+      families: [supplierworkgroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: teamtemplate
+      type: entity_family
+      title: "Teamtemplate"
+      families: [teamtemplate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workgroupmember
+      type: entity_family
+      title: "Workgroupmember"
+      families: [workgroupmember]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: clientworkgroups_projecthomeuserfield
+      type: entity_family
+      title: "Clientworkgroups Projecthomeuserfield"
+      families: [clientworkgroups_projecthomeuserfield]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: teammember
+      type: entity_family
+      title: "Teammember"
+      families: [teammember]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: teammembersofclientproject
+      type: entity_family
+      title: "Teammembersofclientproject"
+      families: [teammembersofclientproject]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: memberrole
+      type: entity_family
+      title: "Memberrole"
+      families: [memberrole]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: billingrecipient
+      type: entity_family
+      title: "Billingrecipient"
+      families: [billingrecipient]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: noosh.workgroup
+    schema_ref: noosh/workgroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - is_default
+  - kind: noosh.projecthomeuserfield
+    schema_ref: noosh/projecthomeuserfield/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - is_required
+  - kind: noosh.automaticinvitation
+    schema_ref: noosh/automaticinvitation/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - automatic_invitation_type_name
+  - kind: noosh.clientworkgroup
+    schema_ref: noosh/clientworkgroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - client_ac_workgroup_id
+  - kind: noosh.supplierworkgroup
+    schema_ref: noosh/supplierworkgroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - bu_supplier_workgroup_id
+  - kind: noosh.teamtemplate
+    schema_ref: noosh/teamtemplate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - team_template_id
+  - kind: noosh.workgroupmember
+    schema_ref: noosh/workgroupmember/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: noosh.clientworkgroups_projecthomeuserfield
+    schema_ref: noosh/clientworkgroups_projecthomeuserfield/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - is_required
+  - kind: noosh.teammember
+    schema_ref: noosh/teammember/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: noosh.teammembersofclientproject
+    schema_ref: noosh/teammembersofclientproject/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: noosh.memberrole
+    schema_ref: noosh/memberrole/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - role_id
+  - kind: noosh.billingrecipient
+    schema_ref: noosh/billingrecipient/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - email

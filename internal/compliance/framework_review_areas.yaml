@@ -88,6 +88,22 @@ review_areas:
       - 164.312(a)(2)(iv)
       - 164.312(b)
       - 164.312(e)(1)
+      - 164.312(e)(2)(ii)
+  - framework: HIPAA
+    area_id: breach-and-documentation
+    name: Breach and documentation evidence
+    evidence_use: review_group
+    purpose: Review whether breach discovery, individual notice, media notice, HHS notice, delay rationale, and retained policy evidence are complete for the incident period.
+    control_refs:
+      - 164.404(a)
+      - 164.404(b)
+      - 164.404(c)(1)
+      - 164.406(a)
+      - 164.408(a)
+      - 164.412
+      - 164.414
+      - 164.316(a)
+      - 164.316(b)(2)(i)
   - framework: GDPR
     area_id: processing-accountability
     name: Processing accountability
@@ -98,6 +114,7 @@ review_areas:
       - Article 24
       - Article 30
       - Article 28
+      - Article 35
   - framework: GDPR
     area_id: security-breach-response
     name: Security and breach response
@@ -107,6 +124,45 @@ review_areas:
       - Article 32
       - Article 33
       - Article 34
+  - framework: GDPR
+    area_id: data-subject-rights
+    name: Data subject rights
+    evidence_use: review_group
+    purpose: Review whether access, rectification, erasure, restriction, portability, objection, and automated-decision requests have intake, verification, response, and exception evidence.
+    control_refs:
+      - Article 12
+      - Article 15
+      - Article 16
+      - Article 17
+      - Article 18
+      - Article 20
+      - Article 21
+      - Article 22
+  - framework: CCPA
+    area_id: consumer-rights-requests
+    name: Consumer rights requests
+    evidence_use: review_group
+    purpose: Review whether know, delete, correct, opt-out, limit-use, non-retaliation, and request-method evidence is current for California consumer requests.
+    control_refs:
+      - 1798.100
+      - 1798.105
+      - 1798.106
+      - 1798.110
+      - 1798.115
+      - 1798.120
+      - 1798.121
+      - 1798.125
+      - 1798.130
+      - 1798.135
+  - framework: CCPA
+    area_id: privacy-security-breach
+    name: Privacy security and breach
+    evidence_use: review_group
+    purpose: Review whether personal-information security findings, breach liability evidence, notices, and remediation records are tied to affected systems and consumers.
+    control_refs:
+      - 1798.100
+      - 1798.130
+      - 1798.150
   - framework: ISO 27701
     area_id: privacy-management-evidence
     name: Privacy management evidence
@@ -189,3 +245,47 @@ review_areas:
       - A.6.2.4
       - A.8.2
       - A.9.2
+  - framework: "ISO 42001"
+    area_id: ai-data-third-party-governance
+    name: AI data and third-party governance
+    evidence_use: review_group
+    purpose: Review whether AI data quality, data provenance, supplier responsibilities, customer responsibilities, and interested-party information are complete for the system.
+    control_refs:
+      - A.7.2
+      - A.7.3
+      - A.7.4
+      - A.7.5
+      - A.7.6
+      - A.8.3
+      - A.8.4
+      - A.10.2
+      - A.10.3
+      - A.10.4
+  - framework: "EU AI Act"
+    area_id: high-risk-ai-system-controls
+    name: High-risk AI system controls
+    evidence_use: review_group
+    purpose: Review whether high-risk AI risk management, data governance, documentation, logging, transparency, oversight, accuracy, and quality-management evidence is complete.
+    control_refs:
+      - Art.9
+      - Art.10
+      - Art.11
+      - Art.12
+      - Art.13
+      - Art.14
+      - Art.15
+      - Art.16
+      - Art.17
+      - Art.18
+  - framework: "EU AI Act"
+    area_id: deployer-transparency-monitoring
+    name: Deployer transparency and monitoring
+    evidence_use: review_group
+    purpose: Review whether deployer obligations, fundamental-rights impact assessment, user transparency, general-purpose AI duties, systemic-risk controls, and post-market monitoring records are current.
+    control_refs:
+      - Art.26
+      - Art.27
+      - Art.50
+      - Art.53
+      - Art.55
+      - Art.72

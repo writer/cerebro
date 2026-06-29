@@ -231,9 +231,13 @@ func TestHandlerRecordsUploadJobTimeline(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, uploadRequest(t, "?tenant_id=tenant-1", map[string]string{
-		"policy_id":          "access",
-		"owner_id":           "owner-1",
-		"next_review_due_at": "2026-12-31",
+		"policy_id":                "access",
+		"owner_id":                 "owner-1",
+		"approving_authority":      "Security Steering Committee",
+		"next_review_due_at":       "2026-12-31",
+		"acknowledgement_evidence": "campaign-1",
+		"exception_path":           "Submit a waiver request",
+		"control_ids":              "CC6.1",
 	}))
 
 	if response.Code != http.StatusAccepted {

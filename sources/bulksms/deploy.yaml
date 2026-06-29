@@ -1,0 +1,15 @@
+sourceId: bulksms
+secretKeys:
+  - BULKSMS_ID
+  - BULKSMS_TOKEN
+runtimes:
+  - localId: webhook
+    config:
+      id: env:BULKSMS_ID
+      family: webhook
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /webhooks
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:BULKSMS_TOKEN

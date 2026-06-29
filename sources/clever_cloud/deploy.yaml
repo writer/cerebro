@@ -1,0 +1,17 @@
+sourceId: clever_cloud
+secretKeys:
+  - CLEVER_CLOUD_ID
+  - CLEVER_CLOUD_OWNERID
+  - CLEVER_CLOUD_TOKEN
+runtimes:
+  - localId: email
+    config:
+      id: env:CLEVER_CLOUD_ID
+      ownerid: env:CLEVER_CLOUD_OWNERID
+      family: email
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /github/emails
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLEVER_CLOUD_TOKEN

@@ -1,0 +1,106 @@
+id: billingo
+name: "Billingo"
+description: "Collects bank account, document, document block, and partner from Billingo and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - billingo.bank_account
+  - billingo.document
+  - billingo.document_block
+  - billingo.partner
+kind_lifecycle:
+  - kind: billingo.bank_account
+    status: active
+  - kind: billingo.document
+    status: active
+  - kind: billingo.document_block
+    status: active
+  - kind: billingo.partner
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: billingo
+  dimensions:
+    - id: bank_account
+      type: entity_family
+      title: "Bank Account"
+      families: [bank_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: document
+      type: entity_family
+      title: "Document"
+      families: [document]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: document_block
+      type: entity_family
+      title: "Document Block"
+      families: [document_block]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: partner
+      type: entity_family
+      title: "Partner"
+      families: [partner]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: billingo.bank_account
+    schema_ref: billingo/bank_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: billingo.document
+    schema_ref: billingo/document/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: billingo.document_block
+    schema_ref: billingo/document_block/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: billingo.partner
+    schema_ref: billingo/partner/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,15 @@
+sourceId: arctic_wolf
+secretKeys:
+  - ARCTIC_WOLF_BASE_URL
+  - ARCTIC_WOLF_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      base_url: env:ARCTIC_WOLF_BASE_URL
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ARCTIC_WOLF_TOKEN

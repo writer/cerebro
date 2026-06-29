@@ -1,6 +1,6 @@
 id: probely
 name: "Probely"
-description: "Probely is a Web Vulnerability Scanning suite for Agile Teams. It provides continuous scanning of your Web Applications and lets you efficiently manage the lifecycle of the vulnerabilities found, in a sleek and intuitive ~~web interface~~ API."
+description: "Collects needs attention top, event, user, and framework from Probely and projects them into the Cerebro graph as findings, audit events, users, and policies for asset exposure, vulnerability, finding, and remediation context."
 emitted_kinds:
   - probely.needs_attention_top
   - probely.event
@@ -20,23 +20,23 @@ coverage_contract:
   authority_domain: probely
   dimensions:
     - id: needs_attention_top
-      type: entity_family
+      type: remediation_state
       title: "Needs Attention Top"
       families: [needs_attention_top]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: event
-      type: entity_family
+      type: audit_event
       title: "Event"
       families: [event]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: user
@@ -50,19 +50,21 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: framework
-      type: entity_family
+      type: lifecycle_state
       title: "Framework"
       families: [framework]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
 event_contracts:
   - kind: probely.needs_attention_top
     schema_ref: probely/needs_attention_top/v1

@@ -1,0 +1,29 @@
+[
+  {
+    "id": "datadog-roles-role-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.roles",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/roles/v1",
+    "payload": {
+      "id": "role-1",
+      "type": "roles",
+      "attributes": {
+        "name": "Datadog Admin",
+        "description": "Full Datadog administration"
+      }
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "role-1",
+      "external_id": "role-1",
+      "family": "roles",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "role_id": "role-1",
+      "name": "Datadog Admin",
+      "description": "Full Datadog administration"
+    }
+  }
+]

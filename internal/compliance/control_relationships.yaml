@@ -91,6 +91,47 @@ relationships:
         relationship: accountability_dependency
         evidence_use: review_hint
         rationale: Principle-level findings need ownership and responsibility evidence before the privacy packet is review-ready.
+      - control_id: Article 25
+        relationship: design_dependency
+        evidence_use: review_hint
+        rationale: Principle-level findings should be checked against data-protection-by-design evidence for the affected system or processing activity.
+      - control_id: Article 30
+        relationship: inventory_dependency
+        evidence_use: review_hint
+        rationale: Privacy-principle evidence is stronger when the processing activity, purpose, data category, and owner are present in the records of processing.
+  - framework: GDPR
+    control_id: Article 35
+    related_controls:
+      - control_id: Article 22
+        relationship: automated_decision_dependency
+        evidence_use: review_hint
+        rationale: DPIA evidence should be reviewed with automated-decision safeguards when the processing affects people through profiling or consequential decisions.
+      - control_id: Article 32
+        relationship: security_dependency
+        evidence_use: review_hint
+        rationale: DPIA risks should point reviewers to the security measures used to reduce likelihood or impact for the same processing activity.
+  - framework: CCPA
+    control_id: "1798.100"
+    related_controls:
+      - control_id: "1798.110"
+        relationship: disclosure_detail
+        evidence_use: review_hint
+        rationale: Collection notices should be reviewed with the categories of personal information disclosed to consumers.
+      - control_id: "1798.130"
+        relationship: request_process_dependency
+        evidence_use: review_hint
+        rationale: Notice findings should prompt review of intake, verification, response, and disclosure procedures for consumer requests.
+  - framework: CCPA
+    control_id: "1798.120"
+    related_controls:
+      - control_id: "1798.135"
+        relationship: opt_out_mechanism_dependency
+        evidence_use: review_hint
+        rationale: Opt-out rights need the operating mechanism, signal handling, and consumer-facing method evidence before closure.
+      - control_id: "1798.125"
+        relationship: non_retaliation_dependency
+        evidence_use: review_hint
+        rationale: Opt-out exceptions should be checked against non-retaliation evidence for the same consumer journey.
   - framework: ISO 27701
     control_id: 7.2.6
     related_controls:
@@ -198,3 +239,36 @@ relationships:
         relationship: operating_context
         evidence_use: review_hint
         rationale: AI policy or use-case findings should be reviewed with deployment-operation evidence for the same model, agent, or workflow.
+  - framework: "EU AI Act"
+    control_id: Art.9
+    related_controls:
+      - control_id: Art.10
+        relationship: high_risk_system_dependency
+        evidence_use: review_hint
+        rationale: High-risk AI risk management should be reviewed with training, validation, and testing data governance evidence for the same system.
+      - control_id: Art.15
+        relationship: technical_control_dependency
+        evidence_use: review_hint
+        rationale: Risk management evidence should point reviewers to accuracy, robustness, and cybersecurity controls for the assessed high-risk system.
+  - framework: "EU AI Act"
+    control_id: Art.13
+    related_controls:
+      - control_id: Art.14
+        relationship: deployer_operation_dependency
+        evidence_use: review_hint
+        rationale: Transparency information should be reviewed with human oversight instructions so deployers can operate the system within approved limits.
+      - control_id: Art.26
+        relationship: deployer_obligation_dependency
+        evidence_use: review_hint
+        rationale: Provider information is review context for the deployer monitoring, input-data, and human oversight obligations.
+  - framework: "EU AI Act"
+    control_id: Art.72
+    related_controls:
+      - control_id: Art.12
+        relationship: monitoring_record_dependency
+        evidence_use: review_hint
+        rationale: Post-market monitoring evidence should be checked against retained logs and records for the same high-risk system.
+      - control_id: Art.55
+        relationship: systemic_risk_dependency
+        evidence_use: review_hint
+        rationale: General-purpose AI systemic-risk monitoring should link to model evaluation, incident, and mitigation evidence when the model is in scope.

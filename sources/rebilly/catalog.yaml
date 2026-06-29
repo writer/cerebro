@@ -1,0 +1,104 @@
+id: rebilly
+name: "Rebilly"
+description: "Collects customer timeline custom event, authentication token, bank account, and aml from Rebilly and projects them into the Cerebro graph as audit events, secrets, users, and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - rebilly.customer_timeline_custom_event
+  - rebilly.authentication_token
+  - rebilly.bank_account
+  - rebilly.aml
+kind_lifecycle:
+  - kind: rebilly.customer_timeline_custom_event
+    status: active
+  - kind: rebilly.authentication_token
+    status: active
+  - kind: rebilly.bank_account
+    status: active
+  - kind: rebilly.aml
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: rebilly
+  dimensions:
+    - id: customer_timeline_custom_event
+      type: audit_event
+      title: "Customer Timeline Custom Event"
+      families: [customer_timeline_custom_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: authentication_token
+      type: entity_family
+      title: "Authentication Token"
+      families: [authentication_token]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bank_account
+      type: entity_family
+      title: "Bank Account"
+      families: [bank_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: aml
+      type: entity_family
+      title: "Aml"
+      families: [aml]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: rebilly.customer_timeline_custom_event
+    schema_ref: rebilly/customer_timeline_custom_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: rebilly.authentication_token
+    schema_ref: rebilly/authentication_token/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - credentialId
+  - kind: rebilly.bank_account
+    schema_ref: rebilly/bank_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: rebilly.aml
+    schema_ref: rebilly/aml/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - _links

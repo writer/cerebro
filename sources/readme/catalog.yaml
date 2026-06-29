@@ -1,0 +1,127 @@
+id: readme
+name: "Readme"
+description: "Collects users, projects, repositories, deployments, and audit events from Readme and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - readme.users
+  - readme.projects
+  - readme.repositories
+  - readme.deployments
+  - readme.audit_events
+kind_lifecycle:
+  - kind: readme.users
+    status: active
+  - kind: readme.projects
+    status: active
+  - kind: readme.repositories
+    status: active
+  - kind: readme.deployments
+    status: active
+  - kind: readme.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: readme
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: repositories
+      type: entity_family
+      title: "Repositories"
+      families: [repositories]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: deployment_state
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: readme.users
+    schema_ref: readme/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: readme.projects
+    schema_ref: readme/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: readme.repositories
+    schema_ref: readme/repositories/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: readme.deployments
+    schema_ref: readme/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: readme.audit_events
+    schema_ref: readme/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

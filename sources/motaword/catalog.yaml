@@ -1,0 +1,275 @@
+id: motaword
+name: "MotaWord"
+description: "Collects comment, user, permission, corporates user, user group, and user group 2 from MotaWord and projects them into the Cerebro graph as assets, audit events, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - motaword.comment
+  - motaword.user
+  - motaword.permission
+  - motaword.corporates_user
+  - motaword.user_group
+  - motaword.user_group_2
+  - motaword.blog
+  - motaword.activity
+  - motaword.projects_activity
+  - motaword.activities_comment
+  - motaword.corporate_user
+  - motaword.corporate_user_group
+kind_lifecycle:
+  - kind: motaword.comment
+    status: active
+  - kind: motaword.user
+    status: active
+  - kind: motaword.permission
+    status: active
+  - kind: motaword.corporates_user
+    status: active
+  - kind: motaword.user_group
+    status: active
+  - kind: motaword.user_group_2
+    status: active
+  - kind: motaword.blog
+    status: active
+  - kind: motaword.activity
+    status: active
+  - kind: motaword.projects_activity
+    status: active
+  - kind: motaword.activities_comment
+    status: active
+  - kind: motaword.corporate_user
+    status: active
+  - kind: motaword.corporate_user_group
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: motaword
+  dimensions:
+    - id: comment
+      type: audit_event
+      title: "Comment"
+      families: [comment]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission
+      type: entity_family
+      title: "Permission"
+      families: [permission]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: corporates_user
+      type: entity_family
+      title: "Corporates User"
+      families: [corporates_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_group
+      type: entity_family
+      title: "User Group"
+      families: [user_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_group_2
+      type: entity_family
+      title: "User Group 2"
+      families: [user_group_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: blog
+      type: audit_event
+      title: "Blog"
+      families: [blog]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: activity
+      type: audit_event
+      title: "Activity"
+      families: [activity]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects_activity
+      type: audit_event
+      title: "Projects Activity"
+      families: [projects_activity]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: activities_comment
+      type: audit_event
+      title: "Activities Comment"
+      families: [activities_comment]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: corporate_user
+      type: entity_family
+      title: "Corporate User"
+      families: [corporate_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: corporate_user_group
+      type: entity_family
+      title: "Corporate User Group"
+      families: [corporate_user_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: motaword.comment
+    schema_ref: motaword/comment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: motaword.user
+    schema_ref: motaword/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: motaword.permission
+    schema_ref: motaword/permission/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: motaword.corporates_user
+    schema_ref: motaword/corporates_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: motaword.user_group
+    schema_ref: motaword/user_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: motaword.user_group_2
+    schema_ref: motaword/user_group_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: motaword.blog
+    schema_ref: motaword/blog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: motaword.activity
+    schema_ref: motaword/activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - body
+  - kind: motaword.projects_activity
+    schema_ref: motaword/projects_activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: motaword.activities_comment
+    schema_ref: motaword/activities_comment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: motaword.corporate_user
+    schema_ref: motaword/corporate_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: motaword.corporate_user_group
+    schema_ref: motaword/corporate_user_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

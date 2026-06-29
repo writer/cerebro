@@ -2,6 +2,42 @@ package compliance
 
 import "testing"
 
+func TestDefaultControlEvidenceRequirementsIncludePolicyDocumentGovernance(t *testing.T) {
+	requirements, err := LoadControlEvidenceRequirementCatalogFile("control_evidence_requirements.yaml")
+	if err != nil {
+		t.Fatalf("LoadControlEvidenceRequirementCatalogFile() error = %v", err)
+	}
+	issues := ValidateControlEvidenceRequirementCatalog(requirements)
+	if len(issues) != 0 {
+		t.Fatalf("ValidateControlEvidenceRequirementCatalog() issues = %#v, want none", issues)
+	}
+	var requirement ControlEvidenceSourceRequirement
+	for _, profile := range requirements.Profiles {
+		if profile.ID != "policy-document-governance" {
+			continue
+		}
+		if !containsStringFold(profile.AppliesTo.Frameworks, "*") {
+			t.Fatalf("policy-document-governance frameworks = %#v, want explicit wildcard", profile.AppliesTo.Frameworks)
+		}
+		for _, candidate := range profile.SourceRequirements {
+			if candidate.SourceID == "grc_policy_lifecycle" && candidate.EntityType == "policy_document" {
+				requirement = candidate
+			}
+		}
+	}
+	if requirement.SourceID == "" {
+		t.Fatal("policy-document-governance grc_policy_lifecycle requirement is missing")
+	}
+	for _, field := range []string{"policy_type", "owner", "approving_authority", "version", "effective_at", "review_cadence", "last_reviewed_at", "acknowledgement_evidence", "controls", "exception_path", "source_provenance"} {
+		if !containsStringFold(requirement.RequiredFields, field) {
+			t.Fatalf("policy document required fields = %#v, want %q", requirement.RequiredFields, field)
+		}
+	}
+	if requirement.ClaimStrength != "policy_document_backed" || requirement.SufficiencyRule != "approved_current_acknowledged_exception_path" {
+		t.Fatalf("policy document claim fields = %#v", requirement)
+	}
+}
+
 func TestResolveControlEvidenceRequirementsUsesSpecificProfileAndFallback(t *testing.T) {
 	catalog := loadTestCatalog(t, `
 version: "2026-06-28"
@@ -215,6 +251,39 @@ func TestControlEvidenceRequirementFrameworkGateAllowsKeywordOrPrefix(t *testing
 		Control:       Control{ID: "1798.100", Title: "Consumer notices"},
 	}) {
 		t.Fatal("profile matched keyword and prefix outside the selected framework")
+	}
+}
+
+func TestControlEvidenceRequirementFrameworkWildcardStillRequiresSelectorMatch(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "policy-document-governance",
+		Name: "Policy Document Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			Frameworks:        []string{"*"},
+			FamilyKeywords:    []string{"Governance"},
+			ControlIDPrefixes: []string{"CC1"},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Control Environment",
+		Control:       Control{ID: "CC1.1", Title: "Board oversight"},
+	}) {
+		t.Fatal("profile did not match wildcard framework plus control ID prefix")
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "Custom Framework",
+		FamilyName:    "Governance",
+		Control:       Control{ID: "GV-1", Title: "Policy oversight"},
+	}) {
+		t.Fatal("profile did not match wildcard framework plus family keyword")
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "Custom Framework",
+		FamilyName:    "Logging",
+		Control:       Control{ID: "LOG-1", Title: "Collect security events"},
+	}) {
+		t.Fatal("profile matched wildcard framework without keyword or prefix")
 	}
 }
 

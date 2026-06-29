@@ -1,0 +1,13 @@
+sourceId: files_com
+secretKeys:
+  - FILES_COM_API_TOKEN
+runtimes:
+  - localId: external-event
+    config:
+      family: external_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /external_events
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN

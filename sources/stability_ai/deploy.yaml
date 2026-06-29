@@ -1,0 +1,13 @@
+sourceId: stability_ai
+secretKeys:
+  - STABILITY_AI_TOKEN
+runtimes:
+  - localId: engines
+    config:
+      family: engines
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/engines/list
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:STABILITY_AI_TOKEN

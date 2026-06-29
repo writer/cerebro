@@ -1,0 +1,107 @@
+id: together_ai
+name: "Together AI"
+description: "Collects projects, API keys, usage reports, and fine tuning jobs from Together AI and projects them into the Cerebro graph as assets and secrets for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - together_ai.projects
+  - together_ai.api_keys
+  - together_ai.usage_reports
+  - together_ai.fine_tuning_jobs
+kind_lifecycle:
+  - kind: together_ai.projects
+    status: active
+  - kind: together_ai.api_keys
+    status: active
+  - kind: together_ai.usage_reports
+    status: active
+  - kind: together_ai.fine_tuning_jobs
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: together_ai
+  dimensions:
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usage_reports
+      type: entity_family
+      title: "Usage Reports"
+      families: [usage_reports]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: fine_tuning_jobs
+      type: entity_family
+      title: "Fine Tuning Jobs"
+      families: [fine_tuning_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: together_ai.projects
+    schema_ref: together_ai/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: together_ai.api_keys
+    schema_ref: together_ai/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: together_ai.usage_reports
+    schema_ref: together_ai/usage_reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: together_ai.fine_tuning_jobs
+    schema_ref: together_ai/fine_tuning_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

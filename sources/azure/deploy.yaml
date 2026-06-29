@@ -48,6 +48,12 @@ runtimes:
       graph_token: env:AZURE_GRAPH_TOKEN
       per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
+  - localId: authentication-methods-policy
+    config:
+      family: authentication_methods_policy
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
   - localId: application-container
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -83,6 +89,12 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: conditional-access-policy
+    config:
+      family: conditional_access_policy
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
   - localId: container-registry
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -117,6 +129,18 @@ runtimes:
       family: defender_config
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: defender-alert
+    config:
+      family: defender_alert
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: defender-incident
+    config:
+      family: defender_incident
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
   - localId: diagnostic-setting
     config:
@@ -176,6 +200,18 @@ runtimes:
       family: iam_role_assignment
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: identity-risk-detection
+    config:
+      family: identity_risk_detection
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: identity-risky-user
+    config:
+      family: identity_risky_user
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
   - localId: key-vault
     config:
@@ -254,6 +290,32 @@ runtimes:
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
       tenant_id: env:AZURE_TENANT_ID
+  - localId: purview-account
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: purview_account
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: purview-private-endpoint-connection
+    config:
+      arm_token: env:AZURE_ARM_TOKEN
+      family: purview_private_endpoint_connection
+      per_page: "100"
+      subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: purview-retention-label
+    config:
+      family: purview_retention_label
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: purview-sensitivity-label
+    config:
+      family: purview_sensitivity_label
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
   - localId: resource-exposure
     config:
       arm_token: env:AZURE_ARM_TOKEN
@@ -281,6 +343,18 @@ runtimes:
       family: security_contact
       per_page: "100"
       subscription_id: env:AZURE_SUBSCRIPTION_ID
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: secure-score
+    config:
+      family: secure_score
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
+      tenant_id: env:AZURE_TENANT_ID
+  - localId: secure-score-control
+    config:
+      family: secure_score_control
+      graph_token: env:AZURE_GRAPH_TOKEN
+      per_page: "100"
       tenant_id: env:AZURE_TENANT_ID
   - localId: server-vulnerability
     config:

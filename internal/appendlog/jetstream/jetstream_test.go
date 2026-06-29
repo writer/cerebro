@@ -1445,6 +1445,74 @@ func TestReplayLegacyFullScanKeepsNewestOccurredCandidates(t *testing.T) {
 	}
 }
 
+func TestReplayScansLegacyRangeWithBoundedCandidateMemory(t *testing.T) {
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= 100; seq++ {
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 100},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-99", "evt-100"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want newest append-order ids %#v", got, want)
+	}
+	if replay.getMsgCalls != 100 {
+		t.Fatalf("getMsgCalls = %d, want full legacy scan with bounded candidate memory", replay.getMsgCalls)
+	}
+}
+
+func TestReplayReturnsNewestOccurredEventsBeyondCandidateWindow(t *testing.T) {
+	base := time.Date(2026, 5, 13, 18, 0, 0, 0, time.UTC)
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= 100; seq++ {
+		occurredAt := base.Add(time.Duration(101-seq) * time.Minute)
+		id := "evt-" + strconv.FormatUint(seq, 10)
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEventAt(id, "github.audit", "writer-github", occurredAt))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 100},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if got, want := replayedEventIDs(events), []string{"evt-1", "evt-2"}; !slices.Equal(got, want) {
+		t.Fatalf("replayed ids = %#v, want newest occurred ids %#v", got, want)
+	}
+	if replay.getMsgCalls != 100 {
+		t.Fatalf("getMsgCalls = %d, want full legacy scan so newest occurred events beyond the old candidate window are visible", replay.getMsgCalls)
+	}
+}
+
 func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
 	if subjectMatches("events.>", "events") {
 		t.Fatal("subjectMatches(events.>, events) = true, want false")
@@ -1941,6 +2009,7 @@ func TestReplayRuntimeIndexedSkipsUnnarrowedFilters(t *testing.T) {
 }
 
 func TestScanRuntimeIndexCollectsRuntimeEntries(t *testing.T) {
+	indexedAt := time.Date(2026, 5, 13, 18, 0, 0, 0, time.UTC)
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
 			{
@@ -1950,7 +2019,7 @@ func TestScanRuntimeIndexCollectsRuntimeEntries(t *testing.T) {
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				1: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-1", "github.audit", "writer-github", indexedAt)),
 				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "other-runtime")),
 				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
 				4: rawReplayMsg(t, "events.ignored", replayEvent("evt-4", "ignored", "")),
@@ -1972,6 +2041,9 @@ func TestScanRuntimeIndexCollectsRuntimeEntries(t *testing.T) {
 	first := scan.Entries[0]
 	if first.RuntimeID != "writer-github" || first.Seq != 1 || first.Kind != "github.audit" {
 		t.Fatalf("first entry = %#v, want writer-github seq 1 github.audit", first)
+	}
+	if !first.OccurredAt.Equal(indexedAt) {
+		t.Fatalf("first entry occurred_at = %v, want %v", first.OccurredAt, indexedAt)
 	}
 }
 

@@ -1,0 +1,13 @@
+sourceId: google_secops_chronicle
+secretKeys:
+  - GOOGLE_SECOPS_CHRONICLE_TOKEN
+runtimes:
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/detect/rules
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:GOOGLE_SECOPS_CHRONICLE_TOKEN

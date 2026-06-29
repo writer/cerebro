@@ -1,0 +1,103 @@
+id: huggingface
+name: "Hugging Face"
+description: "Collects organization members, resource groups, audit logs, and repositories from Hugging Face and projects them into the Cerebro graph as users, groups, audit events, and repositories for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - huggingface.organization_members
+  - huggingface.resource_groups
+  - huggingface.audit_logs
+  - huggingface.repositories
+kind_lifecycle:
+  - kind: huggingface.organization_members
+    status: active
+  - kind: huggingface.resource_groups
+    status: active
+  - kind: huggingface.audit_logs
+    status: active
+  - kind: huggingface.repositories
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: huggingface
+  dimensions:
+    - id: organization_members
+      type: entity_family
+      title: "Organization Members"
+      families: [organization_members]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource_groups
+      type: entity_family
+      title: "Resource Groups"
+      families: [resource_groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_logs
+      type: audit_event
+      title: "Audit Logs"
+      families: [audit_logs]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: repositories
+      type: entity_family
+      title: "Repositories"
+      families: [repositories]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: huggingface.organization_members
+    schema_ref: huggingface/organization_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: huggingface.resource_groups
+    schema_ref: huggingface/resource_groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: huggingface.audit_logs
+    schema_ref: huggingface/audit_logs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: huggingface.repositories
+    schema_ref: huggingface/repositories/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

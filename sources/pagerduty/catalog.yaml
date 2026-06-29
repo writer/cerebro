@@ -47,7 +47,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Integrations are collected per service and retain the service ID plus vendor reference for service-to-tool dependency projection.
+        - Integrations fan out across service_ids, fall back to service_id for single-service deployments, and retain each service ID plus vendor reference for service-to-tool dependency projection.
     - id: schedules
       type: entity_family
       title: Schedules

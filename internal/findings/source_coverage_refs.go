@@ -47,6 +47,9 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 	}
 	searchText := detectionCoverageSearchText(detection)
 	candidates := make([]sourceCoverageCandidate, 0)
+	sourceMatchRequired := policyIdentityNamespaceRequiresSourceMatch(detection)
+	identityProviderNamed := policyIdentityDetectionNamesProvider(searchText)
+	genericIdentityCoverageAllowed := policyIdentityDetectionAllowsGenericCoverage(detection)
 	for _, contract := range contracts {
 		sourceID := strings.TrimSpace(contract.SourceID)
 		if sourceID == "" {
@@ -57,17 +60,18 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		for _, dimension := range contract.Dimensions {
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
+			effectiveSourceMatched := sourceMatched || genericIdentityCoverageMatchesDetection(sourceID, dimension, sourceMatchRequired, identityProviderNamed, genericIdentityCoverageAllowed, dimensionMatched)
 			coverageRefs := dimension.ControlRefs
 			// Domain-derived control coverage is credited only within the
 			// detection's own (or explicitly named) source and only when the
 			// coverage dimension or evidence type also matches. This lets broad
 			// control_domains fill missing refs without letting every dimension
 			// from the same source inherit every matching framework control.
-			if sourceMatched && (dimensionMatched || evidenceMatched) {
+			if effectiveSourceMatched && (dimensionMatched || evidenceMatched) {
 				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
 			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
-			if len(matches) == 0 || sourceConflicted || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
+			if len(matches) == 0 || sourceConflicted || (sourceMatchRequired && !effectiveSourceMatched) || !coverageControlMatchAllowed(detection.SourceID, effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
@@ -84,7 +88,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			}
 			candidates = append(candidates, sourceCoverageCandidate{
 				ref:                ref,
-				score:              sourceCoverageCandidateScore(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
+				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
 				exactControlMatch:  exactControlMatch,
 				dimensionMatched:   dimensionMatched,
 				evidenceMatched:    evidenceMatched,
@@ -95,6 +99,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 	if len(candidates) == 0 {
 		return nil
 	}
+	candidates = pruneSourceOnlyCoverageCandidates(candidates)
 	sort.Slice(candidates, func(i int, j int) bool {
 		left := candidates[i]
 		right := candidates[j]
@@ -147,6 +152,26 @@ type sourceCoverageCandidate struct {
 	matchedControlRefs int
 }
 
+func pruneSourceOnlyCoverageCandidates(candidates []sourceCoverageCandidate) []sourceCoverageCandidate {
+	hasSpecificMatch := false
+	for _, candidate := range candidates {
+		if candidate.dimensionMatched || candidate.evidenceMatched {
+			hasSpecificMatch = true
+			break
+		}
+	}
+	if !hasSpecificMatch {
+		return candidates
+	}
+	pruned := candidates[:0]
+	for _, candidate := range candidates {
+		if candidate.dimensionMatched || candidate.evidenceMatched {
+			pruned = append(pruned, candidate)
+		}
+	}
+	return pruned
+}
+
 func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
 	score := 0
 	if sourceMatched {
@@ -189,11 +214,19 @@ func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, d
 	return true
 }
 
+func policyIdentityNamespaceRequiresSourceMatch(detection PublicDetection) bool {
+	if strings.TrimSpace(detection.SourceID) != policyRuleSourceID {
+		return false
+	}
+	return strings.HasPrefix(normalizeCoverageText(detection.ID), "identity_")
+}
+
 func coverageSourceConflictsWithPolicyDetection(detectionSourceID string, coverageSourceID string, searchText string) bool {
 	if strings.TrimSpace(detectionSourceID) != policyRuleSourceID {
 		return false
 	}
-	return cloudProviderCoverageSourceConflicts(coverageSourceID, searchText)
+	return cloudProviderCoverageSourceConflicts(coverageSourceID, searchText) ||
+		identityProviderCoverageSourceConflicts(coverageSourceID, searchText)
 }
 
 var cloudProviderCoverageAliases = map[string][]string{
@@ -216,6 +249,126 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 			continue
 		}
 		if coverageTextContainsAny(searchText, providerAliases) {
+			return true
+		}
+	}
+	return false
+}
+
+var identityProviderCoverageAliases = map[string][]string{
+	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"duo":                {"duo", "duo_security"},
+	"duo_security":       {"duo", "duo_security"},
+	"github":             {"github", "github_org", "github_organization"},
+	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
+	"jumpcloud":          {"jumpcloud", "jump_cloud"},
+	"microsoft_365":      {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
+	"microsoft_entra":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"microsoft_entra_id": {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"okta":               {"okta"},
+	"tailscale":          {"tailscale", "tailnet"},
+}
+
+func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {
+	sourceID := normalizeCoverageText(coverageSourceID)
+	aliases, ok := identityProviderCoverageAliases[sourceID]
+	if !ok {
+		return false
+	}
+	if coverageTextContainsAny(searchText, aliases) {
+		return false
+	}
+	for provider, providerAliases := range identityProviderCoverageAliases {
+		if provider == sourceID {
+			continue
+		}
+		if coverageTextContainsAny(searchText, providerAliases) {
+			return true
+		}
+	}
+	return false
+}
+
+func policyIdentityDetectionNamesProvider(searchText string) bool {
+	for _, aliases := range identityProviderCoverageAliases {
+		if coverageTextContainsAny(searchText, aliases) {
+			return true
+		}
+	}
+	return false
+}
+
+var genericIdentityPolicyPrefixes = map[string]struct{}{
+	"access":      {},
+	"account":     {},
+	"accounts":    {},
+	"admin":       {},
+	"conditional": {},
+	"dormant":     {},
+	"external":    {},
+	"group":       {},
+	"groups":      {},
+	"inactive":    {},
+	"mfa":         {},
+	"orphaned":    {},
+	"privileged":  {},
+	"service":     {},
+	"stale":       {},
+	"user":        {},
+	"users":       {},
+}
+
+func policyIdentityDetectionAllowsGenericCoverage(detection PublicDetection) bool {
+	parts := strings.Split(normalizeCoverageText(detection.ID), "_")
+	if len(parts) < 2 || parts[0] != "identity" {
+		return false
+	}
+	_, ok := genericIdentityPolicyPrefixes[parts[1]]
+	return ok
+}
+
+func genericIdentityCoverageMatchesDetection(sourceID string, dimension sourcecdk.CoverageDimension, sourceMatchRequired bool, identityProviderNamed bool, genericIdentityCoverageAllowed bool, dimensionMatched bool) bool {
+	if !sourceMatchRequired || identityProviderNamed || !genericIdentityCoverageAllowed || !dimensionMatched {
+		return false
+	}
+	if _, ok := identityProviderCoverageAliases[normalizeCoverageText(sourceID)]; !ok {
+		return false
+	}
+	if !genericIdentityDimensionAllowed(dimension.ID) {
+		return false
+	}
+	if !dimensionHasControlDomain(dimension, "identity_access") {
+		return false
+	}
+	return true
+}
+
+func genericIdentityDimensionAllowed(dimensionID string) bool {
+	dimensionID = normalizeCoverageText(dimensionID)
+	for _, token := range []string{
+		"app_role",
+		"authenticator",
+		"conditional_access",
+		"directory_role",
+		"external",
+		"group",
+		"lifecycle",
+		"mfa",
+		"privileged",
+		"role_assignment",
+		"user",
+	} {
+		if strings.Contains(dimensionID, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func dimensionHasControlDomain(dimension sourcecdk.CoverageDimension, want string) bool {
+	want = normalizeCoverageText(want)
+	for _, domain := range dimension.ControlDomains {
+		if normalizeCoverageText(domain) == want {
 			return true
 		}
 	}
@@ -264,7 +417,7 @@ func sourceMatchesDetection(detection PublicDetection, sourceID string, searchTe
 	if detectionSourceID := strings.TrimSpace(detection.SourceID); detectionSourceID != "" && detectionSourceID != policyRuleSourceID {
 		return strings.EqualFold(detectionSourceID, sourceID)
 	}
-	for _, alias := range sourceCoverageAliases(sourceID) {
+	for _, alias := range sourceCoverageAliases(sourceID, policyIdentityNamespaceRequiresSourceMatch(detection)) {
 		if coverageTextContains(searchText, alias) {
 			return true
 		}
@@ -277,11 +430,27 @@ func dimensionMatchesDetection(dimension sourcecdk.CoverageDimension, searchText
 		return true
 	}
 	for _, family := range dimension.Families {
+		if genericCoverageFamilyRequiresGenericDimension(dimension.ID, family) {
+			continue
+		}
 		if coverageTextContains(searchText, family) {
 			return true
 		}
 	}
 	return false
+}
+
+func genericCoverageFamilyRequiresGenericDimension(dimensionID string, family string) bool {
+	switch normalizeCoverageText(family) {
+	case "audit":
+		return normalizeCoverageText(dimensionID) != "audit_events"
+	case "repository":
+		return normalizeCoverageText(dimensionID) != "repositories"
+	case "org_inventory":
+		return normalizeCoverageText(dimensionID) != "organization_members"
+	default:
+		return false
+	}
 }
 
 func evidenceMatchesDetection(evidenceType string, dimensionEvidenceTypes []string) bool {
@@ -467,16 +636,22 @@ func normalizeGDPRArticleControlID(value string) string {
 	return value
 }
 
-func sourceCoverageAliases(sourceID string) []string {
+func sourceCoverageAliases(sourceID string, includeIdentityAliases bool) []string {
 	sourceID = strings.TrimSpace(sourceID)
 	if sourceID == "" {
 		return nil
 	}
-	return uniqueSortedStrings([]string{
+	aliases := []string{
 		sourceID,
 		strings.ReplaceAll(sourceID, "_", "-"),
 		strings.ReplaceAll(sourceID, "_", ""),
-	})
+	}
+	normalized := normalizeCoverageText(sourceID)
+	aliases = append(aliases, cloudProviderCoverageAliases[normalized]...)
+	if includeIdentityAliases {
+		aliases = append(aliases, identityProviderCoverageAliases[normalized]...)
+	}
+	return uniqueSortedStrings(aliases)
 }
 
 func controlRefKey(ref ports.FindingControlRef) string {

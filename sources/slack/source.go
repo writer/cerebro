@@ -3,7 +3,10 @@ package slack
 import (
 	"context"
 	"embed"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -37,6 +40,7 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
+		ResponseError:   slackResponseError,
 		Families:        slackFamilies(),
 	})
 	if err != nil {
@@ -70,11 +74,12 @@ func slackFamilies() []jsonapi.Family {
 
 func slackTeamFamily() jsonapi.Family {
 	return slackPagedFamily(jsonapi.Family{
-		Name:    familyTeam,
-		Method:  http.MethodPost,
-		Path:    "/auth.teams.list",
-		URNKind: "slack_team",
-		IDKeys:  []string{"id", "team_id"},
+		Name:     familyTeam,
+		Method:   http.MethodPost,
+		Path:     "/auth.teams.list",
+		URNKind:  "slack_team",
+		IDKeys:   []string{"id", "team_id"},
+		ListKeys: []string{"teams"},
 		Attributes: map[string]string{
 			"team_id": "id|team_id",
 			"name":    "name",
@@ -144,6 +149,7 @@ func slackUserGroupFamily() jsonapi.Family {
 		Path:            "/usergroups.list",
 		URNKind:         "slack_user_group",
 		IDKeys:          []string{"id", "group_id"},
+		ListKeys:        []string{"usergroups"},
 		TimestampKeys:   []string{"date_update", "date_create"},
 		DisablePageSize: true,
 		Attributes: map[string]string{
@@ -166,4 +172,34 @@ func slackPagedFamily(family jsonapi.Family) jsonapi.Family {
 
 func slackStaticAttributes() map[string]string {
 	return map[string]string{"source_product": "slack"}
+}
+
+func slackResponseError(body []byte) error {
+	var payload struct {
+		OK       *bool  `json:"ok"`
+		Error    string `json:"error"`
+		Needed   string `json:"needed"`
+		Provided string `json:"provided"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Errorf("decode slack response: %w", err)
+	}
+	if payload.OK == nil || *payload.OK {
+		return nil
+	}
+	message := strings.TrimSpace(payload.Error)
+	if message == "" {
+		message = "request_failed"
+	}
+	details := []string{}
+	if needed := strings.TrimSpace(payload.Needed); needed != "" {
+		details = append(details, "needed="+needed)
+	}
+	if provided := strings.TrimSpace(payload.Provided); provided != "" {
+		details = append(details, "provided="+provided)
+	}
+	if len(details) != 0 {
+		return fmt.Errorf("slack API returned ok=false: %s (%s)", message, strings.Join(details, ", "))
+	}
+	return fmt.Errorf("slack API returned ok=false: %s", message)
 }

@@ -1049,10 +1049,12 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 		RuleIDs:    req.Msg.GetRuleIds(),
 		EventLimit: req.Msg.GetEventLimit(),
 	})
+	if response != nil {
+		bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
+	}
 	if err != nil {
 		return nil, findingConnectError(err)
 	}
-	bumpGRCCacheForRuntime(ctx, s.deps, req.Msg.GetId(), grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	return connect.NewResponse(findingRulesResponse(response)), nil
 }
 

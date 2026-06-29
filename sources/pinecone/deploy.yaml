@@ -1,0 +1,13 @@
+sourceId: pinecone
+secretKeys:
+  - PINECONE_API_TOKEN
+runtimes:
+  - localId: indexes
+    config:
+      family: indexes
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /indexes
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:PINECONE_API_TOKEN

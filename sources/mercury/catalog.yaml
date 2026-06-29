@@ -1,0 +1,82 @@
+id: mercury
+name: "Mercury"
+description: "Collects accounts, transactions, and users from Mercury and projects them into the Cerebro graph as assets, audit events, and users for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - mercury.accounts
+  - mercury.transactions
+  - mercury.users
+kind_lifecycle:
+  - kind: mercury.accounts
+    status: active
+  - kind: mercury.transactions
+    status: active
+  - kind: mercury.users
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: mercury
+  dimensions:
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: transactions
+      type: audit_event
+      title: "Transactions"
+      families: [transactions]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: mercury.accounts
+    schema_ref: mercury/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mercury.transactions
+    schema_ref: mercury/transactions/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: mercury.users
+    schema_ref: mercury/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

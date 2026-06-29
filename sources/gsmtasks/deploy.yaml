@@ -1,0 +1,15 @@
+sourceId: gsmtasks
+secretKeys:
+  - GSMTASKS_API_BASE_URL
+  - GSMTASKS_API_TOKEN
+runtimes:
+  - localId: task-event
+    config:
+      api_base_url: env:GSMTASKS_API_BASE_URL
+      family: task_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /task_events/
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:GSMTASKS_API_TOKEN

@@ -1,0 +1,15 @@
+sourceId: redhat
+secretKeys:
+  - REDHAT_INVENTORY_ID
+  - REDHAT_API_TOKEN
+runtimes:
+  - localId: advisory
+    config:
+      inventory_id: env:REDHAT_INVENTORY_ID
+      family: advisory
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/patch/v1/export/advisories
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:REDHAT_API_TOKEN

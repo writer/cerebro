@@ -1,0 +1,131 @@
+id: zerofox
+name: "Zerofox"
+description: "Collects assets, findings, vulnerabilities, policies, and audit events from Zerofox and projects them into the Cerebro graph as assets, findings, vulnerabilities, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - zerofox.assets
+  - zerofox.findings
+  - zerofox.vulnerabilities
+  - zerofox.policies
+  - zerofox.audit_events
+kind_lifecycle:
+  - kind: zerofox.assets
+    status: active
+  - kind: zerofox.findings
+    status: active
+  - kind: zerofox.vulnerabilities
+    status: active
+  - kind: zerofox.policies
+    status: active
+  - kind: zerofox.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: zerofox
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: remediation_state
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: remediation_state
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: lifecycle_state
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: zerofox.assets
+    schema_ref: zerofox/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: zerofox.findings
+    schema_ref: zerofox/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: zerofox.vulnerabilities
+    schema_ref: zerofox/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: zerofox.policies
+    schema_ref: zerofox/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: zerofox.audit_events
+    schema_ref: zerofox/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,128 @@
+id: azure_openai
+name: "Azure OpenAI"
+description: "Collects deployments, model catalog, rai policies, rai blocklists, and private endpoint connections from Azure OpenAI and projects them into the Cerebro graph as assets, deployments, and policies for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - azure_openai.deployments
+  - azure_openai.model_catalog
+  - azure_openai.rai_policies
+  - azure_openai.rai_blocklists
+  - azure_openai.private_endpoint_connections
+kind_lifecycle:
+  - kind: azure_openai.deployments
+    status: active
+  - kind: azure_openai.model_catalog
+    status: active
+  - kind: azure_openai.rai_policies
+    status: active
+  - kind: azure_openai.rai_blocklists
+    status: active
+  - kind: azure_openai.private_endpoint_connections
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: azure_openai
+  dimensions:
+    - id: deployments
+      type: deployment_state
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rai_policies
+      type: lifecycle_state
+      title: "Rai Policies"
+      families: [rai_policies]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rai_blocklists
+      type: lifecycle_state
+      title: "Rai Blocklists"
+      families: [rai_blocklists]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: private_endpoint_connections
+      type: entity_family
+      title: "Private Endpoint Connections"
+      families: [private_endpoint_connections]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: azure_openai.deployments
+    schema_ref: azure_openai/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: azure_openai.model_catalog
+    schema_ref: azure_openai/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: azure_openai.rai_policies
+    schema_ref: azure_openai/rai_policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - name
+  - kind: azure_openai.rai_blocklists
+    schema_ref: azure_openai/rai_blocklists/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - name
+  - kind: azure_openai.private_endpoint_connections
+    schema_ref: azure_openai/private_endpoint_connections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

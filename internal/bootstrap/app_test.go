@@ -48,6 +48,7 @@ import (
 	"github.com/writer/cerebro/internal/workflowprojection"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	auth0source "github.com/writer/cerebro/sources/auth0"
+	datadogsource "github.com/writer/cerebro/sources/datadog"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
@@ -1747,8 +1748,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 6 {
-		t.Fatalf("/sources entries = %#v, want 6 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 7 {
+		t.Fatalf("/sources entries = %#v, want 7 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
@@ -1883,6 +1884,72 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(oktaPreviewEvents) != 1 {
 		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
 	}
+	datadogConfig := map[string]string{"tenant_id": "tenant"}
+	datadogCheckResp, err := sourceGet(t, server, "/sources/datadog/check?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/check error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogCheckResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/check response body: %v", closeErr)
+		}
+	}()
+	var datadogCheckPayload map[string]any
+	if err := json.NewDecoder(datadogCheckResp.Body).Decode(&datadogCheckPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/check response: %v", err)
+	}
+	if datadogCheckPayload["status"] != "ok" {
+		t.Fatalf("datadog check status = %#v, want %q", datadogCheckPayload["status"], "ok")
+	}
+	datadogDiscoverResp, err := sourceGet(t, server, "/sources/datadog/discover?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/discover error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogDiscoverResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/discover response body: %v", closeErr)
+		}
+	}()
+	var datadogDiscoverPayload map[string]any
+	if err := json.NewDecoder(datadogDiscoverResp.Body).Decode(&datadogDiscoverPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/discover response: %v", err)
+	}
+	datadogURNs, ok := datadogDiscoverPayload["urns"].([]any)
+	if !ok || len(datadogURNs) != 1 {
+		t.Fatalf("datadog discover urns = %#v, want 1 entry", datadogDiscoverPayload["urns"])
+	}
+	if got := datadogURNs[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+		t.Fatalf("datadog discover urns[0] = %#v, want Datadog users URN", got)
+	}
+	datadogReadResp, err := sourceGet(t, server, "/sources/datadog/read?family=users", datadogConfig)
+	if err != nil {
+		t.Fatalf("GET /sources/datadog/read error = %v", err)
+	}
+	defer func() {
+		if closeErr := datadogReadResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/datadog/read response body: %v", closeErr)
+		}
+	}()
+	var datadogReadPayload map[string]any
+	if err := json.NewDecoder(datadogReadResp.Body).Decode(&datadogReadPayload); err != nil {
+		t.Fatalf("decode /sources/datadog/read response: %v", err)
+	}
+	datadogEvents, ok := datadogReadPayload["events"].([]any)
+	if !ok || len(datadogEvents) != 1 {
+		t.Fatalf("datadog read events = %#v, want 1 entry", datadogReadPayload["events"])
+	}
+	datadogEvent, ok := datadogEvents[0].(map[string]any)
+	if !ok || datadogEvent["kind"] != "datadog.users" {
+		t.Fatalf("datadog read event = %#v, want kind datadog.users", datadogEvents[0])
+	}
+	datadogPreviewEvents, ok := datadogReadPayload["preview_events"].([]any)
+	if !ok || len(datadogPreviewEvents) != 1 {
+		t.Fatalf("datadog read preview_events = %#v, want 1 entry", datadogReadPayload["preview_events"])
+	}
+	datadogPreviewEvent, ok := datadogPreviewEvents[0].(map[string]any)
+	if !ok || datadogPreviewEvent["payload_decoded"] != true {
+		t.Fatalf("datadog read preview_event = %#v, want decoded payload", datadogPreviewEvents[0])
+	}
 	leakyQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=secret")
 	if err != nil {
 		t.Fatalf("GET /sources/github/check leaky query error = %v", err)
@@ -1916,8 +1983,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 6 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 6", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 7 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 7", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -3974,6 +4041,132 @@ func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
 		t.Fatalf("paths = %#v", body.Paths)
 	}
 	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["person_query"] != "product designer" {
+		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	}
+}
+
+func TestGraphEffectiveAccessPathsEndpoint(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{
+			"identity_urn":            "urn:cerebro:writer:identity:email:alice@example.com",
+			"identity_entity_type":    "identity.email",
+			"identity_label":          "alice@example.com",
+			"principal_urn":           "urn:cerebro:writer:okta_user:00u1",
+			"principal_entity_type":   "okta.user",
+			"principal_label":         "alice@example.com",
+			"mediator_urn":            "urn:cerebro:writer:okta_group:grp-security",
+			"mediator_entity_type":    "okta.group",
+			"mediator_label":          "Security Engineering",
+			"target_urn":              "urn:cerebro:writer:okta_application:app-aws-admin",
+			"target_entity_type":      "okta.application",
+			"target_label":            "AWS Admin Console",
+			"entitlement_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
+			"entitlement_entity_type": "okta.entitlement",
+			"entitlement_label":       "AdministratorAccess",
+			"capability_urn":          "urn:cerebro:writer:privileged_capability:cloud_admin",
+			"capability_entity_type":  "privileged.capability",
+			"capability_label":        "Cloud administrator",
+			"assignment_kind":         "group_app_assignment",
+			"relation_chain":          []any{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
+			"edges": []any{
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_user:00u1",
+					"from_entity_type": "okta.user",
+					"from_label":       "alice@example.com",
+					"relation":         "member_of",
+					"to_urn":           "urn:cerebro:writer:okta_group:grp-security",
+					"to_entity_type":   "okta.group",
+					"to_label":         "Security Engineering",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-member","at":"2026-06-10T17:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_group:grp-security",
+					"from_entity_type": "okta.group",
+					"from_label":       "Security Engineering",
+					"relation":         "assigned_to",
+					"to_urn":           "urn:cerebro:writer:okta_application:app-aws-admin",
+					"to_entity_type":   "okta.application",
+					"to_label":         "AWS Admin Console",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-assign","at":"2026-06-10T18:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_application:app-aws-admin",
+					"from_entity_type": "okta.application",
+					"from_label":       "AWS Admin Console",
+					"relation":         "grants_entitlement",
+					"to_urn":           "urn:cerebro:writer:okta_entitlement:administratoraccess",
+					"to_entity_type":   "okta.entitlement",
+					"to_label":         "AdministratorAccess",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-entitlement","at":"2026-06-10T18:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
+					"from_entity_type": "okta.entitlement",
+					"from_label":       "AdministratorAccess",
+					"relation":         "confers_capability",
+					"to_urn":           "urn:cerebro:writer:privileged_capability:cloud_admin",
+					"to_entity_type":   "privileged.capability",
+					"to_label":         "Cloud administrator",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-capability","at":"2026-06-10T18:00:00Z"}`,
+				},
+			},
+		}}},
+	}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/effective-access-paths?tenant_id=writer&identity_query=alice&application_urn=urn%3Acerebro%3Awriter%3Aokta_application%3Aapp-aws-admin&capability=cloud_admin&limit=5")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/effective-access-paths error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/effective-access-paths status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		TenantID string `json:"tenant_id"`
+		Counts   struct {
+			Paths             int `json:"paths"`
+			GroupMediatedPath int `json:"group_mediated_paths"`
+		} `json:"counts"`
+		Paths []struct {
+			Mediator struct {
+				URN string `json:"urn"`
+			} `json:"mediator"`
+			Capability struct {
+				URN string `json:"urn"`
+			} `json:"capability"`
+			Edges []struct {
+				Relation  string `json:"relation"`
+				SourceID  string `json:"source_id"`
+				RuntimeID string `json:"runtime_id"`
+				EventID   string `json:"event_id"`
+				At        string `json:"at"`
+			} `json:"edges"`
+		} `json:"paths"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TenantID != "writer" || body.Counts.Paths != 1 || body.Counts.GroupMediatedPath != 1 || len(body.Paths) != 1 {
+		t.Fatalf("body = %#v", body)
+	}
+	if body.Paths[0].Mediator.URN != "urn:cerebro:writer:okta_group:grp-security" || body.Paths[0].Capability.URN != "urn:cerebro:writer:privileged_capability:cloud_admin" {
+		t.Fatalf("path = %#v", body.Paths[0])
+	}
+	if len(body.Paths[0].Edges) != 4 || body.Paths[0].Edges[1].SourceID != "okta" || body.Paths[0].Edges[1].RuntimeID != "writer-okta" || body.Paths[0].Edges[1].EventID != "evt-assign" || body.Paths[0].Edges[1].At != "2026-06-10T18:00:00Z" {
+		t.Fatalf("edges = %#v", body.Paths[0].Edges)
+	}
+	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["capability_id"] != "cloud_admin" {
 		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
 	}
 }
@@ -7712,6 +7905,10 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	datadog, err := datadogsource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
 	sdk, err := sdksource.New()
 	if err != nil {
 		return nil, err
@@ -7720,7 +7917,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, okta, pagerDuty, sdk, slack)
+	return sourcecdk.NewRegistry(source, auth0, datadog, okta, pagerDuty, sdk, slack)
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

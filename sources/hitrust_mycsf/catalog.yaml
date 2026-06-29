@@ -1,0 +1,84 @@
+id: hitrust_mycsf
+name: "HITRUST MyCSF"
+description: "Collects assessments, controls, and evidence from HITRUST MyCSF and projects them into the Cerebro graph as assets and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - hitrust_mycsf.assessments
+  - hitrust_mycsf.controls
+  - hitrust_mycsf.evidence
+kind_lifecycle:
+  - kind: hitrust_mycsf.assessments
+    status: active
+  - kind: hitrust_mycsf.controls
+    status: active
+  - kind: hitrust_mycsf.evidence
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: hitrust_mycsf
+  dimensions:
+    - id: assessments
+      type: entity_family
+      title: "Assessments"
+      families: [assessments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: controls
+      type: entity_family
+      title: "Controls"
+      families: [controls]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: evidence
+      type: audit_event
+      title: "Evidence"
+      families: [evidence]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: hitrust_mycsf.assessments
+    schema_ref: hitrust_mycsf/assessments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: hitrust_mycsf.controls
+    schema_ref: hitrust_mycsf/controls/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: hitrust_mycsf.evidence
+    schema_ref: hitrust_mycsf/evidence/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

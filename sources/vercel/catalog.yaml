@@ -1,0 +1,84 @@
+id: vercel
+name: "Vercel"
+description: "Collects projects, deployments, and audit events from Vercel and projects them into the Cerebro graph as assets and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - vercel.projects
+  - vercel.deployments
+  - vercel.audit_events
+kind_lifecycle:
+  - kind: vercel.projects
+    status: active
+  - kind: vercel.deployments
+    status: active
+  - kind: vercel.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: vercel
+  dimensions:
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: entity_family
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: vercel.projects
+    schema_ref: vercel/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: vercel.deployments
+    schema_ref: vercel/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - uid
+  - kind: vercel.audit_events
+    schema_ref: vercel/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

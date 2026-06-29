@@ -1,0 +1,107 @@
+id: pinecone
+name: "Pinecone"
+description: "Collects indexes, collections, backups, and restore jobs from Pinecone and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - pinecone.indexes
+  - pinecone.collections
+  - pinecone.backups
+  - pinecone.restore_jobs
+kind_lifecycle:
+  - kind: pinecone.indexes
+    status: active
+  - kind: pinecone.collections
+    status: active
+  - kind: pinecone.backups
+    status: active
+  - kind: pinecone.restore_jobs
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: pinecone
+  dimensions:
+    - id: indexes
+      type: entity_family
+      title: "Indexes"
+      families: [indexes]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: collections
+      type: entity_family
+      title: "Collections"
+      families: [collections]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: backups
+      type: entity_family
+      title: "Backups"
+      families: [backups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: restore_jobs
+      type: deployment_state
+      title: "Restore Jobs"
+      families: [restore_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: pinecone.indexes
+    schema_ref: pinecone/indexes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: pinecone.collections
+    schema_ref: pinecone/collections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: pinecone.backups
+    schema_ref: pinecone/backups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - backup_id
+  - kind: pinecone.restore_jobs
+    schema_ref: pinecone/restore_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - restore_job_id

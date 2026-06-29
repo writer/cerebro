@@ -1,0 +1,13 @@
+sourceId: virustotal
+secretKeys:
+  - VIRUSTOTAL_API_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v3/users/current
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:VIRUSTOTAL_API_TOKEN

@@ -1,0 +1,39 @@
+[
+  {
+    "id": "datadog-users-user-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.users",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/users/v1",
+    "payload": {
+      "id": "user-1",
+      "type": "users",
+      "attributes": {
+        "email": "alice@example.test",
+        "name": "Alice Example",
+        "handle": "alice@example.test",
+        "status": "Active",
+        "disabled": false,
+        "verified": true,
+        "created_at": "2026-06-01T00:00:00Z",
+        "modified_at": "2026-06-02T00:00:00Z"
+      }
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "user-1",
+      "external_id": "user-1",
+      "family": "users",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "user_id": "user-1",
+      "email": "alice@example.test",
+      "name": "Alice Example",
+      "handle": "alice@example.test",
+      "status": "Active",
+      "disabled": "false",
+      "verified": "true"
+    }
+  }
+]

@@ -1,0 +1,13 @@
+sourceId: aqua_security
+secretKeys:
+  - AQUA_SECURITY_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/v2/users/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:AQUA_SECURITY_TOKEN

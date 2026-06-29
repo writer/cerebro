@@ -47,13 +47,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync
-      type: incremental_sync
+      type: audit_event
       title: Incremental cursor sync
       families: [users, roles, audit_events]
       support: supported
       high_value: true
-      evidence_types: [source_sync_status]
-      control_domains: [source_operations]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Watermark filtering is applied from durable source checkpoints; provider page continuation cursors are preserved when present.
 event_contracts:

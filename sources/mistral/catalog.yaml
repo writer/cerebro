@@ -1,0 +1,106 @@
+id: mistral
+name: "Mistral AI"
+description: "Collects workspaces, API keys, audit logs, and usage reports from Mistral AI and projects them into the Cerebro graph as assets, secrets, and audit events for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - mistral.workspaces
+  - mistral.api_keys
+  - mistral.audit_logs
+  - mistral.usage_reports
+kind_lifecycle:
+  - kind: mistral.workspaces
+    status: active
+  - kind: mistral.api_keys
+    status: active
+  - kind: mistral.audit_logs
+    status: active
+  - kind: mistral.usage_reports
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: mistral
+  dimensions:
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_logs
+      type: audit_event
+      title: "Audit Logs"
+      families: [audit_logs]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usage_reports
+      type: entity_family
+      title: "Usage Reports"
+      families: [usage_reports]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: mistral.workspaces
+    schema_ref: mistral/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mistral.api_keys
+    schema_ref: mistral/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: mistral.audit_logs
+    schema_ref: mistral/audit_logs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: mistral.usage_reports
+    schema_ref: mistral/usage_reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,17 @@
+sourceId: influxdata
+secretKeys:
+  - INFLUXDATA_ORGID
+  - INFLUXDATA_TASKID
+  - INFLUXDATA_TOKEN
+runtimes:
+  - localId: log
+    config:
+      orgid: env:INFLUXDATA_ORGID
+      taskid: env:INFLUXDATA_TASKID
+      family: log
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /tasks/${config.taskid}/logs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INFLUXDATA_TOKEN

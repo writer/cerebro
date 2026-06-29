@@ -1,0 +1,105 @@
+id: callfire
+name: "CallFire"
+description: "Collects account, credential, broadcast, and call from CallFire and projects them into the Cerebro graph as users, secrets, and assets for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - callfire.account
+  - callfire.credential
+  - callfire.broadcast
+  - callfire.call
+kind_lifecycle:
+  - kind: callfire.account
+    status: active
+  - kind: callfire.credential
+    status: active
+  - kind: callfire.broadcast
+    status: active
+  - kind: callfire.call
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: callfire
+  dimensions:
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: credential
+      type: entity_family
+      title: "Credential"
+      families: [credential]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: broadcast
+      type: entity_family
+      title: "Broadcast"
+      families: [broadcast]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: call
+      type: entity_family
+      title: "Call"
+      families: [call]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: callfire.account
+    schema_ref: callfire/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: callfire.credential
+    schema_ref: callfire/credential/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: callfire.broadcast
+    schema_ref: callfire/broadcast/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: callfire.call
+    schema_ref: callfire/call/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

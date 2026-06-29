@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/api-reporting/v1/team/${config.team}/oncall/log",
+  "auth_model": "bearer_token",
+  "evidence_cas_reference_kind": "victorops.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=victorops",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "victorops",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

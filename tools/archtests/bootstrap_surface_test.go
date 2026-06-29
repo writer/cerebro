@@ -77,8 +77,12 @@ import (
 // so reserved runtime keys cannot cross the MCP transport layer. Credential
 // store operations add only route wiring plus auth policy for a handler in
 // internal/sourcehttp/credentialstores; the read model lives in
-// internal/credentialstores.
-const bootstrapProductionGoLineBudget = 26698
+// internal/credentialstores. Finding-rule partial evaluation handling adds
+// only cache invalidation and job result mapping while rule execution and run
+// state stay in internal/findings. Identity directory routes add only route
+// wiring while HTTP behavior lives in internal/sourcehttp/identitydirectory
+// and storage stays behind the IdentityDirectoryStore port.
+const bootstrapProductionGoLineBudget = 26714
 
 type bootstrapFileLineCount struct {
 	path  string

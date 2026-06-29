@@ -1,0 +1,13 @@
+sourceId: censys_asm
+secretKeys:
+  - CENSYS_ASM_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/account
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CENSYS_ASM_TOKEN

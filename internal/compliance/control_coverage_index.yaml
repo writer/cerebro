@@ -115799,117 +115799,130 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 12
+          title: Transparent information and communication
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 13
+          title: Information provided when personal data is collected
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 14
+          title: Information provided when personal data was not obtained from the data subject
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 15
+          title: Right of access by the data subject
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 16
+          title: Right to rectification
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 17
+          title: Right to erasure
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 18
+          title: Right to restriction of processing
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 19
+          title: Notification obligation for rectification, erasure, or restriction
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 20
+          title: Right to data portability
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 21
+          title: Right to object
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 22
+          title: Automated individual decision-making
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 23
+          title: Restrictions
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 24
+          title: Responsibility of the controller
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -115919,9 +115932,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 25
+          title: Data protection by design and by default
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -115930,18 +115944,20 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 27
+          title: Representatives of controllers or processors not established in the Union
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 28
+          title: Processor obligations
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -115950,9 +115966,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 30
+          title: Records of processing activities
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 5
           mapped_rules:
@@ -115965,9 +115982,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 32
+          title: Security of processing
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -115978,9 +115996,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 33
+          title: Notification of a personal data breach to the supervisory authority
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -115989,9 +116008,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 34
+          title: Communication of a personal data breach to the data subject
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116000,81 +116020,90 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 35
+          title: Data protection impact assessment
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 37
+          title: Designation of the data protection officer
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 38
+          title: Position of the data protection officer
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 39
+          title: Tasks of the data protection officer
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 44
+          title: General principle for transfers
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 45
+          title: Transfers on the basis of an adequacy decision
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 46
+          title: Transfers subject to appropriate safeguards
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 48
+          title: Transfers or disclosures not authorised by Union law
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 5
+          title: Principles relating to processing of personal data
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 6
           mapped_rules:
@@ -116088,18 +116117,20 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 51
+          title: Supervisory authority
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: GDPR
           family_id: Article
           family_name: Articles
           control_id: Article 6
+          title: Lawfulness of processing
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116108,9 +116139,10 @@ profiles:
           family_id: Article
           family_name: Articles
           control_id: Article 7
+          title: Conditions for consent
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 4
           coverage_status: unmapped
           rule_count: 0
         - framework_name: ISO 27701:2025
@@ -116819,9 +116851,12 @@ profiles:
           family_id: "10"
           family_name: Improvement
           control_id: "10.1"
+          title: Nonconformity and corrective action
+          audit_plan:
+            objective: AI governance failures, incidents, and control exceptions are logged, assigned, corrected, and verified.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116830,9 +116865,12 @@ profiles:
           family_id: "10"
           family_name: Improvement
           control_id: "10.2"
+          title: Continual improvement
+          audit_plan:
+            objective: AI management controls are improved based on monitoring, audit results, incidents, and owner review.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 2
           mapped_rules:
@@ -116842,9 +116880,12 @@ profiles:
           family_id: "6"
           family_name: Planning
           control_id: "6.1"
+          title: Actions to address AI risks and opportunities
+          audit_plan:
+            objective: AI risks, opportunities, and treatment actions are identified, assigned, tracked, and reviewed for each in-scope AI system.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -116855,9 +116896,12 @@ profiles:
           family_id: "6"
           family_name: Planning
           control_id: "6.2"
+          title: AI objectives and planning to achieve them
+          audit_plan:
+            objective: Measurable AI management objectives are approved, monitored, and tied to owners, target dates, and operating evidence.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -116868,9 +116912,12 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.1"
+          title: Resources for the AI management system
+          audit_plan:
+            objective: People, tooling, data, and operational resources needed to run AI governance are identified and maintained.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116879,9 +116926,12 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.2"
+          title: Competence
+          audit_plan:
+            objective: Personnel who design, deploy, operate, or oversee AI systems have current competence evidence for their assigned responsibilities.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116890,9 +116940,12 @@ profiles:
           family_id: "7"
           family_name: Support
           control_id: "7.3"
+          title: Awareness
+          audit_plan:
+            objective: AI system operators and accountable owners understand approved use, limits, escalation paths, and required controls.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116901,9 +116954,12 @@ profiles:
           family_id: "8"
           family_name: Operation
           control_id: "8.4"
+          title: AI system impact assessment
+          audit_plan:
+            objective: Impact assessments are performed, approved, and refreshed for AI systems before production use or material change.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116912,9 +116968,12 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.1"
+          title: Monitoring, measurement, analysis, and evaluation
+          audit_plan:
+            objective: AI system behavior, control performance, incidents, and risk indicators are measured and reviewed against approved thresholds.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 3
           mapped_rules:
@@ -116925,9 +116984,12 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.2"
+          title: Internal audit
+          audit_plan:
+            objective: The AI management system is periodically audited and exceptions are tracked to closure.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116936,9 +116998,12 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.3"
+          title: Management review
+          audit_plan:
+            objective: Accountable leadership reviews AI governance performance, risks, incidents, and improvement actions.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:
@@ -116947,9 +117012,12 @@ profiles:
           family_id: "9"
           family_name: Performance Evaluation
           control_id: "9.4"
+          title: Evaluation of AI system performance
+          audit_plan:
+            objective: AI system performance, safety, fairness, security, and reliability evaluations are retained for the assessed use case.
           audit_readiness:
             status: placeholder
-            score: 0
+            score: 9
           coverage_status: mapped
           rule_count: 1
           mapped_rules:

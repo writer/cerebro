@@ -1,0 +1,15 @@
+sourceId: mode_analytics
+secretKeys:
+  - MODE_ANALYTICS_BASE_URL
+  - MODE_ANALYTICS_TOKEN
+runtimes:
+  - localId: users
+    config:
+      base_url: env:MODE_ANALYTICS_BASE_URL
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:MODE_ANALYTICS_TOKEN

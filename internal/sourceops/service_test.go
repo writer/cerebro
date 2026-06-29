@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	auth0source "github.com/writer/cerebro/sources/auth0"
+	datadogsource "github.com/writer/cerebro/sources/datadog"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -27,8 +28,8 @@ func TestList(t *testing.T) {
 	}
 	service := New(registry)
 	response := service.List()
-	if len(response.Sources) != 6 {
-		t.Fatalf("len(List().Sources) = %d, want 6", len(response.Sources))
+	if len(response.Sources) != 7 {
+		t.Fatalf("len(List().Sources) = %d, want 7", len(response.Sources))
 	}
 }
 
@@ -326,6 +327,65 @@ func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	}
 }
 
+func TestCheckDiscoverAndReadDatadog(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+	ctx := context.Background()
+
+	config := map[string]string{
+		"tenant_id": "tenant",
+		"family":    "users",
+	}
+
+	checkResp, err := service.Check(ctx, &cerebrov1.CheckSourceRequest{
+		SourceId: "datadog",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Check(datadog) error = %v", err)
+	}
+	if checkResp.Status != "ok" {
+		t.Fatalf("Check(datadog).Status = %q, want %q", checkResp.Status, "ok")
+	}
+
+	discoverResp, err := service.Discover(ctx, &cerebrov1.DiscoverSourceRequest{
+		SourceId: "datadog",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Discover(datadog) error = %v", err)
+	}
+	if len(discoverResp.Urns) != 1 {
+		t.Fatalf("len(Discover(datadog).Urns) = %d, want 1", len(discoverResp.Urns))
+	}
+	if got := discoverResp.Urns[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+		t.Fatalf("Discover(datadog).Urns[0] = %q, want Datadog users URN", got)
+	}
+
+	readResp, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
+		SourceId: "datadog",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Read(datadog) error = %v", err)
+	}
+	if len(readResp.Events) != 1 {
+		t.Fatalf("len(Read(datadog).Events) = %d, want 1", len(readResp.Events))
+	}
+	if got := readResp.Events[0].GetKind(); got != "datadog.users" {
+		t.Fatalf("Read(datadog).Events[0].Kind = %q, want datadog.users", got)
+	}
+	if len(readResp.PreviewEvents) != 1 {
+		t.Fatalf("len(Read(datadog).PreviewEvents) = %d, want 1", len(readResp.PreviewEvents))
+	}
+	if !readResp.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("Read(datadog).PreviewEvents[0].PayloadDecoded = false, want true")
+	}
+}
+
 func TestCheckDiscoverAndReadGoogleWorkspace(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -483,6 +543,10 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	datadog, err := datadogsource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
 	googleWorkspace, err := googleworkspacesource.NewFixture()
 	if err != nil {
 		return nil, err
@@ -495,7 +559,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, googleWorkspace, okta, pagerDuty, slack)
+	return sourcecdk.NewRegistry(source, auth0, datadog, googleWorkspace, okta, pagerDuty, slack)
 }
 
 func captureSourceOpsStderr(t *testing.T, fn func()) string {

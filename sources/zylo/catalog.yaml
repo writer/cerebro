@@ -1,0 +1,125 @@
+id: zylo
+name: "Zylo"
+description: "Collects users, groups, roles, applications, and audit events from Zylo and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+emitted_kinds:
+  - zylo.users
+  - zylo.groups
+  - zylo.roles
+  - zylo.applications
+  - zylo.audit_events
+kind_lifecycle:
+  - kind: zylo.users
+    status: active
+  - kind: zylo.groups
+    status: active
+  - kind: zylo.roles
+    status: active
+  - kind: zylo.applications
+    status: active
+  - kind: zylo.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: zylo
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: lifecycle_state
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: applications
+      type: entity_family
+      title: "Applications"
+      families: [applications]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: zylo.users
+    schema_ref: zylo/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: zylo.groups
+    schema_ref: zylo/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: zylo.roles
+    schema_ref: zylo/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: zylo.applications
+    schema_ref: zylo/applications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: zylo.audit_events
+    schema_ref: zylo/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

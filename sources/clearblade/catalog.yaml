@@ -1,0 +1,283 @@
+id: clearblade
+name: "ClearBlade"
+description: "Collects system, user, deployment, connection, platform system, and audit from ClearBlade and projects them into the Cerebro graph as assets, audit events, deployments, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - clearblade.system
+  - clearblade.user
+  - clearblade.deployment
+  - clearblade.connection
+  - clearblade.platform_system
+  - clearblade.audit
+  - clearblade.timer
+  - clearblade.topic
+  - clearblade.trigger
+  - clearblade.session_user
+  - clearblade.listindexe
+  - clearblade.admin_audit
+kind_lifecycle:
+  - kind: clearblade.system
+    status: active
+  - kind: clearblade.user
+    status: active
+  - kind: clearblade.deployment
+    status: active
+  - kind: clearblade.connection
+    status: active
+  - kind: clearblade.platform_system
+    status: active
+  - kind: clearblade.audit
+    status: active
+  - kind: clearblade.timer
+    status: active
+  - kind: clearblade.topic
+    status: active
+  - kind: clearblade.trigger
+    status: active
+  - kind: clearblade.session_user
+    status: active
+  - kind: clearblade.listindexe
+    status: active
+  - kind: clearblade.admin_audit
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: clearblade
+  dimensions:
+    - id: system
+      type: audit_event
+      title: "System"
+      families: [system]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployment
+      type: deployment_state
+      title: "Deployment"
+      families: [deployment]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: connection
+      type: entity_family
+      title: "Connection"
+      families: [connection]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: platform_system
+      type: audit_event
+      title: "Platform System"
+      families: [platform_system]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit
+      type: audit_event
+      title: "Audit"
+      families: [audit]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: timer
+      type: entity_family
+      title: "Timer"
+      families: [timer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: topic
+      type: entity_family
+      title: "Topic"
+      families: [topic]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: trigger
+      type: entity_family
+      title: "Trigger"
+      families: [trigger]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: session_user
+      type: entity_family
+      title: "Session User"
+      families: [session_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: listindexe
+      type: entity_family
+      title: "Listindexe"
+      families: [listindexe]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: admin_audit
+      type: audit_event
+      title: "Admin Audit"
+      families: [admin_audit]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: clearblade.system
+    schema_ref: clearblade/system/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: clearblade.user
+    schema_ref: clearblade/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: clearblade.deployment
+    schema_ref: clearblade/deployment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: clearblade.connection
+    schema_ref: clearblade/connection/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - client_id
+  - kind: clearblade.platform_system
+    schema_ref: clearblade/platform_system/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: clearblade.audit
+    schema_ref: clearblade/audit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: clearblade.timer
+    schema_ref: clearblade/timer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: clearblade.topic
+    schema_ref: clearblade/topic/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - ip
+  - kind: clearblade.trigger
+    schema_ref: clearblade/trigger/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: clearblade.session_user
+    schema_ref: clearblade/session_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - issued
+  - kind: clearblade.listindexe
+    schema_ref: clearblade/listindexe/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: clearblade.admin_audit
+    schema_ref: clearblade/admin_audit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

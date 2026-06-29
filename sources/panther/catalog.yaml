@@ -1,0 +1,85 @@
+id: panther
+name: "Panther"
+description: "Collects audit events, detections, and assets from Panther and projects them into the Cerebro graph as audit events, findings, and assets for alert, incident, service health, and response context."
+emitted_kinds:
+  - panther.audit_events
+  - panther.findings
+  - panther.assets
+kind_lifecycle:
+  - kind: panther.audit_events
+    status: active
+  - kind: panther.findings
+    status: active
+  - kind: panther.assets
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: panther
+  dimensions:
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: remediation_state
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: panther.audit_events
+    schema_ref: panther/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: panther.findings
+    schema_ref: panther/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: panther.assets
+    schema_ref: panther/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

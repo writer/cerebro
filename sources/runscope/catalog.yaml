@@ -1,0 +1,198 @@
+id: runscope
+name: "Runscope"
+description: "Collects people, test, bucket, agent, integration, and environment from Runscope and projects them into the Cerebro graph as assets and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - runscope.people
+  - runscope.test
+  - runscope.bucket
+  - runscope.agent
+  - runscope.integration
+  - runscope.environment
+  - runscope.metric
+  - runscope.buckets_test
+kind_lifecycle:
+  - kind: runscope.people
+    status: active
+  - kind: runscope.test
+    status: active
+  - kind: runscope.bucket
+    status: active
+  - kind: runscope.agent
+    status: active
+  - kind: runscope.integration
+    status: active
+  - kind: runscope.environment
+    status: active
+  - kind: runscope.metric
+    status: active
+  - kind: runscope.buckets_test
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: runscope
+  dimensions:
+    - id: people
+      type: entity_family
+      title: "People"
+      families: [people]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: test
+      type: entity_family
+      title: "Test"
+      families: [test]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bucket
+      type: entity_family
+      title: "Bucket"
+      families: [bucket]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: agent
+      type: entity_family
+      title: "Agent"
+      families: [agent]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: integration
+      type: entity_family
+      title: "Integration"
+      families: [integration]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: environment
+      type: entity_family
+      title: "Environment"
+      families: [environment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: metric
+      type: entity_family
+      title: "Metric"
+      families: [metric]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: buckets_test
+      type: entity_family
+      title: "Buckets Test"
+      families: [buckets_test]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: runscope.people
+    schema_ref: runscope/people/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: runscope.test
+    schema_ref: runscope/test/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: runscope.bucket
+    schema_ref: runscope/bucket/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - key
+  - kind: runscope.agent
+    schema_ref: runscope/agent/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: runscope.integration
+    schema_ref: runscope/integration/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: runscope.environment
+    schema_ref: runscope/environment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: runscope.metric
+    schema_ref: runscope/metric/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - avg_response_time_ms
+  - kind: runscope.buckets_test
+    schema_ref: runscope/buckets_test/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

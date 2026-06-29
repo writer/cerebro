@@ -1,0 +1,286 @@
+id: drchrono
+name: "DrChrono"
+description: "Collects patient risk assessment, comm log, care team member, user, implantable device, and patient payment log from DrChrono and projects them into the Cerebro graph as assets, audit events, findings, memberships, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - drchrono.patient_risk_assessment
+  - drchrono.comm_log
+  - drchrono.care_team_member
+  - drchrono.user
+  - drchrono.implantable_device
+  - drchrono.patient_payment_log
+  - drchrono.user_group
+  - drchrono.allergy
+  - drchrono.amendment
+  - drchrono.appointment
+  - drchrono.appointment_profile
+  - drchrono.appointment_template
+kind_lifecycle:
+  - kind: drchrono.patient_risk_assessment
+    status: active
+  - kind: drchrono.comm_log
+    status: active
+  - kind: drchrono.care_team_member
+    status: active
+  - kind: drchrono.user
+    status: active
+  - kind: drchrono.implantable_device
+    status: active
+  - kind: drchrono.patient_payment_log
+    status: active
+  - kind: drchrono.user_group
+    status: active
+  - kind: drchrono.allergy
+    status: active
+  - kind: drchrono.amendment
+    status: active
+  - kind: drchrono.appointment
+    status: active
+  - kind: drchrono.appointment_profile
+    status: active
+  - kind: drchrono.appointment_template
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: drchrono
+  dimensions:
+    - id: patient_risk_assessment
+      type: remediation_state
+      title: "Patient Risk Assessment"
+      families: [patient_risk_assessment]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: comm_log
+      type: audit_event
+      title: "Comm Log"
+      families: [comm_log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: care_team_member
+      type: entity_family
+      title: "Care Team Member"
+      families: [care_team_member]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: implantable_device
+      type: entity_family
+      title: "Implantable Device"
+      families: [implantable_device]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: patient_payment_log
+      type: audit_event
+      title: "Patient Payment Log"
+      families: [patient_payment_log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_group
+      type: entity_family
+      title: "User Group"
+      families: [user_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: allergy
+      type: entity_family
+      title: "Allergy"
+      families: [allergy]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: amendment
+      type: entity_family
+      title: "Amendment"
+      families: [amendment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: appointment
+      type: entity_family
+      title: "Appointment"
+      families: [appointment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: appointment_profile
+      type: entity_family
+      title: "Appointment Profile"
+      families: [appointment_profile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: appointment_template
+      type: entity_family
+      title: "Appointment Template"
+      families: [appointment_template]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: drchrono.patient_risk_assessment
+    schema_ref: drchrono/patient_risk_assessment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: drchrono.comm_log
+    schema_ref: drchrono/comm_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.care_team_member
+    schema_ref: drchrono/care_team_member/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.user
+    schema_ref: drchrono/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.implantable_device
+    schema_ref: drchrono/implantable_device/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.patient_payment_log
+    schema_ref: drchrono/patient_payment_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.user_group
+    schema_ref: drchrono/user_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.allergy
+    schema_ref: drchrono/allergy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.amendment
+    schema_ref: drchrono/amendment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.appointment
+    schema_ref: drchrono/appointment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.appointment_profile
+    schema_ref: drchrono/appointment_profile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: drchrono.appointment_template
+    schema_ref: drchrono/appointment_template/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

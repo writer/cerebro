@@ -1,0 +1,30 @@
+[
+  {
+    "id": "datadog-dashboards-dash-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.dashboards",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/dashboards/v1",
+    "payload": {
+      "id": "dash-1",
+      "title": "Payments",
+      "description": "Payment health",
+      "author_handle": "alice@example.test",
+      "tags": ["service:payments"]
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "dash-1",
+      "external_id": "dash-1",
+      "family": "dashboards",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "dashboard_id": "dash-1",
+      "title": "Payments",
+      "description": "Payment health",
+      "author_handle": "alice@example.test",
+      "tags": "service:payments"
+    }
+  }
+]

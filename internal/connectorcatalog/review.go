@@ -278,7 +278,7 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			templateSources[template][sourceID] = struct{}{}
 		}
 
-		queueID, candidate := promotionCandidate(entry)
+		queueID, candidate := promotionCandidate(entry, sourceReview)
 		if queueID != "" {
 			queueEntries[queueID] = append(queueEntries[queueID], candidate)
 		}
@@ -385,7 +385,7 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 	sort.Strings(review.ProjectionGapFamilies)
 	sort.Strings(review.RuntimeFamilies)
 	sort.Strings(review.RuntimeDepthGaps)
-	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry)
+	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry, review)
 	return review
 }
 
@@ -646,7 +646,7 @@ func fidelityNextAction() string {
 }
 
 func runtimeDepthNextAction() string {
-	return "Promote this source from catalog-only to source-runtime depth: add a Source CDK package, source catalog, read/discover fixtures, source tests, deploy runtime, and projector tests for the graph items it emits."
+	return "Complete runtime depth: add a Source CDK package when missing, then add read and discover fixtures for every family, projector tests for every emitted kind, deploy manifest coverage, and source package validation."
 }
 
 func familyHasHighValueCoverage(family connectordefinitions.ResourceFamily) bool {
@@ -668,8 +668,8 @@ func countTemplateFamilies(entry Entry, template string) int {
 	return count
 }
 
-func promotionCandidate(entry Entry) (string, PromotionCandidate) {
-	queueID, nextAction := promotionQueueAndAction(entry)
+func promotionCandidate(entry Entry, source SourceReview) (string, PromotionCandidate) {
+	queueID, nextAction := promotionQueueAndAction(entry, source)
 	if queueID == "" {
 		return "", PromotionCandidate{}
 	}
@@ -683,9 +683,15 @@ func promotionCandidate(entry Entry) (string, PromotionCandidate) {
 	}
 }
 
-func promotionQueueAndAction(entry Entry) (string, string) {
+func promotionQueueAndAction(entry Entry, source SourceReview) (string, string) {
 	switch entry.Status {
 	case StatusGenerateable:
+		if source.HasRuntimePackage {
+			if source.RuntimeDepthScore >= runtimeDepthReviewThreshold {
+				return "", "Reference runtime package is present."
+			}
+			return "runtime_depth", runtimeDepthNextAction()
+		}
 		return "sourcegen_ready", "Generate the runtime package, add source package fixtures, then enable setup when runtime validation passes."
 	case StatusNeedsAuthExtension:
 		return "auth_extension", "Add or select the auth adapter required by this provider, then rerun sourcegen and catalog checks."
@@ -717,12 +723,13 @@ func promotionReason(entry Entry) string {
 func promotionQueues(entries map[string][]PromotionCandidate) []PromotionQueue {
 	labels := map[string]string{
 		"sourcegen_ready": "Sourcegen ready",
+		"runtime_depth":   "Needs runtime depth",
 		"auth_extension":  "Needs auth extension",
 		"bespoke_runtime": "Needs bespoke runtime",
 		"catalog_ready":   "Catalog ready",
 		"review":          "Needs review",
 	}
-	order := []string{"sourcegen_ready", "auth_extension", "bespoke_runtime", "catalog_ready", "review"}
+	order := []string{"sourcegen_ready", "runtime_depth", "auth_extension", "bespoke_runtime", "catalog_ready", "review"}
 	queues := make([]PromotionQueue, 0, len(entries))
 	for _, id := range order {
 		candidates := entries[id]

@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/2.0/user",
+  "auth_model": "oauth_authorization_code",
+  "evidence_cas_reference_kind": "bitbucket_cloud.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=bitbucket_cloud",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "bitbucket_cloud",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

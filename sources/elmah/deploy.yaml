@@ -1,0 +1,17 @@
+sourceId: elmah
+secretKeys:
+  - ELMAH_API_BASE_URL
+  - ELMAH_LOGID
+  - ELMAH_API_TOKEN
+runtimes:
+  - localId: log
+    config:
+      api_base_url: env:ELMAH_API_BASE_URL
+      logid: env:ELMAH_LOGID
+      family: log
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v3/logs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:ELMAH_API_TOKEN

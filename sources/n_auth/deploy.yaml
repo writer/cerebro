@@ -1,0 +1,15 @@
+sourceId: n_auth
+secretKeys:
+  - N_AUTH_SERVERID
+  - N_AUTH_API_TOKEN
+runtimes:
+  - localId: apikey
+    config:
+      serverid: env:N_AUTH_SERVERID
+      family: apikey
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /apikeys/
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:N_AUTH_API_TOKEN

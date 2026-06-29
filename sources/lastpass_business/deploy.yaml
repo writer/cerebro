@@ -1,0 +1,13 @@
+sourceId: lastpass_business
+secretKeys:
+  - LASTPASS_BUSINESS_API_TOKEN
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /enterpriseapi.php
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:LASTPASS_BUSINESS_API_TOKEN

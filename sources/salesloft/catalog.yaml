@@ -1,0 +1,102 @@
+id: salesloft
+name: "Salesloft"
+description: "Collects crm activity fields json, account stages json, cadence memberships json, and groups json from Salesloft and projects them into the Cerebro graph as audit events, users, group memberships, and groups for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - salesloft.crm_activity_fields_json
+  - salesloft.account_stages_json
+  - salesloft.cadence_memberships_json
+  - salesloft.groups_json
+kind_lifecycle:
+  - kind: salesloft.crm_activity_fields_json
+    status: active
+  - kind: salesloft.account_stages_json
+    status: active
+  - kind: salesloft.cadence_memberships_json
+    status: active
+  - kind: salesloft.groups_json
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: salesloft
+  dimensions:
+    - id: crm_activity_fields_json
+      type: audit_event
+      title: "Crm Activity Fields Json"
+      families: [crm_activity_fields_json]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_stages_json
+      type: entity_family
+      title: "Account Stages Json"
+      families: [account_stages_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: cadence_memberships_json
+      type: entity_family
+      title: "Cadence Memberships Json"
+      families: [cadence_memberships_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups_json
+      type: entity_family
+      title: "Groups Json"
+      families: [groups_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: salesloft.crm_activity_fields_json
+    schema_ref: salesloft/crm_activity_fields_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: salesloft.account_stages_json
+    schema_ref: salesloft/account_stages_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: salesloft.cadence_memberships_json
+    schema_ref: salesloft/cadence_memberships_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_id
+    required_payload_fields:
+      - id
+  - kind: salesloft.groups_json
+    schema_ref: salesloft/groups_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id

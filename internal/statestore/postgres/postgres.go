@@ -35,6 +35,10 @@ type askTablesReady struct {
 	savedQuery bool
 }
 
+type identityTablesReady struct {
+	directory bool
+}
+
 type grcTablesReady struct {
 	inventoryScope       bool
 	inventoryAssetReport bool
@@ -64,6 +68,7 @@ type Store struct {
 	jobTablesReady             bool
 	runtimeBlocklistReady      bool
 	grc                        grcTablesReady
+	identity                   identityTablesReady
 	connectorCredentialReady   bool
 	connectorDefinitionReady   bool
 	appendLogRuntimeIndexReady bool

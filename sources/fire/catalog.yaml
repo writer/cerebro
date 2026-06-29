@@ -1,0 +1,104 @@
+id: fire
+name: "Fire"
+description: "Collects account, aspsp, user, and batche from Fire and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - fire.account
+  - fire.aspsp
+  - fire.user
+  - fire.batche
+kind_lifecycle:
+  - kind: fire.account
+    status: active
+  - kind: fire.aspsp
+    status: active
+  - kind: fire.user
+    status: active
+  - kind: fire.batche
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: fire
+  dimensions:
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: aspsp
+      type: entity_family
+      title: "Aspsp"
+      families: [aspsp]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: batche
+      type: entity_family
+      title: "Batche"
+      families: [batche]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: fire.account
+    schema_ref: fire/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: fire.aspsp
+    schema_ref: fire/aspsp/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - alias
+  - kind: fire.user
+    schema_ref: fire/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: fire.batche
+    schema_ref: fire/batche/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - ref

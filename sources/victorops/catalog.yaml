@@ -1,0 +1,102 @@
+id: victorops
+name: "VictorOps"
+description: "Collects log, team, user, and incident from VictorOps and projects them into the Cerebro graph as audit events, groups, users, and alerts for alert, incident, service health, and response context."
+emitted_kinds:
+  - victorops.log
+  - victorops.team
+  - victorops.user
+  - victorops.incident
+kind_lifecycle:
+  - kind: victorops.log
+    status: active
+  - kind: victorops.team
+    status: active
+  - kind: victorops.user
+    status: active
+  - kind: victorops.incident
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: victorops
+  dimensions:
+    - id: log
+      type: audit_event
+      title: "Log"
+      families: [log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: team
+      type: entity_family
+      title: "Team"
+      families: [team]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incident
+      type: alert_state
+      title: "Incident"
+      families: [incident]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: victorops.log
+    schema_ref: victorops/log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - adjustedTotal
+  - kind: victorops.team
+    schema_ref: victorops/team/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - slug
+  - kind: victorops.user
+    schema_ref: victorops/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: victorops.incident
+    schema_ref: victorops/incident/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - alertCount

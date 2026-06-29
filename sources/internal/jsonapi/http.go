@@ -176,7 +176,16 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 	if err != nil {
 		return next
 	}
-	return strconv.Itoa(page + 1)
+	return strconv.Itoa(page + synthesizedPageCursorStep(family, pageSize))
+}
+
+func synthesizedPageCursorStep(family Family, pageSize int) int {
+	switch cursorParam(family) {
+	case "offset", "start":
+		return pageSize
+	default:
+		return 1
+	}
 }
 
 func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Values {
@@ -279,6 +288,11 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.Header, decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
+	}
+	if s.options.ResponseError != nil {
+		if err := s.options.ResponseError(resp.Body); err != nil {
+			return resp.Header, err
+		}
 	}
 	if target == nil {
 		return resp.Header, nil
@@ -486,22 +500,9 @@ func offsetResponseCursor(family Family, object map[string]json.RawMessage) stri
 	if cursorParam(family) != "offset" {
 		return ""
 	}
-	total, totalOK := intValueFromRaw(firstRaw(object, "totalCount", "total_count", "total"))
-	offset, offsetOK := intValueFromRaw(firstRaw(object, "offset"))
-	limit, limitOK := intValueFromRaw(firstRaw(object, "limit"))
-	if pagination := object["pagination"]; len(pagination) != 0 {
-		var nested map[string]any
-		if err := json.Unmarshal(pagination, &nested); err == nil {
-			if parsed, ok := intValue(nested["offset"]); ok {
-				offset = parsed
-				offsetOK = true
-			}
-			if parsed, ok := intValue(nested["limit"]); ok {
-				limit = parsed
-				limitOK = true
-			}
-		}
-	}
+	total, totalOK := intValueAtResponsePath(object, responseIntPaths(family.Config.TotalKeys, "totalCount", "total_count", "total", "metadata.page.total_count", "metadata.page.totalCount", "metadata.page.total", "meta.page.total_count", "meta.page.totalCount", "meta.page.total")...)
+	offset, offsetOK := intValueAtResponsePath(object, responseIntPaths(family.Config.OffsetKeys, "offset", "pagination.offset", "metadata.page.offset", "meta.page.offset")...)
+	limit, limitOK := intValueAtResponsePath(object, responseIntPaths(family.Config.LimitKeys, "limit", "pagination.limit", "metadata.page.limit", "meta.page.limit")...)
 	if !offsetOK || !limitOK || limit <= 0 {
 		return ""
 	}
@@ -523,34 +524,35 @@ func responseHasMore(family Family, object map[string]json.RawMessage) bool {
 	if key == "" {
 		return true
 	}
-	value, ok := object[key]
-	if !ok {
+	value := rawStringAtPath(object, key)
+	if value == "" {
 		return false
 	}
-	raw := strings.ToLower(rawString(value))
+	raw := strings.ToLower(value)
 	return raw == "true" || raw == "1" || raw == "yes"
 }
 
-func firstRaw(object map[string]json.RawMessage, keys ...string) json.RawMessage {
-	for _, key := range keys {
-		if value := object[key]; len(value) != 0 {
-			return value
+func intValueAtResponsePath(object map[string]json.RawMessage, paths ...string) (int, bool) {
+	for _, path := range paths {
+		value := rawStringAtPath(object, path)
+		if value == "" {
+			continue
+		}
+		if parsed, ok := intValue(value); ok {
+			return parsed, true
 		}
 	}
-	return nil
+	return 0, false
 }
 
-func intValueFromRaw(raw json.RawMessage) (int, bool) {
-	if len(raw) == 0 {
-		return 0, false
+func responseIntPaths(configured []string, defaults ...string) []string {
+	paths := make([]string, 0, len(configured)+len(defaults))
+	for _, path := range configured {
+		if path = strings.TrimSpace(path); path != "" {
+			paths = append(paths, path)
+		}
 	}
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return 0, false
-	}
-	return intValue(value)
+	return append(paths, defaults...)
 }
 
 func responseCursorKeys(family Family) []string {
@@ -1125,6 +1127,25 @@ func valueAt(values map[string]any, path string) any {
 func valueAtParts(current any, parts []string) (any, bool) {
 	if len(parts) == 0 {
 		return current, true
+	}
+	if list, ok := current.([]any); ok {
+		if index, err := strconv.Atoi(parts[0]); err == nil {
+			if index < 0 || index >= len(list) {
+				return nil, false
+			}
+			return valueAtParts(list[index], parts[1:])
+		}
+		values := make([]any, 0, len(list))
+		for _, item := range list {
+			value, ok := valueAtParts(item, parts)
+			if ok && valueString(value) != "" {
+				values = append(values, value)
+			}
+		}
+		if len(values) == 0 {
+			return nil, false
+		}
+		return values, true
 	}
 	object, ok := current.(map[string]any)
 	if !ok {

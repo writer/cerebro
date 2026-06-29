@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/api/access/v1/users",
+  "auth_model": "oauth_client_credentials",
+  "evidence_cas_reference_kind": "onetrust.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=onetrust",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "onetrust",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

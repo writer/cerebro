@@ -1,0 +1,15 @@
+sourceId: observe_platform
+secretKeys:
+  - OBSERVE_PLATFORM_BASE_URL
+  - OBSERVE_PLATFORM_TOKEN
+runtimes:
+  - localId: alerts
+    config:
+      base_url: env:OBSERVE_PLATFORM_BASE_URL
+      family: alerts
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:OBSERVE_PLATFORM_TOKEN

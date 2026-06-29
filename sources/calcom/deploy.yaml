@@ -1,0 +1,13 @@
+sourceId: calcom
+secretKeys:
+  - CALCOM_TOKEN
+runtimes:
+  - localId: bookings
+    config:
+      family: bookings
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CALCOM_TOKEN

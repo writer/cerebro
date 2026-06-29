@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -235,6 +236,174 @@ func TestReadUsesPagerDutyOffsetPagination(t *testing.T) {
 	}
 	if len(requests) != 2 || requests[1].URL.Query().Get(pagerDutyCursorParam) != "2" {
 		t.Fatalf("requests = %#v, want second request with offset=2", requests)
+	}
+}
+
+func TestReadIntegrationsFansOutAcrossServiceIDs(t *testing.T) {
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		serviceID := "PS1"
+		if r.URL.EscapedPath() == "/services/PS2/integrations" {
+			serviceID = "PS2"
+		} else if r.URL.EscapedPath() != "/services/PS1/integrations" {
+			t.Fatalf("request path = %q, want service integration path", r.URL.EscapedPath())
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"integrations": []map[string]any{{
+			"id": "PI-" + serviceID, "name": "Integration " + serviceID,
+			"service": map[string]any{"id": serviceID, "summary": "Service " + serviceID},
+			"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":    server.URL,
+		"family":      familyIntegration,
+		"tenant_id":   "writer",
+		"token":       "pagerduty-token",
+		"service_ids": "PS1,PS2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if len(first.Events) != 1 || first.Events[0].Attributes["service_id"] != "PS1" {
+		t.Fatalf("first integration events = %#v, want PS1", first.Events)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor = nil, want cursor for next service")
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Attributes["service_id"] != "PS2" {
+		t.Fatalf("second integration attributes = %#v, requests = %#v, want PS2", second.Events[0].Attributes, requests)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %#v, want two service integration requests", requests)
+	}
+}
+
+func TestIntegrationServiceIDsSupportCheckAndDiscover(t *testing.T) {
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		serviceID := "PS1"
+		if r.URL.EscapedPath() == "/services/PS2/integrations" {
+			serviceID = "PS2"
+		} else if r.URL.EscapedPath() != "/services/PS1/integrations" {
+			t.Fatalf("request path = %q, want service integration path", r.URL.EscapedPath())
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"integrations": []map[string]any{{
+			"id": "PI-" + serviceID, "name": "Integration " + serviceID,
+			"service": map[string]any{"id": serviceID, "summary": "Service " + serviceID},
+			"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":    server.URL,
+		"family":      familyIntegration,
+		"tenant_id":   "writer",
+		"token":       "pagerduty-token",
+		"service_ids": "PS1,PS2",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	got := make([]string, 0, len(urns))
+	for _, urn := range urns {
+		got = append(got, urn.String())
+	}
+	want := []string{
+		"urn:cerebro:writer:pagerduty_integration:PI-PS1",
+		"urn:cerebro:writer:pagerduty_integration:PI-PS2",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("Discover() = %#v, want %#v", got, want)
+	}
+	wantRequests := []string{
+		"/services/PS1/integrations",
+		"/services/PS1/integrations",
+		"/services/PS2/integrations",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
+func TestIntegrationLegacyServiceIDStillWorks(t *testing.T) {
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		if r.URL.EscapedPath() != "/services/PS1/integrations" {
+			t.Fatalf("request path = %q, want legacy service integration path", r.URL.EscapedPath())
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"integrations": []map[string]any{{
+			"id":      "PI-PS1",
+			"name":    "Integration PS1",
+			"service": map[string]any{"id": "PS1", "summary": "Service PS1"},
+			"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyIntegration,
+		"tenant_id":  "writer",
+		"token":      "pagerduty-token",
+		"service_id": "PS1",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:pagerduty_integration:PI-PS1" {
+		t.Fatalf("Discover() = %#v, want PI-PS1", urns)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["service_id"] != "PS1" {
+		t.Fatalf("Read() events = %#v, want PS1", pull.Events)
+	}
+	wantRequests := []string{
+		"/services/PS1/integrations",
+		"/services/PS1/integrations",
+		"/services/PS1/integrations",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
 	}
 }
 

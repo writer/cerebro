@@ -1,0 +1,17 @@
+sourceId: google_vertex_ai
+secretKeys:
+  - GOOGLE_VERTEX_AI_LOCATION
+  - GOOGLE_VERTEX_AI_PROJECT_ID
+  - GOOGLE_VERTEX_AI_TOKEN
+runtimes:
+  - localId: models
+    config:
+      location: env:GOOGLE_VERTEX_AI_LOCATION
+      project_id: env:GOOGLE_VERTEX_AI_PROJECT_ID
+      family: models
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/projects/${config.project_id}/locations/${config.location}/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:GOOGLE_VERTEX_AI_TOKEN

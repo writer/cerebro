@@ -1,0 +1,15 @@
+sourceId: salesloft
+secretKeys:
+  - SALESLOFT_CLIENT_ID
+  - SALESLOFT_CLIENT_SECRET
+runtimes:
+  - localId: crm-activity-fields-json
+    config:
+      family: crm_activity_fields_json
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/crm_activity_fields.json
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:SALESLOFT_CLIENT_ID
+      client_secret: env:SALESLOFT_CLIENT_SECRET

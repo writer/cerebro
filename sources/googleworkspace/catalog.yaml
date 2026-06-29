@@ -51,6 +51,21 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: groups
       type: entity_family
       title: Groups
@@ -59,14 +74,44 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: group_memberships
       type: relationship
       title: Group memberships
-      families: [group_member]
+      families: [external_member, group_member, membership, orphaned_membership]
       support: supported
       high_value: true
-      evidence_types: [relationship_evidence]
-      control_domains: [asset_inventory]
+      evidence_types: [access_review, identity_configuration, relationship_evidence]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,16 +138,130 @@ coverage_contract:
     - id: role_assignments
       type: app_entitlement
       title: Role assignments
-      families: [role_assignment]
+      families: [admin_role, privileged, role_assignment, super_admin]
       support: partial
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.2
+    - id: user_lifecycle
+      type: lifecycle_state
+      title: User lifecycle and activity
+      families: [account, active_account, archived, dormant_user, employee_record, last_login, never_logged_in, stale_login, suspended, terminated_account, user]
+      support: supported
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: PS-4
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.1.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.11
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.16
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.6.5
+    - id: mfa_posture
+      type: app_entitlement
+      title: Two-step verification posture
+      families: [2sv, admin_mfa, mfa, two_factor, two_step_verification, user]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "CIS Google Workspace Benchmark"
+          control_id: "1.1"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.5
     - id: users
       type: entity_family
       title: Users
-      families: [user]
+      families: [account, active_account, email, personal_email, user]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [access_review, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18

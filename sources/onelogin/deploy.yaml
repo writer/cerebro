@@ -1,0 +1,15 @@
+sourceId: onelogin
+secretKeys:
+  - ONELOGIN_CLIENT_ID
+  - ONELOGIN_CLIENT_SECRET
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/1/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET

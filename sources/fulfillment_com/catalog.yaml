@@ -1,0 +1,106 @@
+id: fulfillment_com
+name: "Fulfillment.com"
+description: "Collects accounting, inventory, return, and track from Fulfillment.com and projects them into the Cerebro graph as assets and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - fulfillment_com.accounting
+  - fulfillment_com.inventory
+  - fulfillment_com.return
+  - fulfillment_com.track
+kind_lifecycle:
+  - kind: fulfillment_com.accounting
+    status: active
+  - kind: fulfillment_com.inventory
+    status: active
+  - kind: fulfillment_com.return
+    status: active
+  - kind: fulfillment_com.track
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: fulfillment_com
+  dimensions:
+    - id: accounting
+      type: entity_family
+      title: "Accounting"
+      families: [accounting]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: inventory
+      type: entity_family
+      title: "Inventory"
+      families: [inventory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: return
+      type: entity_family
+      title: "Return"
+      families: [return]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: track
+      type: entity_family
+      title: "Track"
+      families: [track]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: fulfillment_com.accounting
+    schema_ref: fulfillment_com/accounting/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - fees
+  - kind: fulfillment_com.inventory
+    schema_ref: fulfillment_com/inventory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - item
+  - kind: fulfillment_com.return
+    schema_ref: fulfillment_com/return/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: fulfillment_com.track
+    schema_ref: fulfillment_com/track/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - eventCategory
