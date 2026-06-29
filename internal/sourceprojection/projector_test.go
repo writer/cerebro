@@ -1146,6 +1146,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 			"policy_rule_id":           "rul-1",
 			"policy_type":              "OKTA_SIGN_ON",
 			"priority":                 "1",
+			"resource_type":            "PolicyRule",
 			"status":                   "INACTIVE",
 			"system":                   "false",
 			"user_exclude_ids":         "00u-breakglass",
@@ -1196,6 +1197,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_application:app-prod")
 	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_application:app-legacy")
 	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_group:grp-security")
+	assertProjectedLinkAttribute(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_group:grp-security", "match_type", "okta_policy_rule_group_condition")
 	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_user:00u-breakglass")
 	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_identity_provider:idp-saml")
 	assertProjectedLink(t, state, wantURN, relationDependsOn, "urn:cerebro:writer:okta_network_zone:zone-corp")
@@ -4086,6 +4088,44 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 			},
 		},
 		{
+			Id:       "azure-conditional-access-policy",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.conditional_access_policy",
+			Attributes: map[string]string{
+				"app_include_ids":          "app-client-1,Office365,MicrosoftAdminManagement",
+				"domain":                   "tenant-1",
+				"grant_controls":           "mfa",
+				"network_zone_exclude_ids": "blocked-network,None",
+				"network_zone_include_ids": "corp-network,AllTrusted",
+				"policy_id":                "policy-1",
+				"policy_name":              "Require MFA",
+				"policy_rule_id":           "policy-1",
+				"policy_rule_name":         "Require MFA",
+				"policy_type":              "conditional_access",
+				"resource_type":            "conditional_access_policy",
+				"status":                   "enabled",
+				"user_exclude_ids":         "None",
+				"user_include_ids":         "user-1,GuestsOrExternalUsers",
+			},
+		},
+		{
+			Id:       "azure-risky-user",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.identity_risky_user",
+			Attributes: map[string]string{
+				"domain":        "tenant-1",
+				"risk_level":    "high",
+				"risk_state":    "atRisk",
+				"status":        "atRisk",
+				"subject_email": "risky@writer.com",
+				"subject_login": "risky@writer.com",
+				"subject_name":  "Risky User",
+				"user_id":       "user-2",
+			},
+		},
+		{
 			Id:       "azure-activity",
 			TenantId: "writer",
 			SourceId: "azure",
@@ -4116,6 +4156,23 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 	assertProjectedLinkMissing(t, state, azureServicePrincipalURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:Reader")
 	assertProjectedLink(t, state, azureApplicationURN, relationAssignedTo, "urn:cerebro:writer:azure_credential:app-password-1")
 	assertProjectedLink(t, state, azureUserURN, relationActedOn, "urn:cerebro:writer:azure_conditional_access_policy:policy-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationBelongsTo, "urn:cerebro:writer:azure_conditional_access_policy:policy-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, azureUserURN)
+	assertProjectedLinkAttribute(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, azureUserURN, "match_type", "azure_policy_rule_user_condition")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, azureApplicationURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationDependsOn, "urn:cerebro:writer:azure_network_zone:corp-network")
+	assertProjectedLinkAttribute(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationDependsOn, "urn:cerebro:writer:azure_network_zone:corp-network", "match_type", "azure_policy_rule_network_zone_condition")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationDependsOn, "urn:cerebro:writer:azure_network_zone:blocked-network")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, "urn:cerebro:writer:azure_user:GuestsOrExternalUsers")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, "urn:cerebro:writer:azure_user:None")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, "urn:cerebro:writer:azure_application:Office365")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationTargeted, "urn:cerebro:writer:azure_application:MicrosoftAdminManagement")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationDependsOn, "urn:cerebro:writer:azure_network_zone:AllTrusted")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_policy_rule:policy-1:policy-1", relationDependsOn, "urn:cerebro:writer:azure_network_zone:None")
+	if entity := state.entities["urn:cerebro:writer:azure_user:user-2"]; entity == nil || entity.Attributes["risk_level"] != "high" {
+		t.Fatalf("risky user entity missing risk attributes: %#v", entity)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_user:user-2", relationHasIdentifier, "urn:cerebro:writer:identifier:email:risky@writer.com")
 	assertProjectedLink(t, state, azureServicePrincipalURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_role:Reader", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_credential:app-password-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
@@ -6538,6 +6595,18 @@ func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN str
 	key := fromURN + "|" + relation + "|" + toURN
 	if _, ok := recorder.links[key]; !ok {
 		t.Fatalf("projected link %q missing; links=%v", key, recorder.links)
+	}
+}
+
+func assertProjectedLinkAttribute(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string, name string, want string) {
+	t.Helper()
+	key := fromURN + "|" + relation + "|" + toURN
+	link, ok := recorder.links[key]
+	if !ok {
+		t.Fatalf("projected link %q missing; links=%v", key, recorder.links)
+	}
+	if got := link.Attributes[name]; got != want {
+		t.Fatalf("projected link %q attribute %q = %q, want %q", key, name, got, want)
 	}
 }
 

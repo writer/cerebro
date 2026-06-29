@@ -57,11 +57,15 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyAppRoleAssignment, config: map[string]string{"service_principal_id": "sp-resource-1"}, kind: "azure.app_role_assignment"},
 		{family: familyAppService, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.app_service"},
 		{family: familyApplication, kind: "azure.application"},
+		{family: "authentication_methods_policy", kind: "azure.authentication_methods_policy"},
 		{family: familyAssetMetadata, config: map[string]string{"subscription_id": "sub-1"}, kind: "asset.data_sensitivity"},
+		{family: "conditional_access_policy", kind: "azure.conditional_access_policy"},
 		{family: "cognitive_services_account", config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.cognitive_services_account"},
 		{family: familyContainerRegistry, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.container_registry"},
 		{family: familyCosmosAccount, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.cosmos_account"},
 		{family: familyCredential, kind: "azure.credential"},
+		{family: "defender_alert", kind: "azure.defender_alert"},
+		{family: "defender_incident", kind: "azure.defender_incident"},
 		{family: familyDirectoryAudit, kind: "azure.directory_audit"},
 		{family: familyDirectoryRoleAssign, kind: "azure.directory_role_assignment"},
 		{family: familyEffectivePermission, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.effective_permission"},
@@ -69,6 +73,8 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyGroup, kind: "azure.group"},
 		{family: familyGroupMember, config: map[string]string{"group_id": "group-1"}, kind: "azure.group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.iam_role_assignment"},
+		{family: "identity_risk_detection", kind: "azure.identity_risk_detection"},
+		{family: "identity_risky_user", kind: "azure.identity_risky_user"},
 		{family: familyKeyVault, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault"},
 		{family: familyKeyVaultKey, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault_key"},
 		{family: familyKeyVaultSecret, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.key_vault_secret"},
@@ -76,7 +82,12 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyManagedDisk, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.managed_disk"},
 		{family: familyNetworkSecurityGrp, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.network_security_group"},
 		{family: familyPublicIPAddress, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.public_ip_address"},
+		{family: "purview_private_endpoint_connection", config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.purview_private_endpoint_connection"},
+		{family: "purview_retention_label", kind: "azure.purview_retention_label"},
+		{family: "purview_sensitivity_label", kind: "azure.purview_sensitivity_label"},
 		{family: familyResourceExposure, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.resource_exposure"},
+		{family: "secure_score", kind: "azure.secure_score"},
+		{family: "secure_score_control", kind: "azure.secure_score_control"},
 		{family: familyServicePrincipal, kind: "azure.service_principal"},
 		{family: familySQLDatabase, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.sql_database"},
 		{family: familySQLServer, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.sql_server"},
@@ -145,11 +156,15 @@ func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	for _, tt := range []struct {
-		family string
-		config map[string]string
-		kind   string
-		attr   string
-		want   string
+		family    string
+		config    map[string]string
+		kind      string
+		attr      string
+		want      string
+		extraAttr string
+		extraWant string
+		otherAttr string
+		otherWant string
 	}{
 		{family: familyUser, kind: "azure.user", attr: "email", want: "admin@writer.com"},
 		{family: familyGroup, kind: "azure.group", attr: "group_email", want: "security@writer.com"},
@@ -158,6 +173,16 @@ func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 		{family: familyServicePrincipal, kind: "azure.service_principal", attr: "principal_type", want: "service_principal"},
 		{family: familyDirectoryRoleAssign, kind: "azure.directory_role_assignment", attr: "is_admin", want: "true"},
 		{family: familyDirectoryAudit, kind: "azure.directory_audit", attr: "actor_email", want: "admin@writer.com"},
+		{family: "conditional_access_policy", kind: "azure.conditional_access_policy", attr: "grant_controls", want: "mfa", extraAttr: "network_zone_include_ids", extraWant: "corp-network", otherAttr: "network_zone_exclude_ids", otherWant: "blocked-network"},
+		{family: "authentication_methods_policy", kind: "azure.authentication_methods_policy", attr: "registration_campaign_state", want: "enabled"},
+		{family: "identity_risky_user", kind: "azure.identity_risky_user", attr: "risk_level", want: "high", extraAttr: "email", extraWant: "admin@writer.com"},
+		{family: "identity_risk_detection", kind: "azure.identity_risk_detection", attr: "risk_event_type", want: "unfamiliarFeatures"},
+		{family: "defender_incident", kind: "azure.defender_incident", attr: "alert_count", want: "1"},
+		{family: "defender_alert", kind: "azure.defender_alert", attr: "mitre_techniques", want: "T1078"},
+		{family: "secure_score", kind: "azure.secure_score", attr: "current_score", want: "45"},
+		{family: "secure_score_control", kind: "azure.secure_score_control", attr: "implementation_cost", want: "low"},
+		{family: "purview_sensitivity_label", kind: "azure.purview_sensitivity_label", attr: "sensitivity", want: "high"},
+		{family: "purview_retention_label", kind: "azure.purview_retention_label", attr: "duration_days", want: "2555"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "tenant-1", "token": "test-token"}
@@ -177,7 +202,42 @@ func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
+			if tt.extraAttr != "" {
+				if got := pull.Events[0].Attributes[tt.extraAttr]; got != tt.extraWant {
+					t.Fatalf("%s = %q, want %q", tt.extraAttr, got, tt.extraWant)
+				}
+			}
+			if tt.otherAttr != "" {
+				if got := pull.Events[0].Attributes[tt.otherAttr]; got != tt.otherWant {
+					t.Fatalf("%s = %q, want %q", tt.otherAttr, got, tt.otherWant)
+				}
+			}
 		})
+	}
+}
+
+func TestReadAzureGraphWithCheckpointSkipsOlderRecords(t *testing.T) {
+	server := httptest.NewServer(newAzureAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	watermark := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    "identity_risk_detection",
+		"tenant_id": "tenant-1",
+		"token":     "test-token",
+	}), nil, &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(identity_risk_detection) error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(events) = %d, want 0", len(pull.Events))
+	}
+	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
+		t.Fatalf("ShortCircuitReason = %q, want %q", pull.ShortCircuitReason, sourcecdk.PullShortCircuitReasonWatermarkReached)
 	}
 }
 
@@ -866,6 +926,26 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "dir-role-assignment-1", "principalId": "user-1", "roleDefinitionId": "global-admin", "directoryScopeId": "/", "principal": map[string]any{"@odata.type": "#microsoft.graph.user", "id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com", "displayName": "Admin"}, "roleDefinition": map[string]any{"id": "global-admin", "displayName": "Global Administrator"}}}})
 		case "/v1.0/auditLogs/directoryAudits":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "audit-1", "activityDateTime": "2026-04-23T00:00:00Z", "activityDisplayName": "Update conditional access policy", "operationType": "Update", "category": "Policy", "initiatedBy": map[string]any{"user": map[string]any{"id": "user-1", "userPrincipalName": "admin@writer.com", "displayName": "Admin"}}, "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}}}})
+		case "/v1.0/identity/conditionalAccess/policies":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "state": "enabled", "createdDateTime": "2026-04-23T00:00:00Z", "modifiedDateTime": "2026-04-24T00:00:00Z", "conditions": map[string]any{"users": map[string]any{"includeUsers": []any{"All"}, "excludeUsers": []any{"break-glass"}}, "applications": map[string]any{"includeApplications": []any{"All"}}, "locations": map[string]any{"includeLocations": []any{"corp-network"}, "excludeLocations": []any{"blocked-network"}}, "clientAppTypes": []any{"browser"}, "signInRiskLevels": []any{"high"}, "userRiskLevels": []any{"high"}}, "grantControls": map[string]any{"operator": "OR", "builtInControls": []any{"mfa"}}, "sessionControls": map[string]any{"signInFrequency": map[string]any{"isEnabled": true}}}}})
+		case "/v1.0/policies/authenticationMethodsPolicy":
+			writeJSON(t, w, map[string]any{"id": "authenticationMethodsPolicy", "displayName": "Authentication methods policy", "policyVersion": "1.5", "authenticationMethodConfigurations": []map[string]any{{"id": "microsoftAuthenticator", "state": "enabled"}, {"id": "fido2", "state": "enabled"}}, "registrationEnforcement": map[string]any{"authenticationMethodsRegistrationCampaign": map[string]any{"state": "enabled", "snoozeDurationInDays": 3}}, "systemCredentialPreferences": map[string]any{"state": "enabled", "excludeTargets": []map[string]any{{"id": "break-glass"}}}, "reportSuspiciousActivitySettings": map[string]any{"state": "enabled"}})
+		case "/v1.0/identityProtection/riskyUsers":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "user-1", "userId": "user-1", "userPrincipalName": "admin@writer.com", "userDisplayName": "Admin", "riskLevel": "high", "riskState": "atRisk", "riskDetail": "none", "riskLastUpdatedDateTime": "2026-04-23T00:00:00Z", "isDeleted": false}}})
+		case "/v1.0/identityProtection/riskDetections":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "risk-detection-1", "requestId": "request-1", "userId": "user-1", "userPrincipalName": "admin@writer.com", "userDisplayName": "Admin", "riskEventType": "unfamiliarFeatures", "riskState": "atRisk", "riskLevel": "high", "riskDetail": "none", "source": "IdentityProtection", "detectionTimingType": "realtime", "activity": "signin", "activityDateTime": "2026-04-23T00:00:00Z", "detectedDateTime": "2026-04-23T00:00:00Z", "ipAddress": "203.0.113.10", "location": map[string]any{"city": "San Francisco", "countryOrRegion": "US"}}}})
+		case "/v1.0/security/incidents":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "incident-1", "displayName": "Suspicious sign-in", "severity": "high", "status": "active", "classification": "unknown", "determination": "unknown", "assignedTo": "secops@writer.com", "incidentWebUrl": "https://security.microsoft.com/incidents/incident-1", "createdDateTime": "2026-04-23T00:00:00Z", "lastUpdateDateTime": "2026-04-24T00:00:00Z", "alerts": []map[string]any{{"id": "alert-1"}}}}})
+		case "/v1.0/security/alerts_v2":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "alert-1", "providerAlertId": "provider-alert-1", "incidentId": "incident-1", "title": "Suspicious sign-in", "severity": "high", "status": "new", "classification": "unknown", "determination": "unknown", "serviceSource": "microsoftDefenderForEndpoint", "detectionSource": "microsoftDefenderForIdentity", "category": "InitialAccess", "createdDateTime": "2026-04-23T00:00:00Z", "lastUpdateDateTime": "2026-04-24T00:00:00Z", "mitreTechniques": []any{"T1078"}, "evidence": []map[string]any{{"id": "evidence-1", "evidenceType": "user"}}}}})
+		case "/v1.0/security/secureScores":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "secure-score-1", "createdDateTime": "2026-04-23T00:00:00Z", "currentScore": 45, "maxScore": 80, "activeUserCount": 100, "licensedUserCount": 120, "enabledServices": []any{"Exchange", "SharePoint"}, "vendorInformation": map[string]any{"provider": "Microsoft"}, "controlScores": []map[string]any{{"controlName": "RequireMFA"}}}}})
+		case "/v1.0/security/secureScoreControlProfiles":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "control-1", "title": "Require MFA", "controlCategory": "Identity", "actionType": "config", "implementationCost": "low", "maxScore": 10, "rank": 1, "tier": "Core", "threats": []any{"AccountBreach"}, "vendorInformation": map[string]any{"provider": "Microsoft"}, "controlStateUpdates": []map[string]any{{"state": "default"}}}}})
+		case "/beta/security/informationProtection/sensitivityLabels":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "sensitivity-label-1", "displayName": "Restricted", "description": "Restricted data", "sensitivity": "high", "isActive": true, "hasProtection": true, "contentFormats": []any{"file", "email"}, "tooltip": "Apply to restricted data", "parent": map[string]any{"id": "parent-label", "displayName": "Confidential"}}}})
+		case "/beta/security/labels/retentionLabels":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "retention-label-1", "displayName": "Customer Records", "description": "Customer record retention", "retentionTrigger": "dateLabeled", "retentionDuration": map[string]any{"days": 2555}, "behaviorDuringRetentionPeriod": "retain", "actionAfterRetentionPeriod": "delete", "defaultRecordBehavior": "startLocked", "isInUse": true}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "type": "Microsoft.Authorization/roleAssignments", "properties": map[string]any{"principalId": "user-1", "principalType": "User", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role":
@@ -1060,6 +1140,12 @@ func genericAzureARMTestProperties(family string) map[string]any {
 		properties["availabilityZone"] = "1"
 		properties["network"] = map[string]any{"publicNetworkAccess": "Disabled", "delegatedSubnetResourceId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "privateDnsZoneArmResourceId": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/privateDnsZones/privatelink.postgres.database.azure.com"}
 		properties["authConfig"] = map[string]any{"activeDirectoryAuth": "Enabled", "passwordAuth": "Disabled"}
+	case "purview_account":
+		properties["endpoints"] = map[string]any{"catalog": "https://purview-prod.example.com/catalog", "scan": "https://purview-prod.scan.example.com", "guardian": "https://purview-prod.example.com/guardian"}
+		properties["managedResourceGroupName"] = "managed-rg"
+		properties["managedResources"] = map[string]any{"resourceGroup": "/subscriptions/sub-1/resourceGroups/managed-rg"}
+		properties["managedVirtualNetwork"] = "Enabled"
+		properties["privateEndpointConnections"] = []any{map[string]any{"name": "pe-1"}}
 	case "role":
 		properties["roleName"] = "Security Reader"
 		properties["type"] = "BuiltInRole"
@@ -1139,6 +1225,8 @@ func genericAzureARMExpectedAttributes(family string) map[string]string {
 		return map[string]string{"criteria_metric_names": "Percentage CPU", "criteria_thresholds": "90", "action_group_ids": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Insights/actionGroups/secops"}
 	case "postgresql_server":
 		return map[string]string{"public_host": "pg-prod.postgres.database.azure.com", "storage_size_gb": "256", "delegated_subnet_id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/postgres", "auth_password_enabled": "Disabled"}
+	case "purview_account":
+		return map[string]string{"catalog_endpoint": "https://purview-prod.example.com/catalog", "scan_endpoint": "https://purview-prod.scan.example.com", "managed_virtual_network": "Enabled"}
 	case "role":
 		return map[string]string{"role_name": "Security Reader", "actions": "Microsoft.Security/*/read"}
 	case "route_table":

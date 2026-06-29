@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/azurearm"
+	"github.com/writer/cerebro/sources/internal/azuregraph"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
 
@@ -78,6 +79,7 @@ var azureARMChildDefinitions = []azureARMChildDefinition{
 	{Name: "diagnostic_setting_resource", Label: "azure resource diagnostic settings", ParentProvider: "", ParentAPIVersion: "2021-04-01", ChildPath: "providers/Microsoft.Insights/diagnosticSettings", ChildAPIVersion: "2021-05-01-preview", Kind: "azure.diagnostic_setting_resource", SchemaRef: "azure/diagnostic_setting_resource/v1", Optional: true},
 	{Name: "machine_learning_compute", Label: "azure machine learning computes", ParentProvider: "Microsoft.MachineLearningServices/workspaces", ParentAPIVersion: "2024-04-01", ChildPath: "computes", ChildAPIVersion: "2024-04-01", Kind: "azure.machine_learning_compute", SchemaRef: "azure/machine_learning_compute/v1"},
 	{Name: "postgresql_firewall_rule", Label: "azure postgresql firewall rules", ParentProvider: "Microsoft.DBforPostgreSQL/flexibleServers", ParentAPIVersion: "2023-06-01-preview", ChildPath: "firewallRules", ChildAPIVersion: "2023-06-01-preview", Kind: "azure.postgresql_firewall_rule", SchemaRef: "azure/postgresql_firewall_rule/v1"},
+	{Name: "purview_private_endpoint_connection", Label: "microsoft purview private endpoint connections", ParentProvider: "Microsoft.Purview/accounts", ParentAPIVersion: "2021-12-01", ChildPath: "privateEndpointConnections", ChildAPIVersion: "2021-12-01", Kind: "azure.purview_private_endpoint_connection", SchemaRef: "azure/purview_private_endpoint_connection/v1", Optional: true},
 	{Name: "server_vulnerability_subassessment", Label: "azure security subassessments", ParentProvider: "Microsoft.Security/assessments", ParentAPIVersion: "2020-01-01", ChildPath: "subAssessments", ChildAPIVersion: "2019-01-01-preview", Kind: "azure.server_vulnerability_subassessment", SchemaRef: "azure/server_vulnerability_subassessment/v1"},
 	{Name: "sql_managed_instance_tde", Label: "azure sql managed instance encryption protectors", ParentProvider: "Microsoft.Sql/managedInstances", ParentAPIVersion: "2022-05-01-preview", ChildPath: "encryptionProtector/current", ChildAPIVersion: "2022-05-01-preview", Kind: "azure.sql_managed_instance_tde", SchemaRef: "azure/sql_managed_instance_tde/v1", Singleton: true},
 	{Name: familyStorageContainer, Label: "azure storage containers", ParentProvider: "Microsoft.Storage/storageAccounts", ParentAPIVersion: "2023-01-01", ChildPath: "blobServices/default/containers", ChildAPIVersion: "2023-01-01", Kind: "azure.storage_container", SchemaRef: "azure/storage_container/v1"},
@@ -112,11 +114,7 @@ type settings struct {
 	perPage            int
 }
 
-type graphPage struct {
-	Value        []json.RawMessage `json:"value"`
-	ODataNext    string            `json:"@odata.nextLink"`
-	NextPageLink string            `json:"nextLink"`
-}
+type graphPage = azuregraph.Page
 
 type armPage struct {
 	Value []json.RawMessage `json:"value"`
@@ -576,6 +574,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 	}
+	families = append(families, azuregraph.Families(s, tenantID, func(settings settings) int { return settings.perPage }, graphListQuery, queryForPageToken, getGraphJSON, sourceEvent)...)
 	for _, definition := range azureARMChildDefinitions {
 		definition := definition
 		families = append(families, azureFamily(s, azureFamilyOptions[azureARMChildRecord]{
@@ -678,14 +677,14 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAKSNodePool, familyAppService, "application_container", "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", "cognitive_services_deployment", familyContainerRegistry, familyCosmosAccount, "cosmos_postgresql", "cosmos_postgresql_firewall_rule", "databricks_workspace", "defender_config", "diagnostic_setting", "diagnostic_setting_resource", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_compute", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyMySQLServer, familyNetworkSecurityGrp, "policy_assignment", "postgresql_firewall_rule", "postgresql_server", familyPublicIPAddress, familyResourceExposure, "role", "route_table", "security_contact", "security_setting", "server_vulnerability", "server_vulnerability_subassessment", familySQLDatabase, "sql_managed_instance", "sql_managed_instance_tde", "sql_server_on_virtual_machine", familySQLServer, familyStorageAccount, familyStorageContainer, familyStorageQueue, familySubnet, "synapse_sql_pool", familyVirtualMachine, "virtual_machine_extension", "virtual_machine_scale_set", "virtual_machine_scale_set_instance", familyVirtualNetwork:
+	case familyActivityLog, "activity_log_alert", familyAKSCluster, familyAKSNodePool, familyAppService, "application_container", "application_gateway", "application_insight", familyAssetMetadata, "cognitive_services_account", "cognitive_services_deployment", familyContainerRegistry, familyCosmosAccount, "cosmos_postgresql", "cosmos_postgresql_firewall_rule", "databricks_workspace", "defender_config", "diagnostic_setting", "diagnostic_setting_resource", familyEffectivePermission, familyFunctionApp, familyIAMRoleAssign, familyKeyVault, familyKeyVaultKey, familyKeyVaultSecret, "load_balancer", "log_alert", "machine_learning_compute", "machine_learning_workspace", familyManagedDisk, "metric_alert_rule", familyMySQLServer, familyNetworkSecurityGrp, "policy_assignment", "postgresql_firewall_rule", "postgresql_server", familyPublicIPAddress, familyResourceExposure, "purview_account", "purview_private_endpoint_connection", "role", "route_table", "security_contact", "security_setting", "server_vulnerability", "server_vulnerability_subassessment", familySQLDatabase, "sql_managed_instance", "sql_managed_instance_tde", "sql_server_on_virtual_machine", familySQLServer, familyStorageAccount, familyStorageContainer, familyStorageQueue, familySubnet, "synapse_sql_pool", familyVirtualMachine, "virtual_machine_extension", "virtual_machine_scale_set", "virtual_machine_scale_set_instance", familyVirtualNetwork:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
 		if armToken(settings) == "" {
 			return settings, fmt.Errorf("azure arm_token or token is required when family=%q", settings.family)
 		}
-	case familyApplication, familyAuthorizationPolicy, familyCredential, familyDirectoryAudit, familyDirectoryRoleAssign, familyGroup, familyServicePrincipal, familyUser:
+	case familyApplication, azuregraph.FamilyAuthenticationMethodsPolicy, familyAuthorizationPolicy, azuregraph.FamilyConditionalAccessPolicy, familyCredential, azuregraph.FamilyDefenderAlert, azuregraph.FamilyDefenderIncident, familyDirectoryAudit, familyDirectoryRoleAssign, familyGroup, azuregraph.FamilyIdentityRiskDetection, azuregraph.FamilyIdentityRiskyUser, azuregraph.FamilyPurviewRetentionLabel, azuregraph.FamilyPurviewSensitivityLabel, azuregraph.FamilySecureScore, azuregraph.FamilySecureScoreControl, familyServicePrincipal, familyUser:
 		if graphToken(settings) == "" {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
@@ -704,7 +703,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
 	default:
-		return settings, fmt.Errorf("azure family must be one of activity_log, activity_log_alert, aks_cluster, app_role_assignment, app_service, application, application_container, application_gateway, application_insight, asset_metadata, cognitive_services_account, container_registry, cosmos_account, cosmos_postgresql, credential, databricks_workspace, defender_config, diagnostic_setting, directory_audit, directory_role_assignment, effective_permission, function_app, group, group_membership, iam_role_assignment, key_vault, key_vault_key, key_vault_secret, load_balancer, log_alert, machine_learning_workspace, managed_disk, metric_alert_rule, network_security_group, postgresql_server, public_ip_address, resource_exposure, role, route_table, security_contact, server_vulnerability, service_principal, sql_database, sql_managed_instance, sql_server, sql_server_on_virtual_machine, storage_account, subnet, user, virtual_machine, virtual_machine_scale_set, or virtual_network")
+		return settings, fmt.Errorf("azure family must be one of activity_log, activity_log_alert, aks_cluster, app_role_assignment, app_service, application, application_container, application_gateway, application_insight, asset_metadata, authentication_methods_policy, cognitive_services_account, conditional_access_policy, container_registry, cosmos_account, cosmos_postgresql, credential, databricks_workspace, defender_alert, defender_config, defender_incident, diagnostic_setting, directory_audit, directory_role_assignment, effective_permission, function_app, group, group_membership, iam_role_assignment, identity_risk_detection, identity_risky_user, key_vault, key_vault_key, key_vault_secret, load_balancer, log_alert, machine_learning_workspace, managed_disk, metric_alert_rule, network_security_group, postgresql_server, public_ip_address, purview_account, purview_private_endpoint_connection, purview_retention_label, purview_sensitivity_label, resource_exposure, role, route_table, secure_score, secure_score_control, security_contact, server_vulnerability, service_principal, sql_database, sql_managed_instance, sql_server, sql_server_on_virtual_machine, storage_account, subnet, user, virtual_machine, virtual_machine_scale_set, or virtual_network")
 	}
 	return settings, nil
 }
