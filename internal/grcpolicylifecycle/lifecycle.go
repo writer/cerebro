@@ -1559,7 +1559,7 @@ func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister 
 		if rule, ok := rulesByID["document.controls"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
 			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "controls", "No mapped controls"))
 		}
-		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Evidence) == 0 && len(document.EvidenceSnippets) == 0 {
+		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && !grcPolicyDocumentHasEvidence(document) {
 			gap := grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "evidence", "No evidence")
 			gap.SourceFields = sourceFields
 			gaps = append(gaps, gap)
@@ -1707,17 +1707,22 @@ func grcPolicyGovernanceRuleProfile(profile string) string {
 	}
 }
 
+func grcPolicyDocumentHasEvidence(document grcPolicyDocumentItem) bool {
+	return len(document.Evidence) > 0 || len(document.EvidenceSnippets) > 0
+}
+
 func grcPolicyDocumentGapSourceFields(document grcPolicyDocumentItem) map[string]string {
 	return map[string]string{
-		"document_id":        document.ID,
-		"document_class":     document.DocumentClass,
-		"document_type":      document.DocumentType,
-		"status":             document.Status,
-		"owner":              document.Owner,
-		"next_review_due_at": document.NextReviewDueAt,
-		"policy_count":       fmt.Sprint(len(document.Policies)),
-		"control_count":      fmt.Sprint(len(document.Controls)),
-		"evidence_count":     fmt.Sprint(len(document.Evidence)),
+		"document_id":            document.ID,
+		"document_class":         document.DocumentClass,
+		"document_type":          document.DocumentType,
+		"status":                 document.Status,
+		"owner":                  document.Owner,
+		"next_review_due_at":     document.NextReviewDueAt,
+		"policy_count":           fmt.Sprint(len(document.Policies)),
+		"control_count":          fmt.Sprint(len(document.Controls)),
+		"evidence_count":         fmt.Sprint(len(document.Evidence)),
+		"evidence_snippet_count": fmt.Sprint(len(document.EvidenceSnippets)),
 	}
 }
 

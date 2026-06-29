@@ -516,6 +516,9 @@ func TestStrictGovernanceRulesRequireDocumentEvidence(t *testing.T) {
 	if len(strict) != 1 || strict[0].RuleID != "document.evidence" || strict[0].ActionID != "governance_gap.attach_evidence" {
 		t.Fatalf("strict gaps = %+v, want document evidence gap", strict)
 	}
+	if strict[0].SourceFields["evidence_count"] != "0" || strict[0].SourceFields["evidence_snippet_count"] != "0" {
+		t.Fatalf("strict evidence source fields = %+v, want empty evidence and snippet counts", strict[0].SourceFields)
+	}
 
 	document.EvidenceSnippets = []grcPolicyEvidenceSnippetItem{{
 		ID:                "access-review",
