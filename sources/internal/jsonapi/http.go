@@ -697,7 +697,11 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 	kind := firstNonEmpty(family.URNKind, family.Name)
 	urns := make([]sourcecdk.URN, 0, len(records))
 	for _, record := range dedupeRecords(records) {
-		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, cerebrourn.EncodeSegment(record.ID)))
+		recordID := record.ID
+		if family.Config.EncodeURNID {
+			recordID = cerebrourn.EncodeSegment(recordID)
+		}
+		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
 		if err != nil {
 			return nil, err
 		}

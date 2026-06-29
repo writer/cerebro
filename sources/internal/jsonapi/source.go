@@ -46,6 +46,7 @@ type FamilyConfig struct {
 	StaticQuery      map[string]string
 	ConfigQuery      map[string]string
 	ConfigAttributes map[string]string
+	EncodeURNID      bool
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

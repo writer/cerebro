@@ -482,12 +482,40 @@ func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
 func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"devices": []map[string]any{{"id": "auth0|user-1"}},
+			"devices": []map[string]any{{"id": "device-1"}},
 		})
 	}))
 	defer server.Close()
 
 	source := newTestSource(t, server.URL)
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_device:device-1" {
+		t.Fatalf("URNs = %#v, want test device URN", urns)
+	}
+}
+
+func TestDiscoverEncodesFamilyURNIDWhenEnabled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"devices": []map[string]any{{"id": "auth0|user-1"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:     "device",
+		Path:     "/api/v1/devices",
+		URNKind:  "test_device",
+		IDKeys:   []string{"id"},
+		ListKeys: []string{"devices"},
+		Config:   FamilyConfig{EncodeURNID: true},
+	})
 	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
 		"token":     "token-1",
