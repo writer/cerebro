@@ -239,13 +239,15 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 
 func TestCloudTrailCursorFreezesRelativeSinceAcrossPages(t *testing.T) {
 	var inputs []cloudtrail.LookupEventsInput
-	source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
-		inputs = append(inputs, *input)
-		if len(inputs) == 1 {
-			return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
-		}
-		return &cloudtrail.LookupEventsOutput{}, nil
-	}})
+	source := newTestSource(t, fakeAWS{
+		fakeAWSAuditPosture: fakeAWSAuditPosture{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+			inputs = append(inputs, *input)
+			if len(inputs) == 1 {
+				return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
+			}
+			return &cloudtrail.LookupEventsOutput{}, nil
+		}},
+	})
 	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"})
 
 	first, err := source.Read(context.Background(), config, nil)
@@ -310,11 +312,13 @@ func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotInput *cloudtrail.LookupEventsInput
-			source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
-				copy := *input
-				gotInput = &copy
-				return &cloudtrail.LookupEventsOutput{}, nil
-			}})
+			source := newTestSource(t, fakeAWS{
+				fakeAWSAuditPosture: fakeAWSAuditPosture{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+					copy := *input
+					gotInput = &copy
+					return &cloudtrail.LookupEventsOutput{}, nil
+				}},
+			})
 
 			if _, err := source.Read(context.Background(), sourcecdk.NewConfig(tt.config), &cerebrov1.SourceCursor{Opaque: tt.cursor}); err != nil {
 				t.Fatalf("Read(cloudtrail) error = %v", err)
@@ -398,16 +402,18 @@ func TestIAMAccountPostureCollectors(t *testing.T) {
 
 func TestReadAWSAccountContactPosture(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		primaryContact: &accounttypes.ContactInformation{
-			CountryCode: awssdk.String("US"),
-			FullName:    awssdk.String("Security Operations"),
-			PhoneNumber: awssdk.String("+1 555 0100"),
-		},
-		securityContact: &accounttypes.AlternateContact{
-			AlternateContactType: accounttypes.AlternateContactTypeSecurity,
-			EmailAddress:         awssdk.String("security@example.com"),
-			Name:                 awssdk.String("Security Operations"),
-			PhoneNumber:          awssdk.String("+1 555 0101"),
+		fakeAWSAccountPosture: fakeAWSAccountPosture{
+			primaryContact: &accounttypes.ContactInformation{
+				CountryCode: awssdk.String("US"),
+				FullName:    awssdk.String("Security Operations"),
+				PhoneNumber: awssdk.String("+1 555 0100"),
+			},
+			securityContact: &accounttypes.AlternateContact{
+				AlternateContactType: accounttypes.AlternateContactTypeSecurity,
+				EmailAddress:         awssdk.String("security@example.com"),
+				Name:                 awssdk.String("Security Operations"),
+				PhoneNumber:          awssdk.String("+1 555 0101"),
+			},
 		},
 	})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAccountContact}), nil)
@@ -3769,15 +3775,17 @@ func TestSQSQueueEventEncryptionHonorsManagedSSEValue(t *testing.T) {
 func TestReadAWSCloudFormationStackPosture(t *testing.T) {
 	stackID := "arn:aws:cloudformation:us-east-1:123456789012:stack/prod-app/stack-123"
 	source := newTestSource(t, fakeAWS{
-		cloudFormationStacks: []cloudformationtypes.Stack{{
-			CreationTime:                timePtr("2026-04-23T00:00:00Z"),
-			DriftInformation:            &cloudformationtypes.StackDriftInformation{LastCheckTimestamp: timePtr("2026-06-01T00:00:00Z"), StackDriftStatus: cloudformationtypes.StackDriftStatusDrifted},
-			EnableTerminationProtection: awssdk.Bool(false),
-			StackId:                     awssdk.String(stackID),
-			StackName:                   awssdk.String("prod-app"),
-			StackStatus:                 cloudformationtypes.StackStatusUpdateComplete,
-			Tags:                        []cloudformationtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-		}},
+		fakeAWSAuditPosture: fakeAWSAuditPosture{
+			cloudFormationStacks: []cloudformationtypes.Stack{{
+				CreationTime:                timePtr("2026-04-23T00:00:00Z"),
+				DriftInformation:            &cloudformationtypes.StackDriftInformation{LastCheckTimestamp: timePtr("2026-06-01T00:00:00Z"), StackDriftStatus: cloudformationtypes.StackDriftStatusDrifted},
+				EnableTerminationProtection: awssdk.Bool(false),
+				StackId:                     awssdk.String(stackID),
+				StackName:                   awssdk.String("prod-app"),
+				StackStatus:                 cloudformationtypes.StackStatusUpdateComplete,
+				Tags:                        []cloudformationtypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+			}},
+		},
 	})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudFormationStack}), nil)
 	if err != nil {
@@ -3957,19 +3965,21 @@ func TestReadAWSAssetMetadataRestartsExpiredPaginationToken(t *testing.T) {
 
 func TestReadAWSCloudTrailRestartsInvalidNextToken(t *testing.T) {
 	var inputs []cloudtrail.LookupEventsInput
-	source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
-		inputs = append(inputs, *input)
-		switch {
-		case len(inputs) == 1:
-			return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
-		case awssdk.ToString(input.NextToken) == "token-1":
-			return nil, &cloudtrailtypes.InvalidNextTokenException{}
-		default:
-			return &cloudtrail.LookupEventsOutput{Events: []cloudtrailtypes.Event{{
-				EventId: awssdk.String("evt-1"), EventName: awssdk.String("AttachUserPolicy"), EventTime: timePtr("2026-04-23T00:00:00Z"),
-			}}}, nil
-		}
-	}})
+	source := newTestSource(t, fakeAWS{
+		fakeAWSAuditPosture: fakeAWSAuditPosture{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+			inputs = append(inputs, *input)
+			switch {
+			case len(inputs) == 1:
+				return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
+			case awssdk.ToString(input.NextToken) == "token-1":
+				return nil, &cloudtrailtypes.InvalidNextTokenException{}
+			default:
+				return &cloudtrail.LookupEventsOutput{Events: []cloudtrailtypes.Event{{
+					EventId: awssdk.String("evt-1"), EventName: awssdk.String("AttachUserPolicy"), EventTime: timePtr("2026-04-23T00:00:00Z"),
+				}}}, nil
+			}
+		}},
+	})
 	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"})
 
 	first, err := source.Read(context.Background(), config, nil)
@@ -5536,7 +5546,9 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 	}
 	source := newTestSource(t, fakeAWS{
 		attachedPolicies: []iamtypes.AttachedPolicy{{PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess"), PolicyName: awssdk.String("AdministratorAccess")}},
-		cloudTrailEvents: []cloudtrailtypes.Event{{EventId: awssdk.String("evt-1"), EventName: awssdk.String("AttachUserPolicy"), CloudTrailEvent: awssdk.String(string(detail)), EventTime: timePtr("2026-04-23T00:00:00Z")}},
+		fakeAWSAuditPosture: fakeAWSAuditPosture{
+			cloudTrailEvents: []cloudtrailtypes.Event{{EventId: awssdk.String("evt-1"), EventName: awssdk.String("AttachUserPolicy"), CloudTrailEvent: awssdk.String(string(detail)), EventTime: timePtr("2026-04-23T00:00:00Z")}},
+		},
 	})
 	for _, tt := range []struct {
 		family string
@@ -5831,17 +5843,12 @@ type fakeAWS struct {
 	accessKeys            []iamtypes.AccessKeyMetadata
 	accountSummary        map[string]int32
 	accountPasswordPolicy *iamtypes.PasswordPolicy
-	primaryContact        *accounttypes.ContactInformation
-	securityContact       *accounttypes.AlternateContact
-	primaryContactErr     error
-	securityContactErr    error
-	credentialReport      fakeCredentialReport
-	attachedPolicies      []iamtypes.AttachedPolicy
+	fakeAWSAccountPosture
+	credentialReport fakeCredentialReport
+	attachedPolicies []iamtypes.AttachedPolicy
 	fakeAWSIAMDocuments
-	cloudTrailEvents     []cloudtrailtypes.Event
-	cloudTrailLookup     func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
-	cloudFormationStacks []cloudformationtypes.Stack
-	compute              fakeAWSCompute
+	fakeAWSAuditPosture
+	compute fakeAWSCompute
 	fakeAWSNetwork
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
@@ -5850,6 +5857,19 @@ type fakeAWS struct {
 	fakeAWSSageMaker
 	fakeAWSAnalytics
 	fakeAWSGovernance
+}
+
+type fakeAWSAccountPosture struct {
+	primaryContact     *accounttypes.ContactInformation
+	securityContact    *accounttypes.AlternateContact
+	primaryContactErr  error
+	securityContactErr error
+}
+
+type fakeAWSAuditPosture struct {
+	cloudTrailEvents     []cloudtrailtypes.Event
+	cloudTrailLookup     func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	cloudFormationStacks []cloudformationtypes.Stack
 }
 
 type fakeAWSSageMaker struct {
