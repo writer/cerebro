@@ -25,7 +25,7 @@ var ensureAppendLogRuntimeIndexStatements = []string{
   occurred_at TIMESTAMPTZ,
   PRIMARY KEY (runtime_id, seq)
 )`,
-	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_kind_seq_idx ON append_log_runtime_index (runtime_id, kind, seq DESC)`,
+	`DROP INDEX IF EXISTS append_log_runtime_index_runtime_kind_seq_idx`,
 	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_observed_idx ON append_log_runtime_index (runtime_id, occurred_at DESC NULLS LAST, seq DESC)`,
 	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_kind_observed_idx ON append_log_runtime_index (runtime_id, kind, occurred_at DESC NULLS LAST, seq DESC)`,
 	`CREATE TABLE IF NOT EXISTS append_log_index_state (

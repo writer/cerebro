@@ -4019,6 +4019,53 @@ func TestEvaluateSourceRuntimeRulesReturnsErrorWhenAnyRuleFails(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeRulesPreservesEarlierErrorWhenLaterFailureUpdateFails(t *testing.T) {
+	ruleAErr := errors.New("rule-a exploded")
+	ruleBErr := errors.New("rule-b exploded")
+	runUpdateErr := errors.New("rule-b failure update failed")
+	registry, err := NewRegistry(
+		&failingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			err:                ruleAErr,
+		},
+		&failingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			err:                ruleBErr,
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{
+		failRunPutByCall: map[int]error{
+			4: runUpdateErr,
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want joined rule and run update errors")
+	}
+	for _, want := range []error{ruleAErr, ruleBErr, runUpdateErr} {
+		if !errors.Is(err, want) {
+			t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, want)
+		}
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{

@@ -34,8 +34,7 @@ func TestAppendLogRuntimeIndexSchemaShape(t *testing.T) {
 	for _, fragment := range []string{
 		"CREATE TABLE IF NOT EXISTS append_log_runtime_index",
 		"PRIMARY KEY (runtime_id, seq)",
-		"append_log_runtime_index_runtime_kind_seq_idx",
-		"(runtime_id, kind, seq DESC)",
+		"DROP INDEX IF EXISTS append_log_runtime_index_runtime_kind_seq_idx",
 		"append_log_runtime_index_runtime_observed_idx",
 		"(runtime_id, occurred_at DESC NULLS LAST, seq DESC)",
 		"append_log_runtime_index_runtime_kind_observed_idx",
@@ -46,6 +45,9 @@ func TestAppendLogRuntimeIndexSchemaShape(t *testing.T) {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("append log runtime index schema missing %q:\n%s", fragment, joined)
 		}
+	}
+	if strings.Contains(joined, "CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_kind_seq_idx") {
+		t.Fatalf("append log runtime index schema still creates redundant kind/seq index:\n%s", joined)
 	}
 }
 

@@ -548,7 +548,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				ruleErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
 				evaluationErr = errors.Join(evaluationErr, ruleErr)
 				if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-					return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+					return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 				}
 				continue
 			}
@@ -567,7 +567,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					ruleErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -576,7 +576,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					ruleErr := fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -587,7 +587,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					ruleErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -596,7 +596,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 						ruleErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
 						evaluationErr = errors.Join(evaluationErr, ruleErr)
 						if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+							return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 						}
 						break
 					}
@@ -607,7 +607,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					ruleErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -615,7 +615,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					ruleErr := fmt.Errorf("project finding %q external refs: %w", stored.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -624,7 +624,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 						ruleErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
 						evaluationErr = errors.Join(evaluationErr, ruleErr)
 						if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
+							return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 						}
 						break
 					}

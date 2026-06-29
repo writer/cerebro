@@ -178,7 +178,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				ruleErr := fmt.Errorf("evaluate finding candidate rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
 				evaluationErr = errors.Join(evaluationErr, ruleErr)
 				if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-					return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
+					return nil, s.markCandidateEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 				}
 				continue
 			}
@@ -201,7 +201,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 					ruleErr := fmt.Errorf("load risk scoring config for candidate finding %q: %w", candidateFinding.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markCandidateEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -211,7 +211,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 					ruleErr := fmt.Errorf("build candidate evidence for finding %q: %w", candidateFinding.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markCandidateEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}
@@ -221,7 +221,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 					ruleErr := fmt.Errorf("persist finding candidate %q: %w", candidate.ID, err)
 					evaluationErr = errors.Join(evaluationErr, ruleErr)
 					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
+						return nil, s.markCandidateEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 					}
 					break
 				}

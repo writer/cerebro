@@ -224,14 +224,11 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 	if err != nil {
 		return nil, nil, err
 	}
-	ruleResult, err := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+	ruleResult, ruleErr := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  runtimeID,
 		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
 		EventLimit: uint32Payload(job.Payload, "event_limit"),
 	})
-	if err != nil {
-		return nil, nil, err
-	}
 	graphPayload, err := json.Marshal(graphResult)
 	if err != nil {
 		return nil, nil, err
@@ -253,7 +250,13 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 	if graphResult.Run.ID != "" {
 		refs["graph_ingest_run_id"] = graphResult.Run.ID
 	}
-	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeGraph, grcCacheScopeInventory)
+	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
+	if ruleResult != nil {
+		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
+	}
+	if ruleErr != nil {
+		return result, refs, ruleErr
+	}
 	return result, refs, nil
 }
 
@@ -289,21 +292,23 @@ func (a *App) runFindingRulesEvaluateJob(ctx context.Context, job *ports.Job, _ 
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	result, err := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+	result, evaluationErr := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  runtimeID,
 		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
 		EventLimit: uint32Payload(job.Payload, "event_limit"),
 	})
-	if err != nil {
-		return nil, nil, err
+	if result != nil {
+		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	}
-	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	payload, err := json.Marshal(result)
 	if err != nil {
 		return nil, nil, err
 	}
 	out := map[string]any{}
 	_ = json.Unmarshal(payload, &out)
+	if evaluationErr != nil {
+		return out, nil, evaluationErr
+	}
 	return out, nil, nil
 }
 
