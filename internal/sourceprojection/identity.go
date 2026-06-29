@@ -824,7 +824,7 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, profile id
 		})
 	}
 	if subjectURN != "" && appURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, appURN, relationAssignedTo, identityAssignmentLinkAttributes(event)))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, appURN, relationAssignedTo, identityAssignmentLinkAttributes(event, profile)))
 	}
 	entitlementURN, capabilityURN := addIdentityAppEntitlement(entities, links, tenantID, event, profile, appURN, attributes)
 	if capabilityURN != "" && entitlementURN != "" {
@@ -955,8 +955,11 @@ func identityEventLinkAttributes(event *cerebrov1.EventEnvelope) map[string]stri
 	return attributes
 }
 
-func identityAssignmentLinkAttributes(event *cerebrov1.EventEnvelope) map[string]string {
+func identityAssignmentLinkAttributes(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) map[string]string {
 	linkAttrs := identityEventLinkAttributes(event)
+	if profile.Provider != oktaIdentityProfile.Provider {
+		return linkAttrs
+	}
 	eventAttrs := event.GetAttributes()
 	for _, key := range []string{"status", "assignment_status", "state"} {
 		if value := strings.TrimSpace(eventAttrs[key]); value != "" {

@@ -96,7 +96,6 @@ spec:
             WHERE user_attrs CONTAINS '"status":"suspended"'
                OR user_attrs CONTAINS '"status":"deprovisioned"'
                OR user_attrs CONTAINS '"status":"deactivated"'
-               OR user_attrs CONTAINS '"status":"locked_out"'
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,
                    user.entity_type AS primary_type,
@@ -107,7 +106,7 @@ spec:
                    [user.urn, group.urn] AS resource_urns,
                    [{urn: group.urn, label: group.label, entity_type: group.entity_type, relation: 'member_of', attributes_json: coalesce(group.attributes_json, '')}] +
                    [a IN apps | {urn: a.urn, label: a.label, entity_type: a.entity_type, relation: 'assigned_to', attributes_json: coalesce(a.attributes_json, '')}] AS evidence,
-                   {evidence_basis: 'okta_user_lifecycle_to_group_membership_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta group membership and review group-assigned applications', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' WHEN user_attrs CONTAINS '"status":"locked_out"' THEN 'locked_out' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.group_membership member_of edge', limitation: 'The finding cites current group paths; group purpose and downstream app enforcement may require separate evidence.'} AS finding_attributes
+                   {evidence_basis: 'okta_user_lifecycle_to_group_membership_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta group membership and review group-assigned applications', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.group_membership member_of edge', limitation: 'The finding cites current group paths; group purpose and downstream app enforcement may require separate evidence.'} AS finding_attributes
             ORDER BY user.urn, group.urn
             LIMIT $row_limit
         rowLimit: 500

@@ -98,7 +98,6 @@ spec:
             WHERE user_attrs CONTAINS '"status":"suspended"'
                OR user_attrs CONTAINS '"status":"deprovisioned"'
                OR user_attrs CONTAINS '"status":"deactivated"'
-               OR user_attrs CONTAINS '"status":"locked_out"'
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,
                    user.entity_type AS primary_type,
@@ -110,7 +109,7 @@ spec:
                    [{urn: app.urn, label: app.label, entity_type: app.entity_type, relation: 'assigned_to', attributes_json: coalesce(app.attributes_json, '')}] +
                    [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
                    [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
-                   {evidence_basis: 'okta_user_lifecycle_to_app_assignment_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta app assignment and verify downstream revocation', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' WHEN user_attrs CONTAINS '"status":"locked_out"' THEN 'locked_out' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.app_assignment assigned_to edge', limitation: 'The graph shows Okta assignment state; downstream app revocation must be verified separately when required.'} AS finding_attributes
+                   {evidence_basis: 'okta_user_lifecycle_to_app_assignment_graph_path', confidence: 'high', remediation_intent: 'Remove the Okta app assignment and verify downstream revocation', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"suspended"' THEN 'suspended' WHEN user_attrs CONTAINS '"status":"deprovisioned"' THEN 'deprovisioned' WHEN user_attrs CONTAINS '"status":"deactivated"' THEN 'deactivated' ELSE 'non_active' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user lifecycle node plus okta.app_assignment assigned_to edge', limitation: 'The graph shows Okta assignment state; downstream app revocation must be verified separately when required.'} AS finding_attributes
             ORDER BY user.urn, app.urn
             LIMIT $row_limit
         rowLimit: 500

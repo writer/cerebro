@@ -3869,6 +3869,26 @@ func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
 	}
 }
 
+func TestIdentityAssignmentLinkAttributesScopesStatusToOkta(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "assignment-1",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.app_assignment",
+		Attributes: map[string]string{
+			"status": "ACTIVE",
+		},
+	}
+	oktaAttrs := identityAssignmentLinkAttributes(event, oktaIdentityProfile)
+	if oktaAttrs["status"] != "ACTIVE" {
+		t.Fatalf("okta assignment link status = %q, want ACTIVE", oktaAttrs["status"])
+	}
+	googleAttrs := identityAssignmentLinkAttributes(event, googleWorkspaceIdentityProfile)
+	if _, ok := googleAttrs["status"]; ok {
+		t.Fatalf("non-okta assignment link attrs = %#v, want no status", googleAttrs)
+	}
+}
+
 func TestProjectOktaEntitlementOmitsAtWhenOccurredAtUnset(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
