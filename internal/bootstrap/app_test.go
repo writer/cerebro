@@ -50,6 +50,7 @@ import (
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	slacksource "github.com/writer/cerebro/sources/slack"
 )
@@ -1746,8 +1747,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 5 {
-		t.Fatalf("/sources entries = %#v, want 5 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 6 {
+		t.Fatalf("/sources entries = %#v, want 6 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
@@ -1915,8 +1916,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 5 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 5", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 6 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 6", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -7707,6 +7708,10 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	pagerDuty, err := pagerdutysource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
 	sdk, err := sdksource.New()
 	if err != nil {
 		return nil, err
@@ -7715,7 +7720,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, okta, sdk, slack)
+	return sourcecdk.NewRegistry(source, auth0, okta, pagerDuty, sdk, slack)
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

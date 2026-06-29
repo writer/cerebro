@@ -1,0 +1,27 @@
+[
+  {
+    "id": "pagerduty-vendor-PV1",
+    "tenant_id": "tenant",
+    "source_id": "pagerduty",
+    "kind": "pagerduty.vendor",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "pagerduty/vendor/v1",
+    "payload": {
+      "id": "PV1",
+      "name": "Example Vendor",
+      "summary": "Example Vendor",
+      "website_url": "https://example.com"
+    },
+    "attributes": {
+      "external_id": "PV1",
+      "family": "vendor",
+      "name": "Example Vendor",
+      "provider": "pagerduty",
+      "source_product": "pagerduty",
+      "source_provider": "pagerduty",
+      "summary": "Example Vendor",
+      "vendor_id": "PV1",
+      "website_url": "https://example.com"
+    }
+  }
+]

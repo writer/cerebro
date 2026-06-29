@@ -1,0 +1,31 @@
+[
+  {
+    "id": "pagerduty-user-PU1",
+    "tenant_id": "tenant",
+    "source_id": "pagerduty",
+    "kind": "pagerduty.user",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "pagerduty/user/v1",
+    "payload": {
+      "id": "PU1",
+      "name": "Alice Responder",
+      "email": "alice@example.test",
+      "role": "admin",
+      "time_zone": "UTC",
+      "job_title": "SRE"
+    },
+    "attributes": {
+      "email": "alice@example.test",
+      "external_id": "PU1",
+      "family": "user",
+      "job_title": "SRE",
+      "name": "Alice Responder",
+      "provider": "pagerduty",
+      "role": "admin",
+      "source_product": "pagerduty",
+      "source_provider": "pagerduty",
+      "time_zone": "UTC",
+      "user_id": "PU1"
+    }
+  }
+]

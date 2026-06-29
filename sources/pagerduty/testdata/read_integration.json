@@ -1,0 +1,37 @@
+[
+  {
+    "id": "pagerduty-integration-PI1",
+    "tenant_id": "tenant",
+    "source_id": "pagerduty",
+    "kind": "pagerduty.integration",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "pagerduty/integration/v1",
+    "payload": {
+      "id": "PI1",
+      "name": "Datadog",
+      "summary": "Datadog integration",
+      "service": {
+        "id": "PS1",
+        "summary": "Checkout API"
+      },
+      "vendor": {
+        "id": "PV1",
+        "summary": "Datadog"
+      }
+    },
+    "attributes": {
+      "external_id": "PI1",
+      "family": "integration",
+      "integration_id": "PI1",
+      "name": "Datadog",
+      "provider": "pagerduty",
+      "service_id": "PS1",
+      "service_name": "Checkout API",
+      "source_product": "pagerduty",
+      "source_provider": "pagerduty",
+      "summary": "Datadog integration",
+      "vendor_id": "PV1",
+      "vendor_name": "Datadog"
+    }
+  }
+]

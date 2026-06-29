@@ -182,30 +182,29 @@ func TestProjectPagerDutyIntegrationServiceVendorDependency(t *testing.T) {
 
 func TestRegistryRoutesPagerDutyDeclaredKinds(t *testing.T) {
 	cases := []struct {
-		kind       string
-		attrs      map[string]string
+		event      *cerebrov1.EventEnvelope
 		entityType string
 	}{
-		{"pagerduty.user", map[string]string{"user_id": "PU1", "name": "Alice"}, "pagerduty.user"},
-		{"pagerduty.team", map[string]string{"team_id": "PT1", "name": "Platform"}, "pagerduty.team"},
-		{"pagerduty.service", map[string]string{"service_id": "PS1", "status": "active", "escalation_policy_id": "PE1"}, "pagerduty.service"},
-		{"pagerduty.schedule", map[string]string{"schedule_id": "PSC1", "name": "Primary"}, "pagerduty.schedule"},
-		{"pagerduty.escalation_policy", map[string]string{"escalation_policy_id": "PE1", "name": "Checkout EP"}, "pagerduty.escalation_policy"},
-		{"pagerduty.integration", map[string]string{"integration_id": "PI1", "service_id": "PS1", "vendor_id": "PV1"}, "pagerduty.integration"},
-		{"pagerduty.vendor", map[string]string{"vendor_id": "PV1", "name": "Datadog"}, "pagerduty.vendor"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-user", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.user", Attributes: map[string]string{"user_id": "PU1", "name": "Alice"}}, entityType: "pagerduty.user"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-team", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.team", Attributes: map[string]string{"team_id": "PT1", "name": "Platform"}}, entityType: "pagerduty.team"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-service", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.service", Attributes: map[string]string{"service_id": "PS1", "status": "active", "escalation_policy_id": "PE1"}}, entityType: "pagerduty.service"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-schedule", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.schedule", Attributes: map[string]string{"schedule_id": "PSC1", "name": "Primary"}}, entityType: "pagerduty.schedule"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-escalation-policy", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.escalation_policy", Attributes: map[string]string{"escalation_policy_id": "PE1", "name": "Checkout EP"}}, entityType: "pagerduty.escalation_policy"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-integration", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.integration", Attributes: map[string]string{"integration_id": "PI1", "service_id": "PS1", "vendor_id": "PV1"}}, entityType: "pagerduty.integration"},
+		{event: &cerebrov1.EventEnvelope{Id: "pagerduty-vendor", TenantId: "writer", SourceId: "pagerduty", Kind: "pagerduty.vendor", Attributes: map[string]string{"vendor_id": "PV1", "name": "Datadog"}}, entityType: "pagerduty.vendor"},
 	}
 	registered := make(map[string]struct{})
 	for _, kind := range BuiltinRegistry().Kinds() {
 		registered[kind] = struct{}{}
 	}
 	for _, tc := range cases {
-		t.Run(tc.kind, func(t *testing.T) {
-			if _, ok := registered[tc.kind]; !ok {
-				t.Fatalf("declared PagerDuty kind %q is not routed in the projection registry", tc.kind)
+		t.Run(tc.event.Kind, func(t *testing.T) {
+			if _, ok := registered[tc.event.Kind]; !ok {
+				t.Fatalf("declared PagerDuty kind %q is not routed in the projection registry", tc.event.Kind)
 			}
-			entities, _, err := BuiltinRegistry().Project(pagerDutyEvent(tc.kind, tc.attrs))
+			entities, _, err := BuiltinRegistry().Project(tc.event)
 			if err != nil {
-				t.Fatalf("Project(%s) error = %v", tc.kind, err)
+				t.Fatalf("Project(%s) error = %v", tc.event.Kind, err)
 			}
 			found := false
 			for _, entity := range entities {
@@ -215,7 +214,7 @@ func TestRegistryRoutesPagerDutyDeclaredKinds(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Fatalf("kind %q did not route to projector producing %q; entities=%#v", tc.kind, tc.entityType, entities)
+				t.Fatalf("kind %q did not route to projector producing %q; entities=%#v", tc.event.Kind, tc.entityType, entities)
 			}
 		})
 	}
