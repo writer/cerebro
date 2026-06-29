@@ -167,7 +167,7 @@ func (h *Handler) runtimes(ctx context.Context, tenantID string, limit int) ([]*
 	}
 	runtimes, err := lister.ListSourceRuntimes(ctx, ports.SourceRuntimeFilter{
 		TenantID: strings.TrimSpace(tenantID),
-		Limit:    uint32(limit),
+		Limit:    uint32(limit), // #nosec G115 -- queryLimit clamps list requests to maxLimit.
 	})
 	if err != nil {
 		return nil, "unavailable", err

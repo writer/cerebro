@@ -219,6 +219,7 @@ func TestCredentialStoresListReturnsOperationalBindings(t *testing.T) {
 				Id:       "runtime-env",
 				SourceId: "bootstrap_token",
 				TenantId: "tenant-a",
+				// #nosec G101 -- credential store tests use reference-shaped fixture values, not real secrets.
 				Config: map[string]string{
 					"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
 				},
@@ -227,6 +228,7 @@ func TestCredentialStoresListReturnsOperationalBindings(t *testing.T) {
 				Id:       "runtime-aws",
 				SourceId: "bootstrap_token",
 				TenantId: "tenant-a",
+				// #nosec G101 -- credential store tests use reference-shaped fixture values, not real secrets.
 				Config: map[string]string{
 					"token": "aws-sm:us-east-1:cerebro/tenant-a/bootstrap_token/runtime-aws/credentials#token",
 				},
