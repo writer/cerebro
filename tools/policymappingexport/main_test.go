@@ -301,6 +301,8 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 	}
 	s3Row := findRow(t, reviewRows, reviewFindingCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, reviewHeader, s3Row, "compliance_evidence_status", "partial_source_backed")
+	assertCellEquals(t, reviewHeader, s3Row, "evidence_backing_level", "partial_runtime_evidence")
+	assertCellContains(t, reviewHeader, s3Row, "evidence_backing_gaps", "control_refs_without_source_match")
 	assertCellEquals(t, reviewHeader, s3Row, "source_matched_control_ref_count", "7")
 	assertCellEquals(t, reviewHeader, s3Row, "source_backed_control_ref_count", "7")
 	assertCellEquals(t, reviewHeader, s3Row, "control_refs_without_source_match_count", "7")
@@ -348,11 +350,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4168")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "398")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4193")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "393")
 	assertOverviewMetric(t, overviewRows, "detections source-backed", "409")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "779")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "398")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "784")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "393")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
@@ -548,6 +550,8 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 	findingIDCol := columnIndex(t, findingHeader, "finding_id")
 	s3Row := findRow(t, findingRows, findingIDCol, "aws-s3-bucket-no-public-access")
 	assertCellContains(t, findingHeader, s3Row, "source_capability_status", "source_capability_defined")
+	assertCellEquals(t, findingHeader, s3Row, "evidence_backing_level", "partial_runtime_evidence")
+	assertCellContains(t, findingHeader, s3Row, "evidence_backing_gaps", "control_refs_without_source_match")
 
 	reviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_review_map.csv"))
 	reviewHeader := reviewRows[0]

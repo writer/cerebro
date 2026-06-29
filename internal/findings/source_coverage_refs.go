@@ -48,6 +48,8 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 	searchText := detectionCoverageSearchText(detection)
 	candidates := make([]sourceCoverageCandidate, 0)
 	sourceMatchRequired := policyIdentityNamespaceRequiresSourceMatch(detection)
+	identityProviderNamed := policyIdentityDetectionNamesProvider(searchText)
+	genericIdentityCoverageAllowed := policyIdentityDetectionAllowsGenericCoverage(detection)
 	for _, contract := range contracts {
 		sourceID := strings.TrimSpace(contract.SourceID)
 		if sourceID == "" {
@@ -58,17 +60,18 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		for _, dimension := range contract.Dimensions {
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
+			effectiveSourceMatched := sourceMatched || genericIdentityCoverageMatchesDetection(sourceID, dimension, sourceMatchRequired, identityProviderNamed, genericIdentityCoverageAllowed, dimensionMatched)
 			coverageRefs := dimension.ControlRefs
 			// Domain-derived control coverage is credited only within the
 			// detection's own (or explicitly named) source and only when the
 			// coverage dimension or evidence type also matches. This lets broad
 			// control_domains fill missing refs without letting every dimension
 			// from the same source inherit every matching framework control.
-			if sourceMatched && (dimensionMatched || evidenceMatched) {
+			if effectiveSourceMatched && (dimensionMatched || evidenceMatched) {
 				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
 			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
-			if len(matches) == 0 || sourceConflicted || (sourceMatchRequired && !sourceMatched) || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
+			if len(matches) == 0 || sourceConflicted || (sourceMatchRequired && !effectiveSourceMatched) || !coverageControlMatchAllowed(detection.SourceID, effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
@@ -85,7 +88,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			}
 			candidates = append(candidates, sourceCoverageCandidate{
 				ref:                ref,
-				score:              sourceCoverageCandidateScore(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
+				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
 				exactControlMatch:  exactControlMatch,
 				dimensionMatched:   dimensionMatched,
 				evidenceMatched:    evidenceMatched,
@@ -254,8 +257,11 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 
 var identityProviderCoverageAliases = map[string][]string{
 	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"duo":                {"duo", "duo_security"},
+	"duo_security":       {"duo", "duo_security"},
 	"github":             {"github", "github_org", "github_organization"},
 	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
+	"jumpcloud":          {"jumpcloud", "jump_cloud"},
 	"microsoft_365":      {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
 	"microsoft_entra":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
 	"microsoft_entra_id": {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
@@ -277,6 +283,92 @@ func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText
 			continue
 		}
 		if coverageTextContainsAny(searchText, providerAliases) {
+			return true
+		}
+	}
+	return false
+}
+
+func policyIdentityDetectionNamesProvider(searchText string) bool {
+	for _, aliases := range identityProviderCoverageAliases {
+		if coverageTextContainsAny(searchText, aliases) {
+			return true
+		}
+	}
+	return false
+}
+
+var genericIdentityPolicyPrefixes = map[string]struct{}{
+	"access":      {},
+	"account":     {},
+	"accounts":    {},
+	"admin":       {},
+	"conditional": {},
+	"dormant":     {},
+	"external":    {},
+	"group":       {},
+	"groups":      {},
+	"inactive":    {},
+	"mfa":         {},
+	"orphaned":    {},
+	"privileged":  {},
+	"service":     {},
+	"stale":       {},
+	"user":        {},
+	"users":       {},
+}
+
+func policyIdentityDetectionAllowsGenericCoverage(detection PublicDetection) bool {
+	parts := strings.Split(normalizeCoverageText(detection.ID), "_")
+	if len(parts) < 2 || parts[0] != "identity" {
+		return false
+	}
+	_, ok := genericIdentityPolicyPrefixes[parts[1]]
+	return ok
+}
+
+func genericIdentityCoverageMatchesDetection(sourceID string, dimension sourcecdk.CoverageDimension, sourceMatchRequired bool, identityProviderNamed bool, genericIdentityCoverageAllowed bool, dimensionMatched bool) bool {
+	if !sourceMatchRequired || identityProviderNamed || !genericIdentityCoverageAllowed || !dimensionMatched {
+		return false
+	}
+	if _, ok := identityProviderCoverageAliases[normalizeCoverageText(sourceID)]; !ok {
+		return false
+	}
+	if !genericIdentityDimensionAllowed(dimension.ID) {
+		return false
+	}
+	if !dimensionHasControlDomain(dimension, "identity_access") {
+		return false
+	}
+	return true
+}
+
+func genericIdentityDimensionAllowed(dimensionID string) bool {
+	dimensionID = normalizeCoverageText(dimensionID)
+	for _, token := range []string{
+		"app_role",
+		"authenticator",
+		"conditional_access",
+		"directory_role",
+		"external",
+		"group",
+		"lifecycle",
+		"mfa",
+		"privileged",
+		"role_assignment",
+		"user",
+	} {
+		if strings.Contains(dimensionID, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func dimensionHasControlDomain(dimension sourcecdk.CoverageDimension, want string) bool {
+	want = normalizeCoverageText(want)
+	for _, domain := range dimension.ControlDomains {
+		if normalizeCoverageText(domain) == want {
 			return true
 		}
 	}
