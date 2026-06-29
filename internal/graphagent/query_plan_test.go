@@ -519,7 +519,7 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"source_attributes_json_internal",
 		"exception_attributes_json_internal",
 		"finding_attributes_json_internal",
-		"LIMIT " + strconv.Itoa(postProcessingCandidateRowLimit),
+		"LIMIT " + strconv.Itoa(questionnaireEvidenceCandidateRowLimit),
 	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)
@@ -548,6 +548,7 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 		"Explain Okta lifecycle evidence for user deprovisioning",
 		"Answer this policy document questionnaire item",
 		"Show control coverage evidence gaps",
+		"Show the control evidence packet coverage",
 	} {
 		if got := inferIntent(question, ""); got != IntentQuestionnaireEvidence {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentQuestionnaireEvidence)
@@ -567,6 +568,8 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 		"What evidence supports this control gap?",
 		"Do we have control evidence for access management?",
 		"List controls with evidence attached",
+		"What is in the evidence packet for this finding?",
+		"Show the evidence packet export status",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)

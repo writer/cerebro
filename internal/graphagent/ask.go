@@ -248,9 +248,10 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	validator := s.validator
-	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+	candidateLimit := postProcessingCandidateLimit(conversion)
+	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < candidateLimit {
 		options := validator.options
-		options.MaxRows = postProcessingCandidateRowLimit
+		options.MaxRows = candidateLimit
 		validator = NewValidator(validator.store, options)
 	}
 	return validator.validate(ctx, cypher, params)
@@ -545,7 +546,20 @@ func usesPostProcessingCandidates(conversion conversionResult) bool {
 }
 
 func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
-	return usesPostProcessingCandidates(conversion) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+	candidateLimit := postProcessingCandidateLimit(conversion)
+	return usesPostProcessingCandidates(conversion) && rowLimit >= candidateLimit && len(rows) >= rowLimit
+}
+
+func postProcessingCandidateLimit(conversion conversionResult) int {
+	if !usesPostProcessingCandidates(conversion) {
+		return defaultMaxRows
+	}
+	switch conversion.Plan.Intent {
+	case IntentQuestionnaireEvidence:
+		return questionnaireEvidenceCandidateRowLimit
+	default:
+		return postProcessingCandidateRowLimit
+	}
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {

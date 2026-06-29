@@ -188,8 +188,8 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	if !strings.Contains(store.requests[0].Query, "qauto_match_text CONTAINS 'okta'") || !strings.Contains(store.requests[0].Query, "relation: 'has_evidence'") {
 		t.Fatalf("store request did not retrieve bounded questionnaire graph evidence:\n%s", store.requests[0].Query)
 	}
-	if store.requests[0].RowLimit != postProcessingCandidateRowLimit {
-		t.Fatalf("store row limit = %d, want questionnaire candidate row limit %d", store.requests[0].RowLimit, postProcessingCandidateRowLimit)
+	if store.requests[0].RowLimit != questionnaireEvidenceCandidateRowLimit {
+		t.Fatalf("store row limit = %d, want questionnaire candidate row limit %d", store.requests[0].RowLimit, questionnaireEvidenceCandidateRowLimit)
 	}
 	rowsEvent := events[6].Data.(RowsEvent)
 	for field, want := range map[string]any{

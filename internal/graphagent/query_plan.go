@@ -19,8 +19,9 @@ const (
 	IntentConnectorHealth           = "connector_health"
 	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
 
-	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
-	confidentPlanThreshold          = 0.70
+	postProcessingCandidateRowLimit        = ports.MaxCypherQueryRows
+	questionnaireEvidenceCandidateRowLimit = 500
+	confidentPlanThreshold                 = 0.70
 )
 
 type AskQueryPlan struct {
@@ -258,7 +259,7 @@ func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
 	if strings.Contains(haystack, "qauto") || strings.Contains(haystack, "questionnaire") || strings.Contains(haystack, "security questionnaire") {
 		return true
 	}
-	if strings.Contains(haystack, "evidence packet") {
+	if strings.Contains(haystack, "evidence packet") && evidencePacketQuestionnaireContext(haystack) {
 		return true
 	}
 	if (strings.Contains(haystack, "control coverage") ||
@@ -284,6 +285,26 @@ func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
 			strings.HasPrefix(trimmed, "does ") ||
 			strings.HasPrefix(trimmed, "can ")) {
 		return true
+	}
+	return false
+}
+
+func evidencePacketQuestionnaireContext(haystack string) bool {
+	for _, phrase := range []string{
+		"questionnaire",
+		"qauto",
+		"control",
+		"controls",
+		"coverage",
+		"compliance",
+		"audit",
+		"okta",
+		"mfa",
+		"lifecycle",
+	} {
+		if strings.Contains(haystack, phrase) {
+			return true
+		}
 	}
 	return false
 }
@@ -643,7 +664,7 @@ RETURN DISTINCT control.urn AS control_urn,
        coalesce(source.label, source.urn) AS source_label,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY control_label, support_label, evidence_label
-LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, postProcessingCandidateRowLimit), true
+LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, questionnaireEvidenceCandidateRowLimit), true
 	default:
 		return "", false
 	}
