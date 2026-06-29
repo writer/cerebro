@@ -2033,29 +2033,53 @@ frameworks:
         name: Planning
         controls:
           - id: 6.1
+            title: Actions to address AI risks and opportunities
+            objective: AI risks, opportunities, and treatment actions are identified, assigned, tracked, and reviewed for each in-scope AI system.
           - id: 6.2
+            title: AI objectives and planning to achieve them
+            objective: Measurable AI management objectives are approved, monitored, and tied to owners, target dates, and operating evidence.
       - id: 7
         name: Support
         controls:
           - id: 7.1
+            title: Resources for the AI management system
+            objective: People, tooling, data, and operational resources needed to run AI governance are identified and maintained.
           - id: 7.2
+            title: Competence
+            objective: Personnel who design, deploy, operate, or oversee AI systems have current competence evidence for their assigned responsibilities.
           - id: 7.3
+            title: Awareness
+            objective: AI system operators and accountable owners understand approved use, limits, escalation paths, and required controls.
       - id: 8
         name: Operation
         controls:
           - id: 8.4
+            title: AI system impact assessment
+            objective: Impact assessments are performed, approved, and refreshed for AI systems before production use or material change.
       - id: 9
         name: Performance Evaluation
         controls:
           - id: 9.1
+            title: Monitoring, measurement, analysis, and evaluation
+            objective: AI system behavior, control performance, incidents, and risk indicators are measured and reviewed against approved thresholds.
           - id: 9.2
+            title: Internal audit
+            objective: The AI management system is periodically audited and exceptions are tracked to closure.
           - id: 9.3
+            title: Management review
+            objective: Accountable leadership reviews AI governance performance, risks, incidents, and improvement actions.
           - id: 9.4
+            title: Evaluation of AI system performance
+            objective: AI system performance, safety, fairness, security, and reliability evaluations are retained for the assessed use case.
       - id: 10
         name: Improvement
         controls:
           - id: 10.1
+            title: Nonconformity and corrective action
+            objective: AI governance failures, incidents, and control exceptions are logged, assigned, corrected, and verified.
           - id: 10.2
+            title: Continual improvement
+            objective: AI management controls are improved based on monitoring, audit results, incidents, and owner review.
       - id: A.2
         name: Policies
         controls:
@@ -3356,15 +3380,21 @@ frameworks:
         name: Administrative Safeguards
         controls:
           - id: 164.308(a)(1)(i)
+            title: Security management process
           - id: 164.308(a)(1)(ii)(A)
+            title: Risk analysis
           - id: 164.308(a)(1)(ii)(B)
+            title: Risk management
           - id: 164.308(a)(1)(ii)(C)
+            title: Sanction policy
           - id: 164.308(a)(1)(ii)(D)
+            title: Information system activity review
           - id: 164.308(a)(2)
           - id: 164.308(a)(3)(i)
           - id: 164.308(a)(3)(ii)(A)
           - id: 164.308(a)(3)(ii)(B)
           - id: 164.308(a)(3)(ii)(C)
+            title: Termination procedures
           - id: 164.308(a)(4)(i)
           - id: 164.308(a)(4)(ii)(A)
           - id: 164.308(a)(4)(ii)(B)
@@ -3372,12 +3402,17 @@ frameworks:
           - id: 164.308(a)(5)(i)
           - id: 164.308(a)(5)(ii)(A)
           - id: 164.308(a)(5)(ii)(B)
+            title: Protection from malicious software
           - id: 164.308(a)(5)(ii)(C)
           - id: 164.308(a)(5)(ii)(D)
           - id: 164.308(a)(6)
+            title: Security incident procedures
           - id: 164.308(a)(6)(i)
+            title: Security incident procedures standard
           - id: 164.308(a)(6)(ii)
+            title: Response and reporting
           - id: 164.308(a)(7)
+            title: Contingency plan
           - id: 164.308(a)(7)(i)
           - id: 164.308(a)(7)(ii)(A)
           - id: 164.308(a)(7)(ii)(B)
@@ -3386,6 +3421,7 @@ frameworks:
           - id: 164.308(a)(7)(ii)(E)
           - id: 164.308(a)(8)
           - id: 164.308(b)(1)
+            title: Business associate contracts and other arrangements
           - id: 164.308(b)(2)
           - id: 164.308(b)(3)
           - id: 164.308(b)(4)
@@ -3408,18 +3444,31 @@ frameworks:
         name: Technical Safeguards
         controls:
           - id: 164.312
+            title: Technical safeguards
           - id: 164.312(a)(1)
+            title: Access control
           - id: 164.312(a)(2)(i)
+            title: Unique user identification
           - id: 164.312(a)(2)(ii)
+            title: Emergency access procedure
           - id: 164.312(a)(2)(iii)
+            title: Automatic logoff
           - id: 164.312(a)(2)(iv)
+            title: Encryption and decryption
           - id: 164.312(b)
+            title: Audit controls
           - id: 164.312(c)(1)
+            title: Integrity
           - id: 164.312(c)(2)
+            title: Mechanism to authenticate electronic protected health information
           - id: 164.312(d)
+            title: Person or entity authentication
           - id: 164.312(e)(1)
+            title: Transmission security
           - id: 164.312(e)(2)(i)
+            title: Integrity controls
           - id: 164.312(e)(2)(ii)
+            title: Encryption
       - id: 164.314
         name: Organizational Requirements
         controls:
@@ -3448,37 +3497,69 @@ frameworks:
         name: Articles
         controls:
           - id: Article 5
+            title: Principles relating to processing of personal data
           - id: Article 6
+            title: Lawfulness of processing
           - id: Article 7
+            title: Conditions for consent
           - id: Article 12
+            title: Transparent information and communication
           - id: Article 13
+            title: Information provided when personal data is collected
           - id: Article 14
+            title: Information provided when personal data was not obtained from the data subject
           - id: Article 15
+            title: Right of access by the data subject
           - id: Article 16
+            title: Right to rectification
           - id: Article 17
+            title: Right to erasure
           - id: Article 18
+            title: Right to restriction of processing
           - id: Article 19
+            title: Notification obligation for rectification, erasure, or restriction
           - id: Article 20
+            title: Right to data portability
           - id: Article 21
+            title: Right to object
           - id: Article 22
+            title: Automated individual decision-making
           - id: Article 23
+            title: Restrictions
           - id: Article 24
+            title: Responsibility of the controller
           - id: Article 25
+            title: Data protection by design and by default
           - id: Article 27
+            title: Representatives of controllers or processors not established in the Union
           - id: Article 28
+            title: Processor obligations
           - id: Article 30
+            title: Records of processing activities
           - id: Article 32
+            title: Security of processing
           - id: Article 33
+            title: Notification of a personal data breach to the supervisory authority
           - id: Article 34
+            title: Communication of a personal data breach to the data subject
           - id: Article 35
+            title: Data protection impact assessment
           - id: Article 37
+            title: Designation of the data protection officer
           - id: Article 38
+            title: Position of the data protection officer
           - id: Article 39
+            title: Tasks of the data protection officer
           - id: Article 44
+            title: General principle for transfers
           - id: Article 45
+            title: Transfers on the basis of an adequacy decision
           - id: Article 46
+            title: Transfers subject to appropriate safeguards
           - id: Article 48
+            title: Transfers or disclosures not authorised by Union law
           - id: Article 51
+            title: Supervisory authority
   - name: CCPA
     families:
       - id: 1798
@@ -3526,8 +3607,40 @@ frameworks:
       - id: Art.
         name: Articles
         controls:
+          - id: Art.5
+            title: Prohibited AI practices
+          - id: Art.9
+            title: Risk management system for high-risk AI systems
+          - id: Art.10
+            title: Data and data governance
+          - id: Art.11
+            title: Technical documentation
+          - id: Art.12
+            title: Record-keeping
           - id: Art.13
+            title: Transparency and provision of information to deployers
           - id: Art.14
+            title: Human oversight
+          - id: Art.15
+            title: Accuracy, robustness, and cybersecurity
+          - id: Art.16
+            title: Obligations of providers of high-risk AI systems
+          - id: Art.17
+            title: Quality management system
+          - id: Art.18
+            title: Documentation keeping
+          - id: Art.26
+            title: Obligations of deployers of high-risk AI systems
+          - id: Art.27
+            title: Fundamental rights impact assessment for high-risk AI systems
+          - id: Art.50
+            title: Transparency obligations for certain AI systems
+          - id: Art.53
+            title: Obligations for providers of general-purpose AI models
+          - id: Art.55
+            title: Additional obligations for providers of general-purpose AI models with systemic risk
+          - id: Art.72
+            title: Post-market monitoring by providers and monitoring plan for high-risk AI systems
   - name: HITRUST e1
     families:
       - id: HITRUST

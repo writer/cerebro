@@ -13862,6 +13862,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "aws",
+          "dimension_id": "bedrock_custom_model",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "bedrock_custom_model"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -14124,6 +14146,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "bedrock_provisioned_model_throughput",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "bedrock_provisioned_model_throughput"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
         {
           "source_id": "github",
           "dimension_id": "audit_events",
@@ -34158,6 +34202,10 @@
           ],
           "matched_control_refs": [
             {
+              "framework_name": "HIPAA",
+              "control_id": "164.312(e)(1)"
+            },
+            {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
             },
@@ -34487,6 +34535,31 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "sagemaker_endpoint_configuration",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "sagemaker_endpoint",
+            "sagemaker_endpoint_configuration"
+          ],
+          "evidence_types": [
+            "encryption_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "data_protection"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
         {
           "source_id": "github",
           "dimension_id": "audit_events",
@@ -35077,6 +35150,35 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "aws",
+          "dimension_id": "sagemaker_notebook_instance",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "notebook_instance",
+            "sagemaker_notebook",
+            "sagemaker_notebook_instance",
+            "sagemaker_notebook_root_access"
+          ],
+          "evidence_types": [
+            "ai_governance",
+            "configuration_state",
+            "identity_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
         {
           "source_id": "github",
           "dimension_id": "audit_events",
@@ -42151,6 +42253,29 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "azure",
+          "dimension_id": "cognitive_services_account",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cognitive_services_account",
+            "cognitive_services_deployment"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -42281,6 +42406,29 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "azure",
+          "dimension_id": "cognitive_services_account",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cognitive_services_account",
+            "cognitive_services_deployment"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
         {
           "source_id": "github",
           "dimension_id": "audit_events",
@@ -69024,6 +69172,28 @@
       "source_coverage_refs": [
         {
           "source_id": "gcp",
+          "dimension_id": "aiplatform_dataset",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "aiplatform_dataset"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
+        {
+          "source_id": "gcp",
           "dimension_id": "audit",
           "dimension_type": "audit_event",
           "support_level": "supported",
@@ -69176,6 +69346,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "gcp",
+          "dimension_id": "aiplatform_endpoint",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "aiplatform_endpoint"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 42001",
+              "control_id": "A.2.2"
+            }
+          ]
+        },
         {
           "source_id": "gcp",
           "dimension_id": "audit",
