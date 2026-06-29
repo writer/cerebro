@@ -32,6 +32,10 @@ def create_nats_service(
     lag_probe_interval_seconds: int = 60,
     lag_probe_image: str = "python:3.12-alpine",
     extra_client_security_group_ids: list[pulumi.Input[str]] | None = None,
+    nats_image: str = "nats:2.14.2-alpine",
+    nats_box_image: str = "natsio/nats-box:0.18.0",
+    stream_dupe_window: str = "10m",
+    stream_discard_policy: str = "old",
 ) -> dict:
     """Run a private NATS JetStream service backed by EFS."""
     extra_client_security_group_ids = list(extra_client_security_group_ids or [])
@@ -122,6 +126,10 @@ def create_nats_service(
             subject_prefix=subject_prefix,
             stream_max_bytes=stream_max_bytes,
             stream_max_age=stream_max_age,
+            nats_image=nats_image,
+            nats_box_image=nats_box_image,
+            stream_dupe_window=stream_dupe_window,
+            stream_discard_policy=stream_discard_policy,
             lag_probe_image=lag_probe_image,
             lag_probe_interval_seconds=lag_probe_interval_seconds,
             enable_lag_probe=enable_lag_probe,
@@ -200,6 +208,10 @@ def _build_container_definitions(
     subject_prefix: str,
     stream_max_bytes: str,
     stream_max_age: str,
+    nats_image: str,
+    nats_box_image: str,
+    stream_dupe_window: str,
+    stream_discard_policy: str,
     lag_probe_image: str,
     lag_probe_interval_seconds: int,
     enable_lag_probe: bool,
@@ -212,7 +224,7 @@ def _build_container_definitions(
     containers = [
         {
             "name": "nats",
-            "image": "nats:2.10-alpine",
+            "image": nats_image,
             "essential": True,
             "user": "10001",
             "readonlyRootFilesystem": True,
@@ -236,7 +248,7 @@ def _build_container_definitions(
         },
         {
             "name": "jetstream-bootstrap",
-            "image": "natsio/nats-box:0.16.0",
+            "image": nats_box_image,
             "essential": False,
             "user": "10001",
             "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
@@ -247,16 +259,20 @@ def _build_container_definitions(
                 {"name": "STREAM_SUBJECTS", "value": " ".join(stream_subjects)},
                 {"name": "STREAM_MAX_BYTES", "value": str(stream_max_bytes or "")},
                 {"name": "STREAM_MAX_AGE", "value": str(stream_max_age or "")},
+                {"name": "STREAM_DUPE_WINDOW", "value": str(stream_dupe_window or "")},
+                {"name": "STREAM_DISCARD_POLICY", "value": str(stream_discard_policy or "old")},
             ],
             "command": [
                 "sh",
                 "-ec",
                 (
                     'nats_js() { nats --server "$NATS_URL" --timeout "$NATS_TIMEOUT" "$@"; }; '
-                    'set -- --discard old --replicas 1; '
+                    'discard="${STREAM_DISCARD_POLICY:-old}"; '
+                    'set -- --discard "$discard" --replicas 1; '
                     'for subject in $STREAM_SUBJECTS; do set -- "$@" --subjects "$subject"; done; '
                     'if [ -n "$STREAM_MAX_BYTES" ]; then set -- "$@" --max-bytes "$STREAM_MAX_BYTES"; fi; '
                     'if [ -n "$STREAM_MAX_AGE" ]; then set -- "$@" --max-age "$STREAM_MAX_AGE"; fi; '
+                    'if [ -n "$STREAM_DUPE_WINDOW" ]; then set -- "$@" --dupe-window "$STREAM_DUPE_WINDOW"; fi; '
                     'if nats_js stream info "$STREAM_NAME" >/dev/null 2>&1; then '
                     'nats_js stream edit "$STREAM_NAME" "$@" --force; '
                     'else nats_js stream add "$STREAM_NAME" "$@" '

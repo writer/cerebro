@@ -397,6 +397,14 @@ config:
     type: integer
     default: 1024
     description: NATS task memory in MB
+  cerebro:natsImage:
+    type: string
+    default: nats:2.14.2-alpine
+    description: NATS server container image used by the JetStream ECS task
+  cerebro:natsBoxImage:
+    type: string
+    default: natsio/nats-box:0.18.0
+    description: nats-box container image used by the JetStream bootstrap sidecar
   cerebro:natsExtraClientSecurityGroupIds:
     type: array
     items:
@@ -419,6 +427,14 @@ config:
     type: string
     default: ""
     description: Optional JetStream max age limit passed to the stream bootstrapper
+  cerebro:jetstreamDupeWindow:
+    type: string
+    default: 10m
+    description: JetStream duplicate message ID window passed to the stream bootstrapper
+  cerebro:jetstreamDiscardPolicy:
+    type: string
+    default: old
+    description: JetStream stream discard policy passed to the stream bootstrapper
   cerebro:jetstreamPublishMaxInFlight:
     type: integer
     default: 0

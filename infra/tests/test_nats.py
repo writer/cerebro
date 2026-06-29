@@ -28,6 +28,10 @@ class NatsContainerDefinitionTest(unittest.TestCase):
                 subject_prefix="events",
                 stream_max_bytes="128849018880",
                 stream_max_age="168h",
+                nats_image="nats:2.14.2-alpine",
+                nats_box_image="natsio/nats-box:0.18.0",
+                stream_dupe_window="10m",
+                stream_discard_policy="old",
                 lag_probe_image="probe:latest",
                 lag_probe_interval_seconds=60,
                 enable_lag_probe=True,
@@ -36,19 +40,26 @@ class NatsContainerDefinitionTest(unittest.TestCase):
         by_name = {container["name"]: container for container in containers}
 
         self.assertEqual(by_name["nats"]["user"], "10001")
+        self.assertEqual(by_name["nats"]["image"], "nats:2.14.2-alpine")
         self.assertIs(by_name["nats"]["readonlyRootFilesystem"], True)
         self.assertEqual(by_name["nats"]["healthCheck"]["interval"], 60)
         self.assertEqual(by_name["nats"]["healthCheck"]["retries"], 10)
         self.assertEqual(by_name["nats"]["healthCheck"]["startPeriod"], 300)
         self.assertEqual(by_name["jetstream-bootstrap"]["user"], "10001")
+        self.assertEqual(by_name["jetstream-bootstrap"]["image"], "natsio/nats-box:0.18.0")
         bootstrap_env = {item["name"]: item["value"] for item in by_name["jetstream-bootstrap"]["environment"]}
         self.assertEqual(bootstrap_env["NATS_TIMEOUT"], "120s")
         self.assertEqual(bootstrap_env["STREAM_MAX_BYTES"], "128849018880")
         self.assertEqual(bootstrap_env["STREAM_MAX_AGE"], "168h")
+        self.assertEqual(bootstrap_env["STREAM_DUPE_WINDOW"], "10m")
+        self.assertEqual(bootstrap_env["STREAM_DISCARD_POLICY"], "old")
         self.assertEqual(bootstrap_env["STREAM_SUBJECTS"], "events.> sec.>")
         bootstrap_command = " ".join(by_name["jetstream-bootstrap"]["command"])
         self.assertIn('nats_js() { nats --server "$NATS_URL" --timeout "$NATS_TIMEOUT" "$@"; }', bootstrap_command)
+        self.assertIn('discard="${STREAM_DISCARD_POLICY:-old}"', bootstrap_command)
+        self.assertIn('set -- --discard "$discard" --replicas 1', bootstrap_command)
         self.assertIn('for subject in $STREAM_SUBJECTS; do set -- "$@" --subjects "$subject"; done', bootstrap_command)
+        self.assertIn('set -- "$@" --dupe-window "$STREAM_DUPE_WINDOW"', bootstrap_command)
         self.assertIn("stream edit", bootstrap_command)
         self.assertIn("stream add", bootstrap_command)
         self.assertIn("nats_js stream add \"$STREAM_NAME\" \"$@\" --storage file --retention limits", bootstrap_command)

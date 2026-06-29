@@ -51,9 +51,13 @@ config:
   cerebro:cacheMaxPayloadBytes: 1048576
   cerebro:natsCpu: 16384
   cerebro:natsMemory: 65536
+  cerebro:natsImage: nats:2.14.2-alpine
+  cerebro:natsBoxImage: natsio/nats-box:0.18.0
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
   cerebro:jetstreamMaxBytes: "549755813888"
+  cerebro:jetstreamDupeWindow: 10m
+  cerebro:jetstreamDiscardPolicy: old
   cerebro:jetstreamPublishMaxInFlight: 16
   cerebro:jetstreamPublishRetryAttempts: 24
   cerebro:jetstreamPublishRetryInitialBackoff: 500ms

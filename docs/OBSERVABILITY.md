@@ -229,6 +229,13 @@ deliberately longer than the observed 26 GiB stream restore window, and
 broker restart so source runtimes wait instead of stampeding the recovering
 stream.
 
+The app sets `CEREBRO_JETSTREAM_STREAM_NAME` from `cerebro:jetstreamStreamName`.
+Publishes carry `Nats-Expected-Stream`, and readiness checks fail when that
+stream is missing or does not accept the configured subject prefix. The stream
+bootstrap also sets `cerebro:jetstreamDupeWindow` to `10m`, longer than the
+active publish retry budget, so retried event IDs remain idempotent through a
+broker restart.
+
 The NATS bootstrap stream must bind both `events.>` and `sec.>`. Runtime events
 use the configured `CEREBRO_JETSTREAM_SUBJECT_PREFIX`, while canonical security
 events such as `sec.findings.v1.recorded` publish directly on the `sec.*`

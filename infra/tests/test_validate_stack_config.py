@@ -979,6 +979,13 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: bursting")
         self.assertTrue(any("elastic or provisioned EFS throughput" in message for message in self._messages(content)))
 
+    def test_jetstream_discard_policy_must_be_valid(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:jetstreamPublishMaxInFlight: 4",
+            "  cerebro:jetstreamDiscardPolicy: maybe\n  cerebro:jetstreamPublishMaxInFlight: 4",
+        )
+        self.assertTrue(any("JetStream discard policy must be old or new" in message for message in self._messages(content)))
+
     def test_provisioned_nats_efs_throughput_requires_value(self) -> None:
         content = BASE_STACK.replace("  cerebro:natsEfsThroughputMode: elastic", "  cerebro:natsEfsThroughputMode: provisioned")
         self.assertTrue(any("positive MiB/s value" in message for message in self._messages(content)))

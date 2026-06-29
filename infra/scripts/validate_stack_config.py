@@ -1669,6 +1669,16 @@ def validate_stack(path: Path) -> list[Finding]:
     jetstream_publish_retry_max_elapsed = config.get("jetstreamPublishRetryMaxElapsed")
     nats_efs_throughput_mode = str(config.get("natsEfsThroughputMode", "bursting")).strip().lower()
     nats_efs_provisioned_throughput = config.get("natsEfsProvisionedThroughputMibps")
+    jetstream_discard_policy = str(config.get("jetstreamDiscardPolicy", "old")).strip().lower()
+    if jetstream_discard_policy not in {"old", "new"}:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:jetstreamDiscardPolicy",
+                "JetStream discard policy must be old or new",
+            )
+        )
     valid_nats_efs_throughput_modes = {"bursting", "elastic", "provisioned"}
     if nats_efs_throughput_mode not in valid_nats_efs_throughput_modes:
         findings.append(

@@ -312,10 +312,14 @@ cache_max_payload_bytes = _config_int("cacheMaxPayloadBytes", 1048576)
 
 nats_cpu = _config_int("natsCpu", 512)
 nats_memory = _config_int("natsMemory", 1024)
+nats_image = config.get("natsImage") or "nats:2.14.2-alpine"
+nats_box_image = config.get("natsBoxImage") or "natsio/nats-box:0.18.0"
 jetstream_subject_prefix = config.get("jetstreamSubjectPrefix") or "events"
 jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 jetstream_max_bytes = config.get("jetstreamMaxBytes") or ""
 jetstream_max_age = config.get("jetstreamMaxAge") or ""
+jetstream_dupe_window = config.get("jetstreamDupeWindow") or "10m"
+jetstream_discard_policy = config.get("jetstreamDiscardPolicy") or "old"
 jetstream_publish_max_in_flight = _config_int("jetstreamPublishMaxInFlight", 0)
 jetstream_publish_retry_attempts = _config_int("jetstreamPublishRetryAttempts", 0)
 jetstream_publish_retry_initial_backoff = config.get("jetstreamPublishRetryInitialBackoff") or ""
@@ -643,10 +647,14 @@ nats_stack = nats.create_nats_service(
     log_retention_days=log_retention_days,
     cpu=nats_cpu,
     memory=nats_memory,
+    nats_image=nats_image,
+    nats_box_image=nats_box_image,
     stream_name=jetstream_stream_name,
     subject_prefix=jetstream_subject_prefix,
     stream_max_bytes=jetstream_max_bytes,
     stream_max_age=jetstream_max_age,
+    stream_dupe_window=jetstream_dupe_window,
+    stream_discard_policy=jetstream_discard_policy,
     efs_throughput_mode=nats_efs_throughput_mode,
     efs_provisioned_throughput_mibps=nats_efs_provisioned_throughput_mibps,
     enable_lag_probe=enable_jetstream_lag_probe,
@@ -833,6 +841,7 @@ app_environment = {
     "CEREBRO_CAPABILITY_TOKEN_AUDIENCE": capability_token_audience,
     "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
     "CEREBRO_JETSTREAM_URL": nats_stack["url"],
+    "CEREBRO_JETSTREAM_STREAM_NAME": jetstream_stream_name,
     "CEREBRO_JETSTREAM_SUBJECT_PREFIX": jetstream_subject_prefix,
     "CEREBRO_STATE_STORE_DRIVER": "postgres",
     "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
