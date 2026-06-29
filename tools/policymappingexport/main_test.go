@@ -420,8 +420,8 @@ func TestGenerateFilesIncludesCoverageGapExplanations(t *testing.T) {
 	assertCellContains(t, header, emailRow, "adjacent_control_rationale", "mail-domain control")
 	assertCellContains(t, header, emailRow, "llm_question", "Why is NIST SP 800-177 TLS-MAIL coverage source_backed")
 	assertCellContains(t, header, emailRow, "llm_answer_basis", "bounded_evidence=2")
-	assertCellContains(t, header, emailRow, "llm_next_action", "Package runtime evidence")
-	assertCellContains(t, header, emailRow, "llm_overclaim_guard", "Do not claim full trustworthy email coverage")
+	assertCellContains(t, header, emailRow, "llm_next_action", "same_as:next_action")
+	assertCellContains(t, header, emailRow, "llm_overclaim_guard", "same_as:overclaim_guard")
 
 	reviewRow := findRowByColumns(t, rows, map[int]string{
 		findingCol:           "email-domain-authentication-misconfigured",
@@ -436,6 +436,23 @@ func TestGenerateFilesIncludesCoverageGapExplanations(t *testing.T) {
 	assertCellContains(t, header, reviewRow, "overclaim_guard", "Do not claim")
 }
 
+func TestGeneratedPolicyMappingCSVsStayBelowGitHubBlobLimit(t *testing.T) {
+	files, err := generateFiles(repoRoot(t))
+	if err != nil {
+		t.Fatalf("generateFiles() error = %v", err)
+	}
+
+	const maxCSVBlobBytes = 95 * 1024 * 1024
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name, ".csv") {
+			continue
+		}
+		if got := len(file.Content); got > maxCSVBlobBytes {
+			t.Fatalf("%s size = %d bytes, want <= %d bytes", file.Name, got, maxCSVBlobBytes)
+		}
+	}
+}
+
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	files, err := generateFiles(repoRoot(t))
 	if err != nil {
@@ -443,10 +460,10 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4304")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4320")
 	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "346")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "409")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "831")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "410")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "830")
 	assertOverviewMetric(t, overviewRows, "detections control-only", "346")
 }
 
@@ -778,6 +795,7 @@ func TestValidateControlEvidenceRequirementsRequiresClaimFields(t *testing.T) {
 		Defaults: controlEvidenceRequirementDefaults{
 			SourceID:             "control_owner_review",
 			EntityType:           "control_evidence_packet",
+			EvidenceUse:          "operating_effectiveness",
 			RequiredFields:       []string{"control_ref"},
 			FreshnessWindow:      "90d",
 			AssessmentMethods:    []string{"examine"},
@@ -790,6 +808,7 @@ func TestValidateControlEvidenceRequirementsRequiresClaimFields(t *testing.T) {
 			SourceRequirements: []controlEvidenceSourceRequirement{{
 				SourceID:             "control_owner_review",
 				EntityType:           "control_evidence_packet",
+				EvidenceUse:          "operating_effectiveness",
 				RequiredFields:       []string{"control_ref"},
 				FreshnessWindow:      "90d",
 				AssessmentMethods:    []string{"examine"},
@@ -819,9 +838,17 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	controlCol := columnIndex(t, requirementHeader, "control_id")
 	profileCol := columnIndex(t, requirementHeader, "requirement_profile")
 	sourceCol := columnIndex(t, requirementHeader, "requirement_source_id")
+	entityCol := columnIndex(t, requirementHeader, "entity_type")
 
-	socAccessRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "SOC 2", "CC6.1", "identity-access", "okta")
+	socAccessRow := findRowByColumns(t, requirementRows, map[int]string{
+		frameworkCol: "SOC 2",
+		controlCol:   "CC6.1",
+		profileCol:   "identity-access",
+		sourceCol:    "okta",
+		entityCol:    "identity_user",
+	})
 	assertCellContains(t, requirementHeader, socAccessRow, "required_fields", "factors")
+	assertCellEquals(t, requirementHeader, socAccessRow, "evidence_use", "review_context")
 	assertCellContains(t, requirementHeader, socAccessRow, "source_capability_refs", "okta/users")
 	assertCellContains(t, requirementHeader, socAccessRow, "coverage_status", "partial_source_backed")
 	assertCellEquals(t, requirementHeader, socAccessRow, "claim_rule_id", "trust-services-operating-evidence")
@@ -829,6 +856,40 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	assertCellEquals(t, requirementHeader, socAccessRow, "sufficiency_rule", "design_and_operating_effectiveness")
 	assertCellEquals(t, requirementHeader, socAccessRow, "claim_status", "partial_source_evidence_claim")
 	assertCellContains(t, requirementHeader, socAccessRow, "overclaim_guard", "control reference alone")
+
+	socReviewRow := findRowByColumns(t, requirementRows, map[int]string{
+		frameworkCol: "SOC 2",
+		controlCol:   "CC6.1",
+		profileCol:   "identity-access",
+		sourceCol:    "okta",
+		entityCol:    "identity_access_review",
+	})
+	assertCellEquals(t, requirementHeader, socReviewRow, "evidence_use", "operating_effectiveness")
+	assertCellContains(t, requirementHeader, socReviewRow, "required_fields", "reviewer_id")
+	assertCellContains(t, requirementHeader, socReviewRow, "required_fields", "review_period_end")
+	assertCellContains(t, requirementHeader, socReviewRow, "required_fields", "source_observed_at")
+	assertCellContains(t, requirementHeader, socReviewRow, "source_capability_refs", "okta/access_review_operations")
+
+	socDormantRow := findRowByColumns(t, requirementRows, map[int]string{
+		frameworkCol: "SOC 2",
+		controlCol:   "CC6.1",
+		profileCol:   "identity-access",
+		sourceCol:    "okta",
+		entityCol:    "dormant_account_review",
+	})
+	assertCellEquals(t, requirementHeader, socDormantRow, "evidence_use", "operating_effectiveness")
+	assertCellContains(t, requirementHeader, socDormantRow, "source_capability_refs", "okta/dormant_account_reviews")
+
+	socExternalRow := findRowByColumns(t, requirementRows, map[int]string{
+		frameworkCol: "SOC 2",
+		controlCol:   "CC6.2",
+		profileCol:   "identity-access",
+		sourceCol:    "okta",
+		entityCol:    "external_account_review",
+	})
+	assertCellEquals(t, requirementHeader, socExternalRow, "evidence_use", "operating_effectiveness")
+	assertCellContains(t, requirementHeader, socExternalRow, "required_fields", "sponsor_id")
+	assertCellContains(t, requirementHeader, socExternalRow, "source_capability_refs", "okta/external_account_reviews")
 	assertRequirementRowMissing(t, requirementRows, frameworkCol, controlCol, profileCol, "SOC 2", "CC6.1", "logging-monitoring")
 
 	isoCryptoRow := findRequirementRow(t, requirementRows, frameworkCol, controlCol, profileCol, sourceCol, "ISO 27001:2022", "A.8.24", "data-protection", "aws")
@@ -887,6 +948,43 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 	}
 	if !foundFindingRequirement {
 		t.Fatal("finding_evidence_requirement_map.csv missing identity requirement for cerebro-high-risk-api-access")
+	}
+}
+
+func TestIdentityAccessEvidenceRequirementsClassifyPostureAsReviewContext(t *testing.T) {
+	catalog, err := loadControlEvidenceRequirements(repoRoot(t))
+	if err != nil {
+		t.Fatalf("loadControlEvidenceRequirements() error = %v", err)
+	}
+
+	requirement := rawControlEvidenceRequirement(t, catalog, "identity-access", "okta", "mfa_posture")
+	if requirement.EvidenceUse != "operating_effectiveness" {
+		t.Fatalf("okta mfa_posture evidence_use = %q, want operating_effectiveness", requirement.EvidenceUse)
+	}
+	if requirement.ClaimStrength != "source_or_sample_backed" {
+		t.Fatalf("okta mfa_posture claim_strength = %q, want source_or_sample_backed", requirement.ClaimStrength)
+	}
+
+	for _, tt := range []struct {
+		sourceID   string
+		entityType string
+	}{
+		{sourceID: "microsoft_entra_id", entityType: "directory_identity_posture"},
+		{sourceID: "microsoft_365", entityType: "collaboration_identity_access"},
+		{sourceID: "google_workspace", entityType: "workspace_identity_posture"},
+		{sourceID: "tailscale", entityType: "tailnet_identity_access"},
+		{sourceID: "hris_system", entityType: "workforce_identity_record"},
+	} {
+		requirement := rawControlEvidenceRequirement(t, catalog, "identity-access", tt.sourceID, tt.entityType)
+		if requirement.EvidenceUse != "review_context" {
+			t.Fatalf("%s/%s evidence_use = %q, want review_context", tt.sourceID, tt.entityType, requirement.EvidenceUse)
+		}
+		if requirement.ClaimStrength != "source_context_backed" {
+			t.Fatalf("%s/%s claim_strength = %q, want source_context_backed", tt.sourceID, tt.entityType, requirement.ClaimStrength)
+		}
+		if !strings.Contains(requirement.OverclaimGuard, "context") {
+			t.Fatalf("%s/%s overclaim_guard = %q, want context guard", tt.sourceID, tt.entityType, requirement.OverclaimGuard)
+		}
 	}
 }
 
@@ -1241,6 +1339,22 @@ func findRequirementRow(t *testing.T, rows [][]string, frameworkCol int, control
 	}
 	t.Fatalf("requirement row not found for %s %s %s %s", framework, controlID, profile, source)
 	return nil
+}
+
+func rawControlEvidenceRequirement(t *testing.T, catalog controlEvidenceRequirementCatalog, profileID string, sourceID string, entityType string) controlEvidenceSourceRequirement {
+	t.Helper()
+	for _, profile := range catalog.Profiles {
+		if profile.ProfileID != profileID {
+			continue
+		}
+		for _, requirement := range profile.SourceRequirements {
+			if requirement.SourceID == sourceID && requirement.EntityType == entityType {
+				return requirement
+			}
+		}
+	}
+	t.Fatalf("raw control evidence requirement %s/%s/%s not found", profileID, sourceID, entityType)
+	return controlEvidenceSourceRequirement{}
 }
 
 func findFrameworkControlRow(t *testing.T, rows [][]string, frameworkCol int, controlCol int, framework string, controlID string) []string {

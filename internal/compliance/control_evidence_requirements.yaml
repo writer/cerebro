@@ -2,6 +2,7 @@ version: "2026-06-28"
 defaults:
   source_id: control_owner_review
   entity_type: control_evidence_packet
+  evidence_use: operating_effectiveness
   required_fields:
     - control_ref
     - control_owner
@@ -171,7 +172,33 @@ profiles:
         - User
     source_requirements:
       - source_id: okta
+        entity_type: identity_access_review
+        evidence_use: operating_effectiveness
+        required_fields:
+          - subject_id
+          - account_status
+          - groups
+          - app_assignments
+          - admin_roles
+          - mfa_enrollment_status
+          - lifecycle_state
+          - reviewer_id
+          - review_decision
+          - exception_status
+          - review_period_start
+          - review_period_end
+          - source_observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Access review evidence ties each Okta subject to account status, groups, app assignments, admin roles, MFA posture, lifecycle state, reviewer decision, exceptions, review period, and source observation time.
+        claim_strength: source_or_sample_backed
+        sufficiency_rule: subject_entitlement_reviewer_period_exception
+        coverage_claim: supports_access_review_operating_control
+        overclaim_guard: Do not claim access review operating effectiveness from current entitlement context alone; require reviewer decision, period, exception state, and source observation time.
+        adjacent_control_rationale: Use entitlement, MFA, lifecycle, and reviewer evidence for the access-review control being tested; related identity controls remain review context unless their own evidence is present.
+      - source_id: okta
         entity_type: identity_user
+        evidence_use: review_context
         required_fields:
           - user_id
           - status
@@ -180,11 +207,128 @@ profiles:
           - admin_roles
           - last_login_at
           - lifecycle_state
+          - observed_at
         freshness_window: 24h
         assessment_methods: [examine, test]
-        auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, and last observed access for the sampled principal.
+        auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, lifecycle state, last observed access, and observation time for the sampled principal.
+        claim_strength: source_context_backed
+        sufficiency_rule: subject_entitlement_mfa_lifecycle_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current Okta posture as review context until reviewer decision, period, and exception evidence are present.
+        adjacent_control_rationale: Use current identity posture to scope samples and exceptions; do not use it by itself as proof that periodic access review operated.
+      - source_id: okta
+        entity_type: identity_entitlement_context
+        evidence_use: review_context
+        required_fields:
+          - subject_id
+          - account_status
+          - group_memberships
+          - app_assignments
+          - admin_roles
+          - assignment_status
+          - last_login_at
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Entitlement context shows group membership, application assignment, admin role membership, account status, assignment state, last login, and observation time for the sampled Okta subject.
+        claim_strength: source_context_backed
+        sufficiency_rule: subject_entitlement_status_freshness
+        coverage_claim: supports_entitlement_review_context
+        overclaim_guard: Do not use entitlement inventory alone as reviewer approval or access certification evidence.
+        adjacent_control_rationale: Use entitlement context to explain scope, population, and exceptions; operating effectiveness requires review action evidence for the period.
+      - source_id: okta
+        entity_type: mfa_posture
+        evidence_use: operating_effectiveness
+        required_fields:
+          - subject_id
+          - account_status
+          - admin_roles
+          - enrolled_factors
+          - phishing_resistant_factor
+          - mfa_required
+          - mfa_exemption
+          - exception_status
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: MFA evidence shows account status, admin role scope, enrolled factors, phishing-resistant posture, MFA requirement state, exemptions, exceptions, and observation time.
+        claim_strength: source_or_sample_backed
+        sufficiency_rule: subject_mfa_requirement_factor_exception
+        coverage_claim: supports_mfa_operating_control
+        overclaim_guard: Do not claim MFA control effectiveness without the subject population, required MFA state, enrolled factor posture, exceptions, and source freshness.
+        adjacent_control_rationale: Use MFA posture for authentication controls; access certification still needs reviewer and period evidence.
+      - source_id: okta
+        entity_type: identity_lifecycle_state
+        evidence_use: operating_effectiveness
+        required_fields:
+          - subject_id
+          - account_status
+          - lifecycle_state
+          - employment_status
+          - termination_date
+          - deprovisioned_at
+          - reviewer_id
+          - exception_status
+          - observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Lifecycle evidence ties the Okta account to employment status, termination date, deprovisioning state, reviewer, exceptions, and observation time.
+        claim_strength: source_or_sample_backed
+        sufficiency_rule: subject_workforce_lifecycle_deprovision_exception
+        coverage_claim: supports_deprovisioning_operating_control
+        overclaim_guard: Do not claim deprovisioning effectiveness from IdP account status alone; require workforce lifecycle context, deprovisioning state, exceptions, and source freshness.
+        adjacent_control_rationale: Use lifecycle evidence for joiner-mover-leaver and deprovisioning controls; current entitlement rows remain access review context unless reviewer evidence is present.
+      - source_id: okta
+        entity_type: dormant_account_review
+        evidence_use: operating_effectiveness
+        required_fields:
+          - subject_id
+          - account_status
+          - last_login_at
+          - dormant_days
+          - access_summary
+          - reviewer_id
+          - review_decision
+          - exception_status
+          - review_period_start
+          - review_period_end
+          - source_observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: Dormant account review evidence shows the inactive subject, last login, dormant age, retained access, reviewer decision, exceptions, period, and source observation time.
+        claim_strength: source_or_sample_backed
+        sufficiency_rule: dormant_subject_access_review_decision_exception
+        coverage_claim: supports_dormant_account_review_control
+        overclaim_guard: Do not claim dormant account review from stale-login detection alone; require reviewer decision, period, retained access, exception state, and source freshness.
+        adjacent_control_rationale: Use dormant review evidence for inactive-account controls; MFA and privilege evidence only explain risk unless the control requires them.
+      - source_id: okta
+        entity_type: external_account_review
+        evidence_use: operating_effectiveness
+        required_fields:
+          - subject_id
+          - account_status
+          - external_account_type
+          - sponsor_id
+          - groups
+          - app_assignments
+          - admin_roles
+          - reviewer_id
+          - review_decision
+          - exception_status
+          - review_period_start
+          - review_period_end
+          - source_observed_at
+        freshness_window: 24h
+        assessment_methods: [examine, test]
+        auditor_grade_evidence: External account review evidence shows the external subject, sponsor, account status, groups, app assignments, admin roles, reviewer decision, exceptions, period, and source observation time.
+        claim_strength: source_or_sample_backed
+        sufficiency_rule: external_subject_sponsor_entitlement_review
+        coverage_claim: supports_external_account_review_control
+        overclaim_guard: Do not claim external account review from a personal-domain or guest flag alone; require sponsor, entitlement scope, reviewer decision, period, exception state, and source freshness.
+        adjacent_control_rationale: Use external account review evidence for third-party and external access controls; entitlement context remains scope evidence until review action is present.
       - source_id: microsoft_entra_id
         entity_type: directory_identity_posture
+        evidence_use: review_context
         required_fields:
           - user_id
           - account_enabled
@@ -197,8 +341,14 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Directory evidence ties each principal to current account state, user type, groups, privileged roles, authentication methods, last sign-in activity, and lifecycle state.
+        claim_strength: source_context_backed
+        sufficiency_rule: subject_entitlement_mfa_lifecycle_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current directory posture as review context until reviewer decision, period, and exception evidence are present.
+        adjacent_control_rationale: Use current directory posture to scope identity samples and exceptions; do not use it by itself as proof that periodic access review operated.
       - source_id: microsoft_365
         entity_type: collaboration_identity_access
+        evidence_use: review_context
         required_fields:
           - user_id
           - account_type
@@ -211,8 +361,14 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Collaboration evidence shows whether a user, guest, mailbox, team, or content permission remains active, externally shared, delegated, forwarded, or dormant.
+        claim_strength: source_context_backed
+        sufficiency_rule: collaboration_permission_activity_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current collaboration access as review context until reviewer decision, period, and exception evidence are present.
+        adjacent_control_rationale: Use mailbox, content, team, forwarding, and guest posture to scope access-review samples and exceptions; do not use it by itself as proof that certification operated.
       - source_id: google_workspace
         entity_type: workspace_identity_posture
+        evidence_use: review_context
         required_fields:
           - user_id
           - suspended
@@ -225,8 +381,14 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Workspace identity evidence ties account state, two-step verification, group membership, admin role assignment, external membership, and last login to the sampled principal.
+        claim_strength: source_context_backed
+        sufficiency_rule: subject_entitlement_mfa_lifecycle_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current workspace posture as review context until reviewer decision, period, and exception evidence are present.
+        adjacent_control_rationale: Use current workspace posture to scope identity samples and exceptions; do not use it by itself as proof that periodic access review operated.
       - source_id: tailscale
         entity_type: tailnet_identity_access
+        evidence_use: review_context
         required_fields:
           - user_id
           - user_role
@@ -239,8 +401,14 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Tailnet evidence shows user role, group membership, ACL grants, tag ownership, device association, last-seen state, and lifecycle state for the sampled principal.
+        claim_strength: source_context_backed
+        sufficiency_rule: subject_network_access_lifecycle_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current tailnet access as review context until reviewer decision, period, and exception evidence are present.
+        adjacent_control_rationale: Use tailnet groups, ACLs, tag ownership, devices, and role posture to scope access-review samples and exceptions; do not use it by itself as proof that certification operated.
       - source_id: hris_system
         entity_type: workforce_identity_record
+        evidence_use: review_context
         required_fields:
           - employee_id
           - work_email
@@ -253,8 +421,14 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Workforce evidence ties the account to an employee record, employment status, dates, manager, department, and last HR update so lifecycle and deprovisioning claims are not made from IdP state alone.
+        claim_strength: source_context_backed
+        sufficiency_rule: workforce_identity_lifecycle_freshness
+        coverage_claim: supports_lifecycle_review_context
+        overclaim_guard: Treat workforce identity records as lifecycle context until IdP deprovisioning, access removal, exception, or reviewer evidence proves the control operated.
+        adjacent_control_rationale: Use workforce identity records to validate joiner-mover-leaver scope and exceptions; do not use them alone as proof that access removal or certification operated.
       - source_id: github
         entity_type: repository_access
+        evidence_use: review_context
         required_fields:
           - repository_id
           - actor_id
@@ -265,8 +439,13 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Repository access evidence ties each actor or team to the permission granted, the asset in scope, and the review decision.
+        claim_strength: source_context_backed
+        sufficiency_rule: repository_actor_permission_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current repository permissions as review context until reviewer decision, period, and exception evidence are present.
       - source_id: aws
         entity_type: iam_entitlement
+        evidence_use: review_context
         required_fields:
           - principal_arn
           - policy_arn
@@ -277,6 +456,10 @@ profiles:
         freshness_window: 24h
         assessment_methods: [examine, test]
         auditor_grade_evidence: Cloud entitlement evidence shows the effective permission, principal, target resource, policy source, and recent use state.
+        claim_strength: source_context_backed
+        sufficiency_rule: cloud_principal_permission_freshness
+        coverage_claim: supports_access_review_sampling_context
+        overclaim_guard: Treat current cloud entitlement state as review context until reviewer decision, period, and exception evidence are present.
   - profile_id: logging-monitoring
     name: Logging and Monitoring Evidence
     applies_to:

@@ -83,6 +83,31 @@ Boundaries:
 
 Dependencies: `compliance`, `ports`, `resourcescope`
 
+### evidencepackets — Auditor Evidence Contract
+
+`internal/evidencepackets` turns a rendered control packet into an auditor-facing
+evidence object with packet rows, citations, freshness, lineage, graph paths,
+source records, and export metadata. For access review evidence, this package is
+the source of truth: CSV and spreadsheet rows are projections from richer packet
+objects, not the primary model.
+
+Graph-backed access evidence is built from effective-access graph paths. The
+packet records why a subject is in scope, which direct app, group-mediated app,
+or admin-role path proves access, which paths are privileged or sensitive, which
+source facts cite the claim, the review period, freshness state, reviewer or
+exception context, confidence, missing facts, manual-review state, and overclaim
+guards. Operating-effectiveness proof and review context stay separate inside
+the packet object so an agent can explain what is proven, what is only context,
+and what still needs human review.
+
+Boundaries:
+
+- Does not query Neo4j directly; graph query handlers supply bounded
+  `EffectiveAccessPathResult` rows
+- Does not infer reviewer approval, MFA enforcement, lifecycle status, or source
+  completeness when those fields are missing from cited packet facts
+- Does not promote raw access paths into findings; findings remain rule-owned
+
 ### grcfindings — Risk Inbox Rows
 
 `internal/grcfindings` converts persisted finding and evidence records into

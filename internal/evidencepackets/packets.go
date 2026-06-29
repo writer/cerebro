@@ -20,30 +20,40 @@ import (
 const ContractVersion = "2026-06-24"
 
 type Response struct {
-	Version     string                    `json:"version"`
-	GeneratedAt time.Time                 `json:"generated_at"`
-	Program     AuditProgram              `json:"program"`
-	Frameworks  []FrameworkPosture        `json:"frameworks"`
-	Controls    []ControlPosture          `json:"controls"`
-	Requests    []EvidenceRequest         `json:"evidence_requests"`
-	Packets     []EvidencePacket          `json:"evidence_packets"`
-	Reviews     []EvidenceReview          `json:"evidence_reviews"`
-	Activity    []EvidenceActivity        `json:"activity"`
-	Scope       AssessmentScope           `json:"assessment_scope"`
-	Sources     []CollectionSource        `json:"collection_sources"`
-	Items       []EvidenceItemRecord      `json:"evidence_items"`
-	Findings    []FindingWorkflow         `json:"finding_workflow"`
-	Resources   []ResourceSubject         `json:"resource_subjects"`
-	Lineage     []EvidenceLineage         `json:"evidence_lineage"`
-	Claims      []ClaimRecord             `json:"claim_records"`
-	Runs        []EvaluationRun           `json:"evaluation_runs"`
-	GraphRows   []GraphEvidenceRecord     `json:"graph_evidence_rows"`
-	GraphPaths  []GraphPathRecord         `json:"graph_path_records"`
-	Exceptions  []ExceptionAcceptance     `json:"exceptions_acceptances"`
-	Artifacts   []EvidenceExportArtifact  `json:"export_artifacts"`
-	Export      EvidenceExport            `json:"export"`
-	Snapshot    AuditSnapshot             `json:"snapshot"`
-	Metadata    grccontrol.ReportMetadata `json:"metadata"`
+	Version     string               `json:"version"`
+	GeneratedAt time.Time            `json:"generated_at"`
+	Program     AuditProgram         `json:"program"`
+	Frameworks  []FrameworkPosture   `json:"frameworks"`
+	Controls    []ControlPosture     `json:"controls"`
+	Requests    []EvidenceRequest    `json:"evidence_requests"`
+	Packets     []EvidencePacket     `json:"evidence_packets"`
+	Reviews     []EvidenceReview     `json:"evidence_reviews"`
+	Activity    []EvidenceActivity   `json:"activity"`
+	Scope       AssessmentScope      `json:"assessment_scope"`
+	Sources     []CollectionSource   `json:"collection_sources"`
+	Items       []EvidenceItemRecord `json:"evidence_items"`
+	Findings    []FindingWorkflow    `json:"finding_workflow"`
+	Resources   []ResourceSubject    `json:"resource_subjects"`
+	Lineage     []EvidenceLineage    `json:"evidence_lineage"`
+	Claims      []ClaimRecord        `json:"claim_records"`
+	Runs        []EvaluationRun      `json:"evaluation_runs"`
+	ResponseGraphRecords
+	ResponseReasoningRecords
+	Exceptions []ExceptionAcceptance     `json:"exceptions_acceptances"`
+	Artifacts  []EvidenceExportArtifact  `json:"export_artifacts"`
+	Export     EvidenceExport            `json:"export"`
+	Snapshot   AuditSnapshot             `json:"snapshot"`
+	Metadata   grccontrol.ReportMetadata `json:"metadata"`
+}
+
+type ResponseGraphRecords struct {
+	GraphRows  []GraphEvidenceRecord `json:"graph_evidence_rows"`
+	GraphPaths []GraphPathRecord     `json:"graph_path_records"`
+}
+
+type ResponseReasoningRecords struct {
+	Access    []AccessEvidenceSubject `json:"access_evidence_subjects,omitempty"`
+	Reasoning []EvidenceReasoningTask `json:"reasoning_tasks,omitempty"`
 }
 
 type AuditProgram struct {
@@ -585,13 +595,15 @@ func Build(result grccontrol.PacketResult) Response {
 		Lineage:     lineage,
 		Claims:      claims,
 		Runs:        runs,
-		GraphRows:   graphRows,
-		GraphPaths:  graphPaths,
-		Exceptions:  exceptions,
-		Artifacts:   artifacts,
-		Export:      export,
-		Snapshot:    snapshot,
-		Metadata:    result.Metadata,
+		ResponseGraphRecords: ResponseGraphRecords{
+			GraphRows:  graphRows,
+			GraphPaths: graphPaths,
+		},
+		Exceptions: exceptions,
+		Artifacts:  artifacts,
+		Export:     export,
+		Snapshot:   snapshot,
+		Metadata:   result.Metadata,
 	}
 }
 
