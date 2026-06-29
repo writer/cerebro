@@ -74,8 +74,11 @@ import (
 // the read tool also trims event and preview-event arrays at the response
 // boundary so MCP clients cannot receive an unbounded source page. The same MCP
 // source boundary calls sourceops preview-config validation before tenant checks
-// so reserved runtime keys cannot cross the MCP transport layer.
-const bootstrapProductionGoLineBudget = 26690
+// so reserved runtime keys cannot cross the MCP transport layer. Credential
+// store operations add only route wiring plus auth policy for a handler in
+// internal/sourcehttp/credentialstores; the read model lives in
+// internal/credentialstores.
+const bootstrapProductionGoLineBudget = 26698
 
 type bootstrapFileLineCount struct {
 	path  string
