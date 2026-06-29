@@ -697,6 +697,70 @@ class WorkerTaskRoleTest(unittest.TestCase):
             [{"containerName": "source-runtime-bootstrap", "condition": "SUCCESS"}],
         )
 
+    def test_task_definition_deduplicates_identical_secret_env_entries(self) -> None:
+        task_definition_calls: list[dict] = []
+
+        class FakeOutputAll:
+            def __init__(self, values: tuple):
+                self.values = values
+
+            def apply(self, callback):
+                return callback(self.values)
+
+        def fake_task_definition(*args, **kwargs):
+            task_definition_calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(arn=f"arn:aws:ecs:us-east-1:123456789012:task-definition/{kwargs['family']}:1")
+
+        with (
+            patch.object(compute.aws, "get_region", return_value=SimpleNamespace(region="us-east-1")),
+            patch.object(compute.aws, "get_caller_identity", return_value=SimpleNamespace(account_id="123456789012")),
+            patch.object(compute.aws.ecs, "TaskDefinition", side_effect=fake_task_definition),
+            patch.object(compute.aws.ecs, "TaskDefinitionRuntimePlatformArgs", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)),
+            patch.object(compute.pulumi.Output, "all", side_effect=lambda *values: FakeOutputAll(values)),
+        ):
+            compute._create_task_definition(
+                name="cerebro-sec-dev",
+                container_image="image",
+                cpu=1024,
+                memory=2048,
+                execution_role_arn="exec-role",
+                task_role_arn="task-role",
+                log_group_name="/ecs/cerebro-sec-dev",
+                environment={"CEREBRO_ENVIRONMENT": "sec-dev"},
+                secret_keys=[
+                    {"name": "SOURCE_BASE_URL", "source": "SOURCE_BASE_URL", "prefix": "/cerebro/sec-dev"},
+                    {"name": "SOURCE_BASE_URL", "source": "SOURCE_BASE_URL", "prefix": "/cerebro/sec-dev"},
+                    {"name": "SOURCE_TOKEN", "source": "SOURCE_TOKEN", "prefix": "/cerebro/sec-dev"},
+                ],
+                external_secrets_prefix="/cerebro/sec-dev",
+            )
+
+        containers = json.loads(task_definition_calls[0]["container_definitions"])
+        cerebro_container = next(container for container in containers if container["name"] == "cerebro")
+        self.assertEqual(
+            cerebro_container["secrets"],
+            [
+                {
+                    "name": "SOURCE_BASE_URL",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:/cerebro/sec-dev/SOURCE_BASE_URL",
+                },
+                {
+                    "name": "SOURCE_TOKEN",
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:/cerebro/sec-dev/SOURCE_TOKEN",
+                },
+            ],
+        )
+
+    def test_task_definition_rejects_secret_env_name_conflicts(self) -> None:
+        with self.assertRaisesRegex(ValueError, "duplicate ECS secret env name"):
+            compute._container_secret_specs(
+                [
+                    {"name": "SOURCE_BASE_URL", "source": "SOURCE_BASE_URL", "prefix": "/cerebro/sec-dev"},
+                    {"name": "SOURCE_BASE_URL", "source": "OTHER_SOURCE_BASE_URL", "prefix": "/cerebro/sec-dev"},
+                ],
+                "/cerebro/sec-dev",
+            )
+
     def test_task_definition_uses_bootstrap_environment_file(self) -> None:
         task_definition_calls: list[dict] = []
 

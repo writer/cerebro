@@ -87,7 +87,10 @@ def apply_source_runtime_rollouts(config: dict[str, Any]) -> dict[str, Any]:
     if not expansion.source_secret_keys and not expansion.source_runtimes and not expansion.orchestrator_schedules:
         return dict(config)
     out = dict(config)
-    out["sourceSecretKeys"] = list(out.get("sourceSecretKeys") or []) + expansion.source_secret_keys
+    source_secret_keys = list(out.get("sourceSecretKeys") or [])
+    for secret_key in expansion.source_secret_keys:
+        _append_unique(source_secret_keys, secret_key)
+    out["sourceSecretKeys"] = source_secret_keys
     out["sourceRuntimes"] = list(out.get("sourceRuntimes") or []) + expansion.source_runtimes
     out["orchestratorSchedules"] = list(out.get("orchestratorSchedules") or []) + expansion.orchestrator_schedules
     return out

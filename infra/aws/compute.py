@@ -1080,12 +1080,7 @@ def _create_task_definition(
 
     region = aws.get_region().region
     caller = aws.get_caller_identity()
-    secret_specs = []
-    for secret_key in secret_keys:
-        if isinstance(secret_key, dict):
-            secret_specs.append((secret_key["name"], secret_key["source"], secret_key.get("prefix") or external_secrets_prefix))
-        else:
-            secret_specs.append((secret_key, secret_key, external_secrets_prefix))
+    secret_specs = _container_secret_specs(secret_keys, external_secrets_prefix)
     otel_collector = otel_collector or {}
     otel_collector_enabled = bool(otel_collector.get("enabled"))
     otel_collector_image = str(otel_collector.get("image") or "").strip()
@@ -1276,6 +1271,31 @@ def _create_task_definition(
         tags={"Name": f"{name}-task"},
         opts=pulumi.ResourceOptions(depends_on=depends_on) if depends_on else None,
     )
+
+
+def _container_secret_specs(secret_keys: list, external_secrets_prefix: str) -> list[tuple[str, str, str]]:
+    specs: list[tuple[str, str, str]] = []
+    by_name: dict[str, tuple[str, str, str]] = {}
+    for secret_key in secret_keys or []:
+        if isinstance(secret_key, dict):
+            name = str(secret_key.get("name", "")).strip()
+            source = str(secret_key.get("source") or name).strip()
+            prefix = str(secret_key.get("prefix") or external_secrets_prefix).strip()
+        else:
+            name = str(secret_key).strip()
+            source = name
+            prefix = str(external_secrets_prefix).strip()
+        if not name or not source or not prefix:
+            raise ValueError("ECS secret entries must include non-empty name, source, and prefix")
+        existing = by_name.get(name)
+        spec = (name, source, prefix)
+        if existing:
+            if existing != spec:
+                raise ValueError("duplicate ECS secret env name maps to multiple secret sources")
+            continue
+        by_name[name] = spec
+        specs.append(spec)
+    return specs
 
 
 def _source_runtime_bootstrap_payload(source_runtimes: list[dict]) -> str:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from aws.source_rollouts import expand_source_runtime_rollouts
+from aws.source_rollouts import apply_source_runtime_rollouts, expand_source_runtime_rollouts
 
 
 class SourceRuntimeRolloutsTest(unittest.TestCase):
@@ -116,6 +116,26 @@ class SourceRuntimeRolloutsTest(unittest.TestCase):
         self.assertEqual(expansion.source_secret_keys, [])
         self.assertEqual(expansion.source_runtimes, [])
         self.assertEqual(expansion.orchestrator_schedules, [])
+
+    def test_apply_rollouts_deduplicates_source_secret_keys(self) -> None:
+        config = apply_source_runtime_rollouts({
+            "sourceSecretKeys": ["EXAMPLE_BASE_URL"],
+            "sourceRuntimes": [],
+            "orchestratorSchedules": [],
+            "sourceRuntimeRollouts": [
+                {
+                    "sourceId": "example",
+                    "tokenKey": "EXAMPLE_TOKEN",
+                    "commonConfig": {"base_url": "env:EXAMPLE_BASE_URL"},
+                    "families": [
+                        "user",
+                        "group",
+                    ],
+                }
+            ],
+        })
+
+        self.assertEqual(config["sourceSecretKeys"], ["EXAMPLE_BASE_URL", "EXAMPLE_TOKEN"])
 
 
 if __name__ == "__main__":
