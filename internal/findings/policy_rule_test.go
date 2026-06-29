@@ -343,10 +343,14 @@ func TestOktaStaleAppAssignmentPolicyUsesStringSafeActivityCutoff(t *testing.T) 
 		"=~ '^[0-9]{4}-",
 		"substring(toString(datetime() - duration('P30D')), 0, 19)",
 		"malformed activity timestamps are ignored",
+		"activity.attributes_json, '') CONTAINS '\"event_type\":\"app.oauth2.token.grant.",
 	} {
 		if !strings.Contains(query, want) {
 			t.Fatalf("query missing %q:\n%s", want, query)
 		}
+	}
+	if strings.Contains(query, "CONTAINS '\"event_type\":\"app.oauth2.token.grant\"'") {
+		t.Fatalf("query must match OAuth token grant event prefixes with a suffix separator:\n%s", query)
 	}
 }
 

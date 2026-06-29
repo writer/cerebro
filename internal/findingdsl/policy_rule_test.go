@@ -169,10 +169,14 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 		"NOT assignment_attrs CONTAINS '\"status\":'",
 		"assignment_attrs CONTAINS '\"status\":\"active\"'",
 		"assignment_attrs CONTAINS '\"status\":\"assigned\"'",
+		"activity.attributes_json, '') CONTAINS '\"event_type\":\"app.oauth2.token.grant.",
 	} {
 		if !strings.Contains(staleAppGraph, want) {
 			t.Fatalf("stale app assignment graph query missing %q:\n%s", want, staleAppGraph)
 		}
+	}
+	if strings.Contains(staleAppGraph, "CONTAINS '\"event_type\":\"app.oauth2.token.grant\"'") {
+		t.Fatalf("stale app assignment graph query must match OAuth token grant event prefixes with a suffix separator:\n%s", staleAppGraph)
 	}
 }
 
