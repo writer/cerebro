@@ -820,6 +820,8 @@ profiles:
   - profile_id: policy-document-governance
     name: Policy Document Evidence
     applies_to:
+      frameworks:
+        - "*"
       family_keywords:
         - Awareness
         - Control Activities

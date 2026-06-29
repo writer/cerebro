@@ -16,6 +16,9 @@ func TestDefaultControlEvidenceRequirementsIncludePolicyDocumentGovernance(t *te
 		if profile.ID != "policy-document-governance" {
 			continue
 		}
+		if !containsStringFold(profile.AppliesTo.Frameworks, "*") {
+			t.Fatalf("policy-document-governance frameworks = %#v, want explicit wildcard", profile.AppliesTo.Frameworks)
+		}
 		for _, candidate := range profile.SourceRequirements {
 			if candidate.SourceID == "grc_policy_lifecycle" && candidate.EntityType == "policy_document" {
 				requirement = candidate
@@ -248,6 +251,39 @@ func TestControlEvidenceRequirementFrameworkGateAllowsKeywordOrPrefix(t *testing
 		Control:       Control{ID: "1798.100", Title: "Consumer notices"},
 	}) {
 		t.Fatal("profile matched keyword and prefix outside the selected framework")
+	}
+}
+
+func TestControlEvidenceRequirementFrameworkWildcardStillRequiresSelectorMatch(t *testing.T) {
+	profile := ControlEvidenceRequirementProfile{
+		ID:   "policy-document-governance",
+		Name: "Policy Document Evidence",
+		AppliesTo: ControlEvidenceRequirementSelector{
+			Frameworks:        []string{"*"},
+			FamilyKeywords:    []string{"Governance"},
+			ControlIDPrefixes: []string{"CC1"},
+		},
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "SOC 2",
+		FamilyName:    "Control Environment",
+		Control:       Control{ID: "CC1.1", Title: "Board oversight"},
+	}) {
+		t.Fatal("profile did not match wildcard framework plus control ID prefix")
+	}
+	if !controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "Custom Framework",
+		FamilyName:    "Governance",
+		Control:       Control{ID: "GV-1", Title: "Policy oversight"},
+	}) {
+		t.Fatal("profile did not match wildcard framework plus family keyword")
+	}
+	if controlEvidenceRequirementProfileApplies(profile, ResolvedControl{
+		FrameworkName: "Custom Framework",
+		FamilyName:    "Logging",
+		Control:       Control{ID: "LOG-1", Title: "Collect security events"},
+	}) {
+		t.Fatal("profile matched wildcard framework without keyword or prefix")
 	}
 }
 
