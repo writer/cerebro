@@ -39,8 +39,11 @@ def _load_stack_runtimes(path: Path) -> dict[str, dict[str, Any]]:
     runtimes = config.get("cerebro:sourceRuntimes") or []
     if not isinstance(runtimes, list):
         raise ValueError(f"{path} cerebro:sourceRuntimes must be a list")
+    external_runtimes = config.get("cerebro:externalSourceRuntimes") or []
+    if not isinstance(external_runtimes, list):
+        raise ValueError(f"{path} cerebro:externalSourceRuntimes must be a list")
     result: dict[str, dict[str, Any]] = {}
-    for runtime in runtimes:
+    for runtime in [*runtimes, *external_runtimes]:
         if not isinstance(runtime, dict):
             continue
         runtime_id = str(runtime.get("id", "")).strip()

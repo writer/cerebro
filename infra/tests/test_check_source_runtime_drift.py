@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.check_source_runtime_drift import Drift, _load_actual, _normalize_api_url, _summary_markdown, find_drift
+from scripts.check_source_runtime_drift import Drift, _load_actual, _load_stack_runtimes, _normalize_api_url, _summary_markdown, find_drift
 
 
 EXPECTED = {
@@ -86,6 +86,34 @@ class SourceRuntimeDriftTest(unittest.TestCase):
         drift = find_drift(EXPECTED, actual, allowed_unexpected={"trusted-endpoint"})
 
         self.assertEqual(drift, [])
+
+    def test_stack_external_runtimes_are_expected(self) -> None:
+        path = self._stack_file()
+        path.write_text(
+            "config:\n"
+            "  cerebro:domain: cerebro.adm.prod.writer.com\n"
+            "  cerebro:sourceRuntimes:\n"
+            "    - id: writer-okta-audit\n"
+            "      sourceId: okta\n"
+            "      tenantId: writer\n"
+            "      config:\n"
+            "        family: audit\n"
+            "  cerebro:externalSourceRuntimes:\n"
+            "    - id: writer-slack-companion\n"
+            "      sourceId: sdk\n"
+            "      tenantId: writer\n"
+            "      owner: cerebro-slack-companion\n"
+            "      reason: External service runtime.\n",
+            encoding="utf-8",
+        )
+
+        expected = _load_stack_runtimes(path)
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "tenant_id": "writer", "config": {"family": "audit"}},
+            {"id": "writer-slack-companion", "source_id": "sdk", "tenant_id": "writer", "config": {}},
+        ]
+
+        self.assertEqual(find_drift(expected, actual), [])
 
     def test_canonical_last_synced_at_satisfies_freshness_check(self) -> None:
         actual = [{

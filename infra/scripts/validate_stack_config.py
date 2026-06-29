@@ -2023,6 +2023,30 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
 
+    external_runtimes = config.get("externalSourceRuntimes") or []
+    if external_runtimes and not isinstance(external_runtimes, list):
+        findings.append(_finding("error", stack, "cerebro:externalSourceRuntimes", "must be a list"))
+        external_runtimes = []
+
+    external_runtime_ids: set[str] = set()
+    for index, runtime in enumerate(external_runtimes):
+        runtime_path = f"cerebro:externalSourceRuntimes[{index}]"
+        if not isinstance(runtime, dict):
+            findings.append(_finding("error", stack, runtime_path, "external runtime entry must be an object"))
+            continue
+        runtime_id = str(runtime.get("id", "")).strip()
+        if not runtime_id:
+            findings.append(_finding("error", stack, f"{runtime_path}.id", "runtime id is required"))
+        elif runtime_id in runtime_ids:
+            findings.append(_finding("error", stack, f"{runtime_path}.id", f"external runtime {runtime_id!r} is also declared in active sourceRuntimes"))
+        elif runtime_id in external_runtime_ids:
+            findings.append(_finding("error", stack, f"{runtime_path}.id", f"duplicate external runtime id {runtime_id!r}"))
+        else:
+            external_runtime_ids.add(runtime_id)
+        for required_key in ("sourceId", "tenantId", "owner", "reason"):
+            if not str(runtime.get(required_key, "")).strip():
+                findings.append(_finding("error", stack, f"{runtime_path}.{required_key}", "required key is missing"))
+
     _validate_source_runtime_service_bootstrap(stack, config, source_runtimes, runtime_ids, findings)
 
     schedules = config.get("orchestratorSchedules") or []

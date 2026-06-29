@@ -174,6 +174,35 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
 
         self.assertTrue(any(f.severity == "warning" and f.runtime_id == "writer-extra-runtime" for f in report.findings))
 
+    def test_external_runtime_is_declared_without_schedule(self) -> None:
+        stack = self._stack_file(
+            STACK_YAML.replace(
+                "  cerebro:orchestratorSchedules:",
+                "  cerebro:externalSourceRuntimes:\n"
+                "    - id: writer-slack-companion\n"
+                "      sourceId: sdk\n"
+                "      tenantId: writer\n"
+                "      owner: cerebro-slack-companion\n"
+                "      reason: External service runtime.\n"
+                "  cerebro:orchestratorSchedules:",
+                1,
+            )
+        )
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta"},
+            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws"},
+            {"id": "writer-okta-audit-backfill", "source_id": "okta"},
+            {"id": "writer-slack-companion", "source_id": "sdk"},
+        ]
+
+        report = build_report(stack, actual=actual, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertEqual(report.declared_runtime_count, 4)
+        self.assertEqual(report.sources, {"aws": 1, "okta": 2, "sdk": 1})
+        self.assertFalse(any(f.runtime_id == "writer-slack-companion" for f in report.findings))
+        companion = next(row for row in report.rows if row.runtime_id == "writer-slack-companion")
+        self.assertEqual(companion.schedule_name, "external")
+
     def test_expired_backfill_is_warning(self) -> None:
         stack = self._stack_file(STACK_YAML.replace('removeAfter: "2026-08-15T00:00:00Z"', 'removeAfter: "2026-01-15T00:00:00Z"'))
 

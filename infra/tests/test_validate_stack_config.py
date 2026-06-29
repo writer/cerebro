@@ -721,6 +721,24 @@ class ValidateStackConfigTest(unittest.TestCase):
             )
         )
 
+    def test_external_source_runtime_does_not_require_schedule(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:sourceRuntimeObservability:",
+            "  cerebro:externalSourceRuntimes:\n"
+            "    - id: writer-slack-companion\n"
+            "      sourceId: sdk\n"
+            "      tenantId: writer\n"
+            "      owner: cerebro-slack-companion\n"
+            "      reason: External service runtime.\n"
+            "  cerebro:sourceRuntimeObservability:",
+            1,
+        )
+
+        messages = self._messages(content)
+
+        self.assertFalse(any("externalSourceRuntimes" in message for message in messages))
+        self.assertFalse(any("writer-slack-companion" in message for message in messages))
+
     def test_s3_source_child_prefix_requires_configured_role(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:s3Sources: []",

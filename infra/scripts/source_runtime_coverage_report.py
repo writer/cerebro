@@ -247,6 +247,24 @@ def build_report(
             findings.append(CoverageFinding("error", runtime_id, "runtime_id", "runtime id is declared more than once"))
         declared[runtime_id] = runtime
 
+    external_runtimes = config.get("externalSourceRuntimes") or []
+    if not isinstance(external_runtimes, list):
+        raise ValueError(f"{stack_file} cerebro:externalSourceRuntimes must be a list")
+    external_declared: dict[str, dict[str, Any]] = {}
+    for runtime in external_runtimes:
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = _runtime_field(runtime, "id")
+        if not runtime_id:
+            findings.append(CoverageFinding("error", "", "external_runtime_id", "external runtime is missing id"))
+            continue
+        if runtime_id in declared:
+            findings.append(CoverageFinding("error", runtime_id, "external_runtime_id", "external runtime is also declared as orchestrated"))
+            continue
+        if runtime_id in external_declared:
+            findings.append(CoverageFinding("error", runtime_id, "external_runtime_id", "external runtime id is declared more than once"))
+        external_declared[runtime_id] = runtime
+
     schedules_by_runtime = _schedule_map(schedules)
     actual_by_id: dict[str, dict[str, Any]] | None = None
     if actual is not None:
@@ -328,11 +346,52 @@ def build_report(
                 )
             )
 
+    for runtime_id, runtime in sorted(external_declared.items()):
+        source_id = _runtime_field(runtime, "sourceId", "source_id")
+        tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
+        family = _family(runtime)
+        sources[source_id or "unknown"] = sources.get(source_id or "unknown", 0) + 1
+
+        live = actual_by_id.get(runtime_id) if actual_by_id is not None else None
+        live_present = None if actual_by_id is None else live is not None
+        live_status = ""
+        last_activity_at = ""
+        age_hours: float | None = None
+        if actual_by_id is not None and live is None:
+            findings.append(CoverageFinding("error", runtime_id, "live", "external runtime is missing from the live API"))
+        if live is not None:
+            live_status = _runtime_field(live, "status", "state")
+            last_activity = _last_activity(live)
+            if last_activity is not None:
+                last_activity_at = last_activity.isoformat().replace("+00:00", "Z")
+                age_hours = max(0.0, (now - last_activity).total_seconds() / 3600)
+        rows.append(
+            CoverageRow(
+                stack=stack,
+                runtime_id=runtime_id,
+                source_id=source_id,
+                family=family,
+                tenant_id=tenant_id,
+                schedule_name="external",
+                schedule_expression="",
+                schedule_cadence_seconds=None,
+                stale_after_seconds=None,
+                task_count=None,
+                backfill=False,
+                remove_after="",
+                live_present=live_present,
+                live_status=live_status,
+                last_activity_at=last_activity_at,
+                age_hours=round(age_hours, 2) if age_hours is not None else None,
+            )
+        )
+
     for runtime_id in sorted(scheduled_runtime_ids - set(declared)):
         findings.append(CoverageFinding("warning", runtime_id, "schedule", "orchestrator schedule targets an undeclared runtime"))
 
     if actual_by_id is not None:
-        for runtime_id in sorted(set(actual_by_id) - set(declared)):
+        expected_runtime_ids = set(declared) | set(external_declared)
+        for runtime_id in sorted(set(actual_by_id) - expected_runtime_ids):
             findings.append(CoverageFinding("warning", runtime_id, "live", "live runtime is not declared in stack config"))
 
     healthy_runtime_count = None
@@ -351,7 +410,7 @@ def build_report(
     return CoverageReport(
         generated_at=now.isoformat().replace("+00:00", "Z"),
         stack=stack,
-        declared_runtime_count=len(declared),
+        declared_runtime_count=len(declared) + len(external_declared),
         scheduled_runtime_count=len(set(declared) & scheduled_runtime_ids),
         schedule_count=len([schedule for schedule in schedules if isinstance(schedule, dict)]),
         live_runtime_count=len(actual_by_id) if actual_by_id is not None else None,

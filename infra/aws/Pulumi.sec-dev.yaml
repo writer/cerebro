@@ -137,27 +137,14 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
-  cerebro:temporarilyDisabledSourceRuntimes:
-    - runtimeId: writer-cosmo-session
-      owner: cerebro-platform
-      reason: manual_operator_action
-      disabledDate: "2026-06-10"
-      reviewDeadline: "2026-07-10"
-      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
-    - runtimeId: writer-cosmo-fact
-      owner: cerebro-platform
-      reason: manual_operator_action
-      disabledDate: "2026-06-10"
-      reviewDeadline: "2026-07-10"
-      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
-    - runtimeId: writer-cosmo-survey-feedback
-      owner: cerebro-platform
-      reason: manual_operator_action
-      disabledDate: "2026-06-10"
-      reviewDeadline: "2026-07-10"
-      reenableCriteria: "Re-enable after Cosmo credentials and live source runtime verification pass in sec-dev."
   cerebro:sourceRuntimeServiceBootstrapIds:
     - writer-evidence-cas-cases
+  cerebro:externalSourceRuntimes:
+    - id: writer-slack-companion
+      sourceId: sdk
+      tenantId: writer
+      owner: cerebro-slack-companion
+      reason: "External Slack companion service writes Cerebro claims and runtime health through the API."
   cerebro:sourceRuntimeRollouts:
     - sourceId: archetype
       enabled: true
@@ -172,6 +159,182 @@ config:
         nameSuffix: sync
       families:
         - vulnerability
+    - sourceId: backstage
+      runtimePrefix: writer-backstage
+      tokenKey: BACKSTAGE_EXTERNAL_ACCESS_TOKEN
+      perPage: "100"
+      commonConfig:
+        base_url: env:BACKSTAGE_BASE_URL
+      schedule:
+        backend: scheduler
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - component
+    - sourceId: cosmo
+      runtimePrefix: writer-cosmo
+      tokenKey: CEREBRO_SOURCE_COSMO_TOKEN
+      commonConfig:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        tenant_id: writer
+      schedule:
+        expression: rate(15 minutes)
+        backend: scheduler
+        nameSuffix: live
+        pageLimit: 5
+        graphPageLimit: 5
+        eventLimit: 500
+      families:
+        - name: session
+          schedule:
+            name: cosmo-session
+        - name: fact
+          schedule:
+            name: cosmo-fact
+        - name: message
+          schedule:
+            name: cosmo-message
+          config:
+            client_id: cerebro-runtime
+            event_types: message,completion
+            export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET
+            max_window_hours: "24"
+            per_page: "100"
+            since: "2026-01-01T00:00:00Z"
+        - name: survey_feedback
+          schedule:
+            name: cosmo-survey-feedback
+    - sourceId: github
+      runtimePrefix: writer-github
+      tokenKey: GITHUB_TOKEN
+      perPage: "100"
+      commonConfig:
+        owner: writer
+      schedule:
+        backend: scheduler
+        cadenceHours: 6
+        nameMaxLength: 29
+        pageLimit: 5
+        graphPageLimit: 5
+      families:
+        - audit
+        - repository
+        - name: org_inventory
+          localId: org-inventory
+        - name: secret_scanning_alert
+          localId: secret-scanning-alert
+          config:
+            state: open
+        - name: repository
+          localId: cerebro-repository
+          config:
+            repo: cerebro
+        - name: pull_request
+          localId: cerebro-pull-request
+          config:
+            repo: cerebro
+            state: all
+        - name: dependabot_alert
+          localId: cerebro-dependabot-alert
+          config:
+            repo: cerebro
+            state: open
+        - name: audit
+          localId: cerebro-audit
+          config:
+            include: all
+            order: desc
+            phrase: repo:writer/cerebro
+    - sourceId: grc
+      runtimePrefix: writer-grc
+      tokenKey: GRC_CLIENT_SECRET
+      tokenConfigKey: client_secret
+      secretKeys:
+        - GRC_CLIENT_ID
+      perPage: "100"
+      commonConfig:
+        client_id: env:GRC_CLIENT_ID
+      schedule:
+        backend: scheduler
+        cadenceHours: 6
+        nameMaxLength: 29
+        pageLimit: 5
+        graphPageLimit: 5
+      families:
+        - control
+        - name: control_test
+          localId: control-test
+        - document
+        - framework
+        - integration
+        - person
+        - policy
+        - name: risk_scenario
+          localId: risk-scenario
+        - user
+        - vendor
+        - vulnerability
+        - name: vulnerable_asset
+          localId: vulnerable-asset
+          schedule:
+            pageLimit: 1
+            graphPageLimit: 1
+    - sourceId: slack
+      runtimePrefix: writer-slack
+      tokenKey: SLACK_TOKEN
+      commonConfig:
+        expected_cadence_seconds: "86400"
+        failure_modes: api_error,auth_error,rate_limit,schema_drift
+        stale_after_seconds: "86400"
+      schedule:
+        backend: scheduler
+        cadenceHours: 6
+        nameMaxLength: 29
+      families:
+        - name: channel
+          localId: channels
+          config:
+            per_page: "200"
+        - name: team
+          localId: teams
+          config:
+            per_page: "200"
+        - name: user_group
+          localId: user-groups
+        - name: user
+          localId: users
+          config:
+            per_page: "200"
+    - sourceId: vulnview
+      runtimePrefix: writer-vulnview
+      tokenKey: VULNVIEW_CLIENT_SECRET
+      tokenConfigKey: client_secret
+      secretKeys:
+        - VULNVIEW_CLIENT_ID
+        - VULNVIEW_OKTA_ISSUER
+      perPage: "100"
+      commonConfig:
+        client_id: env:VULNVIEW_CLIENT_ID
+        okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      schedule:
+        backend: scheduler
+        cadenceHours: 6
+        nameMaxLength: 29
+        pageLimit: 5
+        graphPageLimit: 5
+      families:
+        - asset
+        - name: dns_alert
+          localId: dns-alert
+          schedule:
+            pageLimit: 1
+            graphPageLimit: 1
+        - scan
+        - site
+        - name: vulnerability
+          schedule:
+            pageLimit: 1
+            graphPageLimit: 1
     - sourceId: anthropic
       enabled: false
       tokenKey: CEREBRO_SOURCE_ANTHROPIC_TOKEN
@@ -595,6 +758,17 @@ config:
     - graph_page_limit=1
     - event_limit=1000
   cerebro:orchestratorSchedules:
+    - name: archetype-legacy-sync
+      scheduleExpression: rate(1 hour)
+      backend: scheduler
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-archetype
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: security-tooling-map-tools
       scheduleExpression: cron(6 * * * ? *)
       taskCount: 1
@@ -1307,6 +1481,15 @@ config:
       prefixes:
         - "access/"
   cerebro:sourceRuntimes:
+    - id: writer-archetype
+      sourceId: archetype
+      tenantId: writer
+      config:
+        api_prefix: /api/v1
+        base_url: env:CEREBRO_SOURCE_ARCHETYPE_BASE_URL
+        family: vulnerability
+        private_endpoint_allowlist: env:CEREBRO_SOURCE_ARCHETYPE_BASE_URL
+        token: env:CEREBRO_SOURCE_ARCHETYPE_TOKEN
     - id: writer-security-tooling-map-tools
       sourceId: security_tooling_map
       tenantId: writer

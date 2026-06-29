@@ -631,6 +631,29 @@ config:
       type: object
     default: []
     description: Compact source runtime rollout definitions expanded into sourceSecretKeys, sourceRuntimes, and orchestratorSchedules
+  cerebro:externalSourceRuntimes:
+    type: array
+    items:
+      type: object
+      required:
+        - id
+        - sourceId
+        - tenantId
+        - owner
+        - reason
+      properties:
+        id:
+          type: string
+        sourceId:
+          type: string
+        tenantId:
+          type: string
+        owner:
+          type: string
+        reason:
+          type: string
+    default: []
+    description: Source runtime ids owned by external services rather than EventBridge orchestrator schedules
   cerebro:temporarilyDisabledSourceRuntimes:
     type: array
     items:
