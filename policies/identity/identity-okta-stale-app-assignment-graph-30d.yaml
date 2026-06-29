@@ -89,7 +89,7 @@ spec:
                  toLower(coalesce(user.attributes_json, '')) AS user_attrs,
                  toLower(coalesce(assignment.attributes_json, '')) AS assignment_attrs
             WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
-              AND (assignment_attrs = '' OR assignment_attrs CONTAINS '"status":"active"' OR assignment_attrs CONTAINS '"status":"assigned"')
+              AND (assignment_attrs = '' OR NOT assignment_attrs CONTAINS '"status":' OR assignment_attrs CONTAINS '"status":"active"' OR assignment_attrs CONTAINS '"status":"assigned"')
               AND size(recent_activity) = 0
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,

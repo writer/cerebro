@@ -166,6 +166,7 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 	for _, want := range []string{
 		"[assignment:RELATION {relation: 'assigned_to'}]",
 		"toLower(coalesce(assignment.attributes_json, '')) AS assignment_attrs",
+		"NOT assignment_attrs CONTAINS '\"status\":'",
 		"assignment_attrs CONTAINS '\"status\":\"active\"'",
 		"assignment_attrs CONTAINS '\"status\":\"assigned\"'",
 	} {
