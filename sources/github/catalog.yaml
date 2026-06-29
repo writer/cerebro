@@ -39,6 +39,48 @@ coverage_contract:
   owner_domain: source_control
   authority_domain: github
   dimensions:
+    - id: actions_workflow_content
+      type: entity_family
+      title: Actions workflow content
+      families: [repository, workflow_trigger, pull_request_target]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery, data_protection]
+      control_refs:
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "NIST 800-53 r5"
+          control_id: SC-12
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "3.5"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.6"
+      known_unsupported_fields:
+        - full workflow file inventory through the repository family
+    - id: actions_workflow_permissions
+      type: app_entitlement
+      title: Actions workflow permissions
+      families: [repository, audit, actions_permissions, workflow_permissions, write_permissions]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access, secure_delivery]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: SOC 2
+          control_id: CC6.2
+      known_unsupported_fields:
+        - complete repository and organization Actions permission inventory
     - id: audit_events
       type: audit_event
       title: Organization audit events
@@ -55,7 +97,7 @@ coverage_contract:
         - framework_name: "ISO 27001:2022"
           control_id: A.8.15
     - id: code_security_alerts
-      type: entity_family
+      type: audit_event
       title: Code security alerts
       families: [dependabot_alert, secret_scanning_alert]
       support: supported
@@ -69,6 +111,21 @@ coverage_contract:
           control_id: CC7.5
         - framework_name: "ISO 27001:2022"
           control_id: A.8.8
+    - id: code_security_controls
+      type: audit_event
+      title: Code security control posture
+      families: [repository, audit, code_security, secret_scanning, dependabot_alerts, vulnerability_alerts]
+      support: partial
+      high_value: true
+      evidence_types: [vulnerability_management]
+      control_domains: [secure_delivery, vulnerability_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - full organization-level Advanced Security and code scanning configuration inventory
     - id: fine_grained_permissions
       type: app_entitlement
       title: Fine-grained repository permissions
@@ -87,6 +144,67 @@ coverage_contract:
       known_unsupported_fields:
         - branch-protection bypass actors
         - repository rulesets
+    - id: organization_authentication_policy
+      type: audit_event
+      title: Organization authentication policy
+      families: [audit, org_auth, auth_control, authentication, mfa, 2fa, two_factor]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: "CIS GitHub Benchmark"
+          control_id: "1.3.1"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.4"
+        - framework_name: SOC 2
+          control_id: CC6.6
+      known_unsupported_fields:
+        - complete point-in-time organization authentication settings inventory
+    - id: organization_network_policy
+      type: audit_event
+      title: Organization network access policy
+      families: [audit, ip_allow_list, allow_list, cidr]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access, network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - complete current IP allow list entries
+    - id: organization_owners
+      type: app_entitlement
+      title: Organization owner assignments
+      families: [org_inventory, audit, org_owner, organization_owner]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - complete owner-role inventory from the org member family
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -96,6 +214,21 @@ coverage_contract:
       control_domains: [source_operations]
       known_unsupported_fields:
         - org inventory snapshot deltas
+    - id: programmatic_credentials
+      type: app_entitlement
+      title: Programmatic credentials and app installations
+      families: [audit, org_inventory, personal_access_token, app_integration, integration_installation, github_app]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - complete fine-grained personal access token inventory
     - id: organization_members
       type: entity_family
       title: Organization members
@@ -104,6 +237,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
     - id: pull_requests
       type: lifecycle_state
       title: Pull request lifecycle
@@ -145,6 +281,36 @@ coverage_contract:
       control_refs:
         - framework_name: SOC 2
           control_id: CC8.1
+    - id: self_hosted_runners
+      type: audit_event
+      title: Self-hosted runners
+      families: [audit, self_hosted_runner, runner]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - complete current self-hosted runner inventory outside audit-observed changes
+    - id: webhooks
+      type: app_entitlement
+      title: Webhook configuration
+      families: [audit, webhook]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery, network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - complete current webhook destination inventory outside audit-observed changes
 event_contracts:
   - kind: github.audit
     schema_ref: github/audit/v1
