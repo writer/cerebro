@@ -327,6 +327,58 @@ func TestCallbackRecordsOAuthIdentityDirectory(t *testing.T) {
 	}
 }
 
+func TestCallbackContinuesWhenIdentityDirectoryRecordFails(t *testing.T) {
+	stateToken := "state-token"
+	store := &directoryOAuthStore{
+		login: LoginState{
+			StateHash:     HashToken(stateToken),
+			ClientID:      "droid",
+			RedirectURI:   "http://127.0.0.1/callback",
+			ClientState:   "client-state",
+			Resource:      "https://cerebro.example/api/v1/mcp",
+			Scopes:        []string{ScopeSecurityRead},
+			CodeChallenge: "challenge",
+			Nonce:         "nonce",
+			ExpiresAt:     time.Now().Add(time.Minute),
+		},
+		recordErr: errors.New("directory unavailable"),
+	}
+	service, err := NewService(config.MCPOAuthConfig{
+		Resource: "https://cerebro.example/api/v1/mcp",
+		CodeTTL:  time.Minute,
+		Upstream: config.MCPOAuthUpstreamConfig{
+			SecurityGroups: []string{"security-team"},
+		},
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Groups:         []string{"security-team"},
+			AllowedTenants: []string{"tenant-a"},
+			Roles:          []string{"cerebro.viewer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}, store, func(context.Context, AccessGrant, time.Duration, time.Time) (string, error) {
+		return "access-token", nil
+	}, WithOIDCProvider(staticOIDCProvider{identity: Identity{
+		Subject: "00u123",
+		Email:   "person@example.com",
+		Name:    "Person Example",
+		Groups:  []string{"security-team"},
+	}}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	redirect, err := service.Callback(context.Background(), url.Values{"state": {stateToken}, "code": {"upstream-code"}})
+	if err != nil {
+		t.Fatalf("Callback error = %v", err)
+	}
+	if !strings.HasPrefix(redirect, "http://127.0.0.1/callback?") {
+		t.Fatalf("redirect = %q", redirect)
+	}
+	if store.code.CodeHash == ([32]byte{}) {
+		t.Fatalf("authorization code was not saved")
+	}
+}
+
 func base16Lower(raw []byte) string {
 	const alphabet = "0123456789abcdef"
 	out := make([]byte, len(raw)*2)
@@ -366,10 +418,11 @@ func (s *limitedClientStore) SaveOAuthClientWithLimit(_ context.Context, _ OAuth
 
 type directoryOAuthStore struct {
 	Store
-	login LoginState
-	code  AuthorizationCode
-	orgs  []*ports.IdentityOrganization
-	users []*ports.IdentityUser
+	login     LoginState
+	code      AuthorizationCode
+	orgs      []*ports.IdentityOrganization
+	users     []*ports.IdentityUser
+	recordErr error
 }
 
 func (s *directoryOAuthStore) ConsumeLoginState(_ context.Context, stateHash [32]byte, _ time.Time) (LoginState, error) {
@@ -385,12 +438,18 @@ func (s *directoryOAuthStore) SaveAuthorizationCode(_ context.Context, code Auth
 }
 
 func (s *directoryOAuthStore) UpsertIdentityOrganization(_ context.Context, org *ports.IdentityOrganization) error {
+	if s.recordErr != nil {
+		return s.recordErr
+	}
 	copied := *org
 	s.orgs = append(s.orgs, &copied)
 	return nil
 }
 
 func (s *directoryOAuthStore) UpsertIdentityUser(_ context.Context, user *ports.IdentityUser) error {
+	if s.recordErr != nil {
+		return s.recordErr
+	}
 	copied := *user
 	copied.Roles = cloneStrings(user.Roles)
 	copied.Groups = cloneStrings(user.Groups)

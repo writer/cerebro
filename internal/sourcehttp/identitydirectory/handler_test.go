@@ -162,3 +162,61 @@ func TestListUsersMergesPersistedOAuthUsersAndConfiguredServiceUsers(t *testing.
 		t.Fatalf("all users response missing non-secret API key placeholder: %s", allRecorder.Body.String())
 	}
 }
+
+func TestListUsersKeepsConfiguredUsersInsideLimit(t *testing.T) {
+	store := &stubDirectoryStore{
+		users: []*ports.IdentityUser{
+			{
+				TenantID:    "tenant-a",
+				OrgID:       "tenant-a",
+				UserID:      "persisted-1",
+				DisplayName: "Persisted 1",
+				LastSeenAt:  time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
+			},
+			{
+				TenantID:    "tenant-a",
+				OrgID:       "tenant-a",
+				UserID:      "persisted-2",
+				DisplayName: "Persisted 2",
+				LastSeenAt:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	handler := testHandler(store)
+	recorder := httptest.NewRecorder()
+
+	handler.ListUsers(recorder, httptest.NewRequest(http.MethodGet, "/identity/users?limit=2", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response listUsersResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Users) != 2 {
+		t.Fatalf("users = %+v, want two configured users", response.Users)
+	}
+	for _, want := range []string{"api-key:1", "service:automation"} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Fatalf("limited users response missing configured user %q: %s", want, recorder.Body.String())
+		}
+	}
+}
+
+func TestConfiguredEntitlementUserIDPrefersSubject(t *testing.T) {
+	users := configuredUsers(config.AuthConfig{
+		MCPOAuth: config.MCPOAuthConfig{
+			Upstream: config.MCPOAuthUpstreamConfig{Issuer: "https://example.okta.com"},
+			Entitlements: []config.MCPOAuthEntitlement{{
+				TenantID: "tenant-a",
+				Subject:  "00u123",
+				Email:    "person@example.com",
+			}},
+		},
+	}, "tenant-a", "")
+
+	if len(users) != 1 || users[0].UserID != "00u123" {
+		t.Fatalf("configured users = %+v, want subject-derived user id", users)
+	}
+}

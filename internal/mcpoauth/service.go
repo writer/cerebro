@@ -330,9 +330,7 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 		return "", fmt.Errorf("mcpoauth: generate code: %w", err)
 	}
 	now := s.now().UTC()
-	if err := s.recordIdentity(ctx, identity, entitlement, now); err != nil {
-		return "", err
-	}
+	_ = s.recordIdentity(ctx, identity, entitlement, now)
 	if err := s.store.SaveAuthorizationCode(ctx, AuthorizationCode{
 		CodeHash:       HashToken(codeToken),
 		ClientID:       login.ClientID,

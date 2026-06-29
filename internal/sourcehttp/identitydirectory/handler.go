@@ -311,7 +311,7 @@ func configuredUsers(cfg config.AuthConfig, tenantID string, orgID string) []*po
 		}
 	}
 	for _, entitlement := range cfg.MCPOAuth.Entitlements {
-		userID := firstNonEmpty(entitlement.Email, entitlement.Subject)
+		userID := firstNonEmpty(entitlement.Subject, entitlement.Email)
 		if userID == "" {
 			continue
 		}
@@ -389,9 +389,12 @@ func mergeOrganizations(configured []*ports.IdentityOrganization, persisted []*p
 
 func mergeUsers(configured []*ports.IdentityUser, persisted []*ports.IdentityUser, tenantID string, orgID string, query string, limit uint32) []*ports.IdentityUser {
 	byKey := map[string]*ports.IdentityUser{}
+	configuredKeys := map[string]bool{}
 	for _, user := range configured {
 		if userVisible(user, tenantID, orgID, query) {
-			byKey[identityUserKey(user)] = cloneUser(user)
+			key := identityUserKey(user)
+			byKey[key] = cloneUser(user)
+			configuredKeys[key] = true
 		}
 	}
 	for _, user := range persisted {
@@ -405,6 +408,11 @@ func mergeUsers(configured []*ports.IdentityUser, persisted []*ports.IdentityUse
 		out = append(out, user)
 	}
 	sort.Slice(out, func(i, j int) bool {
+		leftConfigured := configuredKeys[identityUserKey(out[i])]
+		rightConfigured := configuredKeys[identityUserKey(out[j])]
+		if leftConfigured != rightConfigured {
+			return leftConfigured
+		}
 		if !out[i].LastSeenAt.Equal(out[j].LastSeenAt) {
 			return out[i].LastSeenAt.After(out[j].LastSeenAt)
 		}
