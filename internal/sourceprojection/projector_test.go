@@ -3845,6 +3845,10 @@ func TestProjectOktaEffectiveEntitlementGraph(t *testing.T) {
 	assertProjectedLink(t, state, groupURN, relationAssignedTo, appURN)
 	assertProjectedLink(t, state, appURN, relationGrantsEntitlement, appEntitlementURN)
 	assertProjectedLink(t, state, appEntitlementURN, relationConfersCapability, cloudAdminCapabilityURN)
+	assignmentLink := state.links[groupURN+"|"+relationAssignedTo+"|"+appURN]
+	if assignmentLink.Attributes["status"] != "ACTIVE" {
+		t.Fatalf("assignment link status = %q, want ACTIVE", assignmentLink.Attributes["status"])
+	}
 	link := state.links[appURN+"|"+relationGrantsEntitlement+"|"+appEntitlementURN]
 	if link.Attributes["event_id"] != "okta-group-app-assignment" || link.Attributes["at"] != occurred.Format(time.RFC3339Nano) {
 		t.Fatalf("entitlement link attributes = %#v, want source event context", link.Attributes)

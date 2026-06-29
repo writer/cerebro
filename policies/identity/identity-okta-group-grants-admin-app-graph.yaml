@@ -82,7 +82,7 @@ spec:
             OPTIONAL MATCH (app)-[:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})
             OPTIONAL MATCH (entitlement)-[:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
             WITH group, app, collect(DISTINCT entitlement) AS entitlements, collect(DISTINCT capability) AS capabilities,
-                 toLower(coalesce(app.label, '') + ' ' + coalesce(app.attributes_json, '')) AS app_text
+                 toLower(coalesce(app.label, '')) AS app_text
             WHERE app_text CONTAINS 'admin'
                OR app_text CONTAINS 'administrator'
                OR app_text CONTAINS 'console'

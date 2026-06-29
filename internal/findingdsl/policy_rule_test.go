@@ -155,6 +155,24 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 			t.Fatalf("%s has spec.graph.query; legacy query-backed rule must not silently change evaluation mode", id)
 		}
 	}
+	groupAdminGraph := byID["identity-okta-group-grants-admin-app-graph"].Spec.Graph.Query
+	if strings.Contains(groupAdminGraph, "app.attributes_json") {
+		t.Fatalf("group admin graph query should not match admin-like terms across full application attributes:\n%s", groupAdminGraph)
+	}
+	if !strings.Contains(groupAdminGraph, "toLower(coalesce(app.label, '')) AS app_text") {
+		t.Fatalf("group admin graph query should restrict app_text to the application label:\n%s", groupAdminGraph)
+	}
+	staleAppGraph := byID["identity-okta-stale-app-assignment-graph-30d"].Spec.Graph.Query
+	for _, want := range []string{
+		"[assignment:RELATION {relation: 'assigned_to'}]",
+		"toLower(coalesce(assignment.attributes_json, '')) AS assignment_attrs",
+		"assignment_attrs CONTAINS '\"status\":\"active\"'",
+		"assignment_attrs CONTAINS '\"status\":\"assigned\"'",
+	} {
+		if !strings.Contains(staleAppGraph, want) {
+			t.Fatalf("stale app assignment graph query missing %q:\n%s", want, staleAppGraph)
+		}
+	}
 }
 
 func TestLoadPolicyRulesLoadsContractMetadataBlocks(t *testing.T) {
