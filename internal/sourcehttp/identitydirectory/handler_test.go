@@ -221,6 +221,38 @@ func TestConfiguredEntitlementUserIDPrefersSubject(t *testing.T) {
 	}
 }
 
+func TestMergeUsersPreservesConfiguredGrantsOnPersistedCollision(t *testing.T) {
+	configured := []*ports.IdentityUser{{
+		TenantID:    "tenant-a",
+		UserID:      "00u123",
+		DisplayName: "Configured User",
+		Roles:       []string{"cerebro.viewer"},
+		Groups:      []string{"security-team"},
+	}}
+	persisted := []*ports.IdentityUser{{
+		TenantID:    "tenant-a",
+		UserID:      "00u123",
+		Subject:     "00u123",
+		Email:       "person@example.com",
+		DisplayName: "Persisted User",
+		LastSeenAt:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	}}
+
+	users := mergeUsers(configured, persisted, "tenant-a", "", "", 10)
+	if len(users) != 1 {
+		t.Fatalf("users = %+v, want one merged user", users)
+	}
+	if users[0].Email != "person@example.com" || users[0].DisplayName != "Persisted User" {
+		t.Fatalf("merged user did not keep persisted profile fields: %+v", users[0])
+	}
+	if len(users[0].Roles) != 1 || users[0].Roles[0] != "cerebro.viewer" {
+		t.Fatalf("merged roles = %#v, want configured role", users[0].Roles)
+	}
+	if len(users[0].Groups) != 1 || users[0].Groups[0] != "security-team" {
+		t.Fatalf("merged groups = %#v, want configured group", users[0].Groups)
+	}
+}
+
 func TestOAuthProviderUsesIssuerHost(t *testing.T) {
 	if got := oauthProvider("https://tenant.okta.com/oauth2/default"); got != "okta" {
 		t.Fatalf("oauthProvider(okta issuer) = %q, want okta", got)

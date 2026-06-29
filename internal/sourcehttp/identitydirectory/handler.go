@@ -402,7 +402,13 @@ func mergeUsers(configured []*ports.IdentityUser, persisted []*ports.IdentityUse
 		if !userVisible(user, tenantID, orgID, query) {
 			continue
 		}
-		byKey[identityUserKey(user)] = cloneUser(user)
+		key := identityUserKey(user)
+		merged := cloneUser(user)
+		if configuredUser := byKey[key]; configuredUser != nil {
+			merged.Roles = normalized(append(configuredUser.Roles, merged.Roles...))
+			merged.Groups = normalized(append(configuredUser.Groups, merged.Groups...))
+		}
+		byKey[key] = merged
 	}
 	out := make([]*ports.IdentityUser, 0, len(byKey))
 	for _, user := range byKey {
