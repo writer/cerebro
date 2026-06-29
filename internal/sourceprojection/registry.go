@@ -869,6 +869,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"discord.permission": discordPermissionProjections,
 	"discord.role":       discordRoleProjections,
 
+	// rootly generated projectors (sourcegen promotion)
+	"rootly.alerts":       rootlyAlertsProjections,
+	"rootly.audit_events": rootlyAuditEventsProjections,
+	"rootly.dashboards":   rootlyDashboardsProjections,
+	"rootly.incidents":    rootlyIncidentsProjections,
+	"rootly.monitors":     rootlyMonitorsProjections,
+
 	// awscollectorgen:projector (insert new kind projectors above this line)
 }}
 

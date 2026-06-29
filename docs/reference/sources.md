@@ -45,6 +45,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `pagerduty` | PagerDuty incident management source | users, teams, services, schedules, escalation policies, integrations, vendors |
 | `panopticon` | Panopticon security operations API source | cases by default; alerts and IOCs explicitly |
 | `probely` | Probely web vulnerability scanning source | findings needing attention, events, users, frameworks |
+| `rootly` | Rootly incident response source | alerts, incidents, monitors, dashboards, audit events |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; optional declared inventory URN discovery; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
