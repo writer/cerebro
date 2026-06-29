@@ -380,10 +380,10 @@ func inferIntent(question string, cypher string) string {
 		return IntentConnectorHealth
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
-	case looksLikeQuestionnaireEvidenceQuestion(haystack):
-		return IntentQuestionnaireEvidence
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
+	case looksLikeQuestionnaireEvidenceQuestion(haystack):
+		return IntentQuestionnaireEvidence
 	default:
 		return IntentRawCypher
 	}

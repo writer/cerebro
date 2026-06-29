@@ -385,6 +385,9 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 	if got := inferIntent("Which identities bridge Okta and GitHub access?", ""); got != IntentIdentityBridge {
 		t.Fatalf("inferIntent(identity bridge access) = %q, want %q", got, IntentIdentityBridge)
 	}
+	if got := inferIntent("Explain the Okta access finding", ""); got != IntentExplainFinding {
+		t.Fatalf("inferIntent(okta finding explanation) = %q, want %q", got, IntentExplainFinding)
+	}
 }
 
 func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
