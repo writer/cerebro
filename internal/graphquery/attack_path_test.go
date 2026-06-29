@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -82,8 +83,8 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if got := store.requests[0].Params["traversal_relations"]; len(got.([]string)) == 0 {
 		t.Fatalf("traversal_relations param = %v, want relation allowlist", got)
 	}
-	if got := store.requests[1].RowLimit; got != maxAttackPathLimit {
-		t.Fatalf("sample row limit = %d, want %d", got, maxAttackPathLimit)
+	if got := store.requests[1].RowLimit; got != attackpath.MaxLimit {
+		t.Fatalf("sample row limit = %d, want %d", got, attackpath.MaxLimit)
 	}
 	if result.Counts.Paths != 2 || result.Counts.ExposedResources != 1 {
 		t.Fatalf("counts = %#v", result.Counts)
@@ -103,7 +104,7 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 }
 
 func TestAttackPathsFromRowsRequiresTraversalProof(t *testing.T) {
-	paths := attackPathsFromRows([]ports.CypherRow{{Values: map[string]any{
+	paths := attackpath.PathsFromRows([]ports.CypherRow{{Values: map[string]any{
 		"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
 		"public_entity_type":     "aws.public_principal",
 		"public_label":           "public internet",

@@ -6,12 +6,6 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/attackpath"
-	"github.com/writer/cerebro/internal/ports"
-)
-
-const (
-	defaultAttackPathLimit = attackpath.DefaultLimit
-	maxAttackPathLimit     = attackpath.MaxLimit
 )
 
 type AttackPathRequest = attackpath.Request
@@ -31,20 +25,4 @@ func (s *Service) GetAttackPaths(ctx context.Context, request AttackPathRequest)
 	}
 	request.TenantID = tenantID
 	return attackpath.New(s.store).Traverse(ctx, request)
-}
-
-func normalizeAttackPathLimit(limit uint32) int {
-	return attackpath.NormalizeLimit(limit)
-}
-
-func attackPathsFromRows(rows []ports.CypherRow) []AttackPath {
-	return attackpath.PathsFromRows(rows)
-}
-
-func attackPathTraversalProofMatches(relationChain []string, edges []AttackPathEdge) bool {
-	return attackpath.TraversalProofMatches(relationChain, edges)
-}
-
-func attackPathEdgesFromRow(row ports.CypherRow) []AttackPathEdge {
-	return attackpath.EdgesFromRow(row)
 }
