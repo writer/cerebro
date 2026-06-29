@@ -1,0 +1,106 @@
+id: winsms
+name: "WinSMS"
+description: "Collects subaccount, incoming, sms incoming, and optout from WinSMS and projects them into the Cerebro graph as users and assets for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - winsms.subaccount
+  - winsms.incoming
+  - winsms.sms_incoming
+  - winsms.optout
+kind_lifecycle:
+  - kind: winsms.subaccount
+    status: active
+  - kind: winsms.incoming
+    status: active
+  - kind: winsms.sms_incoming
+    status: active
+  - kind: winsms.optout
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: winsms
+  dimensions:
+    - id: subaccount
+      type: entity_family
+      title: "Subaccount"
+      families: [subaccount]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incoming
+      type: entity_family
+      title: "Incoming"
+      families: [incoming]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sms_incoming
+      type: entity_family
+      title: "Sms Incoming"
+      families: [sms_incoming]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: optout
+      type: entity_family
+      title: "Optout"
+      families: [optout]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: winsms.subaccount
+    schema_ref: winsms/subaccount/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - accountNumber
+  - kind: winsms.incoming
+    schema_ref: winsms/incoming/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - incomingApiMessageId
+  - kind: winsms.sms_incoming
+    schema_ref: winsms/sms_incoming/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - incomingApiMessageId
+  - kind: winsms.optout
+    schema_ref: winsms/optout/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - incomingApiMessageId

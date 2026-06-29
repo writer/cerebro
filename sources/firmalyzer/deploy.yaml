@@ -1,0 +1,15 @@
+sourceId: firmalyzer
+secretKeys:
+  - FIRMALYZER_FIRMWARE_HASH
+  - FIRMALYZER_API_TOKEN
+runtimes:
+  - localId: config-issue
+    config:
+      firmware_hash: env:FIRMALYZER_FIRMWARE_HASH
+      family: config_issue
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /firmware/${config.firmware_hash}/config-issues
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FIRMALYZER_API_TOKEN

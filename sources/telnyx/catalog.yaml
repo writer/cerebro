@@ -1,0 +1,277 @@
+id: telnyx
+name: "Telnyx"
+description: "Collects call event, billing group, credential connection, managed account, call control application, and notification channel from Telnyx and projects them into the Cerebro graph as alerts, assets, audit events, groups, policies, secrets, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - telnyx.call_event
+  - telnyx.billing_group
+  - telnyx.credential_connection
+  - telnyx.managed_account
+  - telnyx.call_control_application
+  - telnyx.notification_channel
+  - telnyx.detail_records_report
+  - telnyx.notification_event
+  - telnyx.notification_event_condition
+  - telnyx.wireless_connectivity_log
+  - telnyx.sim_card_group
+  - telnyx.sim_card_group_action
+kind_lifecycle:
+  - kind: telnyx.call_event
+    status: active
+  - kind: telnyx.billing_group
+    status: active
+  - kind: telnyx.credential_connection
+    status: active
+  - kind: telnyx.managed_account
+    status: active
+  - kind: telnyx.call_control_application
+    status: active
+  - kind: telnyx.notification_channel
+    status: active
+  - kind: telnyx.detail_records_report
+    status: active
+  - kind: telnyx.notification_event
+    status: active
+  - kind: telnyx.notification_event_condition
+    status: active
+  - kind: telnyx.wireless_connectivity_log
+    status: active
+  - kind: telnyx.sim_card_group
+    status: active
+  - kind: telnyx.sim_card_group_action
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: telnyx
+  dimensions:
+    - id: call_event
+      type: audit_event
+      title: "Call Event"
+      families: [call_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: billing_group
+      type: entity_family
+      title: "Billing Group"
+      families: [billing_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: credential_connection
+      type: entity_family
+      title: "Credential Connection"
+      families: [credential_connection]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: managed_account
+      type: entity_family
+      title: "Managed Account"
+      families: [managed_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: call_control_application
+      type: lifecycle_state
+      title: "Call Control Application"
+      families: [call_control_application]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_channel
+      type: alert_state
+      title: "Notification Channel"
+      families: [notification_channel]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: detail_records_report
+      type: entity_family
+      title: "Detail Records Report"
+      families: [detail_records_report]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_event
+      type: audit_event
+      title: "Notification Event"
+      families: [notification_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_event_condition
+      type: audit_event
+      title: "Notification Event Condition"
+      families: [notification_event_condition]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: wireless_connectivity_log
+      type: audit_event
+      title: "Wireless Connectivity Log"
+      families: [wireless_connectivity_log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sim_card_group
+      type: entity_family
+      title: "Sim Card Group"
+      families: [sim_card_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sim_card_group_action
+      type: entity_family
+      title: "Sim Card Group Action"
+      families: [sim_card_group_action]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: telnyx.call_event
+    schema_ref: telnyx/call_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: telnyx.billing_group
+    schema_ref: telnyx/billing_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.credential_connection
+    schema_ref: telnyx/credential_connection/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: telnyx.managed_account
+    schema_ref: telnyx/managed_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.call_control_application
+    schema_ref: telnyx/call_control_application/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: telnyx.notification_channel
+    schema_ref: telnyx/notification_channel/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: telnyx.detail_records_report
+    schema_ref: telnyx/detail_records_report/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.notification_event
+    schema_ref: telnyx/notification_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.notification_event_condition
+    schema_ref: telnyx/notification_event_condition/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.wireless_connectivity_log
+    schema_ref: telnyx/wireless_connectivity_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.sim_card_group
+    schema_ref: telnyx/sim_card_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: telnyx.sim_card_group_action
+    schema_ref: telnyx/sim_card_group_action/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id

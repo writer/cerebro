@@ -1,0 +1,84 @@
+id: fastly
+name: "Fastly"
+description: "Collects services, acl entries, and audit events from Fastly and projects them into the Cerebro graph as assets and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - fastly.services
+  - fastly.acl_entries
+  - fastly.audit_events
+kind_lifecycle:
+  - kind: fastly.services
+    status: active
+  - kind: fastly.acl_entries
+    status: active
+  - kind: fastly.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: fastly
+  dimensions:
+    - id: services
+      type: entity_family
+      title: "Services"
+      families: [services]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: acl_entries
+      type: entity_family
+      title: "Acl Entries"
+      families: [acl_entries]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: fastly.services
+    schema_ref: fastly/services/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: fastly.acl_entries
+    schema_ref: fastly/acl_entries/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: fastly.audit_events
+    schema_ref: fastly/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

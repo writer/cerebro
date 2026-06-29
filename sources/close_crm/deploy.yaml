@@ -1,0 +1,15 @@
+sourceId: close_crm
+secretKeys:
+  - CLOSE_CRM_BASE_URL
+  - CLOSE_CRM_TOKEN
+runtimes:
+  - localId: users
+    config:
+      base_url: env:CLOSE_CRM_BASE_URL
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOSE_CRM_TOKEN

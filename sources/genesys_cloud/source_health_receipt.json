@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/v1/me",
+  "auth_model": "bearer_token",
+  "evidence_cas_reference_kind": "genesys_cloud.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=genesys_cloud",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "genesys_cloud",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

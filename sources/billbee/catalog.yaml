@@ -1,0 +1,292 @@
+id: billbee
+name: "Billbee"
+description: "Collects webhook, cloudstorage, custom field, customer, customer addresses, and layout from Billbee and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - billbee.webhook
+  - billbee.cloudstorage
+  - billbee.custom_field
+  - billbee.customer
+  - billbee.customer_addresses
+  - billbee.layout
+  - billbee.order
+  - billbee.product
+  - billbee.shipment
+  - billbee.stock
+  - billbee.addresses
+  - billbee.image
+kind_lifecycle:
+  - kind: billbee.webhook
+    status: active
+  - kind: billbee.cloudstorage
+    status: active
+  - kind: billbee.custom_field
+    status: active
+  - kind: billbee.customer
+    status: active
+  - kind: billbee.customer_addresses
+    status: active
+  - kind: billbee.layout
+    status: active
+  - kind: billbee.order
+    status: active
+  - kind: billbee.product
+    status: active
+  - kind: billbee.shipment
+    status: active
+  - kind: billbee.stock
+    status: active
+  - kind: billbee.addresses
+    status: active
+  - kind: billbee.image
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: billbee
+  dimensions:
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: cloudstorage
+      type: entity_family
+      title: "Cloudstorage"
+      families: [cloudstorage]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: custom_field
+      type: entity_family
+      title: "Custom Field"
+      families: [custom_field]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customer
+      type: entity_family
+      title: "Customer"
+      families: [customer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customer_addresses
+      type: entity_family
+      title: "Customer Addresses"
+      families: [customer_addresses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: layout
+      type: entity_family
+      title: "Layout"
+      families: [layout]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: order
+      type: entity_family
+      title: "Order"
+      families: [order]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: product
+      type: entity_family
+      title: "Product"
+      families: [product]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: shipment
+      type: entity_family
+      title: "Shipment"
+      families: [shipment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: stock
+      type: entity_family
+      title: "Stock"
+      families: [stock]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: addresses
+      type: entity_family
+      title: "Addresses"
+      families: [addresses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: image
+      type: entity_family
+      title: "Image"
+      families: [image]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: billbee.webhook
+    schema_ref: billbee/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.cloudstorage
+    schema_ref: billbee/cloudstorage/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.custom_field
+    schema_ref: billbee/custom_field/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.customer
+    schema_ref: billbee/customer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.customer_addresses
+    schema_ref: billbee/customer_addresses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.layout
+    schema_ref: billbee/layout/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.order
+    schema_ref: billbee/order/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.product
+    schema_ref: billbee/product/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.shipment
+    schema_ref: billbee/shipment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - BillbeeId
+  - kind: billbee.stock
+    schema_ref: billbee/stock/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.addresses
+    schema_ref: billbee/addresses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: billbee.image
+    schema_ref: billbee/image/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id

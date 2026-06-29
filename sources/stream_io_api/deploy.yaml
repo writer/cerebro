@@ -1,0 +1,13 @@
+sourceId: stream_io_api
+secretKeys:
+  - STREAM_IO_API_API_TOKEN
+runtimes:
+  - localId: member
+    config:
+      family: member
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /members
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:STREAM_IO_API_API_TOKEN

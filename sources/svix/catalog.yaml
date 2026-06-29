@@ -1,0 +1,107 @@
+id: svix
+name: "Svix"
+description: "Collects event type, endpoint, msg endpoint, and msg from Svix and projects them into the Cerebro graph as audit events and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - svix.event_type
+  - svix.endpoint
+  - svix.msg_endpoint
+  - svix.msg
+kind_lifecycle:
+  - kind: svix.event_type
+    status: active
+  - kind: svix.endpoint
+    status: active
+  - kind: svix.msg_endpoint
+    status: active
+  - kind: svix.msg
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: svix
+  dimensions:
+    - id: event_type
+      type: audit_event
+      title: "Event Type"
+      families: [event_type]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: endpoint
+      type: entity_family
+      title: "Endpoint"
+      families: [endpoint]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: msg_endpoint
+      type: entity_family
+      title: "Msg Endpoint"
+      families: [msg_endpoint]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: msg
+      type: entity_family
+      title: "Msg"
+      families: [msg]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: svix.event_type
+    schema_ref: svix/event_type/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: svix.endpoint
+    schema_ref: svix/endpoint/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: svix.msg_endpoint
+    schema_ref: svix/msg_endpoint/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: svix.msg
+    schema_ref: svix/msg/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

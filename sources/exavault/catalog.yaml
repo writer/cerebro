@@ -1,0 +1,104 @@
+id: exavault
+name: "ExaVault"
+description: "Collects email list, notification, session, and ssh key from ExaVault and projects them into the Cerebro graph as users, alerts, audit events, and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - exavault.email_list
+  - exavault.notification
+  - exavault.session
+  - exavault.ssh_key
+kind_lifecycle:
+  - kind: exavault.email_list
+    status: active
+  - kind: exavault.notification
+    status: active
+  - kind: exavault.session
+    status: active
+  - kind: exavault.ssh_key
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: exavault
+  dimensions:
+    - id: email_list
+      type: entity_family
+      title: "Email List"
+      families: [email_list]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification
+      type: alert_state
+      title: "Notification"
+      families: [notification]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: session
+      type: audit_event
+      title: "Session"
+      families: [session]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ssh_key
+      type: entity_family
+      title: "Ssh Key"
+      families: [ssh_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: exavault.email_list
+    schema_ref: exavault/email_list/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: exavault.notification
+    schema_ref: exavault/notification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: exavault.session
+    schema_ref: exavault/session/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: exavault.ssh_key
+    schema_ref: exavault/ssh_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

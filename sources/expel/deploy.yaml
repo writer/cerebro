@@ -1,0 +1,15 @@
+sourceId: expel
+secretKeys:
+  - EXPEL_BASE_URL
+  - EXPEL_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      base_url: env:EXPEL_BASE_URL
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:EXPEL_TOKEN

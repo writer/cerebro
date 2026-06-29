@@ -1,0 +1,192 @@
+id: qdrant_cloud
+name: "Qdrant Cloud"
+description: "Collects accounts, account members, clusters, database API keys, backups, backup restores, backup schedules, and IAM roles from Qdrant Cloud."
+emitted_kinds:
+  - qdrant_cloud.accounts
+  - qdrant_cloud.account_members
+  - qdrant_cloud.clusters
+  - qdrant_cloud.database_api_keys
+  - qdrant_cloud.backups
+  - qdrant_cloud.backup_restores
+  - qdrant_cloud.backup_schedules
+  - qdrant_cloud.roles
+kind_lifecycle:
+  - kind: qdrant_cloud.accounts
+    status: active
+  - kind: qdrant_cloud.account_members
+    status: active
+  - kind: qdrant_cloud.clusters
+    status: active
+  - kind: qdrant_cloud.database_api_keys
+    status: active
+  - kind: qdrant_cloud.backups
+    status: active
+  - kind: qdrant_cloud.backup_restores
+    status: active
+  - kind: qdrant_cloud.backup_schedules
+    status: active
+  - kind: qdrant_cloud.roles
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: qdrant_cloud
+  dimensions:
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_members
+      type: entity_family
+      title: "Account Members"
+      families: [account_members]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: clusters
+      type: deployment_state
+      title: "Clusters"
+      families: [clusters]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: database_api_keys
+      type: entity_family
+      title: "Database Api Keys"
+      families: [database_api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: backups
+      type: entity_family
+      title: "Backups"
+      families: [backups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: backup_restores
+      type: deployment_state
+      title: "Backup Restores"
+      families: [backup_restores]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: backup_schedules
+      type: lifecycle_state
+      title: "Backup Schedules"
+      families: [backup_schedules]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: qdrant_cloud.accounts
+    schema_ref: qdrant_cloud/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.account_members
+    schema_ref: qdrant_cloud/account_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - account_member.id
+  - kind: qdrant_cloud.clusters
+    schema_ref: qdrant_cloud/clusters/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.database_api_keys
+    schema_ref: qdrant_cloud/database_api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.backups
+    schema_ref: qdrant_cloud/backups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.backup_restores
+    schema_ref: qdrant_cloud/backup_restores/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.backup_schedules
+    schema_ref: qdrant_cloud/backup_schedules/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: qdrant_cloud.roles
+    schema_ref: qdrant_cloud/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id

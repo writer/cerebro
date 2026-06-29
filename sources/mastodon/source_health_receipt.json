@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/api/v1/lists/${config.id}/accounts",
+  "auth_model": "bearer_token",
+  "evidence_cas_reference_kind": "mastodon.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=mastodon",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "mastodon",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

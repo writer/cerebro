@@ -1,0 +1,103 @@
+id: knowbe4
+name: "KnowBe4"
+description: "Collects learners, groups, training enrollments, and phishing campaigns from KnowBe4 and projects them into the Cerebro graph as users, groups, audit events, and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - knowbe4.users
+  - knowbe4.groups
+  - knowbe4.training_enrollments
+  - knowbe4.phishing_campaigns
+kind_lifecycle:
+  - kind: knowbe4.users
+    status: active
+  - kind: knowbe4.groups
+    status: active
+  - kind: knowbe4.training_enrollments
+    status: active
+  - kind: knowbe4.phishing_campaigns
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: knowbe4
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: training_enrollments
+      type: audit_event
+      title: "Training Enrollments"
+      families: [training_enrollments]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: phishing_campaigns
+      type: entity_family
+      title: "Phishing Campaigns"
+      families: [phishing_campaigns]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: knowbe4.users
+    schema_ref: knowbe4/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: knowbe4.groups
+    schema_ref: knowbe4/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: knowbe4.training_enrollments
+    schema_ref: knowbe4/training_enrollments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: knowbe4.phishing_campaigns
+    schema_ref: knowbe4/phishing_campaigns/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,276 @@
+id: zuora
+name: "Zuora"
+description: "Collects event trigger, accounting code, callout, hostedpage, product, and accounting period from Zuora and projects them into the Cerebro graph as alerts, assets, audit events, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - zuora.event_trigger
+  - zuora.accounting_code
+  - zuora.callout
+  - zuora.hostedpage
+  - zuora.product
+  - zuora.accounting_period
+  - zuora.email
+  - zuora.email_template
+  - zuora.notification_definition
+  - zuora.revenue_event
+  - zuora.revenue_schedule
+  - zuora.account
+kind_lifecycle:
+  - kind: zuora.event_trigger
+    status: active
+  - kind: zuora.accounting_code
+    status: active
+  - kind: zuora.callout
+    status: active
+  - kind: zuora.hostedpage
+    status: active
+  - kind: zuora.product
+    status: active
+  - kind: zuora.accounting_period
+    status: active
+  - kind: zuora.email
+    status: active
+  - kind: zuora.email_template
+    status: active
+  - kind: zuora.notification_definition
+    status: active
+  - kind: zuora.revenue_event
+    status: active
+  - kind: zuora.revenue_schedule
+    status: active
+  - kind: zuora.account
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: zuora
+  dimensions:
+    - id: event_trigger
+      type: audit_event
+      title: "Event Trigger"
+      families: [event_trigger]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounting_code
+      type: entity_family
+      title: "Accounting Code"
+      families: [accounting_code]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: callout
+      type: alert_state
+      title: "Callout"
+      families: [callout]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: hostedpage
+      type: entity_family
+      title: "Hostedpage"
+      families: [hostedpage]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: product
+      type: audit_event
+      title: "Product"
+      families: [product]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounting_period
+      type: entity_family
+      title: "Accounting Period"
+      families: [accounting_period]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: email
+      type: entity_family
+      title: "Email"
+      families: [email]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: email_template
+      type: entity_family
+      title: "Email Template"
+      families: [email_template]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_definition
+      type: alert_state
+      title: "Notification Definition"
+      families: [notification_definition]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: revenue_event
+      type: audit_event
+      title: "Revenue Event"
+      families: [revenue_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: revenue_schedule
+      type: audit_event
+      title: "Revenue Schedule"
+      families: [revenue_schedule]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: zuora.event_trigger
+    schema_ref: zuora/event_trigger/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: zuora.accounting_code
+    schema_ref: zuora/accounting_code/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: zuora.callout
+    schema_ref: zuora/callout/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - attemptedNum
+  - kind: zuora.hostedpage
+    schema_ref: zuora/hostedpage/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - pageId
+  - kind: zuora.product
+    schema_ref: zuora/product/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: zuora.accounting_period
+    schema_ref: zuora/accounting_period/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: zuora.email
+    schema_ref: zuora/email/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - bcc
+  - kind: zuora.email_template
+    schema_ref: zuora/email_template/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: zuora.notification_definition
+    schema_ref: zuora/notification_definition/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: zuora.revenue_event
+    schema_ref: zuora/revenue_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accountingPeriodEndDate
+  - kind: zuora.revenue_schedule
+    schema_ref: zuora/revenue_schedule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accountId
+  - kind: zuora.account
+    schema_ref: zuora/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

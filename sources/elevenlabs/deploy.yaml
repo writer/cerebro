@@ -1,0 +1,15 @@
+sourceId: elevenlabs
+secretKeys:
+  - ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+  - ELEVENLABS_API_TOKEN
+runtimes:
+  - localId: model-catalog
+    config:
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      family: model_catalog
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:ELEVENLABS_API_TOKEN

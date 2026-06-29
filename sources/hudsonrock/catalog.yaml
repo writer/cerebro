@@ -1,0 +1,85 @@
+id: hudsonrock
+name: "Hudson Rock"
+description: "Collects infostealers, domains, and audit events from Hudson Rock and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - hudsonrock.infostealers
+  - hudsonrock.domains
+  - hudsonrock.audit_events
+kind_lifecycle:
+  - kind: hudsonrock.infostealers
+    status: active
+  - kind: hudsonrock.domains
+    status: active
+  - kind: hudsonrock.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: hudsonrock
+  dimensions:
+    - id: infostealers
+      type: remediation_state
+      title: "Infostealers"
+      families: [infostealers]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: domains
+      type: entity_family
+      title: "Domains"
+      families: [domains]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: hudsonrock.infostealers
+    schema_ref: hudsonrock/infostealers/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: hudsonrock.domains
+    schema_ref: hudsonrock/domains/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: hudsonrock.audit_events
+    schema_ref: hudsonrock/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

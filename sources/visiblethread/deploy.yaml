@@ -1,0 +1,19 @@
+sourceId: visiblethread
+secretKeys:
+  - VISIBLETHREAD_DOCID
+  - VISIBLETHREAD_SCANID
+  - VISIBLETHREAD_URLID
+  - VISIBLETHREAD_API_TOKEN
+runtimes:
+  - localId: webscan
+    config:
+      docid: env:VISIBLETHREAD_DOCID
+      scanid: env:VISIBLETHREAD_SCANID
+      urlid: env:VISIBLETHREAD_URLID
+      family: webscan
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /webscans
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:VISIBLETHREAD_API_TOKEN

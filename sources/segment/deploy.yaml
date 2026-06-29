@@ -1,0 +1,13 @@
+sourceId: segment
+secretKeys:
+  - SEGMENT_TOKEN
+runtimes:
+  - localId: workspaces
+    config:
+      family: workspaces
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /workspaces
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SEGMENT_TOKEN

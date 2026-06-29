@@ -1,0 +1,292 @@
+id: botify
+name: "Botify"
+description: "Collects filter, export, out of config, sitemap only, report, and project from Botify and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - botify.filter
+  - botify.export
+  - botify.out_of_config
+  - botify.sitemap_only
+  - botify.report
+  - botify.project
+  - botify.analyses
+  - botify.url
+  - botify.orphan_url
+  - botify.datamodel
+  - botify.domain
+  - botify.percentile
+kind_lifecycle:
+  - kind: botify.filter
+    status: active
+  - kind: botify.export
+    status: active
+  - kind: botify.out_of_config
+    status: active
+  - kind: botify.sitemap_only
+    status: active
+  - kind: botify.report
+    status: active
+  - kind: botify.project
+    status: active
+  - kind: botify.analyses
+    status: active
+  - kind: botify.url
+    status: active
+  - kind: botify.orphan_url
+    status: active
+  - kind: botify.datamodel
+    status: active
+  - kind: botify.domain
+    status: active
+  - kind: botify.percentile
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: botify
+  dimensions:
+    - id: filter
+      type: entity_family
+      title: "Filter"
+      families: [filter]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: export
+      type: entity_family
+      title: "Export"
+      families: [export]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: out_of_config
+      type: entity_family
+      title: "Out Of Config"
+      families: [out_of_config]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sitemap_only
+      type: entity_family
+      title: "Sitemap Only"
+      families: [sitemap_only]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: report
+      type: entity_family
+      title: "Report"
+      families: [report]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: project
+      type: entity_family
+      title: "Project"
+      families: [project]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: analyses
+      type: entity_family
+      title: "Analyses"
+      families: [analyses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: url
+      type: entity_family
+      title: "Url"
+      families: [url]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: orphan_url
+      type: entity_family
+      title: "Orphan Url"
+      families: [orphan_url]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datamodel
+      type: entity_family
+      title: "Datamodel"
+      families: [datamodel]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: domain
+      type: entity_family
+      title: "Domain"
+      families: [domain]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: percentile
+      type: entity_family
+      title: "Percentile"
+      families: [percentile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: botify.filter
+    schema_ref: botify/filter/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: botify.export
+    schema_ref: botify/export/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - area
+  - kind: botify.out_of_config
+    schema_ref: botify/out_of_config/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: botify.sitemap_only
+    schema_ref: botify/sitemap_only/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: botify.report
+    schema_ref: botify/report/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - error
+  - kind: botify.project
+    schema_ref: botify/project/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - slug
+  - kind: botify.analyses
+    schema_ref: botify/analyses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: botify.url
+    schema_ref: botify/url/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: botify.orphan_url
+    schema_ref: botify/orphan_url/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - url
+  - kind: botify.datamodel
+    schema_ref: botify/datamodel/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: botify.domain
+    schema_ref: botify/domain/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - domain
+  - kind: botify.percentile
+    schema_ref: botify/percentile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

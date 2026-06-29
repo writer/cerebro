@@ -1,0 +1,108 @@
+id: bulksms
+name: "BulkSMS"
+description: "Collects webhook, relatedreceivedmessage, message, and send from BulkSMS and projects them into the Cerebro graph as assets for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - bulksms.webhook
+  - bulksms.relatedreceivedmessage
+  - bulksms.message
+  - bulksms.send
+kind_lifecycle:
+  - kind: bulksms.webhook
+    status: active
+  - kind: bulksms.relatedreceivedmessage
+    status: active
+  - kind: bulksms.message
+    status: active
+  - kind: bulksms.send
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bulksms
+  dimensions:
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: relatedreceivedmessage
+      type: entity_family
+      title: "Relatedreceivedmessage"
+      families: [relatedreceivedmessage]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: message
+      type: entity_family
+      title: "Message"
+      families: [message]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: send
+      type: entity_family
+      title: "Send"
+      families: [send]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bulksms.webhook
+    schema_ref: bulksms/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bulksms.relatedreceivedmessage
+    schema_ref: bulksms/relatedreceivedmessage/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bulksms.message
+    schema_ref: bulksms/message/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bulksms.send
+    schema_ref: bulksms/send/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

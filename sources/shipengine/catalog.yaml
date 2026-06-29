@@ -1,0 +1,106 @@
+id: shipengine
+name: "ShipEngine"
+description: "Collects tracking, package, track, and webhook from ShipEngine and projects them into the Cerebro graph as audit events and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - shipengine.tracking
+  - shipengine.package
+  - shipengine.track
+  - shipengine.webhook
+kind_lifecycle:
+  - kind: shipengine.tracking
+    status: active
+  - kind: shipengine.package
+    status: active
+  - kind: shipengine.track
+    status: active
+  - kind: shipengine.webhook
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: shipengine
+  dimensions:
+    - id: tracking
+      type: audit_event
+      title: "Tracking"
+      families: [tracking]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: package
+      type: entity_family
+      title: "Package"
+      families: [package]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: track
+      type: audit_event
+      title: "Track"
+      families: [track]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: shipengine.tracking
+    schema_ref: shipengine/tracking/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - carrier_detail_code
+  - kind: shipengine.package
+    schema_ref: shipengine/package/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: shipengine.track
+    schema_ref: shipengine/track/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - carrier_detail_code
+  - kind: shipengine.webhook
+    schema_ref: shipengine/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - event

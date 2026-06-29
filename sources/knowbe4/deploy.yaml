@@ -1,0 +1,15 @@
+sourceId: knowbe4
+secretKeys:
+  - KNOWBE4_REGION
+  - KNOWBE4_TOKEN
+runtimes:
+  - localId: users
+    config:
+      region: env:KNOWBE4_REGION
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:KNOWBE4_TOKEN

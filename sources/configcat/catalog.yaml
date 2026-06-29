@@ -1,0 +1,103 @@
+id: configcat
+name: "ConfigCat"
+description: "Collects auditlog, organization, member, and permission from ConfigCat and projects them into the Cerebro graph as audit events, groups, users, and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - configcat.auditlog
+  - configcat.organization
+  - configcat.member
+  - configcat.permission
+kind_lifecycle:
+  - kind: configcat.auditlog
+    status: active
+  - kind: configcat.organization
+    status: active
+  - kind: configcat.member
+    status: active
+  - kind: configcat.permission
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: configcat
+  dimensions:
+    - id: auditlog
+      type: audit_event
+      title: "Auditlog"
+      families: [auditlog]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: organization
+      type: entity_family
+      title: "Organization"
+      families: [organization]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: member
+      type: entity_family
+      title: "Member"
+      families: [member]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission
+      type: entity_family
+      title: "Permission"
+      families: [permission]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: configcat.auditlog
+    schema_ref: configcat/auditlog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - actionTarget
+  - kind: configcat.organization
+    schema_ref: configcat/organization/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - name
+  - kind: configcat.member
+    schema_ref: configcat/member/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: configcat.permission
+    schema_ref: configcat/permission/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

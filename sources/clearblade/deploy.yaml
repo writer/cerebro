@@ -1,0 +1,17 @@
+sourceId: clearblade
+secretKeys:
+  - CLEARBLADE_COLLECTIONNAME
+  - CLEARBLADE_SYSTEMKEY
+  - CLEARBLADE_TOKEN
+runtimes:
+  - localId: system
+    config:
+      collectionname: env:CLEARBLADE_COLLECTIONNAME
+      systemkey: env:CLEARBLADE_SYSTEMKEY
+      family: system
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/platform/systems
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLEARBLADE_TOKEN

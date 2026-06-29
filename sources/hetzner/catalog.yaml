@@ -1,0 +1,106 @@
+id: hetzner
+name: "Hetzner Cloud"
+description: "Collects placement group, certificate, firewall, and ssh key from Hetzner Cloud and projects them into the Cerebro graph as groups and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - hetzner.placement_group
+  - hetzner.certificate
+  - hetzner.firewall
+  - hetzner.ssh_key
+kind_lifecycle:
+  - kind: hetzner.placement_group
+    status: active
+  - kind: hetzner.certificate
+    status: active
+  - kind: hetzner.firewall
+    status: active
+  - kind: hetzner.ssh_key
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: hetzner
+  dimensions:
+    - id: placement_group
+      type: entity_family
+      title: "Placement Group"
+      families: [placement_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: certificate
+      type: entity_family
+      title: "Certificate"
+      families: [certificate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: firewall
+      type: entity_family
+      title: "Firewall"
+      families: [firewall]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ssh_key
+      type: entity_family
+      title: "Ssh Key"
+      families: [ssh_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: hetzner.placement_group
+    schema_ref: hetzner/placement_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: hetzner.certificate
+    schema_ref: hetzner/certificate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: hetzner.firewall
+    schema_ref: hetzner/firewall/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: hetzner.ssh_key
+    schema_ref: hetzner/ssh_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

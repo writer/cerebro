@@ -1,0 +1,130 @@
+id: cribl_cloud
+name: "Cribl Cloud"
+description: "Collects alerts, incidents, monitors, dashboards, and audit events from Cribl Cloud and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - cribl_cloud.alerts
+  - cribl_cloud.incidents
+  - cribl_cloud.monitors
+  - cribl_cloud.dashboards
+  - cribl_cloud.audit_events
+kind_lifecycle:
+  - kind: cribl_cloud.alerts
+    status: active
+  - kind: cribl_cloud.incidents
+    status: active
+  - kind: cribl_cloud.monitors
+    status: active
+  - kind: cribl_cloud.dashboards
+    status: active
+  - kind: cribl_cloud.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cribl_cloud
+  dimensions:
+    - id: alerts
+      type: alert_state
+      title: "Alerts"
+      families: [alerts]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incidents
+      type: remediation_state
+      title: "Incidents"
+      families: [incidents]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: monitors
+      type: entity_family
+      title: "Monitors"
+      families: [monitors]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: dashboards
+      type: entity_family
+      title: "Dashboards"
+      families: [dashboards]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cribl_cloud.alerts
+    schema_ref: cribl_cloud/alerts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: cribl_cloud.incidents
+    schema_ref: cribl_cloud/incidents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: cribl_cloud.monitors
+    schema_ref: cribl_cloud/monitors/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cribl_cloud.dashboards
+    schema_ref: cribl_cloud/dashboards/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cribl_cloud.audit_events
+    schema_ref: cribl_cloud/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,277 @@
+id: files_com
+name: "Files.com"
+description: "Collects external event, api key, group, group user, action notification export result, and permission from Files.com and projects them into the Cerebro graph as alerts, assets, audit events, groups, secrets, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - files_com.external_event
+  - files_com.api_key
+  - files_com.group
+  - files_com.group_user
+  - files_com.action_notification_export_result
+  - files_com.permission
+  - files_com.login
+  - files_com.site_api_key
+  - files_com.user_api_key
+  - files_com.exavault_reserved
+  - files_com.user_group
+  - files_com.user
+kind_lifecycle:
+  - kind: files_com.external_event
+    status: active
+  - kind: files_com.api_key
+    status: active
+  - kind: files_com.group
+    status: active
+  - kind: files_com.group_user
+    status: active
+  - kind: files_com.action_notification_export_result
+    status: active
+  - kind: files_com.permission
+    status: active
+  - kind: files_com.login
+    status: active
+  - kind: files_com.site_api_key
+    status: active
+  - kind: files_com.user_api_key
+    status: active
+  - kind: files_com.exavault_reserved
+    status: active
+  - kind: files_com.user_group
+    status: active
+  - kind: files_com.user
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: files_com
+  dimensions:
+    - id: external_event
+      type: audit_event
+      title: "External Event"
+      families: [external_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_key
+      type: entity_family
+      title: "Api Key"
+      families: [api_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group_user
+      type: entity_family
+      title: "Group User"
+      families: [group_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: action_notification_export_result
+      type: alert_state
+      title: "Action Notification Export Result"
+      families: [action_notification_export_result]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission
+      type: entity_family
+      title: "Permission"
+      families: [permission]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: login
+      type: audit_event
+      title: "Login"
+      families: [login]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: site_api_key
+      type: entity_family
+      title: "Site Api Key"
+      families: [site_api_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_api_key
+      type: entity_family
+      title: "User Api Key"
+      families: [user_api_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: exavault_reserved
+      type: entity_family
+      title: "Exavault Reserved"
+      families: [exavault_reserved]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_group
+      type: entity_family
+      title: "User Group"
+      families: [user_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: files_com.external_event
+    schema_ref: files_com/external_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: files_com.api_key
+    schema_ref: files_com/api_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: files_com.group
+    schema_ref: files_com/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: files_com.group_user
+    schema_ref: files_com/group_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - admin
+  - kind: files_com.action_notification_export_result
+    schema_ref: files_com/action_notification_export_result/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: files_com.permission
+    schema_ref: files_com/permission/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: files_com.login
+    schema_ref: files_com/login/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: files_com.site_api_key
+    schema_ref: files_com/site_api_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: files_com.user_api_key
+    schema_ref: files_com/user_api_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: files_com.exavault_reserved
+    schema_ref: files_com/exavault_reserved/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - ftp_enabled
+  - kind: files_com.user_group
+    schema_ref: files_com/user_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - admin
+  - kind: files_com.user
+    schema_ref: files_com/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

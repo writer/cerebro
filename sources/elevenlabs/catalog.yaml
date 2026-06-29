@@ -1,0 +1,149 @@
+id: elevenlabs
+name: "ElevenLabs"
+description: "Collects model catalog, voices, service accounts, service-account api keys, webhooks, and auth connections from ElevenLabs and projects them into the Cerebro graph as assets, deployments, secrets, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - elevenlabs.model_catalog
+  - elevenlabs.voices
+  - elevenlabs.service_accounts
+  - elevenlabs.service_account_api_keys
+  - elevenlabs.webhooks
+  - elevenlabs.auth_connections
+kind_lifecycle:
+  - kind: elevenlabs.model_catalog
+    status: active
+  - kind: elevenlabs.voices
+    status: active
+  - kind: elevenlabs.service_accounts
+    status: active
+  - kind: elevenlabs.service_account_api_keys
+    status: active
+  - kind: elevenlabs.webhooks
+    status: active
+  - kind: elevenlabs.auth_connections
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: elevenlabs
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: voices
+      type: entity_family
+      title: "Voices"
+      families: [voices]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: service_accounts
+      type: entity_family
+      title: "Service Accounts"
+      families: [service_accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: service_account_api_keys
+      type: entity_family
+      title: "Service Account Api Keys"
+      families: [service_account_api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: webhooks
+      type: deployment_state
+      title: "Webhooks"
+      families: [webhooks]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: auth_connections
+      type: entity_family
+      title: "Auth Connections"
+      families: [auth_connections]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: elevenlabs.model_catalog
+    schema_ref: elevenlabs/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - model_id
+  - kind: elevenlabs.voices
+    schema_ref: elevenlabs/voices/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - voice_id
+  - kind: elevenlabs.service_accounts
+    schema_ref: elevenlabs/service_accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - service_account_user_id
+  - kind: elevenlabs.service_account_api_keys
+    schema_ref: elevenlabs/service_account_api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - key_id
+  - kind: elevenlabs.webhooks
+    schema_ref: elevenlabs/webhooks/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - webhook_id
+  - kind: elevenlabs.auth_connections
+    schema_ref: elevenlabs/auth_connections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - name

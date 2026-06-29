@@ -1,0 +1,15 @@
+sourceId: meistertask
+secretKeys:
+  - MEISTERTASK_BASE_URL
+  - MEISTERTASK_TOKEN
+runtimes:
+  - localId: users
+    config:
+      base_url: env:MEISTERTASK_BASE_URL
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:MEISTERTASK_TOKEN

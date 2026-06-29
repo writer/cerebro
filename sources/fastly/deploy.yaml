@@ -1,0 +1,13 @@
+sourceId: fastly
+secretKeys:
+  - FASTLY_TOKEN
+runtimes:
+  - localId: services
+    config:
+      family: services
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /current_customer
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:FASTLY_TOKEN

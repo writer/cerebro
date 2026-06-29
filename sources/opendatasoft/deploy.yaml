@@ -1,0 +1,17 @@
+sourceId: opendatasoft
+secretKeys:
+  - OPENDATASOFT_DATASET_ID
+  - OPENDATASOFT_SOURCE
+  - OPENDATASOFT_API_TOKEN
+runtimes:
+  - localId: aggregate
+    config:
+      dataset_id: env:OPENDATASOFT_DATASET_ID
+      source: env:OPENDATASOFT_SOURCE
+      family: aggregate
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /${config.source}/aggregates
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:OPENDATASOFT_API_TOKEN

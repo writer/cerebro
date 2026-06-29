@@ -1,0 +1,281 @@
+id: beezup
+name: "BeezUP"
+description: "Collects channelcatalog, offer, filter, alert, catalogcolumn, and category from BeezUP and projects them into the Cerebro graph as alerts, assets, audit events, and policies for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - beezup.channelcatalog
+  - beezup.offer
+  - beezup.filter
+  - beezup.alert
+  - beezup.catalogcolumn
+  - beezup.category
+  - beezup.customcolumn
+  - beezup.random
+  - beezup.rule
+  - beezup.beezupcolumn
+  - beezup.filteroperator
+  - beezup.autoimport
+kind_lifecycle:
+  - kind: beezup.channelcatalog
+    status: active
+  - kind: beezup.offer
+    status: active
+  - kind: beezup.filter
+    status: active
+  - kind: beezup.alert
+    status: active
+  - kind: beezup.catalogcolumn
+    status: active
+  - kind: beezup.category
+    status: active
+  - kind: beezup.customcolumn
+    status: active
+  - kind: beezup.random
+    status: active
+  - kind: beezup.rule
+    status: active
+  - kind: beezup.beezupcolumn
+    status: active
+  - kind: beezup.filteroperator
+    status: active
+  - kind: beezup.autoimport
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: beezup
+  dimensions:
+    - id: channelcatalog
+      type: audit_event
+      title: "Channelcatalog"
+      families: [channelcatalog]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: offer
+      type: lifecycle_state
+      title: "Offer"
+      families: [offer]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: filter
+      type: entity_family
+      title: "Filter"
+      families: [filter]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: alert
+      type: alert_state
+      title: "Alert"
+      families: [alert]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: catalogcolumn
+      type: audit_event
+      title: "Catalogcolumn"
+      families: [catalogcolumn]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: category
+      type: audit_event
+      title: "Category"
+      families: [category]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customcolumn
+      type: audit_event
+      title: "Customcolumn"
+      families: [customcolumn]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: random
+      type: audit_event
+      title: "Random"
+      families: [random]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rule
+      type: lifecycle_state
+      title: "Rule"
+      families: [rule]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: beezupcolumn
+      type: audit_event
+      title: "Beezupcolumn"
+      families: [beezupcolumn]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: filteroperator
+      type: audit_event
+      title: "Filteroperator"
+      families: [filteroperator]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: autoimport
+      type: audit_event
+      title: "Autoimport"
+      families: [autoimport]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: beezup.channelcatalog
+    schema_ref: beezup/channelcatalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - apiSettingsStatus
+  - kind: beezup.offer
+    schema_ref: beezup/offer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - name
+  - kind: beezup.filter
+    schema_ref: beezup/filter/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - links
+  - kind: beezup.alert
+    schema_ref: beezup/alert/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - alertId
+  - kind: beezup.catalogcolumn
+    schema_ref: beezup/catalogcolumn/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: beezup.category
+    schema_ref: beezup/category/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - categoryId
+  - kind: beezup.customcolumn
+    schema_ref: beezup/customcolumn/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: beezup.random
+    schema_ref: beezup/random/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - categoryId
+  - kind: beezup.rule
+    schema_ref: beezup/rule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - actionName
+  - kind: beezup.beezupcolumn
+    schema_ref: beezup/beezupcolumn/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - beezUPColumnName
+  - kind: beezup.filteroperator
+    schema_ref: beezup/filteroperator/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: beezup.autoimport
+    schema_ref: beezup/autoimport/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

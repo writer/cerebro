@@ -1,0 +1,82 @@
+id: chargebee
+name: "Chargebee"
+description: "Collects subscriptions, customers, and audit events from Chargebee and projects them into the Cerebro graph as assets, users, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - chargebee.subscriptions
+  - chargebee.customers
+  - chargebee.audit_events
+kind_lifecycle:
+  - kind: chargebee.subscriptions
+    status: active
+  - kind: chargebee.customers
+    status: active
+  - kind: chargebee.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: chargebee
+  dimensions:
+    - id: subscriptions
+      type: entity_family
+      title: "Subscriptions"
+      families: [subscriptions]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customers
+      type: entity_family
+      title: "Customers"
+      families: [customers]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: chargebee.subscriptions
+    schema_ref: chargebee/subscriptions/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: chargebee.customers
+    schema_ref: chargebee/customers/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: chargebee.audit_events
+    schema_ref: chargebee/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

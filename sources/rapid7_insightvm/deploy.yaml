@@ -1,0 +1,13 @@
+sourceId: rapid7_insightvm
+secretKeys:
+  - RAPID7_INSIGHTVM_API_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /vm/v4/integration/asset
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:RAPID7_INSIGHTVM_API_TOKEN

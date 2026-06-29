@@ -1,0 +1,85 @@
+id: abuseipdb
+name: "AbuseIPDB"
+description: "Collects reports, IP addresses, and audit events from AbuseIPDB and projects them into the Cerebro graph as findings, assets, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - abuseipdb.reports
+  - abuseipdb.ip_addresses
+  - abuseipdb.audit_events
+kind_lifecycle:
+  - kind: abuseipdb.reports
+    status: active
+  - kind: abuseipdb.ip_addresses
+    status: active
+  - kind: abuseipdb.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: abuseipdb
+  dimensions:
+    - id: reports
+      type: remediation_state
+      title: "Reports"
+      families: [reports]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ip_addresses
+      type: entity_family
+      title: "Ip Addresses"
+      families: [ip_addresses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: abuseipdb.reports
+    schema_ref: abuseipdb/reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: abuseipdb.ip_addresses
+    schema_ref: abuseipdb/ip_addresses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: abuseipdb.audit_events
+    schema_ref: abuseipdb/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

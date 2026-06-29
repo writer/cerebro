@@ -1,0 +1,19 @@
+sourceId: zuora
+secretKeys:
+  - ZUORA_ACCOUNT_KEY
+  - ZUORA_EVENT_NUMBER
+  - ZUORA_RS_NUMBER
+  - ZUORA_TOKEN
+runtimes:
+  - localId: event-trigger
+    config:
+      account_key: env:ZUORA_ACCOUNT_KEY
+      event_number: env:ZUORA_EVENT_NUMBER
+      rs_number: env:ZUORA_RS_NUMBER
+      family: event_trigger
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN

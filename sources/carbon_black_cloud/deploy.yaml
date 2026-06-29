@@ -1,0 +1,15 @@
+sourceId: carbon_black_cloud
+secretKeys:
+  - CARBON_BLACK_CLOUD_BASE_URL
+  - CARBON_BLACK_CLOUD_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      base_url: env:CARBON_BLACK_CLOUD_BASE_URL
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CARBON_BLACK_CLOUD_TOKEN

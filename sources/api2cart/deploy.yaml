@@ -1,0 +1,13 @@
+sourceId: api2cart
+secretKeys:
+  - API2CART_API_TOKEN
+runtimes:
+  - localId: attribute-group-list-json
+    config:
+      family: attribute_group_list_json
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /attribute.group.list.json
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:API2CART_API_TOKEN

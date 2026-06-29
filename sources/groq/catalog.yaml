@@ -1,0 +1,106 @@
+id: groq
+name: "Groq"
+description: "Collects model catalog, files, batch jobs, and fine-tuning jobs from Groq and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - groq.model_catalog
+  - groq.files
+  - groq.batch_jobs
+  - groq.fine_tuning_jobs
+kind_lifecycle:
+  - kind: groq.model_catalog
+    status: active
+  - kind: groq.files
+    status: active
+  - kind: groq.batch_jobs
+    status: active
+  - kind: groq.fine_tuning_jobs
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: groq
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: files
+      type: entity_family
+      title: "Files"
+      families: [files]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: batch_jobs
+      type: deployment_state
+      title: "Batch Jobs"
+      families: [batch_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: fine_tuning_jobs
+      type: deployment_state
+      title: "Fine Tuning Jobs"
+      families: [fine_tuning_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: groq.model_catalog
+    schema_ref: groq/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: groq.files
+    schema_ref: groq/files/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: groq.batch_jobs
+    schema_ref: groq/batch_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: groq.fine_tuning_jobs
+    schema_ref: groq/fine_tuning_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id

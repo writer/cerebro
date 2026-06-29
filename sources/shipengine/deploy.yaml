@@ -1,0 +1,15 @@
+sourceId: shipengine
+secretKeys:
+  - SHIPENGINE_LABEL_ID
+  - SHIPENGINE_API_TOKEN
+runtimes:
+  - localId: tracking
+    config:
+      label_id: env:SHIPENGINE_LABEL_ID
+      family: tracking
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/tracking
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:SHIPENGINE_API_TOKEN

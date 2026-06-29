@@ -1,0 +1,30 @@
+# Workfront
+
+Generated Source Runtime SDK scaffold for `workfront`.
+
+## Runtime input
+
+- Source type: `json_api`
+- Auth model: `bearer_token`
+- Freshness expectation: `24h0m0s`
+- Failure modes: `api_error,auth_error,rate_limit,schema_drift`
+
+## Runtime output
+
+- Adapter package: `sources/workfront`
+- Health endpoint: `/source-runtimes/health?source_id=workfront`
+- Source health receipt: `sources/workfront/source_health_receipt.json`
+- EvidenceCAS reference kind: `workfront.evidence_cas_reference`
+
+## Families
+
+- `users`, emits `workfront.users`, reads `/v1/users`
+- `groups`, emits `workfront.groups`, reads `/v1/groups`
+- `workspaces`, emits `workfront.workspaces`, reads `/v1/workspaces`
+- `documents`, emits `workfront.documents`, reads `/v1/documents`
+- `audit_events`, emits `workfront.audit_events`, reads `/v1/audit_events`
+
+## Tests
+
+- `go test ./sources/workfront ./internal/sourceprojection -count=1`
+- `make catalog-check`

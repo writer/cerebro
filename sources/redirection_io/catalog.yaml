@@ -1,0 +1,280 @@
+id: redirection_io
+name: "redirection.io"
+description: "Collects aggregate log, user, agent rule, notification, smart list, and log from redirection.io and projects them into the Cerebro graph as audit events, users, policies, alerts, and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - redirection_io.aggregate_log
+  - redirection_io.user
+  - redirection_io.agent_rule
+  - redirection_io.notification
+  - redirection_io.smart_list
+  - redirection_io.log
+  - redirection_io.agent_rule_complexe
+  - redirection_io.agent_rule_straight
+  - redirection_io.export_rule
+  - redirection_io.rule
+  - redirection_io.rule_change
+  - redirection_io.rule_set_version
+kind_lifecycle:
+  - kind: redirection_io.aggregate_log
+    status: active
+  - kind: redirection_io.user
+    status: active
+  - kind: redirection_io.agent_rule
+    status: active
+  - kind: redirection_io.notification
+    status: active
+  - kind: redirection_io.smart_list
+    status: active
+  - kind: redirection_io.log
+    status: active
+  - kind: redirection_io.agent_rule_complexe
+    status: active
+  - kind: redirection_io.agent_rule_straight
+    status: active
+  - kind: redirection_io.export_rule
+    status: active
+  - kind: redirection_io.rule
+    status: active
+  - kind: redirection_io.rule_change
+    status: active
+  - kind: redirection_io.rule_set_version
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: redirection_io
+  dimensions:
+    - id: aggregate_log
+      type: audit_event
+      title: "Aggregate Log"
+      families: [aggregate_log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: agent_rule
+      type: lifecycle_state
+      title: "Agent Rule"
+      families: [agent_rule]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification
+      type: alert_state
+      title: "Notification"
+      families: [notification]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: smart_list
+      type: entity_family
+      title: "Smart List"
+      families: [smart_list]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: log
+      type: audit_event
+      title: "Log"
+      families: [log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: agent_rule_complexe
+      type: lifecycle_state
+      title: "Agent Rule Complexe"
+      families: [agent_rule_complexe]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: agent_rule_straight
+      type: lifecycle_state
+      title: "Agent Rule Straight"
+      families: [agent_rule_straight]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: export_rule
+      type: lifecycle_state
+      title: "Export Rule"
+      families: [export_rule]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rule
+      type: lifecycle_state
+      title: "Rule"
+      families: [rule]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rule_change
+      type: lifecycle_state
+      title: "Rule Change"
+      families: [rule_change]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rule_set_version
+      type: lifecycle_state
+      title: "Rule Set Version"
+      families: [rule_set_version]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: redirection_io.aggregate_log
+    schema_ref: redirection_io/aggregate_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: redirection_io.user
+    schema_ref: redirection_io/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: redirection_io.agent_rule
+    schema_ref: redirection_io/agent_rule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.notification
+    schema_ref: redirection_io/notification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: redirection_io.smart_list
+    schema_ref: redirection_io/smart_list/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: redirection_io.log
+    schema_ref: redirection_io/log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: redirection_io.agent_rule_complexe
+    schema_ref: redirection_io/agent_rule_complexe/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.agent_rule_straight
+    schema_ref: redirection_io/agent_rule_straight/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.export_rule
+    schema_ref: redirection_io/export_rule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.rule
+    schema_ref: redirection_io/rule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.rule_change
+    schema_ref: redirection_io/rule_change/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: redirection_io.rule_set_version
+    schema_ref: redirection_io/rule_set_version/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id

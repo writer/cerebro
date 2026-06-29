@@ -1,0 +1,17 @@
+sourceId: cloudflare_workers_ai
+secretKeys:
+  - CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+  - CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+  - CLOUDFLARE_WORKERS_AI_TOKEN
+runtimes:
+  - localId: model-catalog
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: model_catalog
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN

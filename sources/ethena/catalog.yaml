@@ -1,0 +1,81 @@
+id: ethena
+name: "Ethena"
+description: "Collects learners, training statuses, and course assignments from Ethena and projects them into the Cerebro graph as users and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - ethena.users
+  - ethena.training_statuses
+  - ethena.course_assignments
+kind_lifecycle:
+  - kind: ethena.users
+    status: active
+  - kind: ethena.training_statuses
+    status: active
+  - kind: ethena.course_assignments
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: ethena
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: training_statuses
+      type: audit_event
+      title: "Training Statuses"
+      families: [training_statuses]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: course_assignments
+      type: audit_event
+      title: "Course Assignments"
+      families: [course_assignments]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: ethena.users
+    schema_ref: ethena/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: ethena.training_statuses
+    schema_ref: ethena/training_statuses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: ethena.course_assignments
+    schema_ref: ethena/course_assignments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

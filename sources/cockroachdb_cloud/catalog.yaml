@@ -1,0 +1,85 @@
+id: cockroachdb_cloud
+name: "CockroachDB Cloud"
+description: "Collects data assets, audit events, and vulnerabilities from CockroachDB Cloud and projects them into the Cerebro graph as assets, audit events, and vulnerabilities for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - cockroachdb_cloud.assets
+  - cockroachdb_cloud.audit_events
+  - cockroachdb_cloud.vulnerabilities
+kind_lifecycle:
+  - kind: cockroachdb_cloud.assets
+    status: active
+  - kind: cockroachdb_cloud.audit_events
+    status: active
+  - kind: cockroachdb_cloud.vulnerabilities
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cockroachdb_cloud
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: remediation_state
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cockroachdb_cloud.assets
+    schema_ref: cockroachdb_cloud/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cockroachdb_cloud.audit_events
+    schema_ref: cockroachdb_cloud/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: cockroachdb_cloud.vulnerabilities
+    schema_ref: cockroachdb_cloud/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

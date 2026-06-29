@@ -1,0 +1,15 @@
+sourceId: office_space
+secretKeys:
+  - OFFICE_SPACE_BASE_URL
+  - OFFICE_SPACE_TOKEN
+runtimes:
+  - localId: users
+    config:
+      base_url: env:OFFICE_SPACE_BASE_URL
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:OFFICE_SPACE_TOKEN
