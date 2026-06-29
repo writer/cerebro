@@ -486,10 +486,7 @@ func offsetResponseCursor(family Family, object map[string]json.RawMessage) stri
 	if cursorParam(family) != "offset" {
 		return ""
 	}
-	total, ok := intValueFromRaw(firstRaw(object, "totalCount", "total_count", "total"))
-	if !ok || total <= 0 {
-		return ""
-	}
+	total, totalOK := intValueFromRaw(firstRaw(object, "totalCount", "total_count", "total"))
 	offset, offsetOK := intValueFromRaw(firstRaw(object, "offset"))
 	limit, limitOK := intValueFromRaw(firstRaw(object, "limit"))
 	if pagination := object["pagination"]; len(pagination) != 0 {
@@ -509,7 +506,13 @@ func offsetResponseCursor(family Family, object map[string]json.RawMessage) stri
 		return ""
 	}
 	next := offset + limit
-	if next >= total {
+	if totalOK && total >= 0 {
+		if next >= total {
+			return ""
+		}
+		return strconv.Itoa(next)
+	}
+	if strings.TrimSpace(family.HasMoreKey) == "" || !responseHasMore(family, object) {
 		return ""
 	}
 	return strconv.Itoa(next)

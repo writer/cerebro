@@ -1,0 +1,63 @@
+sourceId: pagerduty
+secretKeys:
+  - PAGERDUTY_TOKEN
+  # Comma-separated service IDs used to fan out the integrations runtime.
+  - PAGERDUTY_SERVICE_IDS
+runtimes:
+  - localId: users
+    config:
+      family: user
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: teams
+    config:
+      family: team
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: services
+    config:
+      family: service
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: schedules
+    config:
+      family: schedule
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: escalation-policies
+    config:
+      family: escalation_policy
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: integrations
+    config:
+      family: integration
+      service_ids: env:PAGERDUTY_SERVICE_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN
+  - localId: vendors
+    config:
+      family: vendor
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:PAGERDUTY_TOKEN

@@ -1,0 +1,25 @@
+[
+  {
+    "id": "pagerduty-team-PT1",
+    "tenant_id": "tenant",
+    "source_id": "pagerduty",
+    "kind": "pagerduty.team",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "pagerduty/team/v1",
+    "payload": {
+      "id": "PT1",
+      "name": "Platform",
+      "description": "Platform on-call coverage"
+    },
+    "attributes": {
+      "description": "Platform on-call coverage",
+      "external_id": "PT1",
+      "family": "team",
+      "name": "Platform",
+      "provider": "pagerduty",
+      "source_product": "pagerduty",
+      "source_provider": "pagerduty",
+      "team_id": "PT1"
+    }
+  }
+]

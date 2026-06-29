@@ -1,0 +1,27 @@
+[
+  {
+    "id": "pagerduty-schedule-PSC1",
+    "tenant_id": "tenant",
+    "source_id": "pagerduty",
+    "kind": "pagerduty.schedule",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "pagerduty/schedule/v1",
+    "payload": {
+      "id": "PSC1",
+      "name": "Primary",
+      "summary": "Primary",
+      "time_zone": "UTC"
+    },
+    "attributes": {
+      "external_id": "PSC1",
+      "family": "schedule",
+      "name": "Primary",
+      "provider": "pagerduty",
+      "schedule_id": "PSC1",
+      "source_product": "pagerduty",
+      "source_provider": "pagerduty",
+      "summary": "Primary",
+      "time_zone": "UTC"
+    }
+  }
+]

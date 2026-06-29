@@ -1,6 +1,6 @@
 id: pagerduty
 name: PagerDuty
-description: PagerDuty user, team, service, schedule, escalation policy, integration, and vendor source.
+description: PagerDuty incident-response topology source covering users, teams, services, schedules, escalation policies, service integrations, and vendors. Emits responder identity, escalation coverage, and service-to-integration context for graph projection and review.
 emitted_kinds:
   - pagerduty.user
   - pagerduty.team
@@ -9,6 +9,21 @@ emitted_kinds:
   - pagerduty.escalation_policy
   - pagerduty.integration
   - pagerduty.vendor
+families:
+  - id: user
+    incremental: cursor
+  - id: team
+    incremental: cursor
+  - id: service
+    incremental: cursor
+  - id: schedule
+    incremental: cursor
+  - id: escalation_policy
+    incremental: cursor
+  - id: integration
+    incremental: cursor
+  - id: vendor
+    incremental: cursor
 coverage_contract:
   owner_domain: incident_management
   authority_domain: pagerduty
@@ -21,6 +36,8 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      notes:
+        - Escalation policies emit policy IDs, names, loop counts, team references, and schedule/user targets so the graph can resolve responder coverage for services.
     - id: integrations
       type: entity_family
       title: Service integrations
@@ -29,6 +46,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Integrations fan out across the configured service_ids list and retain each service ID plus vendor reference for service-to-tool dependency projection.
     - id: schedules
       type: entity_family
       title: Schedules
@@ -37,6 +56,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Schedules emit schedule IDs, names, summaries, and time zones for escalation target nodes.
     - id: services
       type: entity_family
       title: Services
@@ -45,6 +66,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Services emit status and escalation policy references so graph projection can flag services with or without active escalation coverage.
     - id: teams
       type: entity_family
       title: Teams
@@ -53,6 +76,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Teams provide organizational context for escalation policy ownership.
     - id: users
       type: entity_family
       title: Users
@@ -61,51 +86,97 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Users emit email, role, time zone, and job title for identity resolution and responder review.
     - id: vendors
       type: entity_family
       title: Vendors
       families: [vendor]
       support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Vendors provide third-party integration context for services.
+    - id: pagination
+      type: incremental_sync
+      title: Offset cursor pagination
+      families: [user, team, service, schedule, escalation_policy, integration, vendor]
+      support: supported
+      high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - PagerDuty limit/offset responses are preserved through Source CDK cursors and use the provider more flag when total counts are omitted.
 event_contracts:
   - kind: pagerduty.user
     schema_ref: pagerduty/user/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - user_id
     required_payload_fields:
       - id
   - kind: pagerduty.team
     schema_ref: pagerduty/team/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - team_id
     required_payload_fields:
       - id
   - kind: pagerduty.service
     schema_ref: pagerduty/service/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - service_id
     required_payload_fields:
       - id
   - kind: pagerduty.schedule
     schema_ref: pagerduty/schedule/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - schedule_id
     required_payload_fields:
       - id
   - kind: pagerduty.escalation_policy
     schema_ref: pagerduty/escalation_policy/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - escalation_policy_id
     required_payload_fields:
       - id
   - kind: pagerduty.integration
     schema_ref: pagerduty/integration/v1
     required_attributes:
+      - external_id
+      - family
       - integration_id
+      - service_id
+      - source_provider
+      - source_product
     required_payload_fields:
       - id
   - kind: pagerduty.vendor
     schema_ref: pagerduty/vendor/v1
     required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - source_product
       - vendor_id
     required_payload_fields:
       - id

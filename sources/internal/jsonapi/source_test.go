@@ -139,6 +139,90 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 }
 
+func TestReadPathParamValuesPreservesValueAndProviderCursor(t *testing.T) {
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath()+"?cursor="+r.URL.Query().Get("cursor"))
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.EscapedPath() == "/accounts/acct-a/devices" && r.URL.Query().Get("cursor") == "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":        []map[string]any{{"id": "device-a-1"}},
+				"next_cursor": "page-2",
+			})
+		case r.URL.EscapedPath() == "/accounts/acct-a/devices" && r.URL.Query().Get("cursor") == "page-2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "device-a-2"}},
+			})
+		case r.URL.EscapedPath() == "/accounts/acct-b/devices" && r.URL.Query().Get("cursor") == "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "device-b-1"}},
+			})
+		default:
+			t.Fatalf("request = %s?%s, want configured fan-out page", r.URL.EscapedPath(), r.URL.RawQuery)
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "device",
+		Path:           "/accounts/{account_id}/devices",
+		PathParams:     []string{"account_id"},
+		CursorParam:    "cursor",
+		NextCursorKeys: []string{"next_cursor"},
+		URNKind:        "test_device",
+		IDKeys:         []string{"id"},
+		Attributes:     map[string]string{"account_id": "account_id"},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "device",
+		"token":     "token-1",
+	})
+	first, err := source.ReadPathParamValues(context.Background(), cfg, nil, "account_id", []string{"acct-a", "acct-b"})
+	if err != nil {
+		t.Fatalf("ReadPathParamValues(first) error = %v", err)
+	}
+	if len(first.Events) != 1 || first.Events[0].Attributes["external_id"] != "device-a-1" {
+		t.Fatalf("first Events = %#v, want device-a-1", first.Events)
+	}
+	firstState := parseFanoutCursor(sourcecdk.CursorToken(first.NextCursor))
+	if firstState.Index != 0 || firstState.Cursor != "page-2" {
+		t.Fatalf("first fan-out cursor = %#v, want acct-a page-2", firstState)
+	}
+
+	second, err := source.ReadPathParamValues(context.Background(), cfg, first.NextCursor, "account_id", []string{"acct-a", "acct-b"})
+	if err != nil {
+		t.Fatalf("ReadPathParamValues(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Attributes["external_id"] != "device-a-2" {
+		t.Fatalf("second Events = %#v, want device-a-2", second.Events)
+	}
+	secondState := parseFanoutCursor(sourcecdk.CursorToken(second.NextCursor))
+	if secondState.Index != 1 || secondState.Cursor != "" {
+		t.Fatalf("second fan-out cursor = %#v, want acct-b start", secondState)
+	}
+
+	third, err := source.ReadPathParamValues(context.Background(), cfg, second.NextCursor, "account_id", []string{"acct-a", "acct-b"})
+	if err != nil {
+		t.Fatalf("ReadPathParamValues(third) error = %v", err)
+	}
+	if len(third.Events) != 1 || third.Events[0].Attributes["external_id"] != "device-b-1" {
+		t.Fatalf("third Events = %#v, want device-b-1", third.Events)
+	}
+	if third.NextCursor != nil {
+		t.Fatalf("third NextCursor = %#v, want nil", third.NextCursor)
+	}
+	wantRequests := []string{
+		"/accounts/acct-a/devices?cursor=",
+		"/accounts/acct-a/devices?cursor=page-2",
+		"/accounts/acct-b/devices?cursor=",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
 func TestReadSynthesizesPageCursorForFullPages(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -814,6 +898,115 @@ func TestReadUsesFamilyCursorKeysAndHasMore(t *testing.T) {
 	}
 	if len(requests) != 2 || requests[1].URL.Query().Get("after") != "item-1" {
 		t.Fatalf("requests = %#v, want second request with after=item-1", requests)
+	}
+}
+
+func TestReadUsesOffsetCursorWithHasMoreWithoutTotal(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("offset") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-1"}, {"id": "item-2"}},
+				"limit":  2,
+				"offset": 0,
+				"more":   true,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-3"}},
+				"limit":  2,
+				"offset": 2,
+				"more":   false,
+			})
+		default:
+			t.Fatalf("offset = %q, want empty or 2", r.URL.Query().Get("offset"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "offset",
+		HasMoreKey:     "more",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("offset") != "2" {
+		t.Fatalf("requests = %#v, want second request with offset=2", requests)
+	}
+}
+
+func TestReadUsesOffsetTotalZeroBeforeHasMore(t *testing.T) {
+	requests := make([]*http.Request, 0, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("offset"); got != "" {
+			t.Fatalf("offset = %q, want empty", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":   []map[string]any{},
+			"limit":  2,
+			"offset": 0,
+			"total":  0,
+			"more":   true,
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		CursorParam:    "offset",
+		HasMoreKey:     "more",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil", pull.NextCursor)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(requests))
 	}
 }
 
