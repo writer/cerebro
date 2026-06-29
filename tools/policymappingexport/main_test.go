@@ -258,7 +258,9 @@ func TestGenerateFilesIncludesFindingComplianceTagContract(t *testing.T) {
 		tagCol:        "control:soc-2:cc6-1",
 		controlRefCol: "SOC 2 CC6.1",
 	})
-	assertCellEquals(t, header, reviewOnlyRow, "runtime_export_policy", "review_only")
+	assertCellEquals(t, header, reviewOnlyRow, "runtime_export_policy", "runtime_candidate_with_review")
+	assertCellEquals(t, header, reviewOnlyRow, "claim_status", "partial_source_evidence_claim")
+	assertCellContains(t, header, reviewOnlyRow, "source_coverage_refs", "okta/app_access")
 	assertCellContains(t, header, reviewOnlyRow, "tag_basis", "control_from_control_ref")
 	assertCellContains(t, header, reviewOnlyRow, "adjacent_control_rationales", "points of focus")
 
@@ -443,11 +445,11 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	}
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4304")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "346")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "409")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "831")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "346")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4419")
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "392")
+	assertOverviewMetric(t, overviewRows, "detections source-backed", "410")
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "784")
+	assertOverviewMetric(t, overviewRows, "detections control-only", "392")
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
@@ -879,8 +881,8 @@ func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
 			assertCellContains(t, findingRequirementHeader, row, "requirement_source_id", "okta")
 			assertCellContains(t, findingRequirementHeader, row, "freshness_window", "24h")
 			assertCellEquals(t, findingRequirementHeader, row, "claim_rule_id", "trust-services-operating-evidence")
-			assertCellEquals(t, findingRequirementHeader, row, "claim_status", "control_ref_review_claim")
-			assertCellEquals(t, findingRequirementHeader, row, "runtime_evidence_basis", "direct_control_ref_without_source_coverage")
+			assertCellEquals(t, findingRequirementHeader, row, "claim_status", "partial_source_evidence_claim")
+			assertCellEquals(t, findingRequirementHeader, row, "runtime_evidence_basis", "source_coverage_matches_requirement_source")
 			foundFindingRequirement = true
 			break
 		}
