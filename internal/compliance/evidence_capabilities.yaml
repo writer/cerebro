@@ -6222,6 +6222,7 @@ sources:
         high_value: true
         families:
           - email_domain
+          - email_domain_authentication
           - health
         evidence_types:
           - email_authentication_control
