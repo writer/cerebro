@@ -287,7 +287,7 @@ func preflightRequiredBackingServices(cfg appconfig.Config) []preflightBackingSe
 		services = append(services, preflightBackingService{
 			Name:        "nats-jetstream",
 			RequiredFor: "append-log sync, replay, and source runtime workflows",
-			ConfigVars:  []string{"CEREBRO_APPEND_LOG_DRIVER", "CEREBRO_JETSTREAM_URL"},
+			ConfigVars:  []string{"CEREBRO_APPEND_LOG_DRIVER", "CEREBRO_JETSTREAM_URL", "CEREBRO_JETSTREAM_STREAM_NAME"},
 		})
 	}
 	if cfg.GraphStore.Driver == appconfig.GraphStoreDriverNeo4j {

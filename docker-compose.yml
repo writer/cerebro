@@ -70,6 +70,7 @@ services:
       CEREBRO_API_KEYS: local-dev-key:local:local
       CEREBRO_APPEND_LOG_DRIVER: jetstream
       CEREBRO_JETSTREAM_URL: nats://nats:4222
+      CEREBRO_JETSTREAM_STREAM_NAME: CEREBRO_EVENTS
       CEREBRO_STATE_STORE_DRIVER: postgres
       CEREBRO_POSTGRES_DSN: postgres://${CEREBRO_LOCAL_POSTGRES_USER:-cerebro}:${CEREBRO_LOCAL_POSTGRES_PASSWORD:-cerebro}@postgres:5432/cerebro?sslmode=disable
       CEREBRO_GRAPH_STORE_DRIVER: neo4j

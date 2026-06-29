@@ -21,6 +21,7 @@ export CEREBRO_API_KEYS='<random-key>:cerebro-service:<tenant-id>'
 export CEREBRO_ALLOWED_TENANTS='<tenant-id>'
 export CEREBRO_APPEND_LOG_DRIVER=jetstream
 export CEREBRO_JETSTREAM_URL='nats://nats.example.com:4222'
+export CEREBRO_JETSTREAM_STREAM_NAME=CEREBRO_EVENTS
 export CEREBRO_STATE_STORE_DRIVER=postgres
 export CEREBRO_POSTGRES_DSN='<postgres-dsn-with-tls>'
 export CEREBRO_GRAPH_STORE_DRIVER=neo4j

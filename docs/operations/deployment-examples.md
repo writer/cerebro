@@ -96,6 +96,7 @@ CEREBRO_TRUSTED_PROXY_COUNT=1
 
 CEREBRO_APPEND_LOG_DRIVER=jetstream
 CEREBRO_JETSTREAM_URL=nats://nats.example.com:4222
+CEREBRO_JETSTREAM_STREAM_NAME=CEREBRO_EVENTS
 CEREBRO_JETSTREAM_SUBJECT_PREFIX=events
 
 CEREBRO_STATE_STORE_DRIVER=postgres
@@ -284,6 +285,7 @@ The same config maps to ECS, Nomad, or similar schedulers:
         {"name": "CEREBRO_TRUSTED_PROXY_COUNT", "value": "1"},
         {"name": "CEREBRO_APPEND_LOG_DRIVER", "value": "jetstream"},
         {"name": "CEREBRO_STATE_STORE_DRIVER", "value": "postgres"},
+        {"name": "CEREBRO_JETSTREAM_STREAM_NAME", "value": "CEREBRO_EVENTS"},
         {"name": "CEREBRO_GRAPH_STORE_DRIVER", "value": "neo4j"}
       ],
       "secrets": [

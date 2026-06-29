@@ -15,6 +15,12 @@ type AppendLog interface {
 	Append(context.Context, *cerebrov1.EventEnvelope) error
 }
 
+// AppendLogBatcher is an optional append-log capability for paths that can
+// publish a validated page or upload batch through one boundary.
+type AppendLogBatcher interface {
+	AppendBatch(context.Context, []*cerebrov1.EventEnvelope) error
+}
+
 // ReplayRequest scopes a bounded event replay from the append log.
 type ReplayRequest struct {
 	RuntimeID           string
@@ -60,7 +66,7 @@ type RuntimeIndexQuery struct {
 	Limit     uint32
 }
 
-// RuntimeIndexResult carries newest-first stream sequences for one runtime replay lookup.
+// RuntimeIndexResult carries newest-observed-first stream sequences for one runtime replay lookup.
 type RuntimeIndexResult struct {
 	Sequences []uint64
 	Watermark uint64

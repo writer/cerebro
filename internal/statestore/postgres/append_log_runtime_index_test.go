@@ -34,8 +34,10 @@ func TestAppendLogRuntimeIndexSchemaShape(t *testing.T) {
 	for _, fragment := range []string{
 		"CREATE TABLE IF NOT EXISTS append_log_runtime_index",
 		"PRIMARY KEY (runtime_id, seq)",
-		"append_log_runtime_index_runtime_kind_seq_idx",
-		"(runtime_id, kind, seq DESC)",
+		"append_log_runtime_index_runtime_observed_idx",
+		"(runtime_id, occurred_at DESC NULLS LAST, seq DESC)",
+		"append_log_runtime_index_runtime_kind_observed_idx",
+		"(runtime_id, kind, occurred_at DESC NULLS LAST, seq DESC)",
 		"CREATE TABLE IF NOT EXISTS append_log_index_state",
 		"indexer TEXT PRIMARY KEY",
 	} {
@@ -49,7 +51,7 @@ func TestRuntimeReplayIndexQueryWithoutKinds(t *testing.T) {
 	statement, args := runtimeReplayIndexQuery("writer-okta", nil, 42, 100)
 	for _, fragment := range []string{
 		"WHERE runtime_id = $1 AND seq <= $2",
-		"ORDER BY seq DESC LIMIT $3",
+		"ORDER BY occurred_at DESC NULLS LAST, seq DESC LIMIT $3",
 	} {
 		if !strings.Contains(statement, fragment) {
 			t.Fatalf("runtimeReplayIndexQuery() = %q, missing %q", statement, fragment)
@@ -77,7 +79,7 @@ func TestRuntimeReplayIndexQueryWithKinds(t *testing.T) {
 	if !strings.Contains(statement, "AND kind IN ($3, $4)") {
 		t.Fatalf("runtimeReplayIndexQuery() = %q, want deduplicated kind IN ($3, $4)", statement)
 	}
-	if !strings.Contains(statement, "ORDER BY seq DESC LIMIT $5") {
+	if !strings.Contains(statement, "ORDER BY occurred_at DESC NULLS LAST, seq DESC LIMIT $5") {
 		t.Fatalf("runtimeReplayIndexQuery() = %q, want LIMIT placeholder after kinds", statement)
 	}
 	if len(args) != 5 {

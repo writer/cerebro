@@ -256,6 +256,40 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 }
 
+func TestAppendPublishesExpectedStreamHeader(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, streamName: "CEREBRO_EVENTS", subjectPrefix: "events"}
+
+	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Id: "evt-1", Kind: "entity.upsert"}); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.published == nil {
+		t.Fatal("published message = nil")
+	}
+	if got := pub.published.Header.Get(natsjetstream.ExpectedStreamHeader); got != "CEREBRO_EVENTS" {
+		t.Fatalf("expected stream header = %q, want CEREBRO_EVENTS", got)
+	}
+}
+
+func TestAppendBatchPublishesEventsInOrder(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	events := []*cerebrov1.EventEnvelope{
+		{Id: "evt-1", Kind: "entity.created"},
+		{Id: "evt-2", Kind: "entity.updated"},
+	}
+	if err := log.AppendBatch(context.Background(), events); err != nil {
+		t.Fatalf("AppendBatch() error = %v", err)
+	}
+	if pub.publishCalls != 2 {
+		t.Fatalf("publish calls = %d, want 2", pub.publishCalls)
+	}
+	if got := pub.published.Header.Get(nats.MsgIdHdr); got != "evt-2" {
+		t.Fatalf("last msg id = %q, want evt-2", got)
+	}
+}
+
 func TestAppendRetriesTransientPublishErrorWhenMessageIDIsSet(t *testing.T) {
 	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
@@ -660,6 +694,37 @@ func TestAppendPublishesWorkflowEventAsSharedEnvelope(t *testing.T) {
 	}
 	if replayed.GetKind() != event.GetKind() || replayed.GetId() != event.GetId() || replayed.GetTenantId() != event.GetTenantId() {
 		t.Fatalf("replayed event = %#v, want kind/id/tenant from %#v", replayed, event)
+	}
+}
+
+func TestReservedNATSHeadersDoNotRoundTripAsWorkflowAttributes(t *testing.T) {
+	header := eventAttributesHeader(map[string]string{
+		workflowevents.EventAttributeTenantID: "writer",
+		nats.MsgIdHdr:                         "attacker-msg-id",
+		natsjetstream.ExpectedStreamHeader:    "attacker-stream",
+		"Nats-Expected-Last-Sequence":         "99",
+	})
+	if got := header.Get(workflowevents.EventAttributeTenantID); got != "writer" {
+		t.Fatalf("tenant header = %q, want writer", got)
+	}
+	for _, key := range []string{nats.MsgIdHdr, natsjetstream.ExpectedStreamHeader, "Nats-Expected-Last-Sequence"} {
+		if got := header.Get(key); got != "" {
+			t.Fatalf("%s header = %q, want filtered", key, got)
+		}
+	}
+
+	attrs := replayHeaderAttributes(nats.Header{
+		workflowevents.EventAttributeTenantID: []string{"writer"},
+		nats.MsgIdHdr:                         []string{"evt-1"},
+		natsjetstream.ExpectedStreamHeader:    []string{"CEREBRO_EVENTS"},
+	})
+	if got := attrs[workflowevents.EventAttributeTenantID]; got != "writer" {
+		t.Fatalf("tenant attribute = %q, want writer", got)
+	}
+	for _, key := range []string{nats.MsgIdHdr, natsjetstream.ExpectedStreamHeader} {
+		if _, ok := attrs[key]; ok {
+			t.Fatalf("%s attribute was replayed from reserved header", key)
+		}
 	}
 }
 
@@ -1341,10 +1406,15 @@ func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) 
 	}
 }
 
-func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
+func TestReplayLegacyFullScanKeepsNewestOccurredCandidates(t *testing.T) {
+	base := time.Date(2026, 5, 13, 18, 0, 0, 0, time.UTC)
 	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
-	for seq := uint64(1); seq <= 100; seq++ {
-		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	for seq := uint64(1); seq <= 20; seq++ {
+		occurredAt := base.Add(time.Duration(seq) * time.Minute)
+		if seq == 1 {
+			occurredAt = base.Add(time.Hour)
+		}
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEventAt("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github", occurredAt))
 	}
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -1353,7 +1423,7 @@ func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
 					Name:     "CEREBRO_EVENTS",
 					Subjects: []string{"events.>"},
 				},
-				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 100},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 20},
 			},
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
@@ -1367,8 +1437,11 @@ func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("len(events) = %d, want 2", len(events))
 	}
-	if replay.getMsgCalls != 10 {
-		t.Fatalf("getMsgCalls = %d, want bounded candidate window 10", replay.getMsgCalls)
+	if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-20" {
+		t.Fatalf("replayed ids = [%q, %q], want newest occurred candidates [evt-1, evt-20]", events[0].GetId(), events[1].GetId())
+	}
+	if replay.getMsgCalls != 20 {
+		t.Fatalf("getMsgCalls = %d, want full reverse scan", replay.getMsgCalls)
 	}
 }
 
@@ -1461,6 +1534,59 @@ func TestReplayStreamMatchesMultiTokenWildcardSubjects(t *testing.T) {
 	}
 	if got := stream.Config.Name; got != "CEREBRO_EVENTS" {
 		t.Fatalf("replayStream().Config.Name = %q, want CEREBRO_EVENTS", got)
+	}
+}
+
+func TestReplayStreamUsesConfiguredStreamName(t *testing.T) {
+	log := &Log{
+		replay: &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{Config: natsjetstream.StreamConfig{Name: "OTHER_EVENTS", Subjects: []string{"events.>"}}},
+				{Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"events.>"}}},
+			},
+		},
+		streamName:    "CEREBRO_EVENTS",
+		subjectPrefix: "events",
+	}
+
+	stream, err := log.replayStream(context.Background())
+	if err != nil {
+		t.Fatalf("replayStream() error = %v", err)
+	}
+	if got := stream.Config.Name; got != "CEREBRO_EVENTS" {
+		t.Fatalf("replayStream().Config.Name = %q, want CEREBRO_EVENTS", got)
+	}
+}
+
+func TestReplayStreamRejectsConfiguredStreamThatMissesSubjectPrefix(t *testing.T) {
+	log := &Log{
+		replay: &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{Config: natsjetstream.StreamConfig{Name: "CEREBRO_EVENTS", Subjects: []string{"other.>"}}},
+			},
+		},
+		streamName:    "CEREBRO_EVENTS",
+		subjectPrefix: "events",
+	}
+
+	if _, err := log.replayStream(context.Background()); err == nil {
+		t.Fatal("replayStream() error = nil, want non-nil")
+	}
+}
+
+func TestReplayStreamRejectsMissingConfiguredStream(t *testing.T) {
+	log := &Log{
+		replay: &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{Config: natsjetstream.StreamConfig{Name: "OTHER_EVENTS", Subjects: []string{"events.>"}}},
+			},
+		},
+		streamName:    "CEREBRO_EVENTS",
+		subjectPrefix: "events",
+	}
+
+	if _, err := log.replayStream(context.Background()); err == nil {
+		t.Fatal("replayStream() error = nil, want non-nil")
 	}
 }
 

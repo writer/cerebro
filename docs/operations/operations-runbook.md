@@ -104,6 +104,7 @@ Check:
 
 - `CEREBRO_APPEND_LOG_DRIVER=jetstream`
 - `CEREBRO_JETSTREAM_URL`
+- `CEREBRO_JETSTREAM_STREAM_NAME`
 - `CEREBRO_JETSTREAM_SUBJECT_PREFIX`
 - stream storage and retention
 - consumer lag

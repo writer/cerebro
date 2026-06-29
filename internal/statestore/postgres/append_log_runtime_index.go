@@ -25,7 +25,8 @@ var ensureAppendLogRuntimeIndexStatements = []string{
   occurred_at TIMESTAMPTZ,
   PRIMARY KEY (runtime_id, seq)
 )`,
-	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_kind_seq_idx ON append_log_runtime_index (runtime_id, kind, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_observed_idx ON append_log_runtime_index (runtime_id, occurred_at DESC NULLS LAST, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS append_log_runtime_index_runtime_kind_observed_idx ON append_log_runtime_index (runtime_id, kind, occurred_at DESC NULLS LAST, seq DESC)`,
 	`CREATE TABLE IF NOT EXISTS append_log_index_state (
   indexer TEXT PRIMARY KEY,
   last_seq BIGINT NOT NULL DEFAULT 0,
@@ -103,7 +104,7 @@ func (s *Store) RuntimeIndexWatermark(ctx context.Context) (uint64, error) {
 	return uint64(lastSeq), nil
 }
 
-// LookupRuntimeReplay returns the newest indexed stream sequences for one
+// LookupRuntimeReplay returns the newest-observed indexed stream sequences for one
 // runtime, optionally narrowed to exact event kinds, along with the watermark.
 func (s *Store) LookupRuntimeReplay(ctx context.Context, query ports.RuntimeIndexQuery) (ports.RuntimeIndexResult, error) {
 	runtimeID := strings.TrimSpace(query.RuntimeID)
@@ -147,7 +148,7 @@ func (s *Store) LookupRuntimeReplay(ctx context.Context, query ports.RuntimeInde
 	return result, nil
 }
 
-// runtimeReplayIndexQuery builds the newest-first sequence lookup, bounding by
+// runtimeReplayIndexQuery builds the newest-observed-first sequence lookup, bounding by
 // the watermark and (optionally) exact event kinds. Values stay parameterized.
 func runtimeReplayIndexQuery(runtimeID string, kinds []string, watermark uint64, limit uint32) (string, []any) {
 	args := []any{runtimeID, boundedInt64(watermark)}
@@ -165,7 +166,7 @@ func runtimeReplayIndexQuery(runtimeID string, kinds []string, watermark uint64,
 		builder.WriteString(")")
 	}
 	args = append(args, boundedInt64(uint64(limit)))
-	builder.WriteString(" ORDER BY seq DESC LIMIT $")
+	builder.WriteString(" ORDER BY occurred_at DESC NULLS LAST, seq DESC LIMIT $")
 	builder.WriteString(strconv.Itoa(len(args)))
 	return builder.String(), args
 }

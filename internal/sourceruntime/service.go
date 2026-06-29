@@ -463,11 +463,18 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		pageEntitiesProjected := uint32(0)
 		pageLinksProjected := uint32(0)
-		for _, syncedEvent := range acceptedEvents {
-			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
-				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
+		if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
+			if err := batcher.AppendBatch(ctx, acceptedEvents); err != nil {
+				return nil, fmt.Errorf("append source event batch: %w", err)
 			}
-			eventsAppended++
+			eventsAppended += boundedUint32(len(acceptedEvents))
+		} else {
+			for _, syncedEvent := range acceptedEvents {
+				if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
+					return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
+				}
+				eventsAppended++
+			}
 		}
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageAppended(ctx, attemptID); err != nil {

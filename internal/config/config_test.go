@@ -19,6 +19,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
+	t.Setenv("CEREBRO_JETSTREAM_STREAM_NAME", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
@@ -182,6 +183,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_STREAM_NAME", "CEREBRO_EVENTS")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "12")
@@ -293,6 +295,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.AppendLog.Driver != AppendLogDriverJetStream {
 		t.Fatalf("AppendLog.Driver = %q, want %q", cfg.AppendLog.Driver, AppendLogDriverJetStream)
+	}
+	if cfg.AppendLog.JetStreamStreamName != "CEREBRO_EVENTS" {
+		t.Fatalf("JetStreamStreamName = %q, want %q", cfg.AppendLog.JetStreamStreamName, "CEREBRO_EVENTS")
 	}
 	if cfg.AppendLog.JetStreamSubjectPrefix != "cerebro.events" {
 		t.Fatalf("JetStreamSubjectPrefix = %q, want %q", cfg.AppendLog.JetStreamSubjectPrefix, "cerebro.events")
@@ -614,6 +619,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
+	t.Setenv("CEREBRO_JETSTREAM_STREAM_NAME", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
@@ -1336,6 +1342,16 @@ func TestLoadRejectsNegativeJetStreamPublishMaxInFlight(t *testing.T) {
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "-1")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidJetStreamStreamName(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_STREAM_NAME", "CEREBRO EVENTS")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

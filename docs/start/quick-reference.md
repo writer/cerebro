@@ -49,6 +49,7 @@ curl -sS --oauth2-bearer "$CEREBRO_API_KEY" http://127.0.0.1:8080/sources
 export CEREBRO_HTTP_ADDR=:8080
 export CEREBRO_APPEND_LOG_DRIVER=jetstream
 export CEREBRO_JETSTREAM_URL=nats://127.0.0.1:4222
+export CEREBRO_JETSTREAM_STREAM_NAME=CEREBRO_EVENTS
 export CEREBRO_STATE_STORE_DRIVER=postgres
 export CEREBRO_POSTGRES_DSN='postgres://127.0.0.1:5432/cerebro?sslmode=disable'
 export CEREBRO_GRAPH_STORE_DRIVER=neo4j

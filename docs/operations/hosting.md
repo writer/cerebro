@@ -233,13 +233,14 @@ Cerebro uses these values for proxy-aware URL reconstruction and DPoP `htu` vali
 | --- | --- |
 | `CEREBRO_APPEND_LOG_DRIVER` | Set to `jetstream` when append-log behavior is required. |
 | `CEREBRO_JETSTREAM_URL` | NATS URL. Setting this can infer the driver. Store credentials in the URL only if your secret manager handles it safely. |
+| `CEREBRO_JETSTREAM_STREAM_NAME` | Optional stream name. Set this when the app must publish to and replay from one expected stream. |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | Subject prefix. Use a stable, environment-specific prefix if multiple logical deployments share a NATS cluster. |
 | `CEREBRO_JETSTREAM_DRAIN_TIMEOUT` | Optional graceful drain timeout for shutdown. |
 | `CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT` | Optional per-process bulkhead for concurrent publishes. Use this when many source runtimes can publish at once. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED` | Optional total retry budget for retryable publishes. Keep it above observed stream restore time plus margin. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF`, `CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT` | Optional outer retry shape for NATS restarts, transient timeouts, and stream leader stalls. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS`, `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT` | Optional inner NATS client retry shape used inside each outer publish attempt. |
-| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | Optional flag enabling the per-runtime append-log replay index for faster runtime-scoped replays. Default off; additive and backward compatible. |
+| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | Enables the per-runtime append-log replay index for faster runtime-scoped replays. Set `false` to disable it. |
 
 NATS JetStream should have durable storage, retention appropriate for replay needs, and monitoring for stream health, consumer lag, and disk pressure.
 

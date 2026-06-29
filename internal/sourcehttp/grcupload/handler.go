@@ -157,6 +157,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) appendEvents(ctx context.Context, events []*cerebrov1.EventEnvelope) (int, error) {
+	if batcher, ok := h.options.AppendLog.(ports.AppendLogBatcher); ok {
+		if err := batcher.AppendBatch(ctx, events); err != nil {
+			return 0, err
+		}
+		return len(events), nil
+	}
 	appended := 0
 	for _, event := range events {
 		if err := h.options.AppendLog.Append(ctx, event); err != nil {

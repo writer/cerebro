@@ -137,12 +137,20 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		}
 		events = append(events, event)
 	}
-	for _, event := range events {
-		if err := s.appendLog.Append(ctx, event); err != nil {
+	if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
+		if err := batcher.AppendBatch(ctx, events); err != nil {
 			_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
-			return nil, fmt.Errorf("append deposit source event %q: %w", event.GetId(), err)
+			return nil, fmt.Errorf("append deposit source event batch: %w", err)
 		}
-		response.EventsAppended++
+		response.EventsAppended += boundedUint32(len(events))
+	} else {
+		for _, event := range events {
+			if err := s.appendLog.Append(ctx, event); err != nil {
+				_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
+				return nil, fmt.Errorf("append deposit source event %q: %w", event.GetId(), err)
+			}
+			response.EventsAppended++
+		}
 	}
 	if s.projector != nil {
 		for _, event := range events {
