@@ -1,7 +1,9 @@
 sourceId: pagerduty
 secretKeys:
   - PAGERDUTY_TOKEN
-  # Env-backed service scope required by the integrations runtime.
+  # Comma-separated service IDs used to fan out the integrations runtime.
+  - PAGERDUTY_SERVICE_IDS
+  # Single-service fallback for existing integrations runtime deployments.
   - PAGERDUTY_SERVICE_ID
 runtimes:
   - localId: users
@@ -47,6 +49,7 @@ runtimes:
   - localId: integrations
     config:
       family: integration
+      service_ids: env:PAGERDUTY_SERVICE_IDS
       service_id: env:PAGERDUTY_SERVICE_ID
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "3600"
