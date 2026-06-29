@@ -1035,6 +1035,49 @@ func TestAuditExportRowsIncludesPoliciesWithActivityDatesInWindow(t *testing.T) 
 	}
 }
 
+func TestAuditExportRowsKeepsAcceptanceEvidenceSeparateFromRecordURN(t *testing.T) {
+	now := time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC)
+	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:access", "policy", "Access Policy", map[string]string{
+		"policy_id": "access-policy",
+	})
+	attestation := policyLifecycleTestRow("urn:cerebro:writer:policy_acceptance:policyops:attest-1", "policy.acceptance", "Access attestation", map[string]string{
+		"acceptance_id":        "attest-1",
+		"policy_id":            "access-policy",
+		"policy_version_id":    "v3",
+		"person_id":            "user@example.com",
+		"status":               "accepted",
+		"accepted_at":          "2026-06-15",
+		"attestation_evidence": "attestation-campaign-1",
+	})
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy, attestation}, nil, now)
+	if got := response.Policies[0].Attestations[0].AcknowledgementEvidence; got != "attestation-campaign-1" {
+		t.Fatalf("loaded acknowledgement evidence = %q, want campaign evidence", got)
+	}
+
+	header := AuditExportHeader()
+	rows := AuditExportRows(response, ExportWindow{})
+	column := map[string]int{}
+	for index, name := range header {
+		column[name] = index
+	}
+	var acceptanceRow []string
+	for _, row := range rows {
+		if row[column["record_type"]] == "policy.acceptance" && row[column["record_id"]] == "attest-1" {
+			acceptanceRow = row
+			break
+		}
+	}
+	if acceptanceRow == nil {
+		t.Fatalf("rows = %+v, want policy.acceptance row", rows)
+	}
+	if got := acceptanceRow[column["record_urn"]]; got != "urn:cerebro:writer:policy_acceptance:policyops:attest-1" {
+		t.Fatalf("record_urn = %q, want attestation record URN", got)
+	}
+	if got := acceptanceRow[column["acknowledgement_evidence"]]; got != "attestation-campaign-1" {
+		t.Fatalf("acknowledgement_evidence = %q, want campaign evidence", got)
+	}
+}
+
 func TestAuditExportRowsIncludesEvidenceSnippetsInWindow(t *testing.T) {
 	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)

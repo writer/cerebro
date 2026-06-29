@@ -484,15 +484,16 @@ type grcPolicyApprovalItem struct {
 }
 
 type grcPolicyAcceptanceItem struct {
-	ID         string   `json:"id"`
-	URN        string   `json:"urn"`
-	PolicyID   string   `json:"policy_id,omitempty"`
-	VersionID  string   `json:"policy_version_id,omitempty"`
-	Person     string   `json:"person,omitempty"`
-	Assignees  []string `json:"assignees,omitempty"`
-	Status     string   `json:"status,omitempty"`
-	AcceptedAt string   `json:"accepted_at,omitempty"`
-	DueAt      string   `json:"due_at,omitempty"`
+	ID                      string   `json:"id"`
+	URN                     string   `json:"urn"`
+	PolicyID                string   `json:"policy_id,omitempty"`
+	VersionID               string   `json:"policy_version_id,omitempty"`
+	Person                  string   `json:"person,omitempty"`
+	Assignees               []string `json:"assignees,omitempty"`
+	Status                  string   `json:"status,omitempty"`
+	AcceptedAt              string   `json:"accepted_at,omitempty"`
+	DueAt                   string   `json:"due_at,omitempty"`
+	AcknowledgementEvidence string   `json:"acknowledgement_evidence,omitempty"`
 }
 
 type grcPolicyReviewItem struct {
@@ -1150,15 +1151,16 @@ func grcPolicyApprovalFromNode(node *grcPolicyGraphNode, relations []grcPolicyGr
 
 func grcPolicyAcceptanceFromNode(node *grcPolicyGraphNode, relations []grcPolicyGraphRelation) grcPolicyAcceptanceItem {
 	return grcPolicyAcceptanceItem{
-		ID:         grcPolicyNodeID(node, "acceptance_id", "policy_acceptance_id", "attestation_id"),
-		URN:        node.URN,
-		PolicyID:   grcPolicyAttr(node, "policy_id"),
-		VersionID:  grcPolicyAttr(node, "policy_version_id", "version_id"),
-		Person:     firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationHasEvidence, false), grcPolicyAttr(node, "person_name", "email", "person_id", "user_id")),
-		Assignees:  grcPolicyAssignmentLabelsFor(node.URN, relations),
-		Status:     grcPolicyAttr(node, "status", "acceptance_status"),
-		AcceptedAt: grcPolicyAttr(node, "accepted_at", "completed_at"),
-		DueAt:      grcPolicyAttr(node, "due_at", "acceptance_due_at"),
+		ID:                      grcPolicyNodeID(node, "acceptance_id", "policy_acceptance_id", "attestation_id"),
+		URN:                     node.URN,
+		PolicyID:                grcPolicyAttr(node, "policy_id"),
+		VersionID:               grcPolicyAttr(node, "policy_version_id", "version_id"),
+		Person:                  firstNonEmpty(grcPolicyRelatedLabel(node.URN, relations, fabriccontract.RelationHasEvidence, false), grcPolicyAttr(node, "person_name", "email", "person_id", "user_id")),
+		Assignees:               grcPolicyAssignmentLabelsFor(node.URN, relations),
+		Status:                  grcPolicyAttr(node, "status", "acceptance_status"),
+		AcceptedAt:              grcPolicyAttr(node, "accepted_at", "completed_at"),
+		DueAt:                   grcPolicyAttr(node, "due_at", "acceptance_due_at"),
+		AcknowledgementEvidence: grcPolicyAttr(node, "acknowledgement_evidence", "acknowledgment_evidence", "attestation_evidence", "acceptance_evidence"),
 	}
 }
 

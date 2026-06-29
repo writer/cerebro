@@ -562,7 +562,7 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 			if !exportWindowIncludesAny(window, attestation.AcceptedAt, attestation.DueAt) {
 				continue
 			}
-			rows = append(rows, auditExportRow([]string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, attestation.URN, policy.ExceptionPath, "", ""))
+			rows = append(rows, auditExportRow([]string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, attestation.AcknowledgementEvidence, policy.ExceptionPath, "", ""))
 		}
 		for _, review := range policy.Reviews {
 			if !exportWindowIncludesAny(window, review.ReviewedAt, review.ReviewDueAt) {
