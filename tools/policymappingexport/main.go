@@ -514,7 +514,6 @@ func generateFiles(root string) ([]generatedFile, error) {
 		return strings.Join(tagRows[i], "\x00") < strings.Join(tagRows[j], "\x00")
 	})
 
-	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, qualityIssueRows, findingSummary := findingReviewRows(catalog, controlFamilies, extensions, reviewAreas, controlRelationships, evidenceCapabilities)
 	reviewAreaRows := frameworkReviewAreaRows(reviewAreas, controlFamilies)
 	relationshipRows := controlRelationshipRows(controlRelationships, controlFamilies)
 	findingAreaRows := findingReviewAreaRows(catalog, controlFamilies, reviewAreas)
@@ -525,6 +524,7 @@ func generateFiles(root string) ([]generatedFile, error) {
 	frameworkControlEnrichmentRows := frameworkControlEnrichmentRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, frameworkSourceIndex)
 	frameworkControlGapRows := frameworkControlGapRows(catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities, frameworkSourceIndex)
 	controlRequirementItems := expandedControlEvidenceRequirements(controlCatalog, controlEvidenceRequirements, catalog, controlFamilies, reviewAreas, controlRelationships, evidenceCapabilities)
+	findingRows, findingControlRows, findingTagRows, sourceCoverageRows, findingComplianceRows, qualityIssueRows, findingSummary := findingReviewRows(catalog, controlFamilies, extensions, reviewAreas, controlRelationships, evidenceCapabilities, controlRequirementItems)
 	controlRequirementRows := controlEvidenceRequirementRows(controlRequirementItems, frameworkSourceIndex)
 	findingRequirementRows := findingEvidenceRequirementRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
 	findingTagContractRows := findingComplianceTagContractRows(catalog, controlFamilies, evidenceCapabilities, controlRequirementItems, frameworkSourceIndex)
@@ -1327,6 +1327,15 @@ type expandedControlEvidenceRequirement struct {
 	CoverageStatus       string
 }
 
+type findingOperationalReview struct {
+	SourceFreshnessRequirements []string
+	SourceFreshnessStatus       string
+	RequiredMissingDimensions   []string
+	ManualReviewOwner           string
+	EvidencePacketReadiness     string
+	NextRemediationAction       string
+}
+
 func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyIndex) []controlRef {
 	var refs []controlRef
 	seen := map[string]struct{}{}
@@ -1358,7 +1367,7 @@ func policyControlRefs(rule findingdsl.PolicyFindingRule, index controlFamilyInd
 	return refs
 }
 
-func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, extensions policyRuleExtensions, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilities []evidenceCapabilitySource) ([][]string, [][]string, [][]string, [][]string, [][]string, [][]string, findingExportSummary) {
+func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, extensions policyRuleExtensions, reviewAreas []frameworkReviewArea, relationships []controlRelationship, capabilities []evidenceCapabilitySource, requirements []expandedControlEvidenceRequirement) ([][]string, [][]string, [][]string, [][]string, [][]string, [][]string, findingExportSummary) {
 	var findingRows [][]string
 	var findingControlRows [][]string
 	var findingTagRows [][]string
@@ -1374,6 +1383,7 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		AuditDomains:    map[string]int{},
 	}
 	uniqueReviewTags := map[string]struct{}{}
+	requirementsByControl := expandedRequirementsByControl(requirements)
 
 	for _, detection := range catalog.Detections {
 		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
@@ -1390,6 +1400,7 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
 		evidenceBackingLevel := findingEvidenceBackingLevel(complianceReview, sourceCapabilityStatus, auditDepth)
 		evidenceBackingGaps := findingEvidenceBackingGaps(controlRefs, detection.SourceCoverageRefs, complianceReview, sourceCapabilityStatus, auditDepth)
+		operationalReview := findingOperationalReviewFor(detection, controlRefs, complianceReview, sourceCapabilityStatus, evidenceBackingLevel, requirementsByControl)
 		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
 		qualityIssueRows = append(qualityIssueRows, findingQualityIssueRows(detection, controlRefs, complianceTags, auditDepth, sourceCapabilityStatus)...)
 
@@ -1464,6 +1475,12 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			evidenceBackingLevel,
 			joinList(evidenceBackingGaps),
 			joinList(reviewFlags),
+			joinList(operationalReview.SourceFreshnessRequirements),
+			operationalReview.SourceFreshnessStatus,
+			joinList(operationalReview.RequiredMissingDimensions),
+			operationalReview.ManualReviewOwner,
+			operationalReview.EvidencePacketReadiness,
+			operationalReview.NextRemediationAction,
 			joinList(frameworkReviewAreas),
 			joinList(controlRelationshipHints),
 			joinList(sourceCapabilityRefs),
@@ -1579,6 +1596,12 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 			joinList(evidenceBackingGaps),
 			joinList(reviewFlags),
 			sourceCapabilityStatus,
+			joinList(operationalReview.SourceFreshnessRequirements),
+			operationalReview.SourceFreshnessStatus,
+			joinList(operationalReview.RequiredMissingDimensions),
+			operationalReview.ManualReviewOwner,
+			operationalReview.EvidencePacketReadiness,
+			operationalReview.NextRemediationAction,
 		})
 	}
 
@@ -1624,6 +1647,266 @@ func publicDetectionControlRefs(raw []publicDetectionControlRef, index controlFa
 		return refs[i].Framework < refs[j].Framework
 	})
 	return refs
+}
+
+func findingOperationalReviewFor(detection publicDetection, controlRefs []controlRef, review findingComplianceReview, sourceCapabilityStatus string, evidenceBackingLevel string, requirementsByControl map[string][]expandedControlEvidenceRequirement) findingOperationalReview {
+	requirements := requirementsForControlRefs(controlRefs, requirementsByControl)
+	missingDimensions := findingRequiredMissingDimensions(detection, requirements)
+	freshnessRequirements := requirementFreshnessWindows(requirements)
+	return findingOperationalReview{
+		SourceFreshnessRequirements: freshnessRequirements,
+		SourceFreshnessStatus:       sourceFreshnessStatus(evidenceBackingLevel, freshnessRequirements, sourceCapabilityStatus),
+		RequiredMissingDimensions:   missingDimensions,
+		ManualReviewOwner:           manualReviewOwner(requirements, review.ComplianceEvidenceStatus),
+		EvidencePacketReadiness:     evidencePacketReadiness(evidenceBackingLevel, missingDimensions),
+		NextRemediationAction:       nextRemediationAction(review.ComplianceEvidenceStatus, sourceCapabilityStatus, evidenceBackingLevel, missingDimensions),
+	}
+}
+
+func requirementsForControlRefs(controlRefs []controlRef, requirementsByControl map[string][]expandedControlEvidenceRequirement) []expandedControlEvidenceRequirement {
+	var requirements []expandedControlEvidenceRequirement
+	seen := map[string]struct{}{}
+	for _, ref := range controlRefs {
+		for _, requirement := range requirementsByControl[controlRefKey(ref)] {
+			key := strings.Join([]string{
+				requirement.Ref.Framework,
+				requirement.Ref.ControlID,
+				requirement.ProfileID,
+				requirement.SourceRequirement.SourceID,
+				requirement.SourceRequirement.EntityType,
+			}, "\x00")
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			requirements = append(requirements, requirement)
+		}
+	}
+	sort.Slice(requirements, func(i, j int) bool {
+		left := []string{requirements[i].ProfileID, requirements[i].SourceRequirement.SourceID, requirements[i].SourceRequirement.EntityType, requirements[i].Ref.Label()}
+		right := []string{requirements[j].ProfileID, requirements[j].SourceRequirement.SourceID, requirements[j].SourceRequirement.EntityType, requirements[j].Ref.Label()}
+		return strings.Join(left, "\x00") < strings.Join(right, "\x00")
+	})
+	return requirements
+}
+
+func findingRequiredMissingDimensions(detection publicDetection, requirements []expandedControlEvidenceRequirement) []string {
+	observedSources := map[string]struct{}{}
+	if sourceID := strings.TrimSpace(detection.SourceID); sourceID != "" {
+		observedSources[strings.ToLower(sourceID)] = struct{}{}
+	}
+	for _, ref := range detection.SourceCoverageRefs {
+		if sourceID := strings.TrimSpace(ref.SourceID); sourceID != "" {
+			observedSources[strings.ToLower(sourceID)] = struct{}{}
+		}
+	}
+	var missing []string
+	for _, requirement := range requirements {
+		sourceID := strings.TrimSpace(requirement.SourceRequirement.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		if _, ok := observedSources[strings.ToLower(sourceID)]; ok {
+			continue
+		}
+		parts := []string{sourceID}
+		if entityType := strings.TrimSpace(requirement.SourceRequirement.EntityType); entityType != "" {
+			parts = append(parts, entityType)
+		}
+		if fields := uniqueSorted(requirement.SourceRequirement.RequiredFields); len(fields) != 0 {
+			parts = append(parts, "fields="+joinList(fields))
+		}
+		missing = append(missing, strings.Join(parts, " "))
+	}
+	return uniqueSorted(missing)
+}
+
+func requirementFreshnessWindows(requirements []expandedControlEvidenceRequirement) []string {
+	var values []string
+	for _, requirement := range requirements {
+		sourceID := strings.TrimSpace(requirement.SourceRequirement.SourceID)
+		freshness := strings.TrimSpace(requirement.SourceRequirement.FreshnessWindow)
+		if freshness == "" {
+			continue
+		}
+		if sourceID == "" {
+			values = append(values, freshness)
+			continue
+		}
+		values = append(values, sourceID+"="+freshness)
+	}
+	return uniqueSorted(values)
+}
+
+func sourceFreshnessStatus(evidenceBackingLevel string, freshnessRequirements []string, sourceCapabilityStatus string) string {
+	if len(freshnessRequirements) == 0 {
+		return "freshness_requirement_missing"
+	}
+	switch strings.TrimSpace(evidenceBackingLevel) {
+	case "runtime_source_evidence_ready":
+		return "freshness_requirement_defined"
+	case "partial_runtime_evidence", "source_evidence_review_required":
+		return "freshness_review_required"
+	case "control_reference_only":
+		return "freshness_source_missing"
+	}
+	if strings.TrimSpace(sourceCapabilityStatus) != "source_capability_defined" {
+		return "freshness_capability_review_required"
+	}
+	return "freshness_review_required"
+}
+
+func sourceFreshnessStatusForClaimStatus(claimStatus string, freshnessRequirements []string, sourceCapabilityStatus string) string {
+	if len(freshnessRequirements) == 0 {
+		return "freshness_requirement_missing"
+	}
+	switch strings.TrimSpace(claimStatus) {
+	case "source_evidence_claim":
+		return "freshness_requirement_defined"
+	case "partial_source_evidence_claim", "requirement_source_available":
+		return "freshness_review_required"
+	case "control_ref_review_claim", "requirement_missing":
+		return "freshness_source_missing"
+	}
+	if strings.TrimSpace(sourceCapabilityStatus) != "source_capability_defined" {
+		return "freshness_capability_review_required"
+	}
+	return "freshness_review_required"
+}
+
+func manualReviewOwner(requirements []expandedControlEvidenceRequirement, complianceEvidenceStatus string) string {
+	if strings.TrimSpace(complianceEvidenceStatus) == "source_backed" {
+		return "control_owner"
+	}
+	for _, profileID := range orderedRequirementProfileIDs(requirements) {
+		if owner := manualReviewOwnerForProfile(profileID); owner != "" {
+			return owner
+		}
+	}
+	return "compliance_operations"
+}
+
+func manualReviewOwnerForProfile(profileID string) string {
+	switch strings.TrimSpace(profileID) {
+	case "identity-access":
+		return "identity_owner"
+	case "privacy-rights":
+		return "privacy_owner"
+	case "ai-governance":
+		return "ai_governance_owner"
+	case "payment-card-security":
+		return "payment_owner"
+	case "vulnerability-remediation":
+		return "vulnerability_owner"
+	case "network-exposure":
+		return "network_owner"
+	case "data-protection":
+		return "data_owner"
+	case "email-authentication":
+		return "email_security_owner"
+	case "logging-monitoring":
+		return "security_operations_owner"
+	case "availability-resilience":
+		return "resilience_owner"
+	case "change-configuration":
+		return "change_owner"
+	case "governance-risk":
+		return "risk_owner"
+	case "baseline-control-review":
+		return "control_owner"
+	default:
+		return ""
+	}
+}
+
+func evidencePacketReadiness(evidenceBackingLevel string, missingDimensions []string) string {
+	if len(missingDimensions) != 0 {
+		return "missing_required_source_dimensions"
+	}
+	switch strings.TrimSpace(evidenceBackingLevel) {
+	case "runtime_source_evidence_ready":
+		return "ready_for_packet"
+	case "partial_runtime_evidence":
+		return "needs_source_review"
+	case "source_capability_review_required", "source_evidence_review_required", "audit_language_review_required":
+		return "needs_mapping_review"
+	case "control_reference_only":
+		return "manual_packet_required"
+	case "control_mapping_required", "mapping_required":
+		return "mapping_required"
+	default:
+		return "review_required"
+	}
+}
+
+func evidencePacketReadinessForClaimStatus(claimStatus string, missingDimensions []string) string {
+	if len(missingDimensions) != 0 {
+		return "missing_required_source_dimensions"
+	}
+	switch strings.TrimSpace(claimStatus) {
+	case "source_evidence_claim":
+		return "ready_for_packet"
+	case "partial_source_evidence_claim", "requirement_source_available":
+		return "needs_source_review"
+	case "control_ref_review_claim":
+		return "manual_packet_required"
+	case "requirement_missing":
+		return "mapping_required"
+	default:
+		return "review_required"
+	}
+}
+
+func nextRemediationAction(complianceEvidenceStatus string, sourceCapabilityStatus string, evidenceBackingLevel string, missingDimensions []string) string {
+	if len(missingDimensions) != 0 {
+		return "Connect the required source dimension or document a manual evidence owner."
+	}
+	switch strings.TrimSpace(complianceEvidenceStatus) {
+	case "missing_controls":
+		return "Map the finding to an in-scope control before using it for coverage."
+	case "source_only":
+		return "Add the matching control reference or mark the source signal out of scope."
+	case "control_only":
+		return "Add source coverage or prepare a manual evidence packet for the mapped control."
+	case "partial_source_backed":
+		return "Close the unbacked control refs or split them into separate review items."
+	}
+	switch strings.TrimSpace(sourceCapabilityStatus) {
+	case "missing_yaml_source_capability", "partial_yaml_source_capability", "source_coverage_unkeyed":
+		return "Update YAML source capability coverage for the observed source dimension."
+	}
+	switch strings.TrimSpace(evidenceBackingLevel) {
+	case "runtime_source_evidence_ready":
+		return "Package runtime evidence and keep freshness within the stated window."
+	case "source_evidence_review_required":
+		return "Review source evidence against the control requirement before packet export."
+	default:
+		return "Review the mapping, source evidence, and owner before claiming coverage."
+	}
+}
+
+func nextRemediationActionForClaimStatus(claimStatus string, sourceCapabilityStatus string, missingDimensions []string) string {
+	if len(missingDimensions) != 0 {
+		return "Connect the required source dimension or document a manual evidence owner."
+	}
+	switch strings.TrimSpace(claimStatus) {
+	case "source_evidence_claim":
+		return "Package runtime evidence and keep freshness within the stated window."
+	case "partial_source_evidence_claim":
+		return "Review the partial source evidence and close any unbacked control refs."
+	case "requirement_source_available":
+		return "Attach the available source capability to this finding-control requirement."
+	case "control_ref_review_claim":
+		return "Prepare a manual evidence packet or add source coverage for this control ref."
+	case "requirement_missing":
+		return "Add a control evidence requirement before claiming coverage."
+	}
+	switch strings.TrimSpace(sourceCapabilityStatus) {
+	case "missing_yaml_source_capability", "partial_yaml_source_capability", "source_coverage_unkeyed":
+		return "Update YAML source capability coverage for the observed source dimension."
+	default:
+		return "Review the requirement, source evidence, and owner before claiming coverage."
+	}
 }
 
 func resolveFindingAuditDepth(detection publicDetection, extensions policyRuleExtensions) resolvedFindingAuditDepth {
@@ -3234,6 +3517,11 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 		for _, ref := range controlRefs {
 			for _, item := range byControl[controlRefKey(ref)] {
 				requirementMatchStatus := findingRequirementMatchStatus(detection, item)
+				claimStatus := findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus)
+				missingDimensions := findingRequiredMissingDimensions(detection, []expandedControlEvidenceRequirement{item})
+				freshnessRequirements := requirementFreshnessWindows([]expandedControlEvidenceRequirement{item})
+				freshnessStatus := sourceFreshnessStatusForClaimStatus(claimStatus, freshnessRequirements, sourceCapabilityStatus)
+				packetReadiness := evidencePacketReadinessForClaimStatus(claimStatus, missingDimensions)
 				row := []string{
 					detection.ID,
 					detection.Name,
@@ -3248,7 +3536,11 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					item.ProfileName,
 					item.SourceRequirement.SourceID,
 					item.SourceRequirement.EntityType,
+					joinList(item.SourceRequirement.RequiredFields),
 					item.SourceRequirement.FreshnessWindow,
+					freshnessStatus,
+					joinList(missingDimensions),
+					manualReviewOwner([]expandedControlEvidenceRequirement{item}, complianceReview.ComplianceEvidenceStatus),
 					item.ClaimRuleID,
 					item.SourceRequirement.ClaimStrength,
 					item.SourceRequirement.SufficiencyRule,
@@ -3256,8 +3548,10 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					sourceCapabilityStatus,
 					complianceReview.ComplianceEvidenceStatus,
 					requirementMatchStatus,
-					findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus),
+					claimStatus,
 					findingRequirementEvidenceBasis(requirementMatchStatus, complianceReview.ComplianceEvidenceStatus, sourceCapabilityStatus),
+					packetReadiness,
+					nextRemediationActionForClaimStatus(claimStatus, sourceCapabilityStatus, missingDimensions),
 					item.SourceRequirement.OverclaimGuard,
 					item.SourceRequirement.AdjacentControlRationale,
 				}
@@ -3282,6 +3576,10 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 			requirements := byControl[controlRefKey(ref)]
 			claimStatus := bestFindingRequirementClaimStatus(detection, requirements, complianceReview, sourceCapabilityStatus)
 			sourceCoverageLabels := complianceReview.SourceCoverageRefsByControlKey[controlRefKey(ref)]
+			missingDimensions := findingRequiredMissingDimensions(detection, requirements)
+			freshnessRequirements := requirementFreshnessWindows(requirements)
+			freshnessStatus := sourceFreshnessStatusForClaimStatus(claimStatus, freshnessRequirements, sourceCapabilityStatus)
+			packetReadiness := evidencePacketReadinessForClaimStatus(claimStatus, missingDimensions)
 			for _, tag := range complianceReviewTags([]controlRef{ref}) {
 				tagSource := "control_ref"
 				if _, ok := catalogTagSet[tag]; ok {
@@ -3308,6 +3606,12 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 					complianceReview.ComplianceEvidenceStatus,
 					joinList(requirementProfileIDs(requirements)),
 					joinList(requirementSourceIDs(requirements)),
+					joinList(freshnessRequirements),
+					freshnessStatus,
+					joinList(missingDimensions),
+					manualReviewOwner(requirements, complianceReview.ComplianceEvidenceStatus),
+					packetReadiness,
+					nextRemediationActionForClaimStatus(claimStatus, sourceCapabilityStatus, missingDimensions),
 					joinList(requirementOverclaimGuards(requirements)),
 					joinList(requirementAdjacentControlRationales(requirements)),
 				}
@@ -4083,8 +4387,11 @@ func findingMapHeader() []string {
 		"coverage_control_domains", "source_matched_control_refs", "source_backed_control_refs",
 		"control_refs_without_source_match", "source_coverage_support_levels",
 		"source_coverage_high_value_count", "compliance_evidence_status",
-		"evidence_backing_level", "evidence_backing_gaps", "review_flags", "framework_review_areas",
-		"control_relationship_hints", "source_capability_refs", "source_capability_status",
+		"evidence_backing_level", "evidence_backing_gaps", "review_flags",
+		"source_freshness_requirements", "source_freshness_status", "required_missing_dimensions",
+		"manual_review_owner", "evidence_packet_readiness", "next_remediation_action",
+		"framework_review_areas", "control_relationship_hints", "source_capability_refs",
+		"source_capability_status",
 	}
 }
 
@@ -4120,6 +4427,9 @@ func findingComplianceReviewMapHeader() []string {
 		"source_coverage_support_levels", "source_coverage_high_value_count",
 		"compliance_evidence_status", "evidence_backing_level",
 		"evidence_backing_gaps", "review_flags", "source_capability_status",
+		"source_freshness_requirements", "source_freshness_status",
+		"required_missing_dimensions", "manual_review_owner",
+		"evidence_packet_readiness", "next_remediation_action",
 	}
 }
 
@@ -4234,10 +4544,13 @@ func findingEvidenceRequirementMapHeader() []string {
 		"finding_id", "name", "pack_id", "source_id", "evaluation_mode",
 		"framework", "control_id", "control_ref", "control_family",
 		"requirement_profile", "requirement_name", "requirement_source_id",
-		"entity_type", "freshness_window", "claim_rule_id", "claim_strength",
+		"entity_type", "required_fields", "freshness_window",
+		"source_freshness_status", "required_missing_dimensions",
+		"manual_review_owner", "claim_rule_id", "claim_strength",
 		"sufficiency_rule", "coverage_claim", "source_capability_status",
 		"compliance_evidence_status", "requirement_match_status", "claim_status",
-		"runtime_evidence_basis", "overclaim_guard", "adjacent_control_rationale",
+		"runtime_evidence_basis", "evidence_packet_readiness",
+		"next_remediation_action", "overclaim_guard", "adjacent_control_rationale",
 		"framework_version", "framework_lifecycle", "framework_authority",
 		"framework_source_type", "framework_source_status", "framework_source_url",
 		"framework_evidence_model",
@@ -4251,7 +4564,10 @@ func findingComplianceTagContractHeader() []string {
 		"control_ref", "control_family", "claim_rule_ids", "claim_strengths",
 		"claim_status", "tag_basis", "source_coverage_refs",
 		"source_capability_status", "compliance_evidence_status",
-		"requirement_profiles", "requirement_sources", "overclaim_guards",
+		"requirement_profiles", "requirement_sources",
+		"source_freshness_requirements", "source_freshness_status",
+		"required_missing_dimensions", "manual_review_owner",
+		"evidence_packet_readiness", "next_remediation_action", "overclaim_guards",
 		"adjacent_control_rationales", "framework_version",
 		"framework_lifecycle", "framework_authority", "framework_source_type",
 		"framework_source_status", "framework_source_url",
