@@ -250,20 +250,35 @@ func fastPathTopRiskFilters(question string) map[string]string {
 }
 
 func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
+	trimmed := strings.TrimSpace(haystack)
 	if strings.Contains(haystack, "qauto") || strings.Contains(haystack, "questionnaire") || strings.Contains(haystack, "security questionnaire") {
 		return true
 	}
-	if strings.Contains(haystack, "control coverage") ||
+	if strings.Contains(haystack, "evidence packet") {
+		return true
+	}
+	if (strings.Contains(haystack, "control coverage") ||
 		strings.Contains(haystack, "coverage gap") ||
 		strings.Contains(haystack, "evidence gap") ||
-		strings.Contains(haystack, "evidence packet") ||
-		strings.Contains(haystack, "mapped control") {
+		strings.Contains(haystack, "mapped control")) &&
+		(strings.Contains(haystack, "answer") ||
+			strings.Contains(haystack, "audit") ||
+			strings.Contains(haystack, "compliance") ||
+			strings.Contains(haystack, "question") ||
+			strings.Contains(haystack, "show")) {
 		return true
 	}
 	if strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document") {
 		return true
 	}
-	if strings.Contains(haystack, "okta") && (strings.Contains(haystack, "mfa") || strings.Contains(haystack, "access") || strings.Contains(haystack, "lifecycle")) {
+	if strings.Contains(haystack, "okta") &&
+		(strings.Contains(haystack, "mfa") || strings.Contains(haystack, "access") || strings.Contains(haystack, "lifecycle")) &&
+		(strings.Contains(haystack, "answer") ||
+			strings.Contains(haystack, "evidence") ||
+			strings.Contains(haystack, "question") ||
+			strings.Contains(haystack, "questionnaire") ||
+			strings.HasPrefix(trimmed, "does ") ||
+			strings.HasPrefix(trimmed, "can ")) {
 		return true
 	}
 	return false
@@ -517,24 +532,24 @@ WHERE control_policy_type = 'control'
         WHEN control.urn = $scope_urn THEN true
         ELSE false
       END
-OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportRel:RELATION {relation: 'supports'}]->(control:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportRel:RELATION {relation: 'supports'}]->(control)
 WHERE CASE
         WHEN $scope_urn = '' THEN true
         WHEN support.urn = $scope_urn THEN true
         WHEN control.urn = $scope_urn THEN true
         ELSE false
       END
-OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
 WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel
-OPTIONAL MATCH (control:Entity {tenant_id: $tenant_id})-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
 WHERE supportEvidence IS NULL
 WITH DISTINCT control, control_ref, support, supportRel,
      coalesce(supportEvidence, controlEvidence) AS evidence,
      coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel
-OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+OPTIONAL MATCH (support)-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
 WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel
-OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control)
 WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
 WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel
 WITH control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,

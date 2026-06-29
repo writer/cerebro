@@ -346,6 +346,8 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"relation: 'has_evidence'",
 		"qauto_match_text CONTAINS 'okta'",
 		"qauto_match_text CONTAINS 'mfa'",
+		"OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})",
+		"OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})",
 		"WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel",
 		"WHERE supportEvidence IS NULL",
 		"coalesce(supportEvidence, controlEvidence) AS evidence",
@@ -366,6 +368,10 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"support.status",
 		"evidence.status",
 		"source.last_sync_at",
+		"OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportEvidenceRel",
+		"OPTIONAL MATCH (control:Entity {tenant_id: $tenant_id})-[controlEvidenceRel",
+		"OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel",
+		"OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control:Entity",
 	} {
 		if strings.Contains(result.Cypher, forbidden) {
 			t.Fatalf("questionnaire template references non-projected top-level field %q:\n%s", forbidden, result.Cypher)
@@ -397,6 +403,8 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 	for _, question := range []string{
 		"Show source evidence for access control findings",
 		"What evidence supports this control gap?",
+		"Do we have control evidence for access management?",
+		"List controls with evidence attached",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
