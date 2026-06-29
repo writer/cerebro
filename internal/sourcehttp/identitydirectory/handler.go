@@ -446,7 +446,7 @@ func organizationResponses(orgs []*ports.IdentityOrganization) []organizationRes
 			Slug:         strings.TrimSpace(org.Slug),
 			Domain:       strings.TrimSpace(org.Domain),
 			Provider:     strings.TrimSpace(org.Provider),
-			Source:       firstNonEmpty(org.Source, "identity_directory"),
+			Source:       identityDirectorySource(org.Source),
 			ExternalID:   strings.TrimSpace(org.ExternalID),
 			UserCount:    org.UserCount,
 			LastSyncedAt: timeString(org.LastSyncedAt),
@@ -469,7 +469,7 @@ func userResponses(users []*ports.IdentityUser) []userResponse {
 			DisplayName:  strings.TrimSpace(user.DisplayName),
 			Status:       firstNonEmpty(user.Status, "active"),
 			Provider:     strings.TrimSpace(user.Provider),
-			Source:       firstNonEmpty(user.Source, "identity_directory"),
+			Source:       identityDirectorySource(user.Source),
 			Roles:        normalized(user.Roles),
 			Groups:       normalized(user.Groups),
 			LastSeenAt:   timeString(user.LastSeenAt),
@@ -491,10 +491,10 @@ func organizationVisible(org *ports.IdentityOrganization, tenantID string, orgID
 	if orgID != "" && org.OrgID != orgID {
 		return false
 	}
-	if !matchesExact(provider, org.Provider) || !matchesExact(source, org.Source) {
+	if !matchesExact(provider, org.Provider) || !matchesExact(source, identityDirectorySource(org.Source)) {
 		return false
 	}
-	return matchesQuery(query, org.OrgID, org.Name, org.Domain, org.Provider, org.Source)
+	return matchesQuery(query, org.OrgID, org.Name, org.Domain, org.Provider, identityDirectorySource(org.Source))
 }
 
 func userVisible(user *ports.IdentityUser, tenantID string, orgID string, provider string, source string, status string, query string) bool {
@@ -507,10 +507,10 @@ func userVisible(user *ports.IdentityUser, tenantID string, orgID string, provid
 	if orgID != "" && user.OrgID != orgID {
 		return false
 	}
-	if !matchesExact(provider, user.Provider) || !matchesExact(source, user.Source) || !matchesExact(status, firstNonEmpty(user.Status, "active")) {
+	if !matchesExact(provider, user.Provider) || !matchesExact(source, identityDirectorySource(user.Source)) || !matchesExact(status, firstNonEmpty(user.Status, "active")) {
 		return false
 	}
-	return matchesQuery(query, user.UserID, user.Email, user.DisplayName, user.Subject, user.Provider, user.Source)
+	return matchesQuery(query, user.UserID, user.Email, user.DisplayName, user.Subject, user.Provider, identityDirectorySource(user.Source))
 }
 
 func matchesExact(filter string, value string) bool {
@@ -688,6 +688,10 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func identityDirectorySource(source string) string {
+	return firstNonEmpty(source, "identity_directory")
 }
 
 func contains(values []string, want string) bool {

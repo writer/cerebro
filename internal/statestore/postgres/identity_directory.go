@@ -53,6 +53,7 @@ var ensureIdentityDirectoryStatements = []string{
 
 const identityOrganizationColumns = `tenant_id, org_id, name, slug, domain, provider, source, external_id, GREATEST(user_count, (SELECT COUNT(*)::INTEGER FROM identity_users WHERE identity_users.tenant_id = identity_organizations.tenant_id AND identity_users.org_id = identity_organizations.org_id)) AS user_count, last_synced_at, created_at, updated_at`
 const identityUserColumns = `tenant_id, user_id, org_id, subject, email, display_name, status, provider, source, roles_json::text, groups_json::text, last_seen_at, last_synced_at, created_at, updated_at`
+const identityDirectorySourceSQL = "COALESCE(NULLIF(source, ''), 'identity_directory')"
 
 func (s *Store) ensureIdentityDirectoryTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.identity.directory, "identity directory", ensureIdentityDirectoryStatements)
@@ -177,10 +178,10 @@ func (s *Store) ListIdentityOrganizations(ctx context.Context, filter ports.Iden
 	addIdentityStringClause(&clauses, &args, "tenant_id", filter.TenantID)
 	addIdentityStringClause(&clauses, &args, "org_id", filter.OrgID)
 	addIdentityNormalizedClause(&clauses, &args, "provider", filter.Provider)
-	addIdentityNormalizedClause(&clauses, &args, "source", filter.Source)
+	addIdentitySourceClause(&clauses, &args, filter.Source)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
-		clauses = append(clauses, fmt.Sprintf("(LOWER(org_id) LIKE $%d OR LOWER(name) LIKE $%d OR LOWER(domain) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d OR LOWER(external_id) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
+		clauses = append(clauses, fmt.Sprintf("(LOWER(org_id) LIKE $%d OR LOWER(name) LIKE $%d OR LOWER(domain) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(%s) LIKE $%d OR LOWER(external_id) LIKE $%d)", len(args), len(args), len(args), len(args), identityDirectorySourceSQL, len(args), len(args)))
 	}
 	args = append(args, identityDirectoryLimit(filter.Limit))
 	// #nosec G201 -- clauses and selected columns are fixed identifiers; values remain query parameters.
@@ -214,11 +215,11 @@ func (s *Store) ListIdentityUsers(ctx context.Context, filter ports.IdentityUser
 	addIdentityStringClause(&clauses, &args, "org_id", filter.OrgID)
 	addIdentityStringClause(&clauses, &args, "user_id", filter.UserID)
 	addIdentityNormalizedClause(&clauses, &args, "provider", filter.Provider)
-	addIdentityNormalizedClause(&clauses, &args, "source", filter.Source)
+	addIdentitySourceClause(&clauses, &args, filter.Source)
 	addIdentityNormalizedClause(&clauses, &args, "status", filter.Status)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
-		clauses = append(clauses, fmt.Sprintf("(LOWER(user_id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(display_name) LIKE $%d OR LOWER(subject) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
+		clauses = append(clauses, fmt.Sprintf("(LOWER(user_id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(display_name) LIKE $%d OR LOWER(subject) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(%s) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), identityDirectorySourceSQL, len(args)))
 	}
 	args = append(args, identityDirectoryLimit(filter.Limit))
 	// #nosec G201 -- clauses and selected columns are fixed identifiers; values remain query parameters.
@@ -316,6 +317,13 @@ func addIdentityNormalizedClause(clauses *[]string, args *[]any, column string, 
 		*args = append(*args, trimmed)
 		// #nosec G201 -- column is supplied by package-local callers with fixed identifiers.
 		*clauses = append(*clauses, fmt.Sprintf("LOWER(%s) = $%d", column, len(*args)))
+	}
+}
+
+func addIdentitySourceClause(clauses *[]string, args *[]any, value string) {
+	if trimmed := strings.ToLower(strings.TrimSpace(value)); trimmed != "" {
+		*args = append(*args, trimmed)
+		*clauses = append(*clauses, fmt.Sprintf("LOWER(%s) = $%d", identityDirectorySourceSQL, len(*args)))
 	}
 }
 

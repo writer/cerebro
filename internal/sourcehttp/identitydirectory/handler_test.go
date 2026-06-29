@@ -43,10 +43,10 @@ func (s *stubDirectoryStore) ListIdentityOrganizations(_ context.Context, filter
 		if filter.OrgID != "" && org.OrgID != filter.OrgID {
 			continue
 		}
-		if !matchesExact(filter.Provider, org.Provider) || !matchesExact(filter.Source, org.Source) {
+		if !matchesExact(filter.Provider, org.Provider) || !matchesExact(filter.Source, identityDirectorySource(org.Source)) {
 			continue
 		}
-		if !matchesQuery(filter.Query, org.OrgID, org.Name, org.Domain) {
+		if !matchesQuery(filter.Query, org.OrgID, org.Name, org.Domain, identityDirectorySource(org.Source)) {
 			continue
 		}
 		copied := *org
@@ -64,10 +64,10 @@ func (s *stubDirectoryStore) ListIdentityUsers(_ context.Context, filter ports.I
 		if filter.OrgID != "" && user.OrgID != filter.OrgID {
 			continue
 		}
-		if !matchesExact(filter.Provider, user.Provider) || !matchesExact(filter.Source, user.Source) || !matchesExact(filter.Status, firstNonEmpty(user.Status, "active")) {
+		if !matchesExact(filter.Provider, user.Provider) || !matchesExact(filter.Source, identityDirectorySource(user.Source)) || !matchesExact(filter.Status, firstNonEmpty(user.Status, "active")) {
 			continue
 		}
-		if !matchesQuery(filter.Query, user.UserID, user.Email, user.DisplayName) {
+		if !matchesQuery(filter.Query, user.UserID, user.Email, user.DisplayName, identityDirectorySource(user.Source)) {
 			continue
 		}
 		copied := *user
@@ -239,6 +239,32 @@ func TestListOrganizationsFiltersProviderAndSource(t *testing.T) {
 	}
 }
 
+func TestListOrganizationsFiltersDefaultIdentityDirectorySource(t *testing.T) {
+	store := &stubDirectoryStore{
+		orgs: []*ports.IdentityOrganization{{
+			TenantID: "tenant-a",
+			OrgID:    "manual",
+			Name:     "Manual",
+			Provider: "oidc",
+		}},
+	}
+	handler := testHandler(store)
+	recorder := httptest.NewRecorder()
+
+	handler.ListOrganizations(recorder, httptest.NewRequest(http.MethodGet, "/identity/orgs?provider=oidc&source=identity_directory", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response listOrganizationsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Organizations) != 1 || response.Organizations[0].OrgID != "manual" || response.Organizations[0].Source != "identity_directory" {
+		t.Fatalf("organizations = %+v, want persisted org with default identity directory source", response.Organizations)
+	}
+}
+
 func TestListUsersFiltersStatusProviderAndSource(t *testing.T) {
 	store := &stubDirectoryStore{
 		users: []*ports.IdentityUser{
@@ -277,6 +303,33 @@ func TestListUsersFiltersStatusProviderAndSource(t *testing.T) {
 	}
 	if len(response.Users) != 1 || response.Users[0].UserID != "00u123" || response.Users[0].Status != "suspended" {
 		t.Fatalf("users = %+v, want suspended Okta OAuth user", response.Users)
+	}
+}
+
+func TestListUsersFiltersDefaultIdentityDirectorySource(t *testing.T) {
+	store := &stubDirectoryStore{
+		users: []*ports.IdentityUser{{
+			TenantID:    "tenant-a",
+			OrgID:       "tenant-a",
+			UserID:      "manual-user",
+			DisplayName: "Manual User",
+			Provider:    "oidc",
+		}},
+	}
+	handler := testHandler(store)
+	recorder := httptest.NewRecorder()
+
+	handler.ListUsers(recorder, httptest.NewRequest(http.MethodGet, "/identity/users?provider=oidc&source=identity_directory&status=active", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response listUsersResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Users) != 1 || response.Users[0].UserID != "manual-user" || response.Users[0].Source != "identity_directory" {
+		t.Fatalf("users = %+v, want persisted user with default identity directory source", response.Users)
 	}
 }
 
