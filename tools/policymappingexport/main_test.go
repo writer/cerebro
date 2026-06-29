@@ -6,8 +6,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+var repoGeneratedFilesCache struct {
+	once  sync.Once
+	files []generatedFile
+	err   error
+}
+
+func repoGeneratedFiles(t *testing.T) []generatedFile {
+	t.Helper()
+	repoGeneratedFilesCache.once.Do(func() {
+		repoGeneratedFilesCache.files, repoGeneratedFilesCache.err = generateFiles(repoRoot(t))
+	})
+	if repoGeneratedFilesCache.err != nil {
+		t.Fatalf("generateFiles() error = %v", repoGeneratedFilesCache.err)
+	}
+	return repoGeneratedFilesCache.files
+}
 
 func TestGenerateFilesIncludesAllPublicDetections(t *testing.T) {
 	root := repoRoot(t)
@@ -177,10 +195,7 @@ func TestControlRefSetsNormalizeGDPRArticleAliases(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	tagRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_tag_map.csv"))
 	tagHeader := tagRows[0]
@@ -231,10 +246,7 @@ func TestGenerateFilesIncludesFindingTagAndSourceCoverageMaps(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesFindingComplianceTagContract(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_tag_contract.csv"))
 	header := rows[0]
@@ -281,10 +293,7 @@ func TestGenerateFilesIncludesFindingComplianceTagContract(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	reviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_compliance_review_map.csv"))
 	reviewHeader := reviewRows[0]
@@ -356,10 +365,7 @@ func TestGenerateFilesIncludesComplianceReviewMap(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesOperationalRequirementActions(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_evidence_requirement_map.csv"))
 	header := rows[0]
@@ -392,10 +398,7 @@ func TestGenerateFilesIncludesOperationalRequirementActions(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesCoverageGapExplanations(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "coverage_gap_explanations.csv"))
 	header := rows[0]
@@ -437,10 +440,7 @@ func TestGenerateFilesIncludesCoverageGapExplanations(t *testing.T) {
 }
 
 func TestGeneratedPolicyMappingCSVsStayBelowGitHubBlobLimit(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	const maxCSVBlobBytes = 95 * 1024 * 1024
 	for _, file := range files {
@@ -454,10 +454,7 @@ func TestGeneratedPolicyMappingCSVsStayBelowGitHubBlobLimit(t *testing.T) {
 }
 
 func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
 	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4320")
@@ -468,10 +465,7 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	aliasRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_domain_aliases.csv"))
 	header := aliasRows[0]
@@ -490,10 +484,7 @@ func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesYAMLReviewContextMaps(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	relationshipRows := readGeneratedCSV(t, generatedFileByName(t, files, "control_relationships.csv"))
 	relationshipHeader := relationshipRows[0]
@@ -645,10 +636,7 @@ func TestFrameworkControlEnrichmentStatusSeparatesPartialSourceBacking(t *testin
 }
 
 func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	qualityRows := readGeneratedCSV(t, generatedFileByName(t, files, "compliance_quality_issues.csv"))
 	if len(qualityRows) != 1 {
@@ -698,10 +686,7 @@ func TestGenerateFilesIncludesComplianceQualityGates(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesFrameworkSourceRegistry(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	sourceRows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_sources.csv"))
 	sourceHeader := sourceRows[0]
@@ -827,10 +812,7 @@ func TestValidateControlEvidenceRequirementsRequiresClaimFields(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesControlEvidenceRequirements(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	requirementRows := readGeneratedCSV(t, generatedFileByName(t, files, "control_evidence_requirements.csv"))
 	requirementHeader := requirementRows[0]
@@ -1007,10 +989,7 @@ func TestControlEvidenceKeywordMatchingUsesWholeTerms(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "framework_coverage_candidates.csv"))
 	header := rows[0]
@@ -1036,10 +1015,7 @@ func TestGenerateFilesIncludesFrameworkCoverageCandidates(t *testing.T) {
 }
 
 func TestGenerateFilesIncludesWorkbookManifest(t *testing.T) {
-	files, err := generateFiles(repoRoot(t))
-	if err != nil {
-		t.Fatalf("generateFiles() error = %v", err)
-	}
+	files := repoGeneratedFiles(t)
 
 	rows := readGeneratedCSV(t, generatedFileByName(t, files, "workbook_manifest.csv"))
 	header := rows[0]
