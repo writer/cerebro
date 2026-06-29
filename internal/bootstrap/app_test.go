@@ -3978,6 +3978,132 @@ func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
 	}
 }
 
+func TestGraphEffectiveAccessPathsEndpoint(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{
+			"identity_urn":            "urn:cerebro:writer:identity:email:alice@example.com",
+			"identity_entity_type":    "identity.email",
+			"identity_label":          "alice@example.com",
+			"principal_urn":           "urn:cerebro:writer:okta_user:00u1",
+			"principal_entity_type":   "okta.user",
+			"principal_label":         "alice@example.com",
+			"mediator_urn":            "urn:cerebro:writer:okta_group:grp-security",
+			"mediator_entity_type":    "okta.group",
+			"mediator_label":          "Security Engineering",
+			"target_urn":              "urn:cerebro:writer:okta_application:app-aws-admin",
+			"target_entity_type":      "okta.application",
+			"target_label":            "AWS Admin Console",
+			"entitlement_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
+			"entitlement_entity_type": "okta.entitlement",
+			"entitlement_label":       "AdministratorAccess",
+			"capability_urn":          "urn:cerebro:writer:privileged_capability:cloud_admin",
+			"capability_entity_type":  "privileged.capability",
+			"capability_label":        "Cloud administrator",
+			"assignment_kind":         "group_app_assignment",
+			"relation_chain":          []any{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
+			"edges": []any{
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_user:00u1",
+					"from_entity_type": "okta.user",
+					"from_label":       "alice@example.com",
+					"relation":         "member_of",
+					"to_urn":           "urn:cerebro:writer:okta_group:grp-security",
+					"to_entity_type":   "okta.group",
+					"to_label":         "Security Engineering",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-member","at":"2026-06-10T17:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_group:grp-security",
+					"from_entity_type": "okta.group",
+					"from_label":       "Security Engineering",
+					"relation":         "assigned_to",
+					"to_urn":           "urn:cerebro:writer:okta_application:app-aws-admin",
+					"to_entity_type":   "okta.application",
+					"to_label":         "AWS Admin Console",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-assign","at":"2026-06-10T18:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_application:app-aws-admin",
+					"from_entity_type": "okta.application",
+					"from_label":       "AWS Admin Console",
+					"relation":         "grants_entitlement",
+					"to_urn":           "urn:cerebro:writer:okta_entitlement:administratoraccess",
+					"to_entity_type":   "okta.entitlement",
+					"to_label":         "AdministratorAccess",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-entitlement","at":"2026-06-10T18:00:00Z"}`,
+				},
+				map[string]any{
+					"from_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
+					"from_entity_type": "okta.entitlement",
+					"from_label":       "AdministratorAccess",
+					"relation":         "confers_capability",
+					"to_urn":           "urn:cerebro:writer:privileged_capability:cloud_admin",
+					"to_entity_type":   "privileged.capability",
+					"to_label":         "Cloud administrator",
+					"source_id":        "okta",
+					"runtime_id":       "writer-okta",
+					"attributes_json":  `{"event_id":"evt-capability","at":"2026-06-10T18:00:00Z"}`,
+				},
+			},
+		}}},
+	}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/effective-access-paths?tenant_id=writer&identity_query=alice&application_urn=urn%3Acerebro%3Awriter%3Aokta_application%3Aapp-aws-admin&capability=cloud_admin&limit=5")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/effective-access-paths error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/effective-access-paths status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		TenantID string `json:"tenant_id"`
+		Counts   struct {
+			Paths             int `json:"paths"`
+			GroupMediatedPath int `json:"group_mediated_paths"`
+		} `json:"counts"`
+		Paths []struct {
+			Mediator struct {
+				URN string `json:"urn"`
+			} `json:"mediator"`
+			Capability struct {
+				URN string `json:"urn"`
+			} `json:"capability"`
+			Edges []struct {
+				Relation  string `json:"relation"`
+				SourceID  string `json:"source_id"`
+				RuntimeID string `json:"runtime_id"`
+				EventID   string `json:"event_id"`
+				At        string `json:"at"`
+			} `json:"edges"`
+		} `json:"paths"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TenantID != "writer" || body.Counts.Paths != 1 || body.Counts.GroupMediatedPath != 1 || len(body.Paths) != 1 {
+		t.Fatalf("body = %#v", body)
+	}
+	if body.Paths[0].Mediator.URN != "urn:cerebro:writer:okta_group:grp-security" || body.Paths[0].Capability.URN != "urn:cerebro:writer:privileged_capability:cloud_admin" {
+		t.Fatalf("path = %#v", body.Paths[0])
+	}
+	if len(body.Paths[0].Edges) != 4 || body.Paths[0].Edges[1].SourceID != "okta" || body.Paths[0].Edges[1].RuntimeID != "writer-okta" || body.Paths[0].Edges[1].EventID != "evt-assign" || body.Paths[0].Edges[1].At != "2026-06-10T18:00:00Z" {
+		t.Fatalf("edges = %#v", body.Paths[0].Edges)
+	}
+	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["capability_id"] != "cloud_admin" {
+		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	}
+}
+
 func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
 		{{Values: map[string]any{

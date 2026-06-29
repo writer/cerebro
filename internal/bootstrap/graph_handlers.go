@@ -328,6 +328,24 @@ func (a *App) handleGetPersonAccessPaths(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (a *App) handleGetEffectiveAccessPaths(w http.ResponseWriter, r *http.Request) {
+	request, err := graphquery.EffectiveAccessPathRequestFromQuery(r.URL.Query())
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), request.TenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	result, err := a.graphQueryService().GetEffectiveAccessPaths(r.Context(), request)
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (a *App) handleGetCrownJewelRankings(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
