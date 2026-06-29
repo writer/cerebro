@@ -258,7 +258,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `elastic_security` | Elastic Security source | elastic_security.assets, elastic_security.audit_events, elastic_security.findings |
 | `elevenlabs` | Elevenlabs source | elevenlabs.auth_connections, elevenlabs.model_catalog, elevenlabs.service_account_api_keys, elevenlabs.service_accounts, elevenlabs.voices, elevenlabs.webhooks |
 | `elmah` | Elmah source | elmah.deployment, elmah.log, elmah.message, elmah.uptimecheck |
-| `email_domain_health` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
+| `emaildomainhealth` | Email domain authentication posture source (SPF, DKIM, DMARC, MX, MTA-STS) | health |
 | `endor_labs` | Endor Labs source | endor_labs.assets, endor_labs.audit_events, endor_labs.findings, endor_labs.policies, endor_labs.vulnerabilities |
 | `env0` | Env0 source | env0.audit_events, env0.deployments, env0.projects, env0.repositories, env0.users |
 | `envkey` | Envkey source | envkey.applications, envkey.audit_events, envkey.groups, envkey.roles, envkey.users |
@@ -267,7 +267,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `ethena` | Ethena source | ethena.course_assignments, ethena.training_statuses, ethena.users |
 | `everlaw` | Everlaw source | everlaw.accounts, everlaw.audit_events, everlaw.policies, everlaw.records, everlaw.users |
 | `evernote_teams` | Evernote Teams source | evernote_teams.audit_events, evernote_teams.documents, evernote_teams.groups, evernote_teams.users, evernote_teams.workspaces |
-| `evidence_cas` | EvidenceCAS content-addressed evidence reference source | object manifests |
+| `evidencecas` | EvidenceCAS content-addressed evidence reference source | object manifests |
 | `evisort` | Evisort source | evisort.accounts, evisort.audit_events, evisort.policies, evisort.records, evisort.users |
 | `exavault` | Exavault source | exavault.email_list, exavault.notification, exavault.session, exavault.ssh_key |
 | `expel` | Expel source | expel.assets, expel.audit_events, expel.findings, expel.policies, expel.vulnerabilities |
@@ -324,7 +324,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `google_play_console` | Google Play Console source | google_play_console.audit_events, google_play_console.deployments, google_play_console.projects, google_play_console.repositories, google_play_console.users |
 | `google_secops_chronicle` | Google Secops Chronicle source | google_secops_chronicle.assets, google_secops_chronicle.audit_events, google_secops_chronicle.findings |
 | `google_vertex_ai` | Google Vertex Ai source | google_vertex_ai.batch_prediction_jobs, google_vertex_ai.custom_jobs, google_vertex_ai.endpoints, google_vertex_ai.indexes, google_vertex_ai.models, google_vertex_ai.reasoning_engines |
-| `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
+| `googleworkspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
 | `gorgias` | Gorgias source | gorgias.audit_events, gorgias.documents, gorgias.groups, gorgias.users, gorgias.workspaces |
 | `grafana_cloud` | Grafana Cloud source | grafana_cloud.assets, grafana_cloud.audit_events, grafana_cloud.findings |
 | `grain` | Grain source | grain.audit_events, grain.documents, grain.groups, grain.users, grain.workspaces |
@@ -648,7 +648,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `sendgrid` | Sendgrid source | sendgrid.activity, sendgrid.api_key, sendgrid.group, sendgrid.invalid_email |
 | `sendoso` | Sendoso source | sendoso.accounts, sendoso.audit_events, sendoso.policies, sendoso.records, sendoso.users |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
-| `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
+| `securitytoolingmap` | Security tooling inventory source | configured tooling-map families |
 | `sentra` | Sentra source | sentra.assets, sentra.audit_events, sentra.findings, sentra.policies, sentra.vulnerabilities |
 | `sentry` | Sentry source | sentry.assets, sentry.findings, sentry.vulnerabilities |
 | `servicenow` | Servicenow source | servicenow.audit_events, servicenow.tickets, servicenow.users |
@@ -754,7 +754,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `trufflehog_enterprise` | Trufflehog Enterprise source | trufflehog_enterprise.assets, trufflehog_enterprise.audit_events, trufflehog_enterprise.findings, trufflehog_enterprise.policies, trufflehog_enterprise.vulnerabilities |
 | `truora` | Truora source | truora.check, truora.config, truora.hook, truora.report |
 | `trustarc` | Trustarc source | trustarc.assets, trustarc.audit_events, trustarc.findings, trustarc.policies, trustarc.vulnerabilities |
-| `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
+| `trustedendpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
 | `trustpilot` | Trustpilot source | trustpilot.accounts, trustpilot.audit_events, trustpilot.policies, trustpilot.records, trustpilot.users |
 | `tugboat_logic` | Tugboat Logic source | tugboat_logic.assets, tugboat_logic.audit_events, tugboat_logic.findings, tugboat_logic.policies, tugboat_logic.vulnerabilities |
 | `twilio` | Twilio source | twilio.accounts, twilio.audit_events, twilio.keys |
