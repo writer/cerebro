@@ -348,14 +348,14 @@ func inferIntent(question string, cypher string) string {
 	switch {
 	case (strings.Contains(haystack, "high risk") || strings.Contains(haystack, "top risk") || strings.Contains(haystack, "critical")) && strings.Contains(haystack, "finding"):
 		return IntentTopRiskFindings
+	case strings.Contains(haystack, "connector") || strings.Contains(haystack, "runtime health") || strings.Contains(haystack, "source health"):
+		return IntentConnectorHealth
 	case (strings.Contains(haystack, "control") || strings.Contains(haystack, "controls")) && (containsWord(haystack, "failing") || containsWord(haystack, "failed") || containsWord(haystack, "fail") || containsWord(haystack, "failure") || containsWord(haystack, "failures") || strings.Contains(haystack, "not passing")):
 		return IntentFailingControls
 	case strings.Contains(haystack, "source") && strings.Contains(haystack, "finding") && (strings.Contains(haystack, "count") || strings.Contains(haystack, "breakdown") || strings.Contains(haystack, "group") || strings.Contains(haystack, "top")):
 		return IntentAggregateFindingsBySource
 	case strings.Contains(haystack, "has_source") || strings.Contains(haystack, "belongs_to_source") || strings.Contains(haystack, "source_family"):
 		return IntentAggregateFindingsBySource
-	case strings.Contains(haystack, "connector") || strings.Contains(haystack, "runtime health") || strings.Contains(haystack, "source health"):
-		return IntentConnectorHealth
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):

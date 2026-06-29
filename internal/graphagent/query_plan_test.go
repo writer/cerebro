@@ -153,6 +153,12 @@ func TestInferIntentDetectsFailingControls(t *testing.T) {
 	}
 }
 
+func TestInferIntentPrefersConnectorHealthWhenControlFailureIsContext(t *testing.T) {
+	if got := inferIntent("show source health control failures", ""); got != IntentConnectorHealth {
+		t.Fatalf("inferIntent(source health control failures) = %q, want %q", got, IntentConnectorHealth)
+	}
+}
+
 func TestConvertDraftToQueryUsesDeterministicFindingSourceTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
