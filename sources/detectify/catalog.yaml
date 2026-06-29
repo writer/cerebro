@@ -17,13 +17,13 @@ coverage_contract:
   authority_domain: detectify
   dimensions:
     - id: findings
-      type: entity_family
+      type: remediation_state
       title: "Findings"
       families: [findings]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: assets
@@ -37,13 +37,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: scan_profiles
-      type: entity_family
+      type: lifecycle_state
       title: "Scan Profiles"
       families: [scan_profiles]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

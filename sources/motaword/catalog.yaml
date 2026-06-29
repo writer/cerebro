@@ -49,8 +49,8 @@ coverage_contract:
       families: [comment]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: user
@@ -109,8 +109,8 @@ coverage_contract:
       families: [blog]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: activity
@@ -119,8 +119,8 @@ coverage_contract:
       families: [activity]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: projects_activity
@@ -129,8 +129,8 @@ coverage_contract:
       families: [projects_activity]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: activities_comment
@@ -139,8 +139,8 @@ coverage_contract:
       families: [activities_comment]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: corporate_user

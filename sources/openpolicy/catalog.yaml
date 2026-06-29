@@ -20,13 +20,13 @@ coverage_contract:
   authority_domain: openpolicy
   dimensions:
     - id: policy
-      type: entity_family
+      type: lifecycle_state
       title: "Policy"
       families: [policy]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: query
@@ -40,13 +40,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: v1_policy
-      type: entity_family
+      type: lifecycle_state
       title: "V1 Policy"
       families: [v1_policy]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: data

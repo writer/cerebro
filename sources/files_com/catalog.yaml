@@ -49,8 +49,8 @@ coverage_contract:
       families: [external_event]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: api_key
@@ -84,13 +84,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: action_notification_export_result
-      type: entity_family
+      type: alert_state
       title: "Action Notification Export Result"
       families: [action_notification_export_result]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: permission
@@ -109,8 +109,8 @@ coverage_contract:
       families: [login]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: site_api_key

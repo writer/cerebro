@@ -49,8 +49,8 @@ coverage_contract:
       families: [clickstream]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: group
@@ -79,8 +79,8 @@ coverage_contract:
       families: [hit]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: ipblacklist
@@ -89,8 +89,8 @@ coverage_contract:
       families: [ipblacklist]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: conversions_hit
@@ -99,8 +99,8 @@ coverage_contract:
       families: [conversions_hit]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: datapoints_hit
@@ -109,8 +109,8 @@ coverage_contract:
       families: [datapoints_hit]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: groups_hit
@@ -119,8 +119,8 @@ coverage_contract:
       families: [groups_hit]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: tags_group

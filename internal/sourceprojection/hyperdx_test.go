@@ -6,14 +6,14 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestHyperdxAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "hyperdx", Kind: "hyperdx.monitors", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := hyperdxMonitorsProjections(event)
+func TestHyperdxAlertProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "hyperdx", Kind: "hyperdx.alerts", Attributes: map[string]string{"alert_id": "alert-1", "alert_name": "High Error Rate", "alert_severity": "critical", "alert_status": "open", "evidence_id": "evidence-1"}}
+	entities, links, err := hyperdxAlertsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
+		t.Fatal("expected projected alert")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
@@ -32,16 +32,33 @@ func TestHyperdxFindingProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected finding links")
 	}
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatal("expected projected runtime evidence entity")
+	}
 }
 
-func TestHyperdxAlertProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "hyperdx", Kind: "hyperdx.alerts", Attributes: map[string]string{"alert_id": "alert-1", "alert_name": "High Error Rate", "alert_severity": "critical", "alert_status": "open", "evidence_id": "evidence-1"}}
-	entities, links, err := hyperdxAlertsProjections(event)
+func TestHyperdxAssetProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "hyperdx", Kind: "hyperdx.monitors", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := hyperdxMonitorsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected alert")
+		t.Fatal("expected projected entities")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestHyperdxDashboardsProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "hyperdx", Kind: "hyperdx.dashboards", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := hyperdxDashboardsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected entities")
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")

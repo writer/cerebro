@@ -50,13 +50,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: fine_tuned_models
-      type: entity_family
+      type: deployment_state
       title: "Fine Tuned Models"
       families: [fine_tuned_models]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

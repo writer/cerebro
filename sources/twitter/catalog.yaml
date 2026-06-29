@@ -40,13 +40,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: job
-      type: entity_family
+      type: lifecycle_state
       title: "Job"
       families: [job]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: dm_event
@@ -55,8 +55,8 @@ coverage_contract:
       families: [dm_event]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

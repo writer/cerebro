@@ -32,6 +32,9 @@ func TestSentraFindingProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected finding links")
 	}
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatal("expected projected runtime evidence entity")
+	}
 }
 
 func TestSentraPolicyProjection(t *testing.T) {

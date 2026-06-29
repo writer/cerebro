@@ -6,17 +6,14 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestElmahAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elmah", Kind: "elmah.uptimecheck", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := elmahUptimecheckProjections(event)
+func TestElmahAuditProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elmah", Kind: "elmah.log", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
+	entities, links, err := elmahLogProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
 	}
 }
 
@@ -34,9 +31,23 @@ func TestElmahDeploymentProjection(t *testing.T) {
 	}
 }
 
-func TestElmahAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elmah", Kind: "elmah.log", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := elmahLogProjections(event)
+func TestElmahAssetProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elmah", Kind: "elmah.uptimecheck", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := elmahUptimecheckProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected entities")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestElmahMessageProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elmah", Kind: "elmah.message", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
+	entities, links, err := elmahMessageProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}

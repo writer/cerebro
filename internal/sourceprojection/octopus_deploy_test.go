@@ -6,9 +6,34 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
+func TestOctopusDeployIdentityUserProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "octopus_deploy", Kind: "octopus_deploy.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
+	entities, _, err := octopusDeployUsersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected identity user")
+	}
+}
+
 func TestOctopusDeployAssetProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "octopus_deploy", Kind: "octopus_deploy.projects", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
 	entities, links, err := octopusDeployProjectsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected entities")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected evidence links")
+	}
+}
+
+func TestOctopusDeployRepositoriesProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "octopus_deploy", Kind: "octopus_deploy.repositories", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
+	entities, links, err := octopusDeployRepositoriesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -31,17 +56,6 @@ func TestOctopusDeployDeploymentProjection(t *testing.T) {
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestOctopusDeployIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "octopus_deploy", Kind: "octopus_deploy.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := octopusDeployUsersProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected identity user")
 	}
 }
 

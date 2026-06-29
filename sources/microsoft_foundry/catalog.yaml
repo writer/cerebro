@@ -23,13 +23,13 @@ coverage_contract:
   authority_domain: microsoft_foundry
   dimensions:
     - id: agents
-      type: entity_family
+      type: deployment_state
       title: "Agents"
       families: [agents]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: datasets
@@ -58,8 +58,8 @@ coverage_contract:
       families: [evaluations]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: connections

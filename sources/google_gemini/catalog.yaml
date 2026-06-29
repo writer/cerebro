@@ -33,13 +33,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: tuned_models
-      type: entity_family
+      type: deployment_state
       title: "Tuned Models"
       families: [tuned_models]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: files
@@ -63,13 +63,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: batch_jobs
-      type: entity_family
+      type: deployment_state
       title: "Batch Jobs"
       families: [batch_jobs]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

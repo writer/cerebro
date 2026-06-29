@@ -20,20 +20,6 @@ func TestDatabricksAssetProjection(t *testing.T) {
 	}
 }
 
-func TestDatabricksFindingProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "databricks", Kind: "databricks.vulnerabilities", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
-	entities, links, err := databricksVulnerabilitiesProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected finding")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected finding links")
-	}
-}
-
 func TestDatabricksDeploymentProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "databricks", Kind: "databricks.model_serving_endpoints", Attributes: map[string]string{"deployment_id": "dep-1", "deployment_name": "Production", "deployment_environment": "production", "deployment_status": "ready", "evidence_id": "evidence-1"}}
 	entities, links, err := databricksModelServingEndpointsProjections(event)
@@ -56,5 +42,22 @@ func TestDatabricksAuditProjection(t *testing.T) {
 	}
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	}
+}
+
+func TestDatabricksFindingProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "databricks", Kind: "databricks.vulnerabilities", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
+	entities, links, err := databricksVulnerabilitiesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected finding")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected finding links")
+	}
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatal("expected projected runtime evidence entity")
 	}
 }

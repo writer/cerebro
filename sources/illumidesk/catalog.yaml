@@ -64,23 +64,23 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: notification
-      type: entity_family
+      type: alert_state
       title: "Notification"
       families: [notification]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: deployment
-      type: entity_family
+      type: deployment_state
       title: "Deployment"
       families: [deployment]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: application
@@ -104,23 +104,23 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: entity
-      type: entity_family
+      type: alert_state
       title: "Entity"
       families: [entity]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: setting
-      type: entity_family
+      type: alert_state
       title: "Setting"
       families: [setting]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: profile

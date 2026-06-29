@@ -36,33 +36,33 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: endpoints
-      type: entity_family
+      type: deployment_state
       title: "Endpoints"
       families: [endpoints]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: custom_jobs
-      type: entity_family
+      type: deployment_state
       title: "Custom Jobs"
       families: [custom_jobs]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: batch_prediction_jobs
-      type: entity_family
+      type: deployment_state
       title: "Batch Prediction Jobs"
       families: [batch_prediction_jobs]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: indexes
@@ -76,13 +76,13 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: reasoning_engines
-      type: entity_family
+      type: deployment_state
       title: "Reasoning Engines"
       families: [reasoning_engines]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

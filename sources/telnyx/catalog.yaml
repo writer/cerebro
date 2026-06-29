@@ -49,8 +49,8 @@ coverage_contract:
       families: [call_event]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: billing_group
@@ -84,23 +84,23 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: call_control_application
-      type: entity_family
+      type: lifecycle_state
       title: "Call Control Application"
       families: [call_control_application]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: notification_channel
-      type: entity_family
+      type: alert_state
       title: "Notification Channel"
       families: [notification_channel]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: detail_records_report
@@ -119,8 +119,8 @@ coverage_contract:
       families: [notification_event]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: notification_event_condition
@@ -129,8 +129,8 @@ coverage_contract:
       families: [notification_event_condition]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: wireless_connectivity_log
@@ -139,8 +139,8 @@ coverage_contract:
       families: [wireless_connectivity_log]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: sim_card_group

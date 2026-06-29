@@ -49,8 +49,8 @@ coverage_contract:
       families: [aggregate_log]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: user
@@ -64,23 +64,23 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: agent_rule
-      type: entity_family
+      type: lifecycle_state
       title: "Agent Rule"
       families: [agent_rule]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: notification
-      type: entity_family
+      type: alert_state
       title: "Notification"
       families: [notification]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: smart_list
@@ -99,68 +99,68 @@ coverage_contract:
       families: [log]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: agent_rule_complexe
-      type: entity_family
+      type: lifecycle_state
       title: "Agent Rule Complexe"
       families: [agent_rule_complexe]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: agent_rule_straight
-      type: entity_family
+      type: lifecycle_state
       title: "Agent Rule Straight"
       families: [agent_rule_straight]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: export_rule
-      type: entity_family
+      type: lifecycle_state
       title: "Export Rule"
       families: [export_rule]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: rule
-      type: entity_family
+      type: lifecycle_state
       title: "Rule"
       families: [rule]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: rule_change
-      type: entity_family
+      type: lifecycle_state
       title: "Rule Change"
       families: [rule_change]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: rule_set_version
-      type: entity_family
+      type: lifecycle_state
       title: "Rule Set Version"
       families: [rule_set_version]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

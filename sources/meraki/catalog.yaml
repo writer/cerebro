@@ -1,6 +1,6 @@
 id: meraki
 name: "Cisco Meraki"
-description: "The Cisco Meraki Dashboard API is a modern REST API based on the OpenAPI specification."
+description: "Collects eventtype, organization, merakiauthuser, and accesspolicy from Cisco Meraki and projects them into the Cerebro graph as audit events, groups, users, and policies for repository, build, deployment, and release context."
 emitted_kinds:
   - meraki.eventtype
   - meraki.organization
@@ -20,13 +20,13 @@ coverage_contract:
   authority_domain: meraki
   dimensions:
     - id: eventtype
-      type: entity_family
+      type: audit_event
       title: "Eventtype"
       families: [eventtype]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: organization
@@ -50,19 +50,21 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: accesspolicy
-      type: entity_family
+      type: lifecycle_state
       title: "Accesspolicy"
       families: [accesspolicy]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
 event_contracts:
   - kind: meraki.eventtype
     schema_ref: meraki/eventtype/v1

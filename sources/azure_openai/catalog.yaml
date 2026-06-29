@@ -23,13 +23,13 @@ coverage_contract:
   authority_domain: azure_openai
   dimensions:
     - id: deployments
-      type: entity_family
+      type: deployment_state
       title: "Deployments"
       families: [deployments]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: model_catalog
@@ -43,23 +43,23 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: rai_policies
-      type: entity_family
+      type: lifecycle_state
       title: "Rai Policies"
       families: [rai_policies]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: rai_blocklists
-      type: entity_family
+      type: lifecycle_state
       title: "Rai Blocklists"
       families: [rai_blocklists]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: private_endpoint_connections

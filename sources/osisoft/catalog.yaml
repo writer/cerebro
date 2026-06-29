@@ -49,8 +49,8 @@ coverage_contract:
       families: [search]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: securityidentity
@@ -64,33 +64,33 @@ coverage_contract:
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: notificationcontacttemplates_search
-      type: entity_family
+      type: alert_state
       title: "Notificationcontacttemplates Search"
       families: [notificationcontacttemplates_search]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: analysisruleplugin
-      type: entity_family
+      type: lifecycle_state
       title: "Analysisruleplugin"
       families: [analysisruleplugin]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: baseelementtemplate
-      type: entity_family
+      type: remediation_state
       title: "Baseelementtemplate"
       families: [baseelementtemplate]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: assetserver
@@ -109,8 +109,8 @@ coverage_contract:
       families: [elementtemplate]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: eventframe
@@ -119,8 +119,8 @@ coverage_contract:
       families: [eventframe]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: elements_eventframe
@@ -129,8 +129,8 @@ coverage_contract:
       families: [elements_eventframe]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: eventframes_eventframe
@@ -139,8 +139,8 @@ coverage_contract:
       families: [eventframes_eventframe]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: eventframeattribute
@@ -149,8 +149,8 @@ coverage_contract:
       families: [eventframeattribute]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: eventframes_eventframeattribute
@@ -159,8 +159,8 @@ coverage_contract:
       families: [eventframes_eventframeattribute]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
       notes:
         - Generated Source Runtime SDK mapping requires provider field review before certification.
     - id: incremental_sync

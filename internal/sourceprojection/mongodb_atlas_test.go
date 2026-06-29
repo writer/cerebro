@@ -20,6 +20,17 @@ func TestMongodbAtlasAssetProjection(t *testing.T) {
 	}
 }
 
+func TestMongodbAtlasAuditProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "mongodb_atlas", Kind: "mongodb_atlas.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
+	entities, links, err := mongodbAtlasAuditEventsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	}
+}
+
 func TestMongodbAtlasFindingProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "mongodb_atlas", Kind: "mongodb_atlas.vulnerabilities", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
 	entities, links, err := mongodbAtlasVulnerabilitiesProjections(event)
@@ -32,15 +43,7 @@ func TestMongodbAtlasFindingProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected finding links")
 	}
-}
-
-func TestMongodbAtlasAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "mongodb_atlas", Kind: "mongodb_atlas.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := mongodbAtlasAuditEventsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatal("expected projected runtime evidence entity")
 	}
 }
