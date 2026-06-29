@@ -36,6 +36,58 @@ entries:
               support: partial
               title: Users
               type: entity_family
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - active_account
+                - deprovisioned
+                - dormant_user
+                - last_login
+                - never_logged_in
+                - stale_login
+                - suspended
+                - user
+              high_value: true
+              id: user_lifecycle
+              known_unsupported_fields:
+                - authoritative HR termination status
+              support: partial
+              title: User lifecycle and activity state
+              type: lifecycle_state
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - factor
+                - mfa
+                - mfa_factor
+                - no_mfa
+              high_value: true
+              id: mfa_posture
+              support: partial
+              title: MFA posture
+              type: app_entitlement
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - external_user
+                - personal_email
+                - user
+              high_value: true
+              id: external_accounts
+              known_unsupported_fields:
+                - authoritative contractor approval or vendor-of-record state
+              support: partial
+              title: External account signals
+              type: entity_family
           default_enabled: true
           event:
             kind: okta.users
@@ -75,6 +127,19 @@ entries:
               support: partial
               title: Groups
               type: entity_family
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - group
+                - group_membership
+              high_value: true
+              id: group_memberships
+              support: partial
+              title: Group memberships
+              type: relationship
           default_enabled: true
           event:
             kind: okta.groups
@@ -112,6 +177,22 @@ entries:
               support: partial
               title: Roles
               type: entity_family
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - admin_role
+                - privileged_role
+                - role_assignment
+              high_value: true
+              id: admin_membership
+              known_unsupported_fields:
+                - full custom admin permission expansion
+              support: partial
+              title: Admin membership and privileged roles
+              type: relationship
           default_enabled: true
           event:
             kind: okta.roles
@@ -151,6 +232,22 @@ entries:
               support: partial
               title: Applications
               type: entity_family
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - app_assignment
+                - app_access
+                - application
+              high_value: true
+              id: app_access
+              known_unsupported_fields:
+                - app-specific fine-grained entitlement payloads
+              support: partial
+              title: App access and assignments
+              type: app_entitlement
           default_enabled: true
           event:
             kind: okta.applications
@@ -190,6 +287,26 @@ entries:
               id: audit_events
               support: partial
               title: Audit events
+              type: audit_event
+            - control_domains:
+                - identity_access
+                - logging_monitoring
+              evidence_types:
+                - access_review
+                - identity_configuration
+                - logging_configuration
+              families:
+                - audit
+                - factor_reset
+                - mfa
+                - password_reset
+                - session
+                - support_session
+                - user_lifecycle
+              high_value: true
+              id: identity_audit_events
+              support: partial
+              title: Identity lifecycle, MFA, and session events
               type: audit_event
           default_enabled: true
           event:

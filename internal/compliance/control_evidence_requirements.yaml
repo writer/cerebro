@@ -178,11 +178,14 @@ profiles:
           - groups
           - factors
           - admin_roles
+          - app_assignments
+          - external_account_signal
           - last_login_at
           - lifecycle_state
+          - deprovisioned_at
         freshness_window: 24h
         assessment_methods: [examine, test]
-        auditor_grade_evidence: Current identity posture shows active status, authentication factors, groups, privileged roles, and last observed access for the sampled principal.
+        auditor_grade_evidence: Current identity posture shows account status, authentication factors, group memberships, privileged roles, app assignments, external account signals, lifecycle state, and last observed access for the sampled principal. Workforce evidence is required before claiming employment termination or contractor approval.
       - source_id: microsoft_entra_id
         entity_type: directory_identity_posture
         required_fields:
@@ -324,9 +327,11 @@ profiles:
           - target_id
           - outcome
           - occurred_at
+          - session_id
+          - request_id
         freshness_window: 24h
         assessment_methods: [examine, test]
-        auditor_grade_evidence: Identity audit evidence shows actor, target, outcome, timestamp, and source-system retention for sampled identity activity.
+        auditor_grade_evidence: Identity audit evidence shows actor, target, outcome, timestamp, session or request correlation when present, and source-system retention for sampled identity lifecycle, MFA, privilege, app access, and session activity.
   - profile_id: vulnerability-remediation
     name: Vulnerability and Remediation Evidence
     applies_to:
