@@ -348,7 +348,7 @@ func inferIntent(question string, cypher string) string {
 	switch {
 	case (strings.Contains(haystack, "high risk") || strings.Contains(haystack, "top risk") || strings.Contains(haystack, "critical")) && strings.Contains(haystack, "finding"):
 		return IntentTopRiskFindings
-	case (strings.Contains(haystack, "control") || strings.Contains(haystack, "controls")) && (containsWord(haystack, "failing") || containsWord(haystack, "failed") || containsWord(haystack, "fail") || strings.Contains(haystack, "not passing")):
+	case (strings.Contains(haystack, "control") || strings.Contains(haystack, "controls")) && (containsWord(haystack, "failing") || containsWord(haystack, "failed") || containsWord(haystack, "fail") || containsWord(haystack, "failure") || containsWord(haystack, "failures") || strings.Contains(haystack, "not passing")):
 		return IntentFailingControls
 	case strings.Contains(haystack, "source") && strings.Contains(haystack, "finding") && (strings.Contains(haystack, "count") || strings.Contains(haystack, "breakdown") || strings.Contains(haystack, "group") || strings.Contains(haystack, "top")):
 		return IntentAggregateFindingsBySource

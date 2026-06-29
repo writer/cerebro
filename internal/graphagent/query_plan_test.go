@@ -144,6 +144,7 @@ func TestInferIntentDetectsFailingControls(t *testing.T) {
 	for _, question := range []string{
 		"Which controls are failing?",
 		"show failed controls",
+		"show control failures",
 		"controls not passing",
 	} {
 		if got := inferIntent(question, ""); got != IntentFailingControls {
