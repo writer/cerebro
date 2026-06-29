@@ -117,6 +117,8 @@ jobs:
           --graph-health-artifact-name graph-health-sec-dev
           --graph-health-command-retry-seconds 600
           --graph-health-ingest-retry-seconds 600
+          --graph-health-process-timeout-seconds 2400
+          --graph-health-heal-wait-timeout-seconds 1200
           --github-output "$GITHUB_OUTPUT"
 
       - name: Upload graph insight artifact (sec-dev)
@@ -186,6 +188,8 @@ jobs:
           --graph-health-artifact-name graph-health-go-prod
           --graph-health-command-retry-seconds 600
           --graph-health-ingest-retry-seconds 600
+          --graph-health-process-timeout-seconds 2400
+          --graph-health-heal-wait-timeout-seconds 1200
           --github-output "$GITHUB_OUTPUT"
 
       - name: Upload graph insight artifact (go-prod)

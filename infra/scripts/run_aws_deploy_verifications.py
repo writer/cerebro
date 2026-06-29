@@ -37,10 +37,30 @@ class GraphHealthResult:
 DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
 DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS = 600
+DEFAULT_GRAPH_HEALTH_HEAL_WAIT_TIMEOUT_SECONDS = 900
 DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
 DEFAULT_GRAPH_HEALTH_WAIT_TIMEOUT_SECONDS = 900
 DEFAULT_GRAPH_HEALTH_PROCESS_TIMEOUT_SECONDS = 960
 DEFAULT_GRAPH_HEALTH_TYPED_PROPERTY_BACKFILL_BATCH_SIZE = 5000
+GRAPH_HEALTH_TSV_COLUMNS = [
+    "checked_at",
+    "stack",
+    "nodes",
+    "relations",
+    "integrity_passed",
+    "integrity_failed",
+    "graph_relations",
+    "current_ingest_runtimes",
+    "declared_runtimes",
+    "missing_ingest_runtimes",
+    "counts_task",
+    "integrity_task",
+    "paths_task",
+    "ingest_runs_task",
+    "status",
+    "diagnostic_category",
+    "diagnostic_tail",
+]
 
 
 def _stack_name(path: Path) -> str:
@@ -189,6 +209,48 @@ def _stream_graph_health(command: list[str], output_path: Path, timeout_seconds:
         stdout_thread.join()
         stderr_thread.join()
         return GraphHealthResult(status=status, diagnostics="".join(stderr_lines))
+
+
+def _diagnostic_tsv_value(value: str) -> str:
+    return value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", " ")
+
+
+def _write_graph_health_failure_artifact(
+    output_path: Path,
+    *,
+    stack: str,
+    status: int,
+    category: str,
+    diagnostics: str,
+) -> None:
+    if output_path.exists() and output_path.stat().st_size > 0:
+        return
+    missing_runtimes = ",".join(_graph_health_missing_runtime_ids(diagnostics))
+    diagnostic_tail = _diagnostic_tsv_value(diagnostics.strip()[-2500:])
+    row = {
+        "checked_at": datetime.now(UTC).isoformat(),
+        "stack": stack,
+        "nodes": "0",
+        "relations": "0",
+        "integrity_passed": "0",
+        "integrity_failed": "0",
+        "graph_relations": "",
+        "current_ingest_runtimes": "0",
+        "declared_runtimes": "0",
+        "missing_ingest_runtimes": missing_runtimes,
+        "counts_task": "",
+        "integrity_task": "",
+        "paths_task": "",
+        "ingest_runs_task": "",
+        "status": str(status),
+        "diagnostic_category": category,
+        "diagnostic_tail": diagnostic_tail,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=GRAPH_HEALTH_TSV_COLUMNS, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        writer.writerow(row)
 
 
 def _parse_graph_health_checked_at(value: str) -> datetime:
@@ -442,7 +504,7 @@ def _graph_health_heal_command(args: argparse.Namespace, runtime_id: str, source
         "--max-age-minutes",
         "60",
         "--wait-timeout-seconds",
-        "300",
+        str(args.graph_health_heal_wait_timeout_seconds),
         "--poll-seconds",
         "5",
     ]
@@ -772,6 +834,12 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_GRAPH_HEALTH_HEAL_FAILED_RUN_RETRY_SECONDS,
         help="Retry failed graph-health source-runtime heal attempts for this many seconds before degrading graph health.",
     )
+    parser.add_argument(
+        "--graph-health-heal-wait-timeout-seconds",
+        type=_positive_int,
+        default=DEFAULT_GRAPH_HEALTH_HEAL_WAIT_TIMEOUT_SECONDS,
+        help="Bound each graph-health source-runtime heal command while still allowing retry attempts to finish.",
+    )
     parser.add_argument("--graph-health-issue", action="store_true", help="Create a GitHub issue when graph health is degraded.")
     parser.add_argument("--graph-health-artifact-name", default="graph-health", help="Artifact name to include in graph-health follow-up issues.")
     parser.add_argument("--allow-graph-health-cache", action="store_true", help="Reuse a recent passing graph-health TSV for deploy gating when available.")
@@ -856,11 +924,25 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.allow_graph_health_degradation and category:
             _write_github_output(args.github_output, graph_health_degraded="true", graph_health_degradation_category=category)
+            _write_graph_health_failure_artifact(
+                args.graph_health_output,
+                stack=stack,
+                status=graph_status,
+                category=category,
+                diagnostics=graph_diagnostics,
+            )
             _report_graph_health_degradation(stack, graph_status, category)
             if args.graph_health_issue:
                 _create_graph_health_issue(stack, graph_status, category, args.graph_health_artifact_name, diagnostics=graph_diagnostics)
             return 0
         _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="", graph_health_blocked="true")
+        _write_graph_health_failure_artifact(
+            args.graph_health_output,
+            stack=stack,
+            status=graph_status,
+            category=category or "blocking_graph_health_failure",
+            diagnostics=graph_diagnostics,
+        )
         if args.graph_health_issue:
             _create_graph_health_issue(
                 stack,
