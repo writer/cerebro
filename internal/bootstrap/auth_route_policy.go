@@ -120,6 +120,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodGet, Prefix: "/platform/graph/impact/", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Exact: "/platform/graph/attack-paths", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/person-access-paths", Scope: scopeCosmoSecurityRead, Static: true},
+	{Method: http.MethodGet, Exact: "/platform/graph/effective-access-paths", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/aws-public-endpoint-insights", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/crown-jewel-rankings", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/graph/ingest-health", Scope: scopeCosmoSecurityRead, Static: true},

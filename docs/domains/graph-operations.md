@@ -74,6 +74,7 @@ GET /platform/graph/impact/vulnerability/{id}?tenant_id=<tenant-id>
 GET /platform/graph/impact/package?tenant_id=<tenant-id>&package=<name-or-purl>
 GET /platform/graph/impact/asset?urn=<urn>
 GET /platform/graph/person-access-paths?tenant_id=<tenant-id>&person_urn=<urn>
+GET /platform/graph/effective-access-paths?tenant_id=<tenant-id>&identity_urn=<urn>&application_urn=<urn>
 GET /platform/graph/attack-paths?tenant_id=<tenant-id>&limit=10
 GET /platform/graph/crown-jewel-rankings?tenant_id=<tenant-id>
 GET /platform/graph/aws-public-endpoint-insights?tenant_id=<tenant-id>
@@ -90,6 +91,14 @@ curl -fsS \
   -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
   "https://cerebro.example.com/platform/graph/ingest-health"
 ```
+
+## Effective Access Paths
+
+`GET /platform/graph/effective-access-paths` explains why an identity has application, role, entitlement, or capability access. Use `identity_urn` for an exact graph entity or `identity_query`/`q` for a bounded label, URN, or attribute search. Add `application_urn` to inspect one application path, or `capability` to inspect paths that confer a capability such as `cloud_admin`, `identity_admin`, or `app_access`.
+
+Returned paths include direct assignments, group-mediated assignments, and role or admin-role assignments. Each edge includes the projected relation, endpoint entities, `source_id`, `runtime_id`, `event_id`, and `at` when the source event supplied them.
+
+The path query is read-only. It does not create findings. Assignment and entitlement edges are evidence that can explain access reviews, least-privilege work, attack-path analysis, or a separate finding rule. A finding should only open when a rule adds durable risk semantics, such as privileged access to a crown-jewel application without an owner, stale offboarding evidence, or a toxic combination with active exposure. Raw app assignments, group memberships, and admin-role records stay graph facts unless a rule proves an actionable condition.
 
 ## Graph health
 

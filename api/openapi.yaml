@@ -3818,6 +3818,45 @@ paths:
       responses:
         '200':
           description: Person access paths.
+  /platform/graph/effective-access-paths:
+    get:
+      summary: Query effective access paths
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: identity_urn
+          in: query
+          schema:
+            type: string
+        - name: identity_query
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: application_urn
+          in: query
+          schema:
+            type: string
+        - name: capability
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Effective identity, assignment, entitlement, and capability paths.
   /platform/graph/crown-jewel-rankings:
     get:
       summary: Query personalized crown-jewel graph rankings

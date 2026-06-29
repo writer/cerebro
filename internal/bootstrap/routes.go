@@ -49,13 +49,11 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerMCPRoutes(mux)
 	app.registerDeviceRoutes(mux)
 }
-
 func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
 }
-
 func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /health", routeSurfacePublicHTTP, app.handleHealth)
 	registerHTTPRoute(mux, "GET /healthz", routeSurfacePublicHTTP, app.handleLiveness)
@@ -65,7 +63,6 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /.well-known/agent-card.json", routeSurfacePublicHTTP, app.handleA2AAgentCard)
 	registerHTTPRoute(mux, "GET /.well-known/agent.json", routeSurfacePublicHTTP, app.handleA2AAgentCard)
 }
-
 func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/a2a", routeSurfacePlatformHTTP, app.handleA2AJSONRPC)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
@@ -79,7 +76,6 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/claims/verify", routeSurfacePlatformHTTP, app.handleAgentPlatformClaimVerification)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/graph/reason", routeSurfacePlatformHTTP, app.handleAgentPlatformGraphReason)
 }
-
 func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /.well-known/oauth-protected-resource", routeSurfacePublicHTTP, app.handleOAuthProtectedResourceMetadata)
 	registerHTTPRoute(mux, "GET /.well-known/oauth-protected-resource/api/v1/mcp", routeSurfacePublicHTTP, app.handleOAuthProtectedResourceMetadata)
@@ -90,7 +86,6 @@ func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /oauth/revoke", routeSurfacePublicHTTP, app.handleOAuthRevoke)
 	registerHTTPRoute(mux, "POST /oauth/register", routeSurfacePublicHTTP, app.handleOAuthRegister)
 }
-
 func (app *App) registerReportRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /reports", routeSurfacePlatformHTTP, app.handleListReportDefinitions)
 	registerHTTPRoute(mux, "POST /reports/{reportID}/runs", routeSurfacePlatformHTTP, app.handleRunReport)
@@ -101,14 +96,12 @@ func (app *App) registerReportRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "PATCH /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleUpdateReportSchedule)
 	registerHTTPRoute(mux, "DELETE /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleDeleteReportSchedule)
 }
-
 func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /ask-queries", routeSurfacePlatformHTTP, app.handleListAskQueries)
 	registerHTTPRoute(mux, "POST /ask-queries", routeSurfacePlatformHTTP, app.handleCreateAskQuery)
 	registerHTTPRoute(mux, "PATCH /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleUpdateAskQuery)
 	registerHTTPRoute(mux, "DELETE /ask-queries/{queryID}", routeSurfacePlatformHTTP, app.handleDeleteAskQuery)
 }
-
 func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	dashboards := customdashboards.NewHandler(app.deps.StateStore, effectiveTenantFilter, authorizeTenantID, customDashboardActorID)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
@@ -170,7 +163,6 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("audit.packet", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCAuditPacket))
 	registerHTTPRoute(mux, "GET /grc/audit-packets/{packetID}/export", routeSurfacePlatformHTTP, app.handleGRCAuditPacketExport)
 }
-
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /finding-rules", routeSurfacePlatformHTTP, app.handleListFindingRules)
 	registerHTTPRoute(mux, "GET /findings/{findingID}", routeSurfacePlatformHTTP, app.handleGetFinding)
@@ -189,14 +181,12 @@ func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /finding-evidence/{evidenceID}", routeSurfacePlatformHTTP, app.handleGetFindingEvidence)
 	registerHTTPRoute(mux, "GET /platform/endpoints/{deviceKey}/vulnerability-findings", routeSurfacePlatformHTTP, app.handleListEndpointVulnerabilityFindings)
 }
-
 func (app *App) registerSourceRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /sources", routeSurfacePlatformHTTP, app.handleSources)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/check", routeSurfacePlatformHTTP, app.handleCheckSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/discover", routeSurfacePlatformHTTP, app.handleDiscoverSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/read", routeSurfacePlatformHTTP, app.handleReadSource)
 }
-
 func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /connectors", routeSurfacePlatformHTTP, app.handleListConnectors)
 	registerHTTPRoute(mux, "GET /connectors/coverage", routeSurfacePlatformHTTP, app.handleGetConnectorCoverage)
@@ -222,11 +212,9 @@ func (app *App) registerConnectorRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/connections", routeSurfacePlatformHTTP, app.handleCreateConnectorConnection)
 	registerHTTPRoute(mux, "POST /connectors/{sourceID}/deposits", routeSurfacePlatformHTTP, app.handleDepositConnectorRecords)
 }
-
 func (app *App) sourcePlanAPIDeps() sourceplanapi.Dependencies {
 	return sourceplanapi.Dependencies{EffectiveTenant: effectiveTenantFilter, GetDefinition: app.connectorDefinitionForPlan, WriteJSON: writeJSON, WriteError: writeConnectorError, InvalidRequest: connectorcredentials.ErrInvalidRequest}
 }
-
 func (app *App) connectorDefinitionForPlan(ctx context.Context, definitionID string) (connectordefinitions.Definition, error) {
 	store := connectorDefinitionStore(app.deps.StateStore)
 	if store == nil {
@@ -245,7 +233,6 @@ func (app *App) connectorDefinitionForPlan(ctx context.Context, definitionID str
 	}
 	return definition, nil
 }
-
 func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/knowledge/decisions", routeSurfacePlatformHTTP, app.handleWriteDecision)
 	registerHTTPRoute(mux, "POST /platform/knowledge/actions", routeSurfacePlatformHTTP, app.handleWriteAction)
@@ -253,7 +240,6 @@ func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/knowledge/outcomes", routeSurfacePlatformHTTP, app.handleWriteOutcome)
 	registerHTTPRoute(mux, "POST /platform/workflow/replay", routeSurfacePlatformHTTP, app.handleReplayWorkflowEvents)
 }
-
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.handleListRuntimeFreshness)
 	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)
@@ -264,6 +250,7 @@ func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/graph/impact/package", routeSurfacePlatformHTTP, app.handleGetPackageImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/asset", routeSurfacePlatformHTTP, app.handleGetAssetImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/person-access-paths", routeSurfacePlatformHTTP, app.handleGetPersonAccessPaths)
+	registerHTTPRoute(mux, "GET /platform/graph/effective-access-paths", routeSurfacePlatformHTTP, app.handleGetEffectiveAccessPaths)
 	registerHTTPRoute(mux, "GET /platform/graph/attack-paths", routeSurfacePlatformHTTP, app.handleGetAttackPaths)
 	registerHTTPRoute(mux, "GET /platform/graph/crown-jewel-rankings", routeSurfacePlatformHTTP, app.handleGetCrownJewelRankings)
 	registerHTTPRoute(mux, "GET /platform/graph/aws-public-endpoint-insights", routeSurfacePlatformHTTP, app.handleGetAWSPublicEndpointInsights)
@@ -271,7 +258,6 @@ func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/graph/ingest-runs", routeSurfacePlatformHTTP, app.handleListGraphIngestRuns)
 	registerHTTPRoute(mux, "GET /platform/graph/ingest-runs/{runID}", routeSurfacePlatformHTTP, app.handleGetGraphIngestRun)
 }
-
 func (app *App) registerJobRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/jobs", routeSurfacePlatformHTTP, app.handleCreateJob)
 	registerHTTPRoute(mux, "GET /platform/jobs", routeSurfacePlatformHTTP, app.handleListJobs)
@@ -279,14 +265,12 @@ func (app *App) registerJobRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/jobs/{jobID}/events", routeSurfacePlatformHTTP, app.handleListJobEvents)
 	registerHTTPRoute(mux, "POST /platform/jobs/{jobID}/cancel", routeSurfacePlatformHTTP, app.handleCancelJob)
 }
-
 func (app *App) registerRuntimeResponseRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-response/capabilities", routeSurfacePlatformHTTP, app.handleRuntimeResponseCapabilities)
 	registerHTTPRoute(mux, "POST /platform/runtime-response/actions", routeSurfacePlatformHTTP, app.handleExecuteRuntimeResponse)
 	registerHTTPRoute(mux, "GET /platform/runtime-response/blocklist", routeSurfacePlatformHTTP, app.handleListRuntimeBlocklist)
 	registerHTTPRoute(mux, "POST /platform/runtime-response/blocklist/{entryID}/revoke", routeSurfacePlatformHTTP, app.handleRevokeRuntimeBlocklistEntry)
 }
-
 func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /source-runtimes", routeSurfacePlatformHTTP, app.handleListSourceRuntimes)
 	registerHTTPRoute(mux, "GET /source-runtimes/health", routeSurfacePlatformHTTP, app.handleListSourceRuntimeHealth)
@@ -305,12 +289,10 @@ func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/finding-rules/evaluate", routeSurfacePlatformHTTP, app.handleEvaluateSourceRuntimeFindingRules)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/findings/evaluate", routeSurfacePlatformHTTP, app.handleEvaluateSourceRuntimeFindings)
 }
-
 func (app *App) registerMCPRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /api/v1/mcp", routeSurfacePlatformHTTP, app.handleMCPStream)
 	registerHTTPRoute(mux, "POST /api/v1/mcp", routeSurfacePlatformHTTP, app.handleMCP)
 }
-
 func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
 	if app.deviceHandler == nil {
 		return
@@ -322,7 +304,6 @@ func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/telemetry/ingest", routeSurfacePlatformHTTP, app.deviceHandler.handleIngestTelemetry)
 	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP, app.deviceHandler.handleJWKS)
 }
-
 func registerHTTPRoute(mux *http.ServeMux, pattern string, _ bootstrapRouteSurface, handler http.HandlerFunc) {
 	mux.HandleFunc(pattern, handler)
 }

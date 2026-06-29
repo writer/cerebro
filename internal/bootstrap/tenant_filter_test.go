@@ -54,16 +54,20 @@ func TestScopeForHTTPRequestCoversPlatformJobAndRuntimeResponseReads(t *testing.
 }
 
 func TestPersonAccessPathsRouteUsesGraphReadScope(t *testing.T) {
-	const path = "/platform/graph/person-access-paths"
-	request, err := http.NewRequest(http.MethodGet, path, nil)
-	if err != nil {
-		t.Fatalf("NewRequest(%q) error = %v", path, err)
-	}
-	if got := httpRoutePolicyForRequest(request).Scope; got != scopeCosmoSecurityRead {
-		t.Fatalf("scopeForHTTPRequest(%s) = %q, want %q", path, got, scopeCosmoSecurityRead)
-	}
-	if !isKnownStaticAccessPath(path) {
-		t.Fatalf("isKnownStaticAccessPath(%s) = false, want true", path)
+	for _, path := range []string{
+		"/platform/graph/person-access-paths",
+		"/platform/graph/effective-access-paths",
+	} {
+		request, err := http.NewRequest(http.MethodGet, path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%q) error = %v", path, err)
+		}
+		if got := httpRoutePolicyForRequest(request).Scope; got != scopeCosmoSecurityRead {
+			t.Fatalf("scopeForHTTPRequest(%s) = %q, want %q", path, got, scopeCosmoSecurityRead)
+		}
+		if !isKnownStaticAccessPath(path) {
+			t.Fatalf("isKnownStaticAccessPath(%s) = false, want true", path)
+		}
 	}
 }
 
