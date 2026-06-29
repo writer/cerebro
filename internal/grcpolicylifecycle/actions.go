@@ -591,6 +591,9 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 		rows = append(rows, auditExportRow([]string{"document", document.ID, policyID, policyTitles[policyID], document.Version, document.Status, document.Owner, "", "document", "", firstNonEmpty(document.ApprovedAt, document.LastReviewedAt), document.NextReviewDueAt, document.EffectiveAt, "", exportControls(document.Controls), exportEvidence(document.Evidence), document.URN, document.Title, "", ""}, document.PolicyType, document.ApprovingAuthority, document.ReviewCadence, document.LastReviewedAt, document.AcknowledgementEvidence, document.ExceptionPath, document.SourceProvenance, document.SourceURL))
 	}
 	for _, snippet := range response.EvidenceSnippets {
+		if !exportWindowIncludesEvidenceSnippet(window, snippet) {
+			continue
+		}
 		rows = append(rows, auditExportSnippetRow(snippet, policyTitles[snippet.PolicyID]))
 	}
 	for _, mapping := range response.Mappings {
@@ -643,6 +646,29 @@ func exportWindowIncludesGovernanceGap(window ExportWindow, gap grcPolicyGoverna
 		return true
 	}
 	return (window.Start != nil || window.End != nil) && strings.TrimSpace(gap.DueAt) == "" && strings.TrimSpace(gap.StateUpdatedAt) == ""
+}
+
+func exportWindowIncludesEvidenceSnippet(window ExportWindow, snippet grcPolicyEvidenceSnippetItem) bool {
+	if window.Start == nil && window.End == nil {
+		return true
+	}
+	values := []string{
+		snippet.Attributes["created_at"],
+		snippet.Attributes["updated_at"],
+		snippet.Attributes["observed_at"],
+		snippet.Attributes["source_observed_at"],
+		snippet.Attributes["reviewed_at"],
+		snippet.Attributes["uploaded_at"],
+	}
+	if exportWindowIncludesAny(window, values...) {
+		return true
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func exportControls(items []grcPolicyControlRef) string {

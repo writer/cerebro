@@ -1004,16 +1004,38 @@ func TestAuditExportRowsIncludesEvidenceSnippetsInWindow(t *testing.T) {
 			PolicyID:          "access-policy",
 			PolicyCitations:   []string{"Access reviews are performed quarterly."},
 			ManualReviewState: "ready_to_project",
+			Attributes:        map[string]string{"observed_at": "2026-02-15T12:00:00Z"},
+		}, {
+			ID:                "snippet-old",
+			PolicyID:          "access-policy",
+			PolicyCitations:   []string{"Old access review note."},
+			ManualReviewState: "ready_to_project",
+			Attributes:        map[string]string{"observed_at": "2026-01-15T12:00:00Z"},
+		}, {
+			ID:                "snippet-undated",
+			PolicyID:          "access-policy",
+			PolicyCitations:   []string{"Undated citation retained for review."},
+			ManualReviewState: "ready_to_project",
 		}},
 	}
 
 	rows := AuditExportRows(response, ExportWindow{Start: &start, End: &end})
+	foundReady := false
+	foundUndated := false
 	for _, row := range rows {
 		if row[0] == "policy.evidence_snippet" && row[1] == "snippet-ready" {
-			return
+			foundReady = true
+		}
+		if row[0] == "policy.evidence_snippet" && row[1] == "snippet-undated" {
+			foundUndated = true
+		}
+		if row[0] == "policy.evidence_snippet" && row[1] == "snippet-old" {
+			t.Fatalf("rows = %+v, did not expect out-of-window snippet", rows)
 		}
 	}
-	t.Fatalf("rows = %+v, want policy evidence snippet in windowed export", rows)
+	if !foundReady || !foundUndated {
+		t.Fatalf("rows = %+v, want in-window and undated policy evidence snippets", rows)
+	}
 }
 
 func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.T) {

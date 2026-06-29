@@ -415,6 +415,27 @@ func TestNewUploadIDDefaultsSourceID(t *testing.T) {
 	}
 }
 
+func TestPolicyEvidenceSnippetsOnlyUsesCitationLikeStructuredFields(t *testing.T) {
+	snippets := policyEvidenceSnippets(ParsedDocument{
+		StructuredFields: []StructuredField{
+			{Key: "summary", Label: "Summary", Value: "Access policy summary"},
+			{Key: "owner", Label: "Owner", Value: "Owner 1"},
+			{Key: "approved_at", Label: "Approved", Value: "2026-06-01"},
+			{Key: "policy_text", Label: "Policy text", Value: "Access reviews are performed before privileged access is approved."},
+			{Key: "requirement_excerpt", Label: "Requirement excerpt", Value: "Privileged access must be approved before use."},
+		},
+	})
+	if len(snippets) != 2 {
+		t.Fatalf("snippets = %+v, want only citation-like structured fields", snippets)
+	}
+	if snippets[0].sectionID != "policy-text" || snippets[0].text != "Access reviews are performed before privileged access is approved." {
+		t.Fatalf("first snippet = %+v, want policy_text citation", snippets[0])
+	}
+	if snippets[1].sectionID != "requirement-excerpt" || snippets[1].text != "Privileged access must be approved before use." {
+		t.Fatalf("second snippet = %+v, want requirement_excerpt citation", snippets[1])
+	}
+}
+
 func TestBuildEventsRejectsMissingTenant(t *testing.T) {
 	_, _, err := BuildEvents(UploadRequest{
 		Target:   TargetPolicy,
