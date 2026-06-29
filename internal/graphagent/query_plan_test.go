@@ -247,6 +247,8 @@ func TestConvertDraftToQueryRendersOktaGroupAccessRiskTemplate(t *testing.T) {
 	for _, want := range []string{
 		"entity_type: 'okta.group'",
 		"entity_type: 'okta.application'",
+		"relation: 'member_of'",
+		"direct_member_count",
 		"grants_entitlement",
 		"confers_capability",
 		"privileged_group_app_access",

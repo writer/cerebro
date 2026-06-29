@@ -571,11 +571,15 @@ LIMIT %d`, cypherJSONStringAttributes("user.attributes_json", "status"), cypherJ
 WHERE assignment.tenant_id = $tenant_id
 OPTIONAL MATCH (app)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
 WHERE grant.tenant_id = $tenant_id AND confers.tenant_id = $tenant_id
+OPTIONAL MATCH (member:Entity {tenant_id: $tenant_id, entity_type: 'okta.user'})-[membership:RELATION {relation: 'member_of'}]->(group)
+WHERE membership.tenant_id = $tenant_id
 WITH group, assignment, app, entitlement, capability,
+     count(DISTINCT member.urn) AS direct_member_count,
      coalesce(%s, '') AS assignment_event_id,
      coalesce(%s, '') AS assignment_at
 RETURN group.urn AS group_urn,
        coalesce(group.label, group.urn) AS group_label,
+       direct_member_count,
        app.urn AS app_urn,
        coalesce(app.label, app.urn) AS app_label,
        coalesce(entitlement.urn, '') AS entitlement_urn,

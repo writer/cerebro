@@ -138,8 +138,8 @@ entries:
               high_value: true
               id: group_memberships
               notes:
-                - Okta membership coverage is supported through dedicated okta.group_membership events in the source projection; group records alone are not sufficient evidence for every membership claim.
-              support: supported
+                - The declarative groups endpoint does not enumerate memberships; dedicated okta.group_membership events in the hand-written Okta source runtime provide full membership projection support.
+              support: partial
               title: Group memberships
               type: relationship
           default_enabled: true

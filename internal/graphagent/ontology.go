@@ -112,6 +112,13 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:okta_application:app-1"},
 		},
 		{
+			Type:        "okta.role",
+			Description: "Non-admin Okta role resources assigned to users or groups with assigned_to. Privileged administrator roles are represented as okta.admin_role and reached with can_admin.",
+			Aliases:     []string{"okta role", "Okta role", "non-admin role"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:okta_role:role-1"},
+		},
+		{
 			Type:        "okta.admin_role",
 			Description: "Okta admin role assignments and role resources. Users link to these with can_admin for privileged administrator access.",
 			Aliases:     []string{"okta admin role", "Okta admin role", "privileged role"},
