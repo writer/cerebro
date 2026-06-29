@@ -14,6 +14,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
@@ -231,6 +232,45 @@ func TestReadExistingAlertsAPIPaginatesAndMapsNativeFields(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestReadAlertAPIPromotesClosureFields(t *testing.T) {
+	fixed := fixedTime()
+	closedAt := fixed.Add(2 * time.Hour).Format(time.RFC3339Nano)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alert := validNativeAlert("closed-1", fixed)
+		alert["status"] = map[string]interface{}{"status_name": "closed"}
+		alert["close_date"] = closedAt
+		alert["updated_at"] = fixed.Add(time.Hour).Format(time.RFC3339Nano)
+		alert["case_id"] = "case-1"
+		writePage(w, []map[string]interface{}{alert}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert, "runtime_id": "writer-panopticon-alerts"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want one alert event", len(pull.Events))
+	}
+	attrs := pull.Events[0].GetAttributes()
+	if got := attrs["status"]; got != "closed" {
+		t.Fatalf("status = %q, want closed", got)
+	}
+	if got := attrs["closed_at"]; got != closedAt {
+		t.Fatalf("closed_at = %q, want %q", got, closedAt)
+	}
+	if got := attrs["case_id"]; got != "case-1" {
+		t.Fatalf("case_id = %q, want case-1", got)
+	}
+	if got := attrs["runtime_id"]; got != "writer-panopticon-alerts" {
+		t.Fatalf("runtime_id = %q, want writer-panopticon-alerts", got)
+	}
+	if got := attrs[ports.EventAttributeSourceRuntimeID]; got != "writer-panopticon-alerts" {
+		t.Fatalf("source_runtime_id = %q, want writer-panopticon-alerts", got)
 	}
 }
 

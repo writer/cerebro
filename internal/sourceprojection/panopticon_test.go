@@ -305,18 +305,21 @@ func TestProjectPanopticonAlertBuildsEvidenceGraphContext(t *testing.T) {
 		SourceId: "panopticon",
 		Kind:     "panopticon.alert",
 		Attributes: map[string]string{
-			"alert_id": "alert-1",
-			"case_id":  "case-1",
-			"severity": "critical",
-			"status":   "open",
-			"title":    "Suspicious domain observed",
+			"alert_id":                          "alert-1",
+			"case_id":                           "case-1",
+			"severity":                          "critical",
+			"status":                            "closed",
+			"title":                             "Suspicious domain observed",
+			"closed_at":                         "2026-06-22T10:15:00Z",
+			ports.EventAttributeSourceRuntimeID: "writer-panopticon-alerts",
 		},
 		Payload: mustJSON(t, map[string]any{
-			"alert_id": "alert-1",
-			"case_id":  "case-1",
-			"severity": "critical",
-			"status":   "open",
-			"title":    "Suspicious domain observed",
+			"alert_id":  "alert-1",
+			"case_id":   "case-1",
+			"severity":  "critical",
+			"status":    "closed",
+			"title":     "Suspicious domain observed",
+			"closed_at": "2026-06-22T10:15:00Z",
 			"iocs": []map[string]any{{
 				"ioc_id":   "ioc-1",
 				"ioc_type": "domain",
@@ -340,6 +343,13 @@ func TestProjectPanopticonAlertBuildsEvidenceGraphContext(t *testing.T) {
 	iocURN := "urn:cerebro:writer:panopticon_ioc:ioc-1"
 	assetURN := "urn:cerebro:writer:panopticon_asset:asset-1"
 	assertProjectedEntityType(t, state, alertURN, "panopticon.alert")
+	alert := state.entities[alertURN]
+	if got := alert.Attributes["closed_at"]; got != "2026-06-22T10:15:00Z" {
+		t.Fatalf("alert closed_at = %q, want closure timestamp", got)
+	}
+	if got := alert.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-panopticon-alerts" {
+		t.Fatalf("alert source_runtime_id = %q, want writer-panopticon-alerts", got)
+	}
 	assertProjectedEntityType(t, state, caseURN, "panopticon.case")
 	assertProjectedEntityType(t, state, iocURN, "panopticon.ioc")
 	assertProjectedEntityType(t, state, assetURN, "panopticon.asset")

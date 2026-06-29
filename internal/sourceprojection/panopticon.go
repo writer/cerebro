@@ -98,6 +98,48 @@ var panopticonAssetAttributeKeys = []string{
 	"zone",
 }
 
+var panopticonAlertProjectionKeys = []string{
+	"alert_id",
+	"severity",
+	"status",
+	"title",
+	"case_id",
+	"case_title",
+	"case_status",
+	"created_at",
+	"updated_at",
+	"observed_at",
+	"closed_at",
+	"resolved_at",
+	"alert_creation_time",
+	"alert_source_event_time",
+	"alert_closed_time",
+	"alert_resolved_time",
+	"close_date",
+	"resolved_date",
+	"initial_date",
+	"open_date",
+}
+
+var panopticonCaseProjectionKeys = []string{
+	"case_id",
+	"status",
+	"title",
+	"upstream_alert_ids",
+	"alert_ids",
+	"source_alert_ids",
+	"related_alert_ids",
+	"created_at",
+	"updated_at",
+	"observed_at",
+	"closed_at",
+	"resolved_at",
+	"initial_date",
+	"open_date",
+	"close_date",
+	"resolved_date",
+}
+
 type panopticonAssetStitchTarget struct {
 	urn        string
 	sourceID   string
@@ -114,7 +156,7 @@ func panopticonAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := panopticonProjectionAttributes(event, "alert_id", "severity", "status", "title", "case_id")
+	attrs := panopticonProjectionAttributes(event, panopticonAlertProjectionKeys...)
 	payload := payloadMap(event)
 	alertID := firstAttribute(attrs, "alert_id")
 	if alertID == "" {
@@ -154,7 +196,7 @@ func panopticonCaseProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := panopticonProjectionAttributes(event, "case_id", "status", "title", "upstream_alert_ids", "alert_ids", "source_alert_ids", "related_alert_ids")
+	attrs := panopticonProjectionAttributes(event, panopticonCaseProjectionKeys...)
 	payload := payloadMap(event)
 	caseID := firstAttribute(attrs, "case_id")
 	if caseID == "" {
@@ -253,11 +295,18 @@ func panopticonAddAlertEntity(entities map[string]*ports.ProjectedEntity, tenant
 		EntityType: "panopticon.alert",
 		Label:      firstAttribute(attrs, "title", "alert_id", "id"),
 		Attributes: compactAttributes(map[string]string{
-			"alert_id": alertID,
-			"severity": firstAttribute(attrs, "severity"),
-			"status":   firstAttribute(attrs, "status"),
-			"title":    firstAttribute(attrs, "title"),
-			"event_id": eventID,
+			"alert_id":        alertID,
+			"case_id":         firstAttribute(attrs, "case_id"),
+			"severity":        firstAttribute(attrs, "severity"),
+			"status":          firstAttribute(attrs, "status"),
+			"title":           firstAttribute(attrs, "title"),
+			"created_at":      firstAttribute(attrs, "created_at", "alert_creation_time", "initial_date", "open_date"),
+			"updated_at":      firstAttribute(attrs, "updated_at"),
+			"observed_at":     firstAttribute(attrs, "observed_at", "alert_source_event_time"),
+			"closed_at":       firstAttribute(attrs, "closed_at", "alert_closed_time", "close_date"),
+			"resolved_at":     firstAttribute(attrs, "resolved_at", "alert_resolved_time", "resolved_date"),
+			"source_event_id": firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
+			"event_id":        eventID,
 		}),
 	})
 	return alertURN
@@ -276,10 +325,16 @@ func panopticonAddCaseEntity(entities map[string]*ports.ProjectedEntity, tenantI
 		EntityType: "panopticon.case",
 		Label:      firstAttribute(attrs, "title", "case_id", "id"),
 		Attributes: compactAttributes(map[string]string{
-			"case_id":  caseID,
-			"status":   firstAttribute(attrs, "status"),
-			"title":    firstAttribute(attrs, "title"),
-			"event_id": eventID,
+			"case_id":         caseID,
+			"status":          firstAttribute(attrs, "status"),
+			"title":           firstAttribute(attrs, "title"),
+			"created_at":      firstAttribute(attrs, "created_at", "initial_date", "open_date"),
+			"updated_at":      firstAttribute(attrs, "updated_at"),
+			"observed_at":     firstAttribute(attrs, "observed_at"),
+			"closed_at":       firstAttribute(attrs, "closed_at", "close_date"),
+			"resolved_at":     firstAttribute(attrs, "resolved_at", "resolved_date"),
+			"source_event_id": firstNonEmpty(firstAttribute(attrs, "source_event_id"), eventID),
+			"event_id":        eventID,
 		}),
 	})
 	return caseURN
