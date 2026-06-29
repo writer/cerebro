@@ -2,6 +2,39 @@ package compliance
 
 import "testing"
 
+func TestDefaultControlEvidenceRequirementsIncludePolicyDocumentGovernance(t *testing.T) {
+	requirements, err := LoadControlEvidenceRequirementCatalogFile("control_evidence_requirements.yaml")
+	if err != nil {
+		t.Fatalf("LoadControlEvidenceRequirementCatalogFile() error = %v", err)
+	}
+	issues := ValidateControlEvidenceRequirementCatalog(requirements)
+	if len(issues) != 0 {
+		t.Fatalf("ValidateControlEvidenceRequirementCatalog() issues = %#v, want none", issues)
+	}
+	var requirement ControlEvidenceSourceRequirement
+	for _, profile := range requirements.Profiles {
+		if profile.ID != "policy-document-governance" {
+			continue
+		}
+		for _, candidate := range profile.SourceRequirements {
+			if candidate.SourceID == "grc_policy_lifecycle" && candidate.EntityType == "policy_document" {
+				requirement = candidate
+			}
+		}
+	}
+	if requirement.SourceID == "" {
+		t.Fatal("policy-document-governance grc_policy_lifecycle requirement is missing")
+	}
+	for _, field := range []string{"policy_type", "owner", "approving_authority", "version", "effective_at", "review_cadence", "last_reviewed_at", "acknowledgement_evidence", "controls", "exception_path", "source_provenance"} {
+		if !containsStringFold(requirement.RequiredFields, field) {
+			t.Fatalf("policy document required fields = %#v, want %q", requirement.RequiredFields, field)
+		}
+	}
+	if requirement.ClaimStrength != "policy_document_backed" || requirement.SufficiencyRule != "approved_current_acknowledged_exception_path" {
+		t.Fatalf("policy document claim fields = %#v", requirement)
+	}
+}
+
 func TestResolveControlEvidenceRequirementsUsesSpecificProfileAndFallback(t *testing.T) {
 	catalog := loadTestCatalog(t, `
 version: "2026-06-28"

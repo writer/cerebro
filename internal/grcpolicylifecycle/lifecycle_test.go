@@ -182,11 +182,13 @@ func TestMissingReviewStatusDoesNotCreateOverdueWork(t *testing.T) {
 func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	document := grcPolicyDocumentItem{
-		ID:              "risk-register",
-		URN:             "urn:document:risk-register",
-		Title:           "Risk Register",
-		DocumentClass:   "risk_register",
-		NextReviewDueAt: "2026-01-15",
+		ID:    "risk-register",
+		URN:   "urn:document:risk-register",
+		Title: "Risk Register",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass:   "risk_register",
+			NextReviewDueAt: "2026-01-15",
+		},
 	}
 
 	if grcPolicyDocumentDueForReview(document, now) {
@@ -204,12 +206,14 @@ func TestMissingDocumentStatusDoesNotCreateReviewWork(t *testing.T) {
 func TestDraftDocumentDoesNotCreateReviewWork(t *testing.T) {
 	now := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	document := grcPolicyDocumentItem{
-		ID:              "secure-development-draft",
-		URN:             "urn:document:secure-development-draft",
-		Title:           "Secure Development Draft",
-		DocumentClass:   "policy",
-		Status:          "draft",
-		NextReviewDueAt: "2026-01-15",
+		ID:    "secure-development-draft",
+		URN:   "urn:document:secure-development-draft",
+		Title: "Secure Development Draft",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass:   "policy",
+			Status:          "draft",
+			NextReviewDueAt: "2026-01-15",
+		},
 	}
 
 	if grcPolicyDocumentDueForReview(document, now) {
@@ -286,25 +290,31 @@ func TestRiskWorkQueueIncludesLinkedPolicy(t *testing.T) {
 
 func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 	document := grcPolicyDocumentItem{
-		ID:            "secure-development",
-		URN:           "urn:document:secure-development",
-		Title:         "Secure Development Policy",
-		DocumentClass: "policy",
-		Status:        "approved",
+		ID:    "secure-development",
+		URN:   "urn:document:secure-development",
+		Title: "Secure Development Policy",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass: "policy",
+			Status:        "approved",
+		},
 	}
 	draftDocument := grcPolicyDocumentItem{
-		ID:            "draft-policy",
-		URN:           "urn:document:draft-policy",
-		Title:         "Draft Policy",
-		DocumentClass: "policy",
-		Status:        "draft",
+		ID:    "draft-policy",
+		URN:   "urn:document:draft-policy",
+		Title: "Draft Policy",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass: "policy",
+			Status:        "draft",
+		},
 	}
 	missingStatusDocument := grcPolicyDocumentItem{
-		ID:              "statusless-document",
-		URN:             "urn:document:statusless-document",
-		Title:           "Statusless document",
-		DocumentClass:   "record",
-		NextReviewDueAt: "2026-12-31",
+		ID:    "statusless-document",
+		URN:   "urn:document:statusless-document",
+		Title: "Statusless document",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass:   "record",
+			NextReviewDueAt: "2026-12-31",
+		},
 		Policies: []grcPolicyDocumentRef{
 			{ID: "secure-development", URN: "urn:policy:secure-development", Title: "Secure Development Policy"},
 		},
@@ -361,11 +371,13 @@ func TestGovernanceGapsClassifyPolicyDocumentsAndRisks(t *testing.T) {
 
 func TestGovernanceGapEventsApplyStateTraceAndRollups(t *testing.T) {
 	document := grcPolicyDocumentItem{
-		ID:            "secure-development",
-		URN:           "urn:document:secure-development",
-		Title:         "Secure Development Policy",
-		DocumentClass: "policy",
-		Status:        "approved",
+		ID:    "secure-development",
+		URN:   "urn:document:secure-development",
+		Title: "Secure Development Policy",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass: "policy",
+			Status:        "approved",
+		},
 	}
 	gapID := document.URN + ":gap:owner"
 	events := []grcPolicyLifecycleEventItem{{
@@ -433,11 +445,13 @@ func TestGovernanceGapEventsApplyStateTraceAndRollups(t *testing.T) {
 
 func TestGovernanceGapAssignOwnerEventsReassignOwner(t *testing.T) {
 	document := grcPolicyDocumentItem{
-		ID:            "secure-development",
-		URN:           "urn:document:secure-development",
-		Title:         "Secure Development Policy",
-		DocumentClass: "policy",
-		Status:        "approved",
+		ID:    "secure-development",
+		URN:   "urn:document:secure-development",
+		Title: "Secure Development Policy",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass: "policy",
+			Status:        "approved",
+		},
 	}
 	gapID := document.URN + ":gap:owner"
 	events := []grcPolicyLifecycleEventItem{
@@ -478,13 +492,15 @@ func TestGovernanceGapAssignOwnerEventsReassignOwner(t *testing.T) {
 
 func TestStrictGovernanceRulesRequireDocumentEvidence(t *testing.T) {
 	document := grcPolicyDocumentItem{
-		ID:              "secure-development",
-		URN:             "urn:document:secure-development",
-		Title:           "Secure Development Policy",
-		DocumentClass:   "policy",
-		Status:          "approved",
-		Owner:           "owner@example.com",
-		NextReviewDueAt: "2026-12-31",
+		ID:    "secure-development",
+		URN:   "urn:document:secure-development",
+		Title: "Secure Development Policy",
+		grcPolicyDocumentMetadata: grcPolicyDocumentMetadata{
+			DocumentClass:   "policy",
+			Status:          "approved",
+			Owner:           "owner@example.com",
+			NextReviewDueAt: "2026-12-31",
+		},
 		Policies: []grcPolicyDocumentRef{
 			{ID: "secure-development", URN: "urn:policy:secure-development", Title: "Secure Development Policy"},
 		},
@@ -605,7 +621,7 @@ func TestRelationEnrichmentDoesNotPromoteRelationOnlyPolicy(t *testing.T) {
 		"policy_version_id": "v1",
 	})
 	foreignPolicy := policyLifecycleTestRow("urn:source-b:policy:access", "policy", "Foreign Access", map[string]string{"policy_type": "policy"})
-	relation := policyLifecycleTestRelation(version, fabriccontract.RelationBelongsTo, nil, foreignPolicy)
+	relation := policyLifecycleTestRelation(version, fabriccontract.RelationBelongsTo, foreignPolicy)
 
 	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{version}, []ports.CypherRow{relation}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 	if len(response.Policies) != 1 {
@@ -625,7 +641,7 @@ func TestRelationEnrichmentDoesNotAttachRelationOnlyLifecycleChild(t *testing.T)
 		"policy_id":         "access",
 		"policy_version_id": "v1",
 	})
-	relation := policyLifecycleTestRelation(foreignVersion, fabriccontract.RelationBelongsTo, nil, policy)
+	relation := policyLifecycleTestRelation(foreignVersion, fabriccontract.RelationBelongsTo, policy)
 
 	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy}, []ports.CypherRow{relation}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 	if len(response.Policies) != 1 {
@@ -964,6 +980,161 @@ func TestLifecycleAggregateIncludesEventsActionsDiffsAndReminderPlan(t *testing.
 	}
 }
 
+func TestPolicyDocumentEvidenceFieldsFlowToLifecycleAndExport(t *testing.T) {
+	now := time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC)
+	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:access", "policy", "Access Policy", map[string]string{
+		"policy_id":            "access-policy",
+		"policy_type":          "policy",
+		"policy_document_type": "access_control",
+		"status":               "approved",
+		"owner":                "Security",
+		"approving_authority":  "Security Steering Committee",
+		"review_cadence":       "annual",
+		"last_reviewed_at":     "2026-06-01",
+		"next_review_due_at":   "2027-06-01",
+		"effective_at":         "2026-06-15",
+		"exception_path":       "Submit a waiver request",
+	})
+	document := policyLifecycleTestRow("urn:cerebro:writer:document:policyops:access-v3", "document", "Access Policy v3", map[string]string{
+		"document_id":              "access-v3",
+		"document_type":            "policy",
+		"document_class":           "policy",
+		"policy_type":              "access_control",
+		"status":                   "approved",
+		"owner":                    "Security",
+		"approving_authority":      "Security Steering Committee",
+		"version":                  "3",
+		"review_cadence":           "annual",
+		"last_reviewed_at":         "2026-06-01",
+		"next_review_due_at":       "2027-06-01",
+		"approved_at":              "2026-06-01",
+		"effective_at":             "2026-06-15",
+		"acknowledgement_evidence": "attestation-campaign-1",
+		"exception_path":           "Submit a waiver request",
+		"source_provenance":        "manual upload",
+		"source_url":               "https://grc.example/policies/access-v3",
+	})
+	control := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:control:CC6.1", "policy", "Logical access", map[string]string{
+		"control_id":  "CC6.1",
+		"policy_id":   "CC6.1",
+		"policy_type": "control",
+		"framework":   "SOC 2",
+	})
+	readySnippet := policyLifecycleTestRow("urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-ready", "policy.evidence_snippet", "Access reviews", map[string]string{
+		"snippet_id":          "snippet-ready",
+		"policy_id":           "access-policy",
+		"document_id":         "access-v3",
+		"section_id":          "access-review",
+		"section_title":       "Access reviews",
+		"policy_citations":    "Access reviews are performed quarterly.",
+		"confidence":          "0.86",
+		"manual_review_state": "ready_to_project",
+		"review_state":        "ready_to_project",
+		"question_ids":        "q-access-1",
+		"source_provenance":   "manual upload",
+	})
+	needsReviewSnippet := policyLifecycleTestRow("urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-review", "policy.evidence_snippet", "Access automation", map[string]string{
+		"snippet_id":          "snippet-review",
+		"policy_id":           "access-policy",
+		"document_id":         "access-v3",
+		"section_id":          "access-automation",
+		"section_title":       "Access automation",
+		"policy_citations":    "Access requests should be reviewed before approval.",
+		"confidence":          "0.62",
+		"manual_review_state": "needs_review",
+		"review_state":        "needs_review",
+		"unsupported_claims":  "Access approvals are fully automated",
+		"question_ids":        "q-access-2",
+		"source_provenance":   "manual upload",
+	})
+	relations := []ports.CypherRow{
+		policyLifecycleTestRelation(document, fabriccontract.RelationBelongsTo, policy),
+		policyLifecycleTestRelation(document, fabriccontract.RelationAssociatedWith, control),
+		policyLifecycleTestRelation(document, fabriccontract.RelationHasEvidence, readySnippet),
+		policyLifecycleTestRelation(document, fabriccontract.RelationHasEvidence, needsReviewSnippet),
+		policyLifecycleTestRelation(policy, fabriccontract.RelationHasEvidence, readySnippet),
+		policyLifecycleTestRelation(policy, fabriccontract.RelationHasEvidence, needsReviewSnippet),
+		policyLifecycleTestRelation(readySnippet, fabriccontract.RelationSupports, control),
+	}
+
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy, document, control, readySnippet, needsReviewSnippet}, relations, now)
+	if len(response.Documents) != 1 {
+		t.Fatalf("documents len = %d, want 1", len(response.Documents))
+	}
+	got := response.Documents[0]
+	if got.PolicyType != "access_control" || got.ApprovingAuthority != "Security Steering Committee" || got.LastReviewedAt != "2026-06-01" {
+		t.Fatalf("document fields = %+v", got)
+	}
+	if got.AcknowledgementEvidence != "attestation-campaign-1" || got.ExceptionPath != "Submit a waiver request" || got.SourceProvenance != "manual upload" {
+		t.Fatalf("document evidence fields = %+v", got)
+	}
+	if len(got.EvidenceSnippets) != 2 {
+		t.Fatalf("document evidence snippets = %+v, want ready and needs-review snippets", got.EvidenceSnippets)
+	}
+	if len(response.Policies) != 1 || response.Policies[0].ApprovingAuthority != "Security Steering Committee" || response.Policies[0].EffectiveAt != "2026-06-15" {
+		t.Fatalf("policy fields = %+v", response.Policies)
+	}
+	if len(response.Policies[0].EvidenceSnippets) != 2 || len(response.EvidenceSnippets) != 2 {
+		t.Fatalf("policy/lifecycle snippets = %+v/%+v", response.Policies[0].EvidenceSnippets, response.EvidenceSnippets)
+	}
+	if response.Summary.EvidenceSnippets != 2 || response.Summary.SnippetsNeedingReview != 1 {
+		t.Fatalf("snippet summary = %+v, want 2 snippets and 1 needing review", response.Summary.GRCPolicyLifecycleEvidenceSummary)
+	}
+
+	header := AuditExportHeader()
+	rows := AuditExportRows(response, ExportWindow{})
+	column := map[string]int{}
+	for index, name := range header {
+		column[name] = index
+	}
+	var documentRow []string
+	for _, row := range rows {
+		if row[column["record_type"]] == "document" && row[column["record_id"]] == "access-v3" {
+			documentRow = row
+			break
+		}
+	}
+	if documentRow == nil {
+		t.Fatalf("rows = %+v, want document export row", rows)
+	}
+	if len(documentRow) != len(header) {
+		t.Fatalf("document row length = %d, header length = %d", len(documentRow), len(header))
+	}
+	if documentRow[column["policy_type"]] != "access_control" ||
+		documentRow[column["approving_authority"]] != "Security Steering Committee" ||
+		documentRow[column["last_reviewed_at"]] != "2026-06-01" ||
+		documentRow[column["acknowledgement_evidence"]] != "attestation-campaign-1" ||
+		documentRow[column["exception_path"]] != "Submit a waiver request" ||
+		documentRow[column["source_provenance"]] != "manual upload" ||
+		documentRow[column["source_url"]] != "https://grc.example/policies/access-v3" {
+		t.Fatalf("document export row = %+v", documentRow)
+	}
+	var readySnippetRow []string
+	var needsReviewSnippetRow []string
+	for _, row := range rows {
+		if row[column["record_type"]] == "policy.evidence_snippet" && row[column["record_id"]] == "snippet-ready" {
+			readySnippetRow = row
+		}
+		if row[column["record_type"]] == "policy.evidence_snippet" && row[column["record_id"]] == "snippet-review" {
+			needsReviewSnippetRow = row
+		}
+	}
+	if readySnippetRow == nil || needsReviewSnippetRow == nil {
+		t.Fatalf("rows = %+v, want ready and needs-review snippet rows", rows)
+	}
+	if readySnippetRow[column["policy_citations"]] != "Access reviews are performed quarterly." ||
+		readySnippetRow[column["manual_review_state"]] != "ready_to_project" ||
+		readySnippetRow[column["confidence"]] != "0.86" ||
+		readySnippetRow[column["question_refs"]] != "q-access-1" ||
+		readySnippetRow[column["controls"]] != "SOC 2 CC6.1 Logical access" {
+		t.Fatalf("ready snippet row = %+v", readySnippetRow)
+	}
+	if needsReviewSnippetRow[column["manual_review_state"]] != "needs_review" ||
+		needsReviewSnippetRow[column["unsupported_claims"]] != "Access approvals are fully automated" {
+		t.Fatalf("needs-review snippet row = %+v", needsReviewSnippetRow)
+	}
+}
+
 type recordingPolicyLifecycleStore struct {
 	requests []ports.CypherQueryRequest
 }
@@ -994,7 +1165,7 @@ func policyLifecycleTestRow(urn string, entityType string, label string, attrs m
 	}}
 }
 
-func policyLifecycleTestRelation(left ports.CypherRow, relation string, attrs map[string]string, right ports.CypherRow) ports.CypherRow {
+func policyLifecycleTestRelation(left ports.CypherRow, relation string, right ports.CypherRow) ports.CypherRow {
 	values := map[string]any{}
 	for key, value := range left.Values {
 		values["left_"+key] = value
@@ -1002,8 +1173,7 @@ func policyLifecycleTestRelation(left ports.CypherRow, relation string, attrs ma
 	for key, value := range right.Values {
 		values["right_"+key] = value
 	}
-	rawAttrs, _ := json.Marshal(attrs)
 	values["relation"] = relation
-	values["relation_attributes_json"] = string(rawAttrs)
+	values["relation_attributes_json"] = "{}"
 	return ports.CypherRow{Values: values}
 }

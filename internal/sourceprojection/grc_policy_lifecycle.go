@@ -304,6 +304,85 @@ func grcPolicyLifecycleEventProjections(event *cerebrov1.EventEnvelope) ([]*port
 	return entities, links, nil
 }
 
+func grcPolicyEvidenceSnippetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	ctx, err := newGRCProjectionContext(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	snippetID := firstAttribute(ctx.attrs, "snippet_id", "evidence_snippet_id", "external_id")
+	if snippetID == "" {
+		snippetID = grcDerivedID(firstAttribute(ctx.attrs, "policy_id"), firstAttribute(ctx.attrs, "document_id"), firstAttribute(ctx.attrs, "section_id"), firstAttribute(ctx.attrs, "policy_citations", "snippet_text", "citation_text"))
+	}
+	if snippetID == "" {
+		return nil, nil, nil
+	}
+	snippetURN := ctx.resourceURN("policy_evidence_snippet", snippetID)
+	ctx.addResourceEntity(
+		snippetURN,
+		"policy.evidence_snippet",
+		firstAttribute(ctx.attrs, "section_title", "title", "snippet_id"),
+		map[string]string{
+			"snippet_id":           snippetID,
+			"evidence_type":        firstNonEmptyString(firstAttribute(ctx.attrs, "evidence_type"), "policy_document_snippet"),
+			"policy_id":            firstAttribute(ctx.attrs, "policy_id"),
+			"document_id":          firstAttribute(ctx.attrs, "document_id"),
+			"section_id":           firstAttribute(ctx.attrs, "section_id"),
+			"section_title":        firstAttribute(ctx.attrs, "section_title", "title"),
+			"page":                 firstAttribute(ctx.attrs, "page"),
+			"policy_citations":     firstAttribute(ctx.attrs, "policy_citations", "snippet_text", "citation_text"),
+			"snippet_text":         firstAttribute(ctx.attrs, "snippet_text", "policy_citations", "citation_text"),
+			"confidence":           firstAttribute(ctx.attrs, "confidence"),
+			"review_state":         firstAttribute(ctx.attrs, "review_state", "manual_review_state"),
+			"manual_review_state":  firstAttribute(ctx.attrs, "manual_review_state", "review_state"),
+			"unsupported_claims":   firstAttribute(ctx.attrs, "unsupported_claims", "unsupported_claim"),
+			"source_provenance":    firstAttribute(ctx.attrs, "source_provenance", "source_system", "provider"),
+			"source_system":        ctx.provider,
+			"policy_document_type": firstAttribute(ctx.attrs, "policy_document_type"),
+			"status":               firstAttribute(ctx.attrs, "status"),
+		},
+	)
+	if documentID := firstAttribute(ctx.attrs, "document_id"); documentID != "" {
+		documentURN := ctx.resourceURN("document", documentID)
+		ctx.addReferenceEntity(
+			documentURN,
+			"document",
+			firstAttribute(ctx.attrs, "document_title", "policy_name", "document_id"),
+			map[string]string{"document_id": documentID, "document_type": firstAttribute(ctx.attrs, "document_type"), "source_system": ctx.provider},
+		)
+		ctx.addEventLink(documentURN, snippetURN, relationHasEvidence)
+		ctx.addEventLink(snippetURN, documentURN, relationObservedOn)
+	}
+	if policyURN := addGRCPolicyReference(ctx, firstAttribute(ctx.attrs, "policy_id")); policyURN != "" {
+		ctx.addEventLink(policyURN, snippetURN, relationHasEvidence)
+		ctx.addEventLink(snippetURN, policyURN, relationAssociatedWith)
+	}
+	addGRCControlSupportLinks(ctx.entities, ctx.links, ctx.tenantID, ctx.sourceID, ctx.event, snippetURN, ctx.provider)
+	addGRCPolicyQuestionSupportLinks(ctx, snippetURN)
+	addGRCPolicyLifecycleEvent(ctx, snippetURN, "policy.evidence_snippet", snippetID, firstAttribute(ctx.attrs, "policy_id"), firstAttribute(ctx.attrs, "policy_version_id", "version_id"))
+	entities, links := ctx.done()
+	return entities, links, nil
+}
+
+func addGRCPolicyQuestionSupportLinks(ctx *grcProjectionContext, fromURN string) {
+	if ctx == nil || fromURN == "" {
+		return
+	}
+	for _, questionID := range grcAttributeSequence(strings.Join([]string{ctx.attrs["question_id"], ctx.attrs["question_ids"]}, ",")) {
+		questionURN := ctx.resourceURN("compliance_question", questionID)
+		ctx.addReferenceEntity(
+			questionURN,
+			"claim",
+			firstAttribute(ctx.attrs, "question_title", "question_text", "question_id"),
+			map[string]string{
+				"claim_type":    "compliance_question",
+				"question_id":   questionID,
+				"source_system": ctx.provider,
+			},
+		)
+		ctx.addEventLink(fromURN, questionURN, relationSupports)
+	}
+}
+
 func grcPolicyLifecycleEventGapURNs(attrs map[string]string) []string {
 	gapURNs := []string{}
 	seen := map[string]struct{}{}
