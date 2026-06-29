@@ -4926,6 +4926,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Exact provider filter such as okta or oidc.
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Exact source filter such as mcp_oauth, mcp_oauth_client, api_key, or api_credential.
         - name: q
           in: query
           schema:
@@ -4953,6 +4963,21 @@ paths:
           in: query
           schema:
             type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Exact provider filter such as okta or oidc.
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Exact source filter such as mcp_oauth, mcp_oauth_client, api_key, api_credential, or mcp_oauth_entitlement.
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Exact user status filter such as active, inactive, suspended, or disabled.
         - name: q
           in: query
           schema:

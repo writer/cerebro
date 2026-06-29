@@ -176,6 +176,8 @@ func (s *Store) ListIdentityOrganizations(ctx context.Context, filter ports.Iden
 	args := []any{}
 	addIdentityStringClause(&clauses, &args, "tenant_id", filter.TenantID)
 	addIdentityStringClause(&clauses, &args, "org_id", filter.OrgID)
+	addIdentityNormalizedClause(&clauses, &args, "provider", filter.Provider)
+	addIdentityNormalizedClause(&clauses, &args, "source", filter.Source)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
 		clauses = append(clauses, fmt.Sprintf("(LOWER(org_id) LIKE $%d OR LOWER(name) LIKE $%d OR LOWER(domain) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d OR LOWER(external_id) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
@@ -211,6 +213,9 @@ func (s *Store) ListIdentityUsers(ctx context.Context, filter ports.IdentityUser
 	addIdentityStringClause(&clauses, &args, "tenant_id", filter.TenantID)
 	addIdentityStringClause(&clauses, &args, "org_id", filter.OrgID)
 	addIdentityStringClause(&clauses, &args, "user_id", filter.UserID)
+	addIdentityNormalizedClause(&clauses, &args, "provider", filter.Provider)
+	addIdentityNormalizedClause(&clauses, &args, "source", filter.Source)
+	addIdentityNormalizedClause(&clauses, &args, "status", filter.Status)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
 		clauses = append(clauses, fmt.Sprintf("(LOWER(user_id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(display_name) LIKE $%d OR LOWER(subject) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
@@ -303,6 +308,14 @@ func addIdentityStringClause(clauses *[]string, args *[]any, column string, valu
 		*args = append(*args, trimmed)
 		// #nosec G201 -- column is supplied by package-local callers with fixed identifiers.
 		*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
+	}
+}
+
+func addIdentityNormalizedClause(clauses *[]string, args *[]any, column string, value string) {
+	if trimmed := strings.ToLower(strings.TrimSpace(value)); trimmed != "" {
+		*args = append(*args, trimmed)
+		// #nosec G201 -- column is supplied by package-local callers with fixed identifiers.
+		*clauses = append(*clauses, fmt.Sprintf("LOWER(%s) = $%d", column, len(*args)))
 	}
 }
 

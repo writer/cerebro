@@ -97,15 +97,17 @@ func (h Handler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orgID := strings.TrimSpace(r.URL.Query().Get("org_id"))
+	provider := strings.TrimSpace(r.URL.Query().Get("provider"))
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	limit := directoryLimit(r.URL.Query().Get("limit"))
 	configured := configuredOrganizations(h.cfg, tenantID)
-	persisted, err := h.persistedOrganizations(r.Context(), ports.IdentityOrganizationFilter{TenantID: tenantID, OrgID: orgID, Query: query, Limit: limit})
+	persisted, err := h.persistedOrganizations(r.Context(), ports.IdentityOrganizationFilter{TenantID: tenantID, OrgID: orgID, Provider: provider, Source: source, Query: query, Limit: limit})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "identity organizations unavailable")
 		return
 	}
-	organizations := mergeOrganizations(configured, persisted, tenantID, orgID, query, limit)
+	organizations := mergeOrganizations(configured, persisted, tenantID, orgID, provider, source, query, limit)
 	writeJSON(w, http.StatusOK, listOrganizationsResponse{
 		TenantID:      tenantID,
 		Organizations: organizationResponses(organizations),
@@ -120,15 +122,18 @@ func (h Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orgID := strings.TrimSpace(r.URL.Query().Get("org_id"))
+	provider := strings.TrimSpace(r.URL.Query().Get("provider"))
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	limit := directoryLimit(r.URL.Query().Get("limit"))
 	configured := configuredUsers(h.cfg, tenantID, orgID)
-	persisted, err := h.persistedUsers(r.Context(), ports.IdentityUserFilter{TenantID: tenantID, OrgID: orgID, Query: query, Limit: limit})
+	persisted, err := h.persistedUsers(r.Context(), ports.IdentityUserFilter{TenantID: tenantID, OrgID: orgID, Provider: provider, Source: source, Status: status, Query: query, Limit: limit})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "identity users unavailable")
 		return
 	}
-	users := mergeUsers(configured, persisted, tenantID, orgID, query, limit)
+	users := mergeUsers(configured, persisted, tenantID, orgID, provider, source, status, query, limit)
 	writeJSON(w, http.StatusOK, listUsersResponse{
 		TenantID: tenantID,
 		OrgID:    orgID,
@@ -346,15 +351,15 @@ func configuredUsers(cfg config.AuthConfig, tenantID string, orgID string) []*po
 	return users
 }
 
-func mergeOrganizations(configured []*ports.IdentityOrganization, persisted []*ports.IdentityOrganization, tenantID string, orgID string, query string, limit uint32) []*ports.IdentityOrganization {
+func mergeOrganizations(configured []*ports.IdentityOrganization, persisted []*ports.IdentityOrganization, tenantID string, orgID string, provider string, source string, query string, limit uint32) []*ports.IdentityOrganization {
 	byKey := map[string]*ports.IdentityOrganization{}
 	for _, org := range configured {
-		if organizationVisible(org, tenantID, orgID, query) {
+		if organizationVisible(org, tenantID, orgID, provider, source, query) {
 			byKey[identityOrgKey(org)] = cloneOrganization(org)
 		}
 	}
 	for _, org := range persisted {
-		if !organizationVisible(org, tenantID, orgID, query) {
+		if !organizationVisible(org, tenantID, orgID, provider, source, query) {
 			continue
 		}
 		key := identityOrgKey(org)
@@ -388,18 +393,18 @@ func mergeOrganizations(configured []*ports.IdentityOrganization, persisted []*p
 	return capOrganizations(out, limit)
 }
 
-func mergeUsers(configured []*ports.IdentityUser, persisted []*ports.IdentityUser, tenantID string, orgID string, query string, limit uint32) []*ports.IdentityUser {
+func mergeUsers(configured []*ports.IdentityUser, persisted []*ports.IdentityUser, tenantID string, orgID string, provider string, source string, status string, query string, limit uint32) []*ports.IdentityUser {
 	byKey := map[string]*ports.IdentityUser{}
 	configuredKeys := map[string]bool{}
 	for _, user := range configured {
-		if userVisible(user, tenantID, orgID, query) {
+		if userVisible(user, tenantID, orgID, provider, source, status, query) {
 			key := identityUserKey(user)
 			byKey[key] = cloneUser(user)
 			configuredKeys[key] = true
 		}
 	}
 	for _, user := range persisted {
-		if !userVisible(user, tenantID, orgID, query) {
+		if !userVisible(user, tenantID, orgID, provider, source, status, query) {
 			continue
 		}
 		key := identityUserKey(user)
@@ -476,7 +481,7 @@ func userResponses(users []*ports.IdentityUser) []userResponse {
 	return responses
 }
 
-func organizationVisible(org *ports.IdentityOrganization, tenantID string, orgID string, query string) bool {
+func organizationVisible(org *ports.IdentityOrganization, tenantID string, orgID string, provider string, source string, query string) bool {
 	if org == nil {
 		return false
 	}
@@ -486,10 +491,13 @@ func organizationVisible(org *ports.IdentityOrganization, tenantID string, orgID
 	if orgID != "" && org.OrgID != orgID {
 		return false
 	}
+	if !matchesExact(provider, org.Provider) || !matchesExact(source, org.Source) {
+		return false
+	}
 	return matchesQuery(query, org.OrgID, org.Name, org.Domain, org.Provider, org.Source)
 }
 
-func userVisible(user *ports.IdentityUser, tenantID string, orgID string, query string) bool {
+func userVisible(user *ports.IdentityUser, tenantID string, orgID string, provider string, source string, status string, query string) bool {
 	if user == nil {
 		return false
 	}
@@ -499,7 +507,18 @@ func userVisible(user *ports.IdentityUser, tenantID string, orgID string, query 
 	if orgID != "" && user.OrgID != orgID {
 		return false
 	}
+	if !matchesExact(provider, user.Provider) || !matchesExact(source, user.Source) || !matchesExact(status, firstNonEmpty(user.Status, "active")) {
+		return false
+	}
 	return matchesQuery(query, user.UserID, user.Email, user.DisplayName, user.Subject, user.Provider, user.Source)
+}
+
+func matchesExact(filter string, value string) bool {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		return true
+	}
+	return strings.ToLower(strings.TrimSpace(value)) == filter
 }
 
 func matchesQuery(query string, values ...string) bool {

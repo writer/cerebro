@@ -43,6 +43,9 @@ func (s *stubDirectoryStore) ListIdentityOrganizations(_ context.Context, filter
 		if filter.OrgID != "" && org.OrgID != filter.OrgID {
 			continue
 		}
+		if !matchesExact(filter.Provider, org.Provider) || !matchesExact(filter.Source, org.Source) {
+			continue
+		}
 		if !matchesQuery(filter.Query, org.OrgID, org.Name, org.Domain) {
 			continue
 		}
@@ -59,6 +62,9 @@ func (s *stubDirectoryStore) ListIdentityUsers(_ context.Context, filter ports.I
 			continue
 		}
 		if filter.OrgID != "" && user.OrgID != filter.OrgID {
+			continue
+		}
+		if !matchesExact(filter.Provider, user.Provider) || !matchesExact(filter.Source, user.Source) || !matchesExact(filter.Status, firstNonEmpty(user.Status, "active")) {
 			continue
 		}
 		if !matchesQuery(filter.Query, user.UserID, user.Email, user.DisplayName) {
@@ -204,6 +210,76 @@ func TestListUsersKeepsConfiguredUsersInsideLimit(t *testing.T) {
 	}
 }
 
+func TestListOrganizationsFiltersProviderAndSource(t *testing.T) {
+	store := &stubDirectoryStore{
+		orgs: []*ports.IdentityOrganization{{
+			TenantID:  "tenant-a",
+			OrgID:     "manual",
+			Name:      "Manual",
+			Provider:  "oidc",
+			Source:    "identity_directory",
+			UserCount: 2,
+			UpdatedAt: time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
+		}},
+	}
+	handler := testHandler(store)
+	recorder := httptest.NewRecorder()
+
+	handler.ListOrganizations(recorder, httptest.NewRequest(http.MethodGet, "/identity/orgs?provider=okta&source=mcp_oauth_client", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response listOrganizationsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Organizations) != 1 || response.Organizations[0].OrgID != "tenant-a" {
+		t.Fatalf("organizations = %+v, want configured Okta OAuth tenant", response.Organizations)
+	}
+}
+
+func TestListUsersFiltersStatusProviderAndSource(t *testing.T) {
+	store := &stubDirectoryStore{
+		users: []*ports.IdentityUser{
+			{
+				TenantID:    "tenant-a",
+				OrgID:       "tenant-a",
+				UserID:      "00u123",
+				DisplayName: "Suspended User",
+				Status:      "suspended",
+				Provider:    "okta",
+				Source:      "mcp_oauth",
+				LastSeenAt:  time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
+			},
+			{
+				TenantID:    "tenant-a",
+				OrgID:       "tenant-a",
+				UserID:      "active-user",
+				DisplayName: "Active User",
+				Status:      "active",
+				Provider:    "okta",
+				Source:      "mcp_oauth",
+			},
+		},
+	}
+	handler := testHandler(store)
+	recorder := httptest.NewRecorder()
+
+	handler.ListUsers(recorder, httptest.NewRequest(http.MethodGet, "/identity/users?provider=okta&source=mcp_oauth&status=suspended", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response listUsersResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Users) != 1 || response.Users[0].UserID != "00u123" || response.Users[0].Status != "suspended" {
+		t.Fatalf("users = %+v, want suspended Okta OAuth user", response.Users)
+	}
+}
+
 func TestConfiguredEntitlementUserIDPrefersSubject(t *testing.T) {
 	users := configuredUsers(config.AuthConfig{
 		MCPOAuth: config.MCPOAuthConfig{
@@ -238,7 +314,7 @@ func TestMergeUsersPreservesConfiguredGrantsOnPersistedCollision(t *testing.T) {
 		LastSeenAt:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 	}}
 
-	users := mergeUsers(configured, persisted, "tenant-a", "", "", 10)
+	users := mergeUsers(configured, persisted, "tenant-a", "", "", "", "", "", 10)
 	if len(users) != 1 {
 		t.Fatalf("users = %+v, want one merged user", users)
 	}

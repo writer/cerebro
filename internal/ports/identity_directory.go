@@ -45,6 +45,8 @@ type IdentityUser struct {
 type IdentityOrganizationFilter struct {
 	TenantID string
 	OrgID    string
+	Provider string
+	Source   string
 	Query    string
 	Limit    uint32
 }
@@ -53,6 +55,9 @@ type IdentityUserFilter struct {
 	TenantID string
 	OrgID    string
 	UserID   string
+	Provider string
+	Source   string
+	Status   string
 	Query    string
 	Limit    uint32
 }
