@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 // AccessGrant is the claim set Cerebro places into an MCP capability token.
@@ -91,6 +92,11 @@ const (
 
 type oauthClientLimitStore interface {
 	SaveOAuthClientWithLimit(ctx context.Context, client OAuthClient, maxClients int) error
+}
+
+type identityDirectoryStore interface {
+	UpsertIdentityOrganization(context.Context, *ports.IdentityOrganization) error
+	UpsertIdentityUser(context.Context, *ports.IdentityUser) error
 }
 
 type OAuthError struct {
@@ -324,6 +330,9 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 		return "", fmt.Errorf("mcpoauth: generate code: %w", err)
 	}
 	now := s.now().UTC()
+	if err := s.recordIdentity(ctx, identity, entitlement, now); err != nil {
+		return "", err
+	}
 	if err := s.store.SaveAuthorizationCode(ctx, AuthorizationCode{
 		CodeHash:       HashToken(codeToken),
 		ClientID:       login.ClientID,
@@ -688,6 +697,97 @@ func (s *Service) entitlementForIdentity(identity Identity, clientID string, req
 		}, nil
 	}
 	return grantEntitlement{}, oauthError("access_denied", "authenticated user has no Cerebro tenant entitlement", statusForbidden)
+}
+
+func (s *Service) recordIdentity(ctx context.Context, identity Identity, entitlement grantEntitlement, now time.Time) error {
+	store, ok := s.store.(identityDirectoryStore)
+	if !ok || store == nil {
+		return nil
+	}
+	tenantIDs := identityTenantIDs(entitlement)
+	if len(tenantIDs) == 0 {
+		return nil
+	}
+	provider := oauthProviderFromIssuer(s.cfg.Upstream.Issuer)
+	externalID := strings.TrimSpace(s.cfg.Upstream.Issuer)
+	for _, tenantID := range tenantIDs {
+		org := &ports.IdentityOrganization{
+			OrgID:        tenantID,
+			TenantID:     tenantID,
+			Name:         tenantID,
+			Slug:         tenantSlug(tenantID),
+			Provider:     provider,
+			Source:       "mcp_oauth",
+			ExternalID:   externalID,
+			UserCount:    1,
+			LastSyncedAt: now,
+		}
+		if err := store.UpsertIdentityOrganization(ctx, org); err != nil {
+			return fmt.Errorf("mcpoauth: record identity organization: %w", err)
+		}
+		userID := firstNonEmpty(identity.Subject, identity.Email)
+		displayName := firstNonEmpty(identity.Name, identity.Email, identity.Subject)
+		if userID == "" || displayName == "" {
+			continue
+		}
+		user := &ports.IdentityUser{
+			UserID:       userID,
+			TenantID:     tenantID,
+			OrgID:        tenantID,
+			Subject:      strings.TrimSpace(identity.Subject),
+			Email:        strings.ToLower(strings.TrimSpace(identity.Email)),
+			DisplayName:  displayName,
+			Status:       "active",
+			Provider:     provider,
+			Source:       "mcp_oauth",
+			Roles:        cloneStrings(entitlement.Roles),
+			Groups:       cloneStrings(identity.Groups),
+			LastSeenAt:   now,
+			LastSyncedAt: now,
+		}
+		if err := store.UpsertIdentityUser(ctx, user); err != nil {
+			return fmt.Errorf("mcpoauth: record identity user: %w", err)
+		}
+	}
+	return nil
+}
+
+func identityTenantIDs(entitlement grantEntitlement) []string {
+	var values []string
+	if tenantID := strings.TrimSpace(entitlement.TenantID); tenantID != "" {
+		values = append(values, tenantID)
+	}
+	values = append(values, entitlement.AllowedTenants...)
+	return normalizeStrings(values)
+}
+
+func oauthProviderFromIssuer(issuer string) string {
+	issuer = strings.ToLower(strings.TrimSpace(issuer))
+	switch {
+	case strings.Contains(issuer, "okta"):
+		return "okta"
+	case issuer != "":
+		return "oidc"
+	default:
+		return ""
+	}
+}
+
+func tenantSlug(tenantID string) string {
+	slug := strings.ToLower(strings.TrimSpace(tenantID))
+	slug = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '-' || r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, slug)
+	return strings.Trim(slug, "-")
 }
 
 func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identity, clientID string) bool {

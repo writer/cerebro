@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestTokenRefreshReplayRevokesFamily(t *testing.T) {
@@ -263,6 +265,68 @@ func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T
 	}
 }
 
+func TestCallbackRecordsOAuthIdentityDirectory(t *testing.T) {
+	stateToken := "state-token"
+	store := &directoryOAuthStore{
+		login: LoginState{
+			StateHash:     HashToken(stateToken),
+			ClientID:      "droid",
+			RedirectURI:   "http://127.0.0.1/callback",
+			ClientState:   "client-state",
+			Resource:      "https://cerebro.example/api/v1/mcp",
+			Scopes:        []string{ScopeSecurityRead},
+			CodeChallenge: "challenge",
+			Nonce:         "nonce",
+			ExpiresAt:     time.Now().Add(time.Minute),
+		},
+	}
+	service, err := NewService(config.MCPOAuthConfig{
+		Resource: "https://cerebro.example/api/v1/mcp",
+		CodeTTL:  time.Minute,
+		Upstream: config.MCPOAuthUpstreamConfig{
+			Issuer:         "https://example.okta.com",
+			SecurityGroups: []string{"security-team"},
+		},
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Groups:         []string{"security-team"},
+			AllowedTenants: []string{"tenant-a"},
+			Roles:          []string{"cerebro.viewer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}, store, func(context.Context, AccessGrant, time.Duration, time.Time) (string, error) {
+		return "access-token", nil
+	}, WithOIDCProvider(staticOIDCProvider{identity: Identity{
+		Subject: "00u123",
+		Email:   "person@example.com",
+		Name:    "Person Example",
+		Groups:  []string{"security-team"},
+	}}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	redirect, err := service.Callback(context.Background(), url.Values{"state": {stateToken}, "code": {"upstream-code"}})
+	if err != nil {
+		t.Fatalf("Callback error = %v", err)
+	}
+	if !strings.HasPrefix(redirect, "http://127.0.0.1/callback?") {
+		t.Fatalf("redirect = %q", redirect)
+	}
+	if len(store.orgs) != 1 || store.orgs[0].TenantID != "tenant-a" || store.orgs[0].Provider != "okta" {
+		t.Fatalf("recorded orgs = %+v", store.orgs)
+	}
+	if len(store.users) != 1 {
+		t.Fatalf("recorded users = %+v", store.users)
+	}
+	user := store.users[0]
+	if user.UserID != "00u123" || user.DisplayName != "Person Example" || user.Provider != "okta" || user.Source != "mcp_oauth" {
+		t.Fatalf("recorded user = %+v", user)
+	}
+	if len(user.Roles) != 1 || user.Roles[0] != "cerebro.viewer" || len(user.Groups) != 1 || user.Groups[0] != "security-team" {
+		t.Fatalf("recorded grants = roles %#v groups %#v", user.Roles, user.Groups)
+	}
+}
+
 func base16Lower(raw []byte) string {
 	const alphabet = "0123456789abcdef"
 	out := make([]byte, len(raw)*2)
@@ -300,6 +364,40 @@ func (s *limitedClientStore) SaveOAuthClientWithLimit(_ context.Context, _ OAuth
 	return s.err
 }
 
+type directoryOAuthStore struct {
+	Store
+	login LoginState
+	code  AuthorizationCode
+	orgs  []*ports.IdentityOrganization
+	users []*ports.IdentityUser
+}
+
+func (s *directoryOAuthStore) ConsumeLoginState(_ context.Context, stateHash [32]byte, _ time.Time) (LoginState, error) {
+	if stateHash != s.login.StateHash {
+		return LoginState{}, ErrNotFound
+	}
+	return s.login, nil
+}
+
+func (s *directoryOAuthStore) SaveAuthorizationCode(_ context.Context, code AuthorizationCode) error {
+	s.code = code
+	return nil
+}
+
+func (s *directoryOAuthStore) UpsertIdentityOrganization(_ context.Context, org *ports.IdentityOrganization) error {
+	copied := *org
+	s.orgs = append(s.orgs, &copied)
+	return nil
+}
+
+func (s *directoryOAuthStore) UpsertIdentityUser(_ context.Context, user *ports.IdentityUser) error {
+	copied := *user
+	copied.Roles = cloneStrings(user.Roles)
+	copied.Groups = cloneStrings(user.Groups)
+	s.users = append(s.users, &copied)
+	return nil
+}
+
 type stubOIDCProvider struct{}
 
 func (stubOIDCProvider) AuthorizationEndpoint(context.Context) (string, error) {
@@ -308,4 +406,16 @@ func (stubOIDCProvider) AuthorizationEndpoint(context.Context) (string, error) {
 
 func (stubOIDCProvider) ExchangeCode(context.Context, string, string) (Identity, error) {
 	return Identity{}, nil
+}
+
+type staticOIDCProvider struct {
+	identity Identity
+}
+
+func (staticOIDCProvider) AuthorizationEndpoint(context.Context) (string, error) {
+	return "https://sso.example/authorize", nil
+}
+
+func (p staticOIDCProvider) ExchangeCode(context.Context, string, string) (Identity, error) {
+	return p.identity, nil
 }

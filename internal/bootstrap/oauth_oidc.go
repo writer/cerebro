@@ -228,6 +228,7 @@ func (c *mcpOAuthOIDCClient) verifyIDToken(ctx context.Context, token string, no
 	return mcpoauth.Identity{
 		Subject: subject,
 		Email:   email,
+		Name:    oauthStringClaim(claims, "name"),
 		Groups:  oauthStringListClaim(claims, c.cfg.GroupsClaim),
 	}, nil
 }
