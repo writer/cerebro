@@ -1081,30 +1081,30 @@ func TestAuditExportRowsKeepsAcceptanceEvidenceSeparateFromRecordURN(t *testing.
 func TestAuditExportRowsIncludesEvidenceSnippetsInWindow(t *testing.T) {
 	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)
-	response := Response{
-		Policies: []grcPolicyLifecyclePolicy{{
-			ID:    "access-policy",
-			Title: "Access Policy",
-		}},
-		EvidenceSnippets: []grcPolicyEvidenceSnippetItem{{
-			ID:                "snippet-ready",
-			PolicyID:          "access-policy",
-			PolicyCitations:   []string{"Access reviews are performed quarterly."},
-			ManualReviewState: "ready_to_project",
-			Attributes:        map[string]string{"observed_at": "2026-02-15T12:00:00Z"},
-		}, {
-			ID:                "snippet-old",
-			PolicyID:          "access-policy",
-			PolicyCitations:   []string{"Old access review note."},
-			ManualReviewState: "ready_to_project",
-			Attributes:        map[string]string{"observed_at": "2026-01-15T12:00:00Z"},
-		}, {
-			ID:                "snippet-undated",
-			PolicyID:          "access-policy",
-			PolicyCitations:   []string{"Undated citation retained for review."},
-			ManualReviewState: "ready_to_project",
-		}},
-	}
+	policy := policyLifecycleTestRow("urn:cerebro:writer:policy:policyops:access", "policy", "Access Policy", map[string]string{
+		"policy_id": "access-policy",
+	})
+	readySnippet := policyLifecycleTestRow("urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-ready", "policy.evidence_snippet", "Access reviews", map[string]string{
+		"snippet_id":          "snippet-ready",
+		"policy_id":           "access-policy",
+		"policy_citations":    "Access reviews are performed quarterly.",
+		"manual_review_state": "ready_to_project",
+		"observed_at":         "2026-02-15T12:00:00Z",
+	})
+	oldSnippet := policyLifecycleTestRow("urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-old", "policy.evidence_snippet", "Old access review", map[string]string{
+		"snippet_id":          "snippet-old",
+		"policy_id":           "access-policy",
+		"policy_citations":    "Old access review note.",
+		"manual_review_state": "ready_to_project",
+		"observed_at":         "2026-01-15T12:00:00Z",
+	})
+	undatedSnippet := policyLifecycleTestRow("urn:cerebro:writer:policy_evidence_snippet:policyops:snippet-undated", "policy.evidence_snippet", "Undated access review", map[string]string{
+		"snippet_id":          "snippet-undated",
+		"policy_id":           "access-policy",
+		"policy_citations":    "Undated citation retained for review.",
+		"manual_review_state": "ready_to_project",
+	})
+	response := grcPolicyLifecycleFromGraph([]ports.CypherRow{policy, readySnippet, oldSnippet, undatedSnippet}, nil, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))
 
 	rows := AuditExportRows(response, ExportWindow{Start: &start, End: &end})
 	foundReady := false
