@@ -1020,12 +1020,6 @@ func userAttributes(settings settings, record userRecord) map[string]string {
 	addAttribute(attributes, "manager", stringMap(record.Profile, "manager"))
 	addAttribute(attributes, "manager_id", stringMap(record.Profile, "managerId"))
 	addAttribute(attributes, "employee_number", stringMap(record.Profile, "employeeNumber"))
-	addTimeAttribute(attributes, "created_at", record.Created)
-	addTimeAttribute(attributes, "activated_at", record.Activated)
-	addTimeAttribute(attributes, "last_login_at", record.LastLogin)
-	addTimeAttribute(attributes, "last_updated_at", record.LastUpdated)
-	addTimeAttribute(attributes, "password_changed_at", record.PasswordChanged)
-	addTimeAttribute(attributes, "status_changed_at", record.StatusChanged)
 	return attributes
 }
 
@@ -1345,13 +1339,6 @@ func addAttribute(attributes map[string]string, key string, value string) {
 		return
 	}
 	attributes[key] = strings.TrimSpace(value)
-}
-
-func addTimeAttribute(attributes map[string]string, key string, value *time.Time) {
-	if value == nil || value.IsZero() {
-		return
-	}
-	attributes[key] = value.UTC().Format(time.RFC3339)
 }
 
 func nestedMap(values map[string]any, key string) map[string]any {

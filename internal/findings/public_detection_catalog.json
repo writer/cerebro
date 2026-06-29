@@ -205393,7 +205393,7 @@
       "pack_id": "policy",
       "pack_name": "Policy",
       "name": "Okta Dormant Admin Role Assignment",
-      "description": "Flags failed graph-state evidence for okta admin role: Okta Dormant Admin Role Assignment. Detects each active Okta admin-role assignment whose assigned user has no login activity in 30 days, preserving per-role evidence for access review. Audit impact: A dormant user can retain one or more distinct Okta admin roles outside normal activity patterns.",
+      "description": "Flags failed graph-state evidence for okta admin role: Okta Dormant Admin Role Assignment. Detects each active Okta admin-role assignment whose assigned user has observed stale login activity, preserving per-role evidence for access review. Audit impact: A dormant user can retain one or more distinct Okta admin roles outside normal activity patterns.",
       "source_id": "okta",
       "evaluation_mode": "graph",
       "event_kinds": [
@@ -205427,7 +205427,7 @@
         "A break-glass account may intentionally have no recent login; retain review and monitoring evidence before suppressing.",
         "A compensating control satisfies the mapped control objective and is documented for auditor review.",
         "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
-        "Last login can be absent for newly provisioned or source-limited accounts; confirm account age if available.",
+        "Last login can be absent for source-limited accounts; this rule waits for last_login_at source evidence before emitting.",
         "The subject is outside the assessment scope or has a documented exception for the audit period."
       ],
       "runbook": "Review the failing evidence, affected resource or subject, owner, assessment period, and mapped controls. Use the per-role graph path from user to admin role and the Okta last_login_at source fact before deciding remediation. Remove the specific admin role assignment from dormant users or document the active break-glass review. Record the remediation evidence or approved exception, then rerun evidence collection to confirm the policy passes.",
@@ -211619,7 +211619,7 @@
       "pack_id": "policy",
       "pack_name": "Policy",
       "name": "Okta Stale Group Membership (90 days)",
-      "description": "Flags failed graph-state evidence for okta group membership: Okta Stale Group Membership (90 days). Detects active Okta users with group-membership graph edges and no login activity in 90 days. Audit impact: Stale group memberships can preserve application access outside current business need.",
+      "description": "Flags failed graph-state evidence for okta group membership: Okta Stale Group Membership (90 days). Detects active Okta users with group-membership graph edges and observed stale login activity. Audit impact: Stale group memberships can preserve application access outside current business need.",
       "source_id": "okta",
       "evaluation_mode": "graph",
       "event_kinds": [
@@ -211646,7 +211646,7 @@
       "false_positives": [
         "A compensating control satisfies the mapped control objective and is documented for auditor review.",
         "Inventory, ownership, or policy evidence is stale, incomplete, or not yet synchronized.",
-        "Last login may be absent when the source cannot observe app activity; attach alternate usage evidence if available.",
+        "Last login may be absent when the source cannot observe app activity; this rule waits for last_login_at source evidence before emitting.",
         "Some accounts may be service or break-glass identities; attach owner and monitoring evidence before suppressing.",
         "The subject is outside the assessment scope or has a documented exception for the audit period."
       ],
@@ -211946,6 +211946,46 @@
           ]
         },
         {
+          "source_id": "azure",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "active_account",
+            "azure_ad_user",
+            "dormant_user",
+            "employee_record",
+            "external_user",
+            "last_login",
+            "never_logged_in",
+            "personal_email",
+            "stale_login",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "cloud_configuration",
+            "identity_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "group_memberships",
           "dimension_type": "relationship",
@@ -211978,52 +212018,26 @@
         },
         {
           "source_id": "google_workspace",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
           "support_level": "supported",
           "high_value": true,
           "families": [
             "account",
             "active_account",
-            "email",
-            "personal_email",
+            "archived",
+            "dormant_user",
+            "employee_record",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "suspended",
+            "terminated_account",
             "user"
           ],
           "evidence_types": [
             "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "groups",
-          "dimension_type": "relationship",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "acl_group",
-            "group",
-            "membership"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "relationship_evidence"
+            "identity_configuration"
           ],
           "control_domains": [
             "identity_access"

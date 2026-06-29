@@ -3,7 +3,7 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-stale-group-membership-90d
     name: Okta Stale Group Membership (90 days)
-    description: Detects active Okta users with group-membership graph edges and no login activity in 90 days.
+    description: Detects active Okta users with group-membership graph edges and observed stale login activity.
     tags:
         - okta
         - identity
@@ -64,12 +64,12 @@ spec:
         auditorGuidance: Review the user-to-group path, last_login_at source fact, and group-assigned applications before suppressing.
         falsePositives:
             - Some accounts may be service or break-glass identities; attach owner and monitoring evidence before suppressing.
-            - Last login may be absent when the source cannot observe app activity; attach alternate usage evidence if available.
+            - Last login may be absent when the source cannot observe app activity; this rule waits for last_login_at source evidence before emitting.
     verification:
         fixtures:
             - name: stale user in group
               expect: finding
-              description: Active Okta user has stale or missing last_login_at and a group membership graph edge.
+              description: Active Okta user has stale last_login_at and a group membership graph edge.
             - name: recent login or membership removed
               expect: pass
               description: Okta user has recent last_login_at evidence or no group membership edge.
@@ -89,7 +89,8 @@ spec:
             WITH user, group, apps, user_attrs,
                  CASE WHEN attrs CONTAINS '"last_login_at":"' THEN split(split(attrs, '"last_login_at":"')[1], '"')[0] ELSE '' END AS last_login_at
             WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
-              AND (last_login_at = '' OR datetime(last_login_at) < datetime() - duration('P90D'))
+              AND last_login_at <> ''
+              AND datetime(last_login_at) < datetime() - duration('P90D')
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,
                    user.entity_type AS primary_type,
@@ -100,7 +101,7 @@ spec:
                    [user.urn, group.urn] AS resource_urns,
                    [{urn: group.urn, label: group.label, entity_type: group.entity_type, relation: 'member_of', attributes_json: coalesce(group.attributes_json, '')}] +
                    [a IN apps | {urn: a.urn, label: a.label, entity_type: a.entity_type, relation: 'assigned_to', attributes_json: coalesce(a.attributes_json, '')}] AS evidence,
-                   {evidence_basis: 'okta_last_login_at_to_group_membership_graph_path', confidence: 'medium', remediation_intent: 'Review group access and remove stale Okta membership when no business need remains', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus okta.group_membership member_of edge', limitation: 'Missing or stale last_login_at is review evidence, not proof the account is unused in every downstream system.'} AS finding_attributes
+                   {evidence_basis: 'okta_last_login_at_to_group_membership_graph_path', confidence: 'medium', remediation_intent: 'Review group access and remove stale Okta membership when no business need remains', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus okta.group_membership member_of edge', limitation: 'Requires last_login_at source evidence; stale login is review evidence, not proof the account is unused in every downstream system.'} AS finding_attributes
             ORDER BY user.urn, group.urn
             LIMIT $row_limit
         rowLimit: 500

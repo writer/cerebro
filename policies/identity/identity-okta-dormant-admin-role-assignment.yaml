@@ -3,7 +3,7 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-dormant-admin-role-assignment
     name: Okta Dormant Admin Role Assignment
-    description: Detects each active Okta admin-role assignment whose assigned user has no login activity in 30 days, preserving per-role evidence for access review.
+    description: Detects each active Okta admin-role assignment whose assigned user has observed stale login activity, preserving per-role evidence for access review.
     tags:
         - okta
         - identity
@@ -75,12 +75,12 @@ spec:
         auditorGuidance: Use the per-role graph path from user to admin role and the Okta last_login_at source fact before deciding remediation.
         falsePositives:
             - A break-glass account may intentionally have no recent login; retain review and monitoring evidence before suppressing.
-            - Last login can be absent for newly provisioned or source-limited accounts; confirm account age if available.
+            - Last login can be absent for source-limited accounts; this rule waits for last_login_at source evidence before emitting.
     verification:
         fixtures:
             - name: dormant user with specific admin role
               expect: finding
-              description: Active Okta user has stale or missing last_login_at and a specific admin-role graph edge.
+              description: Active Okta user has stale last_login_at and a specific admin-role graph edge.
             - name: recent admin login or role removed
               expect: pass
               description: Okta admin user has recent last_login_at evidence or no admin-role graph edge.
@@ -101,7 +101,8 @@ spec:
             WITH user, role, entitlements, capabilities, user_attrs,
                  CASE WHEN attrs CONTAINS '"last_login_at":"' THEN split(split(attrs, '"last_login_at":"')[1], '"')[0] ELSE '' END AS last_login_at
             WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
-              AND (last_login_at = '' OR datetime(last_login_at) < datetime() - duration('P30D'))
+              AND last_login_at <> ''
+              AND datetime(last_login_at) < datetime() - duration('P30D')
             RETURN user.urn AS primary_urn,
                    user.label AS primary_label,
                    user.entity_type AS primary_type,
@@ -113,7 +114,7 @@ spec:
                    [{urn: role.urn, label: role.label, entity_type: role.entity_type, relation: 'can_admin', attributes_json: coalesce(role.attributes_json, '')}] +
                    [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
                    [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
-                   {evidence_basis: 'okta_last_login_at_to_admin_role_assignment_graph_path', confidence: 'medium', remediation_intent: 'Remove this dormant admin role assignment or document a current break-glass review', finding_scope: 'per_admin_role_assignment', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus specific okta.admin_role can_admin edge', limitation: 'Missing last_login_at is treated as review-needed, not proof of misuse; this rule emits per admin role assignment and may coexist with account-level stale-login policies.'} AS finding_attributes
+                   {evidence_basis: 'okta_last_login_at_to_admin_role_assignment_graph_path', confidence: 'medium', remediation_intent: 'Remove this dormant admin role assignment or document a current break-glass review', finding_scope: 'per_admin_role_assignment', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, last_login_at: last_login_at, source_provenance: 'okta.user last_login_at source fact plus specific okta.admin_role can_admin edge', limitation: 'Requires last_login_at source evidence; this rule emits per admin role assignment and may coexist with account-level stale-login policies.'} AS finding_attributes
             ORDER BY user.urn, role.urn
             LIMIT $row_limit
         rowLimit: 500
