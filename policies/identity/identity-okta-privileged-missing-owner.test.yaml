@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: privileged account without owner fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-ownerless
+        primary_label: platform-admin@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-ownerless
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-ownerless
+          - urn:cerebro:writer:okta_admin_role:super-admin
+        severity: HIGH
+        summary: Okta privileged account platform-admin@example.com has no lifecycle owner evidence
+        action: Add manager or owner evidence before accepting privileged access
+        evidence:
+          - urn: urn:cerebro:writer:okta_admin_role:super-admin
+    wantFinding: true
+  - name: privileged account with owner evidence passes
+    resource:
+      placeholder: true
+    wantFinding: false

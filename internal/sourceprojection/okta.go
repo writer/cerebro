@@ -465,6 +465,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	payload := payloadMap(event)
 	domain := strings.TrimSpace(attributes["domain"])
 	userID := strings.TrimSpace(attributes["user_id"])
 	email := strings.TrimSpace(attributes["email"])
@@ -492,7 +493,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"email":           email,
 			"event_kind":      event.GetKind(),
 			"login":           login,
-			"observed_at":     projectionObservedAt.Format(time.RFC3339),
+			"observed_at":     oktaUserObservedAt(event, projectionObservedAt),
 			"source_event_id": event.GetId(),
 			"status":          strings.TrimSpace(attributes["status"]),
 		}
@@ -515,7 +516,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"status_changed_at",
 			"user_type",
 		} {
-			if v := strings.TrimSpace(attributes[key]); v != "" {
+			if v := firstNonEmpty(attributes[key], nestedString(payload, "timestamps."+key)); v != "" {
 				userAttrs[key] = v
 			}
 		}
@@ -856,4 +857,19 @@ func addOktaUserLifecyclePayloadAttributes(attributes map[string]string, payload
 			attributes[key] = strings.TrimSpace(value)
 		}
 	}
+}
+
+func oktaUserObservedAt(event *cerebrov1.EventEnvelope, projectionObservedAt time.Time) string {
+	observedAt := strings.TrimSpace(eventObservedAt(event))
+	if observedAt == "" {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	eventAt, err := time.Parse(time.RFC3339, observedAt)
+	if err != nil {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	if projectionObservedAt.Sub(eventAt.UTC()) > 90*24*time.Hour {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	return observedAt
 }

@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: stale group membership fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-dormant
+        primary_label: dormant@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-dormant|urn:cerebro:writer:okta_group:finance-users
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-dormant
+          - urn:cerebro:writer:okta_group:finance-users
+        severity: HIGH
+        summary: Okta group membership for dormant@example.com is stale in Finance Users
+        action: Remove stale group membership or document the approved need
+        evidence:
+          - urn: urn:cerebro:writer:okta_group:finance-users
+    wantFinding: true
+  - name: recent group member passes
+    resource:
+      placeholder: true
+    wantFinding: false

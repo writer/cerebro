@@ -822,6 +822,51 @@ profiles:
         freshness_window: 30d
         assessment_methods: [examine, test]
         auditor_grade_evidence: Payment security evidence shows scan scope, affected asset, severity, scan date, current status, and remediation state.
+  - profile_id: policy-document-governance
+    name: Policy Document Evidence
+    applies_to:
+      frameworks:
+        - "*"
+      family_keywords:
+        - Awareness
+        - Control Activities
+        - Governance
+        - Management
+        - Policy
+        - Procedure
+        - Program
+        - Risk
+      control_id_prefixes:
+        - CC1
+        - CC2
+        - CC5
+        - A.5
+        - PM
+        - PL
+    source_requirements:
+      - source_id: grc_policy_lifecycle
+        entity_type: policy_document
+        required_fields:
+          - policy_id
+          - policy_type
+          - owner
+          - approving_authority
+          - version
+          - effective_at
+          - review_cadence
+          - last_reviewed_at
+          - acknowledgement_evidence
+          - controls
+          - exception_path
+          - source_provenance
+        freshness_window: 365d
+        assessment_methods: [examine, interview]
+        auditor_grade_evidence: Policy evidence shows the policy ID, type, owner, approving authority, version, effective date, review cadence, last review, staff acknowledgement evidence, mapped controls, exception path, and source provenance.
+        claim_strength: policy_document_backed
+        sufficiency_rule: approved_current_acknowledged_exception_path
+        coverage_claim: supports_policy_governance_control
+        overclaim_guard: Do not claim operating effectiveness from a policy document alone; require source evidence or sampled activity when the control asks whether the policy operated during the period.
+        adjacent_control_rationale: Use policy evidence for governance, approval, review, acknowledgement, and exception-path requirements; technical operation controls need their own source-backed evidence.
   - profile_id: baseline-control-review
     name: Baseline Control Review Evidence
     fallback: true

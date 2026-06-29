@@ -270,7 +270,7 @@ All plan.filters values must be JSON strings, even for numbers or booleans (for 
 If the question asks for mutation, deletion, credential disclosure, or anything unsafe, return:
 {"rationale":"why refused","plan":{"intent":"raw_cypher","confidence":0},"cypher":null,"refusal":"safe refusal message"}
 
-Preferred plan intents: aggregate_findings_by_source, top_risk_findings, explain_finding, identity_bridge, connector_health, okta_privileged_weak_mfa, okta_dormant_access, okta_group_access_risk, raw_cypher.
+Preferred plan intents: aggregate_findings_by_source, top_risk_findings, failing_controls, explain_finding, identity_bridge, connector_health, okta_privileged_weak_mfa, okta_dormant_access, okta_group_access_risk, raw_cypher.
 Use a deterministic intent whenever the question matches one; the backend will convert that plan into canonical Cypher.`, req.Question, normalizeModel(req.Model), req.Schema, req.Guardrail, probe, history.String())
 }
 
