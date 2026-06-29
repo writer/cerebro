@@ -169,6 +169,7 @@ func BuildOperations(input BuildInput) ListResponse {
 	credentialByID := make(map[string]*ports.ConnectorCredentialRecord, len(input.Credentials))
 	credentialIDsByStore := map[string]map[string]struct{}{}
 	runtimeIDsByStore := map[string]map[string]struct{}{}
+	lastUpdatedByStore := map[string]time.Time{}
 	bindingsByID := map[string]*bindingAccumulator{}
 	issueIDs := map[string]struct{}{}
 	issues := []Issue{}
@@ -298,11 +299,7 @@ func BuildOperations(input BuildInput) ListResponse {
 			runtimeIDsByStore[storeID][binding.view.RuntimeID] = struct{}{}
 		}
 		if !binding.updatedAt.IsZero() {
-			if op.Usage.LastUpdatedAt == "" {
-				op.Usage.LastUpdatedAt = connectorcredentials.TimestampOrZero(binding.updatedAt)
-			} else if parsed, err := time.Parse(time.RFC3339, op.Usage.LastUpdatedAt); err == nil && binding.updatedAt.After(parsed) {
-				op.Usage.LastUpdatedAt = connectorcredentials.TimestampOrZero(binding.updatedAt)
-			}
+			lastUpdatedByStore[storeID] = newerTime(lastUpdatedByStore[storeID], binding.updatedAt)
 		}
 	}
 
@@ -310,6 +307,7 @@ func BuildOperations(input BuildInput) ListResponse {
 		op.Usage.Credentials = len(credentialIDsByStore[storeID])
 		op.Usage.Connections = len(runtimeIDsByStore[storeID])
 		op.Usage.Bindings = len(op.Bindings)
+		op.Usage.LastUpdatedAt = connectorcredentials.TimestampOrZero(lastUpdatedByStore[storeID])
 		sort.Slice(op.Bindings, func(i, j int) bool {
 			return bindingSortKey(op.Bindings[i]) < bindingSortKey(op.Bindings[j])
 		})

@@ -393,6 +393,16 @@ func TestCredentialStoreDetailReturnsAudit(t *testing.T) {
 				Status:       connectorcredentials.StatusValid,
 				CreatedAt:    now,
 			},
+			{
+				ID:           "audit-used",
+				CredentialID: "cred-valid",
+				TenantID:     "tenant-a",
+				SourceID:     "bootstrap_token",
+				RuntimeID:    "runtime-vault",
+				EventType:    connectorcredentials.AuditEventUsed,
+				Status:       connectorcredentials.StatusValid,
+				CreatedAt:    now.Add(500 * time.Millisecond),
+			},
 		},
 	}
 	app := New(config.Config{
@@ -427,6 +437,7 @@ func TestCredentialStoreDetailReturnsAudit(t *testing.T) {
 		Audit []struct {
 			ID        string `json:"id"`
 			EventType string `json:"event_type"`
+			CreatedAt string `json:"created_at"`
 		} `json:"audit"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -435,8 +446,14 @@ func TestCredentialStoreDetailReturnsAudit(t *testing.T) {
 	if payload.Store.Usage.Credentials != 1 {
 		t.Fatalf("credentials = %d, want 1", payload.Store.Usage.Credentials)
 	}
-	if len(payload.Audit) != 1 || payload.Audit[0].ID != "audit-validated" || payload.Audit[0].EventType != connectorcredentials.AuditEventValidated {
-		t.Fatalf("audit = %#v, want validated event", payload.Audit)
+	if len(payload.Audit) != 2 {
+		t.Fatalf("audit length = %d, want 2: %#v", len(payload.Audit), payload.Audit)
+	}
+	if payload.Audit[0].ID != "audit-used" || payload.Audit[0].EventType != connectorcredentials.AuditEventUsed {
+		t.Fatalf("audit[0] = %#v, want latest used event", payload.Audit[0])
+	}
+	if payload.Audit[1].ID != "audit-validated" || payload.Audit[1].EventType != connectorcredentials.AuditEventValidated {
+		t.Fatalf("audit[1] = %#v, want earlier validated event", payload.Audit[1])
 	}
 }
 

@@ -230,12 +230,25 @@ func (h *Handler) auditEvents(ctx context.Context, bindings []domain.Binding, li
 		}
 	}
 	sort.Slice(events, func(i, j int) bool {
-		return events[i].CreatedAt > events[j].CreatedAt
+		left := auditEventCreatedAt(events[i])
+		right := auditEventCreatedAt(events[j])
+		if !left.Equal(right) {
+			return left.After(right)
+		}
+		return events[i].ID < events[j].ID
 	})
 	if len(events) > limit {
 		return events[:limit]
 	}
 	return events
+}
+
+func auditEventCreatedAt(event auditEvent) time.Time {
+	createdAt, err := time.Parse(time.RFC3339Nano, event.CreatedAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return createdAt
 }
 
 func auditEvents(records []*ports.ConnectorCredentialAuditRecord) []auditEvent {

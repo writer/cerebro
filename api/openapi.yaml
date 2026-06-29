@@ -416,6 +416,7 @@ paths:
             type: string
         - name: limit
           in: query
+          description: Caps each backing collection independently. Source runtimes and credential records are each limited to this value before the operations view is built.
           schema:
             type: integer
             minimum: 0
@@ -446,6 +447,7 @@ paths:
             type: string
         - name: limit
           in: query
+          description: Caps each backing collection independently. Source runtimes and credential records are each limited to this value before the store detail is built.
           schema:
             type: integer
             minimum: 0
