@@ -77,6 +77,7 @@ Add the Durable API config, then add:
 ```bash
 CEREBRO_APPEND_LOG_DRIVER=jetstream
 CEREBRO_JETSTREAM_URL=<nats-jetstream-url>
+CEREBRO_JETSTREAM_STREAM_NAME=CEREBRO_EVENTS
 CEREBRO_JETSTREAM_SUBJECT_PREFIX=events
 ```
 

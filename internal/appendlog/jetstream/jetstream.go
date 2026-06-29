@@ -145,6 +145,7 @@ type Log struct {
 	conn          *nats.Conn
 	js            publisher
 	replay        replayManager
+	streamName    string
 	subjectPrefix string
 	publishSlots  chan struct{}
 	publishRetry  publishRetryConfig
@@ -171,6 +172,10 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 		return nil, errors.New("jetstream url is required")
 	}
 	prefix, err := normalizeSubjectPrefix(cfg.JetStreamSubjectPrefix)
+	if err != nil {
+		return nil, err
+	}
+	streamName, err := normalizeStreamName(cfg.JetStreamStreamName)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +211,7 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 		conn:          nc,
 		js:            js,
 		replay:        &jetStreamReplayManager{js: js},
+		streamName:    streamName,
 		subjectPrefix: prefix,
 		publishRetry:  publishRetryConfigFromAppendLog(cfg),
 	}
@@ -407,8 +413,9 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		}
 		msg.Header.Set(nats.MsgIdHdr, messageID)
 	}
+	l.applyExpectedStream(msg)
 	publishAttrs := func() telemetry.Attributes {
-		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), msg.Header.Get(nats.MsgIdHdr))
+		return l.publishMessageAttrs(subject, len(payload), msg.Header.Get(nats.MsgIdHdr))
 	}
 	publishResult, err := l.publishMsg(ctx, msg, "append", publishAttrs)
 	endAttrs := publishAttrs().With(publishResult.attrs())
@@ -425,6 +432,17 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	}
 	jetstreamAnnotateMain(ctx, "append", "completed", endAttrs)
 	telemetry.End(span, "completed", endAttrs)
+	return nil
+}
+
+// AppendBatch publishes a validated batch in order. It intentionally preserves
+// the single-event append semantics so callers can retry safely using message ids.
+func (l *Log) AppendBatch(ctx context.Context, events []*cerebrov1.EventEnvelope) error {
+	for index, event := range events {
+		if err := l.Append(ctx, event); err != nil {
+			return fmt.Errorf("append batch event %d: %w", index, err)
+		}
+	}
 	return nil
 }
 
@@ -524,6 +542,16 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 	}
 	result.Duration = time.Since(started)
 	return result, err
+}
+
+func (l *Log) applyExpectedStream(msg *nats.Msg) {
+	if l == nil || msg == nil || strings.TrimSpace(l.streamName) == "" {
+		return
+	}
+	if msg.Header == nil {
+		msg.Header = nats.Header{}
+	}
+	msg.Header.Set(jetstream.ExpectedStreamHeader, strings.TrimSpace(l.streamName))
 }
 
 func (l *Log) acquirePublishSlot(ctx context.Context) (time.Duration, func(), error) {
@@ -838,10 +866,7 @@ func replayLegacyReverse(ctx context.Context, streamName string, state jetstream
 			stats.decoded++
 			if matchesReplayRequest(event, request) {
 				stats.matched++
-				candidates = append(candidates, replayCandidate{event: event, seq: seq})
-				if countAtLeastUint32(len(candidates), candidateLimit) {
-					break
-				}
+				candidates = appendNewestReplayCandidate(candidates, replayCandidate{event: event, seq: seq}, candidateLimit)
 			}
 		}
 		if seq == state.FirstSeq {
@@ -1172,8 +1197,9 @@ func (l *Log) runCanary(ctx context.Context, stream *jetstream.StreamInfo) (tele
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
 	msg.Header.Set(nats.MsgIdHdr, event.Id)
+	l.applyExpectedStream(msg)
 	publishAttrs := func() telemetry.Attributes {
-		return jetstreamPublishMessageAttrs(subject, l.subjectPrefix, len(payload), event.Id).With(attrs)
+		return l.publishMessageAttrs(subject, len(payload), event.Id).With(attrs)
 	}
 	publishResult, err := l.publishMsg(ctx, msg, "canary", publishAttrs)
 	canaryAttrs := publishAttrs().With(publishResult.attrs()).With(telemetry.Attrs(
@@ -1238,6 +1264,20 @@ func jetstreamPublishMessageAttrs(subject string, subjectPrefix string, payloadB
 	)
 	if strings.TrimSpace(messageID) != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "messaging.message.id_hash", Value: shortHash(messageID)})
+	}
+	return attrs
+}
+
+func (l *Log) publishMessageAttrs(subject string, payloadBytes int, messageID string) telemetry.Attributes {
+	subjectPrefix := ""
+	streamName := ""
+	if l != nil {
+		subjectPrefix = l.subjectPrefix
+		streamName = strings.TrimSpace(l.streamName)
+	}
+	attrs := jetstreamPublishMessageAttrs(subject, subjectPrefix, payloadBytes, messageID)
+	if streamName != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.expected_stream", Value: streamName})
 	}
 	return attrs
 }
@@ -1433,10 +1473,6 @@ func jetstreamAnnotateMain(ctx context.Context, operation string, status string,
 	telemetry.AnnotateMainDependency(ctx, "messaging.jetstream", "appendlog.jetstream", operation, status, attrs)
 }
 
-func countAtLeastUint32(count int, limit uint32) bool {
-	return uint64(count) >= uint64(limit) // #nosec G115 -- count is derived from slice length and compared only after widening.
-}
-
 func countGreaterThanUint32(count int, limit uint32) bool {
 	return uint64(count) > uint64(limit) // #nosec G115 -- count is derived from slice length and compared only after widening.
 }
@@ -1531,7 +1567,7 @@ func decodeReplayEvent(raw *jetstream.RawStreamMsg) (*cerebrov1.EventEnvelope, e
 func eventAttributesHeader(attributes map[string]string) nats.Header {
 	header := make(nats.Header, len(attributes))
 	for key, value := range attributes {
-		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || isReservedNATSHeader(key) {
 			continue
 		}
 		header[key] = []string{value}
@@ -1542,7 +1578,7 @@ func eventAttributesHeader(attributes map[string]string) nats.Header {
 func replayHeaderAttributes(header nats.Header) map[string]string {
 	attributes := make(map[string]string, len(header))
 	for key, values := range header {
-		if strings.EqualFold(key, nats.MsgIdHdr) || len(values) == 0 {
+		if isReservedNATSHeader(key) || len(values) == 0 {
 			continue
 		}
 		value := strings.TrimSpace(values[0])
@@ -1552,6 +1588,10 @@ func replayHeaderAttributes(header nats.Header) map[string]string {
 		attributes[key] = value
 	}
 	return attributes
+}
+
+func isReservedNATSHeader(key string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "nats-")
 }
 
 type replayCandidate struct {
@@ -1619,6 +1659,19 @@ func normalizeSubjectPrefix(prefix string) (string, error) {
 	}
 	if err := validateSubjectTokens("subject prefix", normalized); err != nil {
 		return "", err
+	}
+	return normalized, nil
+}
+
+func normalizeStreamName(name string) (string, error) {
+	normalized := strings.TrimSpace(name)
+	if normalized == "" {
+		return "", nil
+	}
+	for _, r := range normalized {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return "", errors.New("jetstream stream name must not contain whitespace or control characters")
+		}
 	}
 	return normalized, nil
 }
@@ -1756,6 +1809,18 @@ func (l *Log) replayStream(ctx context.Context) (*jetstream.StreamInfo, error) {
 	prefix, err := normalizeSubjectPrefix(l.subjectPrefix)
 	if err != nil {
 		return nil, err
+	}
+	if configured := strings.TrimSpace(l.streamName); configured != "" {
+		for _, stream := range streams {
+			if stream == nil || strings.TrimSpace(stream.Config.Name) != configured {
+				continue
+			}
+			if !streamAcceptsSubjectPrefix(stream, prefix) {
+				return nil, fmt.Errorf("configured replay stream %q does not match subject prefix %q", configured, prefix)
+			}
+			return stream, nil
+		}
+		return nil, fmt.Errorf("configured replay stream %q was not found", configured)
 	}
 	var match *jetstream.StreamInfo
 	for _, stream := range streams {

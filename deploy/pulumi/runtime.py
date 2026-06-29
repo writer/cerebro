@@ -220,6 +220,7 @@ class CerebroRuntimeConfig:
             env["CEREBRO_STATE_STORE_DRIVER"] = "postgres"
         if self.has_secret("CEREBRO_JETSTREAM_URL"):
             env["CEREBRO_APPEND_LOG_DRIVER"] = "jetstream"
+            env["CEREBRO_JETSTREAM_STREAM_NAME"] = "CEREBRO_EVENTS"
             env["CEREBRO_JETSTREAM_SUBJECT_PREFIX"] = "events"
         if self.has_secret("CEREBRO_NEO4J_URI"):
             env["CEREBRO_GRAPH_STORE_DRIVER"] = "neo4j"

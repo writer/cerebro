@@ -22,6 +22,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | HTTP timeout for access-approvals graph action requests. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |
 | `CEREBRO_JETSTREAM_URL` | unset | NATS JetStream URL. Setting this infers `jetstream`. |
+| `CEREBRO_JETSTREAM_STREAM_NAME` | unset | Optional stream name for publish and replay readiness checks. Set this when one logical append-log stream is expected. |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | `events` | Subject prefix for append-log events. |
 | `CEREBRO_JETSTREAM_DRAIN_TIMEOUT` | NATS default | Optional timeout for graceful NATS connection drain during shutdown. |
 | `CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT` | unlimited | Optional per-process bulkhead for concurrent JetStream publishes. |
@@ -32,7 +33,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED` | `90s` | Optional total outer publish retry budget. Set above expected NATS restore time in environments with large streams. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_ATTEMPTS` | `5` | Optional NATS client retry attempts inside each outer publish attempt. |
 | `CEREBRO_JETSTREAM_PUBLISH_CLIENT_RETRY_WAIT` | `500ms` | Optional NATS client retry wait inside each outer publish attempt. |
-| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | unset | Optional flag enabling the per-runtime append-log replay index (schema, population job, and read path). Default off; additive and backward compatible. |
+| `CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED` | `true` | Enables the per-runtime append-log replay index (schema, population job, and read path). Set `false` to disable it. |
 | `CEREBRO_STATE_STORE_DRIVER` | inferred | State-store driver. Supported: `postgres`. |
 | `CEREBRO_POSTGRES_DSN` | unset | Postgres connection string. Setting this infers `postgres`. |
 | `CEREBRO_CONNECTOR_CREDENTIAL_KEY` | unset | High-entropy key used to seal Cerebro-managed connector credentials before storing them in Postgres. Supports `_FILE` via `CEREBRO_CONNECTOR_CREDENTIAL_KEY_FILE`. |

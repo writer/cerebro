@@ -450,6 +450,7 @@ agent-onboard-e2e: build ## Run the local Docker-backed agent onboarding workflo
 	CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
+	CEREBRO_JETSTREAM_STREAM_NAME="CEREBRO_EVENTS" \
 	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \
@@ -478,6 +479,7 @@ github-business-demo: github-business-demo-env build ## Connect a GitHub repo, s
 	CEREBRO_API_KEY="local-dev-key" \
 	CEREBRO_API_KEYS="local-dev-key:local:local" \
 	CEREBRO_JETSTREAM_URL="nats://127.0.0.1:4222" \
+	CEREBRO_JETSTREAM_STREAM_NAME="CEREBRO_EVENTS" \
 	CEREBRO_POSTGRES_DSN="$$local_postgres_dsn" \
 	CEREBRO_NEO4J_URI="bolt://127.0.0.1:7687" \
 	CEREBRO_NEO4J_USERNAME="neo4j" \

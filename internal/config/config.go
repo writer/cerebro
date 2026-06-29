@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const defaultHTTPAddr = ":8080"
@@ -76,6 +77,7 @@ type RateLimitConfig struct {
 type AppendLogConfig struct {
 	Driver                              string
 	JetStreamURL                        string
+	JetStreamStreamName                 string
 	JetStreamSubjectPrefix              string
 	JetStreamDrainTimeout               time.Duration
 	JetStreamPublishMaxInFlight         int
@@ -429,6 +431,7 @@ func Load() (Config, error) {
 		AppendLog: AppendLogConfig{
 			Driver:                 strings.TrimSpace(os.Getenv("CEREBRO_APPEND_LOG_DRIVER")),
 			JetStreamURL:           strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_URL")),
+			JetStreamStreamName:    strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_STREAM_NAME")),
 			JetStreamSubjectPrefix: strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX")),
 		},
 		StateStore: StateStoreConfig{
@@ -710,6 +713,9 @@ func Load() (Config, error) {
 		if cfg.AppendLog.JetStreamSubjectPrefix == "" {
 			cfg.AppendLog.JetStreamSubjectPrefix = defaultJetStreamSubjectPrefix
 		}
+		if err := validateJetStreamStreamName(cfg.AppendLog.JetStreamStreamName); err != nil {
+			return Config{}, err
+		}
 		if cfg.AppendLog.JetStreamPublishMaxInFlight < 0 {
 			return Config{}, errors.New("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT must be greater than or equal to 0")
 		}
@@ -894,6 +900,19 @@ func validateJetStreamPublishRetryConfig(cfg AppendLogConfig) error {
 	if cfg.JetStreamPublishAttemptTimeout > 0 && cfg.JetStreamPublishRetryMaxElapsed > 0 &&
 		cfg.JetStreamPublishAttemptTimeout > cfg.JetStreamPublishRetryMaxElapsed {
 		return errors.New("CEREBRO_JETSTREAM_PUBLISH_ATTEMPT_TIMEOUT must be less than or equal to CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_ELAPSED")
+	}
+	return nil
+}
+
+func validateJetStreamStreamName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	for _, r := range name {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return errors.New("CEREBRO_JETSTREAM_STREAM_NAME must not contain whitespace or control characters")
+		}
 	}
 	return nil
 }

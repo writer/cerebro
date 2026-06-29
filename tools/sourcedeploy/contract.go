@@ -354,6 +354,7 @@ func contractRequiredEnvVars() []ContractEnvVar {
 		{Name: "CEREBRO_POSTGRES_DSN", RequiredFor: "durable-api, durable-sync, graph-enabled", Secret: true},
 		{Name: "CEREBRO_APPEND_LOG_DRIVER", RequiredFor: "durable-sync and graph-enabled"},
 		{Name: "CEREBRO_JETSTREAM_URL", RequiredFor: "durable-sync and graph-enabled", Secret: true},
+		{Name: "CEREBRO_JETSTREAM_STREAM_NAME", RequiredFor: "durable-sync and graph-enabled"},
 		{Name: "CEREBRO_GRAPH_STORE_DRIVER", RequiredFor: "graph-enabled"},
 		{Name: "CEREBRO_NEO4J_URI", RequiredFor: "graph-enabled", Secret: true},
 		{Name: "CEREBRO_NEO4J_USERNAME", RequiredFor: "graph-enabled", Secret: true},
@@ -383,7 +384,7 @@ func contractRequiredBackingServices() []ContractBackingService {
 		{
 			Name:        "nats-jetstream",
 			RequiredFor: "append-log sync, replay, source runtime workflows, and graph-enabled deployments",
-			ConfigVars:  []string{"CEREBRO_APPEND_LOG_DRIVER", "CEREBRO_JETSTREAM_URL"},
+			ConfigVars:  []string{"CEREBRO_APPEND_LOG_DRIVER", "CEREBRO_JETSTREAM_URL", "CEREBRO_JETSTREAM_STREAM_NAME"},
 		},
 		{
 			Name:        "neo4j",

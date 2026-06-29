@@ -110,6 +110,7 @@ Set the service and backing-store environment used by `deploy preflight`:
 export CEREBRO_API_KEY='<api-key>'
 export CEREBRO_API_KEYS='<api-key>:<principal>:<tenant-id>'
 export CEREBRO_JETSTREAM_URL='<nats-url>'
+export CEREBRO_JETSTREAM_STREAM_NAME=CEREBRO_EVENTS
 export CEREBRO_POSTGRES_DSN='<postgres-dsn>'
 export CEREBRO_NEO4J_URI='<neo4j-uri>'
 export CEREBRO_NEO4J_USERNAME='<neo4j-user>'
