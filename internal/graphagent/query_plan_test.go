@@ -132,6 +132,9 @@ func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
 	if got := inferIntent("show top risk findings from the GitHub source", ""); got != IntentTopRiskFindings {
 		t.Fatalf("inferIntent() = %q, want %q", got, IntentTopRiskFindings)
 	}
+	if got := inferIntent("show high risk findings from failed access control", ""); got != IntentTopRiskFindings {
+		t.Fatalf("inferIntent(high risk failed access control findings) = %q, want %q", got, IntentTopRiskFindings)
+	}
 	if got := inferIntent("show top finding sources", ""); got != IntentAggregateFindingsBySource {
 		t.Fatalf("inferIntent(top finding sources) = %q, want %q", got, IntentAggregateFindingsBySource)
 	}
@@ -314,6 +317,19 @@ LIMIT 25`
 	}
 	if !strings.Contains(result.Cypher, "toLower(filter_status) = 'open'") {
 		t.Fatalf("converted cypher missing top risk status filter:\n%s", result.Cypher)
+	}
+}
+
+func TestDeterministicFastPathKeepsTopRiskFindingIntentWhenControlFailureIsContext(t *testing.T) {
+	plan, ok := deterministicFastPathPlan(AskRequest{
+		TenantID: "writer",
+		Question: "show high risk findings from failed access control",
+	})
+	if !ok {
+		t.Fatalf("deterministicFastPathPlan() did not produce a plan")
+	}
+	if plan.Intent != IntentTopRiskFindings {
+		t.Fatalf("plan.Intent = %q, want %q", plan.Intent, IntentTopRiskFindings)
 	}
 }
 
