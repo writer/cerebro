@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ const (
 	maxReductoBodyBytes       int64 = 8 << 20
 	maxReductoResultURLBytes  int64 = 16 << 20
 	maxParsedTextPreviewChars       = 1200
+	grcUploadStructureSchema        = "grc_upload_v1"
 )
 
 type Config struct {
@@ -95,7 +97,7 @@ func (c *Client) Parse(ctx context.Context, fileName string, contentType string,
 	if err != nil {
 		return grcupload.ParsedDocument{}, err
 	}
-	parsed, err := c.parse(ctx, fileID)
+	parsed, err := c.extract(ctx, fileID)
 	if err != nil {
 		return grcupload.ParsedDocument{}, err
 	}
@@ -149,29 +151,29 @@ func (c *Client) upload(ctx context.Context, fileName string, contentType string
 	return fileID, nil
 }
 
-func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocument, error) {
-	body, err := json.Marshal(map[string]any{"input": fileID})
+func (c *Client) extract(ctx context.Context, fileID string) (grcupload.ParsedDocument, error) {
+	body, err := json.Marshal(grcUploadExtractRequest(fileID))
 	if err != nil {
-		return grcupload.ParsedDocument{}, fmt.Errorf("%w: encode Reducto parse request: %w", grcupload.ErrInvalidRequest, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: encode Reducto extract request: %w", grcupload.ErrInvalidRequest, err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.resolvePath("/parse"), bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.resolvePath("/extract"), bytes.NewReader(body))
 	if err != nil {
-		return grcupload.ParsedDocument{}, fmt.Errorf("%w: build Reducto parse request: %w", grcupload.ErrInvalidRequest, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: build Reducto extract request: %w", grcupload.ErrInvalidRequest, err)
 	}
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return grcupload.ParsedDocument{}, fmt.Errorf("%w: parse request: %w", grcupload.ErrRemote, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: extract request: %w", grcupload.ErrRemote, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return grcupload.ParsedDocument{}, reductoStatusError("parse", response)
+		return grcupload.ParsedDocument{}, reductoStatusError("extract", response)
 	}
 	payload, err := readJSON(response.Body, maxReductoBodyBytes)
 	if err != nil {
-		return grcupload.ParsedDocument{}, fmt.Errorf("%w: decode Reducto parse response: %w", grcupload.ErrRemote, err)
+		return grcupload.ParsedDocument{}, fmt.Errorf("%w: decode Reducto extract response: %w", grcupload.ErrRemote, err)
 	}
 	parsed := parsedDocumentFromPayload(payload)
 	if resultURL := lookupTopString(payload, "result_url", "download_url", "url"); parsed.ChunkCount == 0 && resultURL != "" {
@@ -182,7 +184,56 @@ func (c *Client) parse(ctx context.Context, fileID string) (grcupload.ParsedDocu
 		parsed = mergeParsedDocument(parsed, parsedDocumentFromPayload(resultPayload))
 	}
 	parsed.ProviderFileID = firstNonEmpty(parsed.ProviderFileID, fileID)
+	parsed.StructureSchema = firstNonEmpty(parsed.StructureSchema, grcUploadStructureSchema)
 	return parsed, nil
+}
+
+func grcUploadExtractRequest(fileID string) map[string]any {
+	return map[string]any{
+		"input": fileID,
+		"parsing": map[string]any{
+			"enhance": map[string]any{
+				"agentic":              []string{},
+				"intelligent_ordering": true,
+				"summarize_figures":    true,
+			},
+		},
+		"instructions": map[string]any{
+			"schema":        grcUploadExtractionSchema(),
+			"system_prompt": "Extract GRC document fields for policy and vendor evidence review. Return only facts present in the document.",
+		},
+		"settings": map[string]any{
+			"include_images":       false,
+			"optimize_for_latency": false,
+			"array_extract":        false,
+			"deep_extract":         false,
+			"citations": map[string]any{
+				"enabled":              false,
+				"numerical_confidence": true,
+				"parent_block":         "full",
+			},
+		},
+	}
+}
+
+func grcUploadExtractionSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"document_title":  map[string]any{"type": "string"},
+			"document_type":   map[string]any{"type": "string"},
+			"summary":         map[string]any{"type": "string"},
+			"policy_name":     map[string]any{"type": "string"},
+			"vendor_name":     map[string]any{"type": "string"},
+			"owner":           map[string]any{"type": "string"},
+			"effective_date":  map[string]any{"type": "string"},
+			"review_due_date": map[string]any{"type": "string"},
+			"controls":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"requirements":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"risks":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+	}
 }
 
 func (c *Client) fetchResultURL(ctx context.Context, rawURL string) (any, error) {
@@ -228,13 +279,19 @@ func parsedDocumentFromPayload(payload any) grcupload.ParsedDocument {
 		pageCount = lookupFirstInt(result, "page_count", "pages")
 	}
 	preview := truncateRunes(compactWhitespace(strings.Join(texts, " ")), maxParsedTextPreviewChars)
+	structuredFields := structuredFieldsFromPayload(payload)
+	structuredSummary := structuredSummaryFromFields(structuredFields)
 	return grcupload.ParsedDocument{
-		ProviderFileID: lookupTopString(payload, "file_id", "document_url", "input", "reducto_file_id"),
-		ParseID:        lookupTopString(payload, "parse_id", "job_id", "id"),
-		Status:         firstNonEmpty(lookupTopString(payload, "status"), "parsed"),
-		TextPreview:    preview,
-		ChunkCount:     len(chunks),
-		PageCount:      pageCount,
+		ProviderFileID:    lookupTopString(payload, "file_id", "document_url", "input", "reducto_file_id"),
+		ParseID:           lookupTopString(payload, "parse_id", "job_id", "id"),
+		Status:            firstNonEmpty(lookupTopString(payload, "status"), "parsed"),
+		TextPreview:       preview,
+		ChunkCount:        len(chunks),
+		PageCount:         pageCount,
+		StructureStatus:   firstNonEmpty(lookupTopString(payload, "structure_status", "extract_status"), lookupTopString(payload, "status"), "structured"),
+		StructureSchema:   grcUploadStructureSchema,
+		StructuredSummary: structuredSummary,
+		StructuredFields:  structuredFields,
 	}
 }
 
@@ -256,6 +313,18 @@ func mergeParsedDocument(left grcupload.ParsedDocument, right grcupload.ParsedDo
 	}
 	if left.PageCount == 0 {
 		left.PageCount = right.PageCount
+	}
+	if left.StructureStatus == "" {
+		left.StructureStatus = right.StructureStatus
+	}
+	if left.StructureSchema == "" {
+		left.StructureSchema = right.StructureSchema
+	}
+	if left.StructuredSummary == "" {
+		left.StructuredSummary = right.StructuredSummary
+	}
+	if len(left.StructuredFields) == 0 {
+		left.StructuredFields = right.StructuredFields
 	}
 	return left
 }
@@ -391,6 +460,120 @@ func lookupTopValue(value any, key string) any {
 		}
 	}
 	return nil
+}
+
+func structuredFieldsFromPayload(payload any) []grcupload.StructuredField {
+	candidates := []any{
+		lookupTopValue(payload, "extraction"),
+		lookupTopValue(payload, "structured"),
+		lookupTopValue(payload, "structured_data"),
+		lookupTopValue(payload, "data"),
+		lookupTopValue(lookupTopValue(payload, "result"), "extraction"),
+		lookupTopValue(lookupTopValue(payload, "result"), "structured"),
+		lookupTopValue(lookupTopValue(payload, "result"), "data"),
+		lookupTopValue(payload, "result"),
+	}
+	for _, candidate := range candidates {
+		fields := structuredFieldsFromValue(candidate, "")
+		if len(fields) > 0 {
+			return fields
+		}
+	}
+	return nil
+}
+
+func structuredFieldsFromValue(value any, prefix string) []grcupload.StructuredField {
+	switch typed := value.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			if !skipStructuredFieldKey(key) {
+				keys = append(keys, key)
+			}
+		}
+		sort.Strings(keys)
+		fields := []grcupload.StructuredField{}
+		for _, key := range keys {
+			rawValue := typed[key]
+			fieldKey := key
+			if prefix != "" {
+				fieldKey = prefix + "." + key
+			}
+			if scalar := scalarString(rawValue); scalar != "" {
+				fields = append(fields, grcupload.StructuredField{Key: fieldKey, Label: labelForFieldKey(fieldKey), Value: scalar})
+				continue
+			}
+			if values := scalarStrings(rawValue); len(values) > 0 {
+				fields = append(fields, grcupload.StructuredField{Key: fieldKey, Label: labelForFieldKey(fieldKey), Value: strings.Join(values, "; ")})
+				continue
+			}
+			fields = append(fields, structuredFieldsFromValue(rawValue, fieldKey)...)
+		}
+		return fields
+	case []any:
+		values := scalarStrings(typed)
+		if len(values) > 0 && prefix != "" {
+			return []grcupload.StructuredField{{Key: prefix, Label: labelForFieldKey(prefix), Value: strings.Join(values, "; ")}}
+		}
+		fields := []grcupload.StructuredField{}
+		for _, rawValue := range typed {
+			fields = append(fields, structuredFieldsFromValue(rawValue, prefix)...)
+		}
+		return fields
+	}
+	return nil
+}
+
+func scalarStrings(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		values := []string{}
+		for _, rawValue := range typed {
+			if scalar := scalarString(rawValue); scalar != "" {
+				values = append(values, scalar)
+			}
+		}
+		return values
+	case []string:
+		values := []string{}
+		for _, rawValue := range typed {
+			if scalar := strings.TrimSpace(rawValue); scalar != "" {
+				values = append(values, scalar)
+			}
+		}
+		return values
+	}
+	return nil
+}
+
+func structuredSummaryFromFields(fields []grcupload.StructuredField) string {
+	for _, key := range []string{"summary", "document_summary"} {
+		for _, field := range fields {
+			if strings.EqualFold(field.Key, key) {
+				return field.Value
+			}
+		}
+	}
+	return ""
+}
+
+func skipStructuredFieldKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "", "chunks", "blocks", "pages", "page_count", "content", "text", "markdown", "result_url", "download_url", "url", "status", "parse_id", "job_id", "id", "input", "file_id":
+		return true
+	default:
+		return false
+	}
+}
+
+func labelForFieldKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	key = strings.ReplaceAll(key, "_", " ")
+	key = strings.ReplaceAll(key, ".", " ")
+	return strings.Join(strings.Fields(key), " ")
 }
 
 func scalarString(value any) string {

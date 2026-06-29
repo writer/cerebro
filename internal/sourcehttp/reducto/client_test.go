@@ -16,7 +16,7 @@ import (
 
 func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	var sawUpload bool
-	var sawParse bool
+	var sawExtract bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer reducto-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
@@ -43,22 +43,32 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 				t.Fatalf("uploaded body = %q, want policy body", string(body))
 			}
 			writeJSON(t, w, map[string]string{"file_id": "file-1"})
-		case "/parse":
-			sawParse = true
+		case "/extract":
+			sawExtract = true
 			if r.Method != http.MethodPost {
-				t.Fatalf("parse method = %s, want POST", r.Method)
+				t.Fatalf("extract method = %s, want POST", r.Method)
 			}
-			var request map[string]string
+			var request map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				t.Fatalf("decode parse request: %v", err)
+				t.Fatalf("decode extract request: %v", err)
 			}
 			if request["input"] != "file-1" {
-				t.Fatalf("parse input = %q, want file-1", request["input"])
+				t.Fatalf("extract input = %q, want file-1", request["input"])
+			}
+			instructions, ok := request["instructions"].(map[string]any)
+			if !ok {
+				t.Fatalf("extract instructions = %#v, want object", request["instructions"])
+			}
+			schema, ok := instructions["schema"].(map[string]any)
+			if !ok || schema["type"] != "object" {
+				t.Fatalf("extract schema = %#v, want object schema", instructions["schema"])
 			}
 			writeJSON(t, w, map[string]any{
 				"parse_id": "parse-1",
 				"status":   "completed",
 				"result": map[string]any{
+					"summary":       "Access policy summary",
+					"document_type": "policy",
 					"chunks": []map[string]string{
 						{"content": "Access control policy"},
 						{"content": "Review access quarterly"},
@@ -84,8 +94,8 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	if !sawUpload || !sawParse {
-		t.Fatalf("sawUpload=%v sawParse=%v, want both true", sawUpload, sawParse)
+	if !sawUpload || !sawExtract {
+		t.Fatalf("sawUpload=%v sawExtract=%v, want both true", sawUpload, sawExtract)
 	}
 	if parsed.ProviderFileID != "file-1" || parsed.ParseID != "parse-1" || parsed.Status != "completed" {
 		t.Fatalf("parsed IDs/status = %#v", parsed)
@@ -96,6 +106,15 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	if parsed.TextPreview != "Access control policy Review access quarterly" {
 		t.Fatalf("TextPreview = %q", parsed.TextPreview)
 	}
+	if parsed.StructureStatus != "completed" || parsed.StructureSchema != "grc_upload_v1" {
+		t.Fatalf("structured status/schema = %#v", parsed)
+	}
+	if len(parsed.StructuredFields) != 2 {
+		t.Fatalf("structured fields = %#v, want summary and document_type", parsed.StructuredFields)
+	}
+	if parsed.StructuredSummary != "Access policy summary" {
+		t.Fatalf("StructuredSummary = %q", parsed.StructuredSummary)
+	}
 }
 
 func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
@@ -105,7 +124,7 @@ func TestReductoClientFetchesSameOriginResultURL(t *testing.T) {
 		switch r.URL.Path {
 		case "/upload":
 			writeJSON(t, w, map[string]string{"file_id": "file-1"})
-		case "/parse":
+		case "/extract":
 			writeJSON(t, w, map[string]any{
 				"parse_id":   "parse-1",
 				"status":     "completed",
@@ -158,7 +177,7 @@ func TestReductoClientReturnsResultURLFetchError(t *testing.T) {
 		switch r.URL.Path {
 		case "/upload":
 			writeJSON(t, w, map[string]string{"file_id": "file-1"})
-		case "/parse":
+		case "/extract":
 			writeJSON(t, w, map[string]any{
 				"parse_id":   "parse-1",
 				"status":     "completed",
@@ -210,13 +229,13 @@ func TestReductoClientPreservesNumericIdentifiers(t *testing.T) {
 		switch r.URL.Path {
 		case "/upload":
 			writeJSON(t, w, map[string]any{"file_id": 12345})
-		case "/parse":
-			var request map[string]string
+		case "/extract":
+			var request map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				t.Fatalf("decode parse request: %v", err)
+				t.Fatalf("decode extract request: %v", err)
 			}
 			if request["input"] != "12345" {
-				t.Fatalf("parse input = %q, want 12345", request["input"])
+				t.Fatalf("extract input = %q, want 12345", request["input"])
 			}
 			writeJSON(t, w, map[string]any{
 				"parse_id": 67890,
