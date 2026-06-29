@@ -385,15 +385,32 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 
 func sanitizeInternalRowFields(rows []map[string]any) {
 	for _, row := range rows {
-		mergeInternalAttributes(row, "control_attributes_json_internal", []string{"control_id", "control_external_id", "policy_id", "policy_type", "status", "source_system"})
-		mergeInternalAttributes(row, "support_attributes_json_internal", []string{"evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "status", "source_system"})
-		mergeInternalAttributes(row, "evidence_attributes_json_internal", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
+		if questionnaireEvidenceRow(row) {
+			mergeInternalAttributesWithPrefix(row, "control_attributes_json_internal", "control_", []string{"control_id", "control_external_id", "policy_id", "policy_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "support_attributes_json_internal", "support_", []string{"evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "evidence_attributes_json_internal", "evidence_", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "finding_attributes_json_internal", "finding_", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+			mergeInternalAttributesWithPrefix(row, "exception_attributes_json_internal", "exception_", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "source_attributes_json_internal", "source_", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
+			mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
+			removeRawAttributeJSONFields(row)
+			continue
+		}
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "exception_attributes_json_internal", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
 		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
 		removeRawAttributeJSONFields(row)
 	}
+}
+
+func questionnaireEvidenceRow(row map[string]any) bool {
+	for _, key := range []string{"control_attributes_json_internal", "support_attributes_json_internal", "evidence_attributes_json_internal", "exception_attributes_json_internal"} {
+		if _, ok := row[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func removeRawAttributeJSONFields(row map[string]any) {
@@ -779,6 +796,10 @@ func severityName(rank int) string {
 }
 
 func mergeInternalAttributes(row map[string]any, key string, fields []string) {
+	mergeInternalAttributesWithPrefix(row, key, "", fields)
+}
+
+func mergeInternalAttributesWithPrefix(row map[string]any, key string, prefix string, fields []string) {
 	raw, ok := row[key].(string)
 	delete(row, key)
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -789,7 +810,8 @@ func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 		return
 	}
 	for _, field := range fields {
-		if !rowValueEmpty(row[field]) {
+		outputField := prefixedAttributeField(prefix, field)
+		if !rowValueEmpty(row[outputField]) {
 			continue
 		}
 		value, ok := attrs[field]
@@ -797,9 +819,22 @@ func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 			continue
 		}
 		if text, ok := internalAttributeText(value); ok {
-			row[field] = text
+			row[outputField] = text
 		}
 	}
+}
+
+func prefixedAttributeField(prefix string, field string) string {
+	prefix = strings.TrimSpace(prefix)
+	field = strings.TrimSpace(field)
+	if prefix == "" || field == "" {
+		return field
+	}
+	base := strings.TrimSuffix(prefix, "_")
+	if base != "" && strings.HasPrefix(field, base+"_") {
+		return field
+	}
+	return prefix + field
 }
 
 func internalAttributeText(value any) (string, bool) {

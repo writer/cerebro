@@ -189,8 +189,19 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 		t.Fatalf("store request did not retrieve bounded questionnaire graph evidence:\n%s", store.requests[0].Query)
 	}
 	rowsEvent := events[6].Data.(RowsEvent)
-	if got := rowsEvent.Rows[0]["last_sync_at"]; got != "2026-06-29T12:00:00Z" {
-		t.Fatalf("last_sync_at = %#v, want sanitized source freshness", got)
+	for field, want := range map[string]any{
+		"control_status":      "monitored",
+		"support_status":      "active",
+		"evidence_status":     "ready",
+		"source_status":       "healthy",
+		"source_last_sync_at": "2026-06-29T12:00:00Z",
+	} {
+		if got := rowsEvent.Rows[0][field]; got != want {
+			t.Fatalf("%s = %#v, want %#v in sanitized questionnaire row %#v", field, got, want, rowsEvent.Rows[0])
+		}
+	}
+	if got := rowsEvent.Rows[0]["status"]; got != nil {
+		t.Fatalf("status = %#v, want no unprefixed status collision in questionnaire row %#v", got, rowsEvent.Rows[0])
 	}
 	if _, leaked := rowsEvent.Rows[0]["source_attributes_json_internal"]; leaked {
 		t.Fatalf("rows leaked raw source attributes: %#v", rowsEvent.Rows[0])
