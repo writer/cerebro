@@ -828,6 +828,101 @@ export type CreatePlatformJobRequest = {
   tenant_id?: string;
 };
 
+export type CredentialStoreBinding = {
+  auth_method?: string;
+  connection_status?: string;
+  credential_id?: string;
+  credential_status?: string;
+  credential_store_id: string;
+  field_count?: number;
+  fields?: string[];
+  id: string;
+  last_used_at?: string;
+  last_validated_at?: string;
+  next_action?: string;
+  reference_prefixes?: string[];
+  resolver?: "cerebro_vault" | "environment" | "environment_projection" | "native" | "native_reference" | "unknown";
+  runtime_id?: string;
+  source_id?: string;
+  source_name?: string;
+  tenant_id?: string;
+  updated_at?: string;
+};
+
+export type CredentialStoreDetailResponse = {
+  audit?: ConnectorCredentialAuditEvent[];
+  credential_store_status: "ready" | "unavailable";
+  generated_at: string;
+  runtime_store_status: "ready" | "unavailable";
+  store: CredentialStoreOperational;
+  tenant_id?: string;
+};
+
+export type CredentialStoreHealth = {
+  detail?: string;
+  next_action?: string;
+  severity?: "success" | "warning" | "error";
+  status: "ready" | "in_use" | "warning" | "needs_attention" | "needs_configuration" | "unavailable";
+};
+
+export type CredentialStoreIssue = {
+  credential_id?: string;
+  credential_store_id?: string;
+  detail: string;
+  field?: string;
+  id: string;
+  next_action?: string;
+  runtime_id?: string;
+  severity: "error" | "warning";
+  source_id?: string;
+  status: "blocked" | "warning";
+};
+
+export type CredentialStoreListResponse = {
+  credential_store_status: "ready" | "unavailable";
+  generated_at: string;
+  issues?: CredentialStoreIssue[];
+  runtime_store_status: "ready" | "unavailable";
+  stores: CredentialStoreOperational[];
+  tenant_id?: string;
+};
+
+export type CredentialStoreMetadata = {
+  available: boolean;
+  default?: boolean;
+  description?: string;
+  detail?: string;
+  id: string;
+  label: string;
+  mode: "encrypted_submission" | "environment_managed" | "reference";
+  native_resolution_available?: boolean;
+  provider: string;
+  reference_field_template?: string;
+  reference_namespace_template?: string;
+  reference_placeholder?: string;
+  reference_prefixes?: string[];
+  required_config?: { description?: string; env?: string; label?: string; required?: boolean }[];
+  setup_steps?: { command?: string; description?: string; id?: string; label?: string }[];
+  status?: string;
+};
+
+export type CredentialStoreOperational = {
+  bindings?: CredentialStoreBinding[];
+  health: CredentialStoreHealth;
+  issues?: CredentialStoreIssue[];
+  store: CredentialStoreMetadata;
+  usage: CredentialStoreUsage;
+};
+
+export type CredentialStoreUsage = {
+  bindings: number;
+  connections: number;
+  credentials: number;
+  field_references: number;
+  issues: number;
+  last_updated_at?: string;
+};
+
 export type DeviceEnrollRequest = {
   agent_version?: string;
   attestation?: string;
@@ -1105,6 +1200,24 @@ export type GRCAskRequest = {
   tenant_id: string;
 };
 
+export type GRCAuditProgram = {
+  id?: string;
+  name?: string;
+  profile_id?: string;
+  questionnaire_answer_count?: number;
+  readiness_score?: number;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export type GRCAuditSnapshot = {
+  generated_at?: string;
+  hash?: string;
+  id?: string;
+  questionnaire_answer_count?: number;
+  [key: string]: unknown;
+};
+
 export type GRCDashboardResponse = {
   connectors?: Record<string, unknown>[];
   controls?: Record<string, unknown>[];
@@ -1116,6 +1229,49 @@ export type GRCDashboardResponse = {
   product_areas?: GRCProductArea[];
   source_summaries?: Record<string, unknown>[];
   summary?: Record<string, unknown>;
+};
+
+export type GRCEvidenceCitations = {
+  claim_ids?: string[];
+  event_ids?: string[];
+  evidence_ids?: string[];
+  graph_root_urns?: string[];
+  rule_ids?: string[];
+  run_ids?: string[];
+};
+
+export type GRCEvidenceFreshness = {
+  expires_at?: string;
+  observed_at?: string;
+  reason?: string;
+  sla?: string;
+  status: string;
+};
+
+export type GRCEvidencePacket = {
+  citations?: GRCEvidenceCitations;
+  control_id?: string;
+  evidence_type?: string;
+  expires_at?: string;
+  framework_id?: string;
+  freshness?: GRCEvidenceFreshness;
+  id?: string;
+  manual?: boolean;
+  observed_at?: string;
+  quality?: string;
+  reason?: string;
+  request_id?: string;
+  source?: string;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export type GRCEvidencePacketsResponse = {
+  evidence_packets?: GRCEvidencePacket[];
+  program?: GRCAuditProgram;
+  questionnaire_answers?: GRCQuestionnaireAnswer[];
+  snapshot?: GRCAuditSnapshot;
+  [key: string]: unknown;
 };
 
 export type GRCPolicyAcceptanceSummary = {
@@ -1649,6 +1805,90 @@ export type GRCProgramReadinessResponse = {
   work_items?: Record<string, unknown>[];
 };
 
+export type GRCQuestionnaireAnswer = {
+  answer: string;
+  answer_state: string;
+  citations: GRCEvidenceCitations;
+  confidence: GRCQuestionnaireAnswerConfidence;
+  controls: GRCQuestionnaireControlRef[];
+  evidence_packet_ids?: string[];
+  framework_mappings?: GRCQuestionnaireFrameworkMapping[];
+  freshness: GRCEvidenceFreshness;
+  guardrails?: string[];
+  id: string;
+  missing_evidence?: GRCQuestionnaireEvidenceGap[];
+  policy_documents?: GRCQuestionnaireEvidenceRef[];
+  question: string;
+  question_id: string;
+  reasoning_contract: GRCQuestionnaireReasoningContract;
+  review_state: string;
+  source_evidence?: GRCQuestionnaireEvidenceRef[];
+};
+
+export type GRCQuestionnaireAnswerConfidence = {
+  level: string;
+  reason?: string;
+  score: number;
+};
+
+export type GRCQuestionnaireControlRef = {
+  control_id?: string;
+  framework_id?: string;
+  framework_name?: string;
+  id: string;
+  status?: string;
+  title?: string;
+};
+
+export type GRCQuestionnaireEvidenceGap = {
+  code: string;
+  control_id?: string;
+  evidence_packet_id?: string;
+  evidence_request_id?: string;
+  field?: string;
+  id: string;
+  reason?: string;
+  review_state?: string;
+};
+
+export type GRCQuestionnaireEvidenceRef = {
+  citations: GRCEvidenceCitations;
+  evidence_packet_id?: string;
+  evidence_type?: string;
+  freshness: GRCEvidenceFreshness;
+  id: string;
+  review_state?: string;
+  runtime_id?: string;
+  source?: string;
+  source_id?: string;
+};
+
+export type GRCQuestionnaireFrameworkMapping = {
+  control_id?: string;
+  control_title?: string;
+  family_id?: string;
+  family_name?: string;
+  framework_id?: string;
+  framework_name?: string;
+  framework_version?: string;
+  mapped_rules?: string[];
+};
+
+export type GRCQuestionnaireReasoningContract = {
+  confidence: string;
+  evidence_packet_ids?: string[];
+  freshness: GRCEvidenceFreshness;
+  graph_question: string;
+  intent: string;
+  manual_review_state: string;
+  missing_evidence_ids?: string[];
+  policy_citations?: string[];
+  relevant_controls?: GRCQuestionnaireControlRef[];
+  source_citations?: string[];
+  surface: string;
+  unsupported_claims?: string[];
+};
+
 export type GRCUploadEntityMatchHint = {
   candidate_state?: "dedupe_candidate";
   match_key?: string;
@@ -1855,6 +2095,59 @@ export type IdempotencyContract = {
   routes: { method?: string; path?: string; replay?: string; requirement?: string; scope?: string }[];
   semantics: string[];
   version: string;
+};
+
+export type IdentityListMeta = {
+  configured: number;
+  limit: number;
+  loaded: number;
+  persisted: number;
+};
+
+export type IdentityOrganization = {
+  created_at?: string;
+  domain?: string;
+  external_id?: string;
+  last_synced_at?: string;
+  name: string;
+  org_id: string;
+  provider?: string;
+  slug?: string;
+  source: string;
+  tenant_id: string;
+  updated_at?: string;
+  user_count: number;
+};
+
+export type IdentityOrganizationListResponse = {
+  meta: IdentityListMeta;
+  organizations: IdentityOrganization[];
+  tenant_id?: string;
+};
+
+export type IdentityUser = {
+  created_at?: string;
+  display_name: string;
+  email?: string;
+  groups?: string[];
+  last_seen_at?: string;
+  last_synced_at?: string;
+  org_id?: string;
+  provider?: string;
+  roles?: string[];
+  source: string;
+  status: string;
+  subject?: string;
+  tenant_id: string;
+  updated_at?: string;
+  user_id: string;
+};
+
+export type IdentityUserListResponse = {
+  meta: IdentityListMeta;
+  org_id?: string;
+  tenant_id?: string;
+  users: IdentityUser[];
 };
 
 export type IssueBootstrapTokenRequest = {

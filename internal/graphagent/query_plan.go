@@ -16,6 +16,7 @@ const (
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
+	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
 
 	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
 )
@@ -208,6 +209,8 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 		plan.Filters = fastPathTopRiskFilters(question)
 	case IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge:
 		plan.Filters = map[string]string{}
+	case IntentQuestionnaireEvidence:
+		plan.Filters = fastPathQuestionnaireEvidenceFilters(question)
 	case IntentExplainFinding:
 		if plan.ScopeURN == "" {
 			return AskQueryPlan{}, false
@@ -242,6 +245,40 @@ func fastPathTopRiskFilters(question string) map[string]string {
 	}
 	if strings.Contains(lower, "repository") || containsWord(lower, "repo") || strings.Contains(lower, "code repo") {
 		filters["resource_type"] = "repository"
+	}
+	return filters
+}
+
+func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
+	if strings.Contains(haystack, "qauto") || strings.Contains(haystack, "questionnaire") || strings.Contains(haystack, "security questionnaire") {
+		return true
+	}
+	if strings.Contains(haystack, "control coverage") || (strings.Contains(haystack, "control") && strings.Contains(haystack, "evidence")) {
+		return true
+	}
+	if strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document") {
+		return true
+	}
+	if strings.Contains(haystack, "okta") && (strings.Contains(haystack, "mfa") || strings.Contains(haystack, "access") || strings.Contains(haystack, "lifecycle")) {
+		return true
+	}
+	return false
+}
+
+func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
+	lower := strings.ToLower(question)
+	filters := map[string]string{"answer_mode": "bounded_graph_evidence"}
+	switch {
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "mfa"):
+		filters["topic"] = "okta_mfa"
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "lifecycle"):
+		filters["topic"] = "okta_lifecycle"
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "access"):
+		filters["topic"] = "okta_access"
+	case strings.Contains(lower, "policy doc") || strings.Contains(lower, "policy document"):
+		filters["topic"] = "policy_documents"
+	case strings.Contains(lower, "control coverage") || strings.Contains(lower, "mapped control"):
+		filters["topic"] = "control_coverage"
 	}
 	return filters
 }
@@ -323,6 +360,8 @@ func canonicalIntent(value string) string {
 		return IntentIdentityBridge
 	case "connector_health", "source_health", "runtime_health":
 		return IntentConnectorHealth
+	case "questionnaire_evidence_answer", "questionnaire_answer", "qauto", "compliance_answer", "control_coverage":
+		return IntentQuestionnaireEvidence
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
@@ -339,6 +378,8 @@ func inferIntent(question string, cypher string) string {
 		return IntentAggregateFindingsBySource
 	case strings.Contains(haystack, "connector") || strings.Contains(haystack, "runtime health") || strings.Contains(haystack, "source health"):
 		return IntentConnectorHealth
+	case looksLikeQuestionnaireEvidenceQuestion(haystack):
+		return IntentQuestionnaireEvidence
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
@@ -460,6 +501,80 @@ RETURN source.urn AS source_urn,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
+	case IntentQuestionnaireEvidence:
+		topicPredicate := questionnaireEvidenceTopicPredicate(plan.Filters)
+		return fmt.Sprintf(`MATCH (control:Entity {tenant_id: $tenant_id, entity_type: 'policy'})
+WITH control,
+     coalesce(%s, '') AS control_policy_type,
+     coalesce(%s, '') AS control_ref
+WHERE control_policy_type = 'control'
+  AND CASE
+        WHEN $scope_urn = '' THEN true
+        WHEN control.urn = $scope_urn THEN true
+        ELSE false
+      END
+OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportRel:RELATION {relation: 'supports'}]->(control:Entity {tenant_id: $tenant_id})
+WHERE CASE
+        WHEN $scope_urn = '' THEN true
+        WHEN support.urn = $scope_urn THEN true
+        WHEN control.urn = $scope_urn THEN true
+        ELSE false
+      END
+OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (control:Entity {tenant_id: $tenant_id})-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
+OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control:Entity {tenant_id: $tenant_id})
+WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
+WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, finding, findingRel, exception, exceptionRel,
+     coalesce(supportEvidence, controlEvidence) AS evidence,
+     coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel
+WITH control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
+     toLower(coalesce(control.label, '') + ' ' +
+             coalesce(control.source_id, '') + ' ' +
+             coalesce(control.attributes_json, '') + ' ' +
+             coalesce(support.label, '') + ' ' +
+             coalesce(support.entity_type, '') + ' ' +
+             coalesce(support.source_id, '') + ' ' +
+             coalesce(support.attributes_json, '') + ' ' +
+             coalesce(evidence.label, '') + ' ' +
+             coalesce(evidence.entity_type, '') + ' ' +
+             coalesce(evidence.source_id, '') + ' ' +
+             coalesce(evidence.attributes_json, '')) AS qauto_match_text,
+     coalesce(evidence.source_id, support.source_id, control.source_id, '') AS evidence_source_id
+%s
+OPTIONAL MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
+WHERE evidence_source_id <> '' AND source.source_id = evidence_source_id
+RETURN control.urn AS control_urn,
+       coalesce(control.label, control_ref, control.urn) AS control_label,
+       control_ref,
+       coalesce(control.attributes_json, '') AS control_attributes_json_internal,
+       support.urn AS support_urn,
+       coalesce(support.label, support.urn) AS support_label,
+       support.entity_type AS support_type,
+       support.source_id AS support_source_id,
+       supportRel.relation AS support_relation,
+       coalesce(support.attributes_json, '') AS support_attributes_json_internal,
+       evidence.urn AS evidence_urn,
+       coalesce(evidence.label, evidence.urn) AS evidence_label,
+       evidence.entity_type AS evidence_type,
+       evidence.source_id AS evidence_source_id,
+       evidenceRel.relation AS evidence_relation,
+       coalesce(evidence.attributes_json, '') AS evidence_attributes_json_internal,
+       finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       findingRel.relation AS finding_relation,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json_internal,
+       exception.urn AS exception_urn,
+       coalesce(exception.label, exception.urn) AS exception_label,
+       exception.entity_type AS exception_type,
+       exceptionRel.relation AS exception_relation,
+       coalesce(exception.attributes_json, '') AS exception_attributes_json_internal,
+       source.urn AS source_urn,
+       coalesce(source.label, source.urn) AS source_label,
+       coalesce(source.attributes_json, '') AS source_attributes_json_internal
+ORDER BY control_label, support_label, evidence_label
+LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, limit), true
 	default:
 		return "", false
 	}
@@ -525,6 +640,39 @@ func resourceTypePredicate(value string) string {
 	}
 }
 
+func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
+	switch strings.ToLower(planFilterValue(filters, "topic")) {
+	case "okta_mfa":
+		return `WHERE CASE
+        WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
+        WHEN qauto_match_text CONTAINS 'mfa' THEN true
+        WHEN qauto_match_text CONTAINS 'multi-factor' THEN true
+        WHEN qauto_match_text CONTAINS 'multifactor' THEN true
+        ELSE false
+      END`
+	case "okta_lifecycle":
+		return `WHERE CASE
+        WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
+        WHEN qauto_match_text CONTAINS 'lifecycle' THEN true
+        WHEN qauto_match_text CONTAINS 'deprovision' THEN true
+        WHEN qauto_match_text CONTAINS 'provision' THEN true
+        ELSE false
+      END`
+	case "okta_access":
+		return `WHERE CASE
+        WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
+        WHEN qauto_match_text CONTAINS 'access' THEN true
+        WHEN qauto_match_text CONTAINS 'sso' THEN true
+        WHEN qauto_match_text CONTAINS 'group' THEN true
+        ELSE false
+      END`
+	case "policy_documents":
+		return "WHERE qauto_match_text CONTAINS 'policy' OR qauto_match_text CONTAINS 'document'"
+	default:
+		return ""
+	}
+}
+
 func planFilterValue(filters map[string]string, key string) string {
 	for filterKey, value := range filters {
 		if strings.EqualFold(filterKey, key) {
@@ -550,6 +698,10 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 		switch plan.Intent {
 		case IntentTopRiskFindings:
 			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
+				return true
+			}
+		case IntentQuestionnaireEvidence:
+			if normalized != "topic" && normalized != "answer_mode" {
 				return true
 			}
 		default:

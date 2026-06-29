@@ -329,6 +329,92 @@ func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
 	}
 }
 
+func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Answer this Okta MFA questionnaire item from evidence",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentQuestionnaireEvidence, Filters: map[string]string{"topic": "okta_mfa"}, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentQuestionnaireEvidence || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic questionnaire evidence template", result)
+	}
+	for _, want := range []string{
+		"control_policy_type = 'control'",
+		"relation: 'supports'",
+		"relation: 'has_evidence'",
+		"qauto_match_text CONTAINS 'okta'",
+		"qauto_match_text CONTAINS 'mfa'",
+		"source_attributes_json_internal",
+		"exception_attributes_json_internal",
+		"finding_attributes_json_internal",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{
+		"control.status",
+		"support.status",
+		"evidence.status",
+		"source.last_sync_at",
+	} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("questionnaire template references non-projected top-level field %q:\n%s", forbidden, result.Cypher)
+		}
+	}
+}
+
+func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
+	for _, question := range []string{
+		"Does Okta enforce MFA for access?",
+		"Answer the Okta access control question",
+		"Explain Okta lifecycle evidence for user deprovisioning",
+		"Answer this policy document questionnaire item",
+		"Show control coverage evidence gaps",
+	} {
+		if got := inferIntent(question, ""); got != IntentQuestionnaireEvidence {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentQuestionnaireEvidence)
+		}
+	}
+}
+
+func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		question    string
+		wantTopic   string
+		wantSnippet string
+	}{
+		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: "qauto_match_text CONTAINS 'mfa'"},
+		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: "qauto_match_text CONTAINS 'access'"},
+		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: "qauto_match_text CONTAINS 'lifecycle'"},
+		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy'"},
+		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: "control_policy_type = 'control'"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: tt.question}, true)
+			if !ok || !result.Deterministic || result.Source != "deterministic_fast_path" {
+				t.Fatalf("deterministicFastPathConversion() = %#v, %v; want questionnaire graph fast path", result, ok)
+			}
+			if result.Plan.Intent != IntentQuestionnaireEvidence || result.Plan.Filters["topic"] != tt.wantTopic {
+				t.Fatalf("plan = %#v, want questionnaire topic %q", result.Plan, tt.wantTopic)
+			}
+			for _, want := range []string{
+				"relation: 'supports'",
+				"relation: 'has_evidence'",
+				"source_attributes_json_internal",
+				tt.wantSnippet,
+			} {
+				if !strings.Contains(result.Cypher, want) {
+					t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)
+				}
+			}
+		})
+	}
+}
+
 func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
@@ -371,6 +457,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		{name: "explain finding", intent: IntentExplainFinding, scope: "urn:cerebro:writer:finding:alpha"},
 		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
 		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},
+		{name: "questionnaire evidence", intent: IntentQuestionnaireEvidence, scope: "urn:cerebro:writer:policy:control:ac-1"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertDraftToQuery(AskRequest{
@@ -446,6 +533,7 @@ func TestUnsupportedPlanOnlyMutationsAreRefused(t *testing.T) {
 		{name: "unsupported top risk owner filter", plan: AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}}},
 		{name: "unsupported source runtime filter", plan: AskQueryPlan{Intent: IntentConnectorHealth, Filters: map[string]string{"entity_type": "runtime"}}},
 		{name: "unsupported identity bridge group", plan: AskQueryPlan{Intent: IntentIdentityBridge, GroupBy: "email"}},
+		{name: "unsupported questionnaire owner filter", plan: AskQueryPlan{Intent: IntentQuestionnaireEvidence, Filters: map[string]string{"owner": "security"}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: tt.name}, &DraftResponse{Plan: &tt.plan})

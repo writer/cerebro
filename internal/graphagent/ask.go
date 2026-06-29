@@ -385,7 +385,11 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 
 func sanitizeInternalRowFields(rows []map[string]any) {
 	for _, row := range rows {
+		mergeInternalAttributes(row, "control_attributes_json_internal", []string{"control_id", "control_external_id", "policy_id", "policy_type", "status", "source_system"})
+		mergeInternalAttributes(row, "support_attributes_json_internal", []string{"evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "status", "source_system"})
+		mergeInternalAttributes(row, "evidence_attributes_json_internal", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+		mergeInternalAttributes(row, "exception_attributes_json_internal", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
 		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
 		removeRawAttributeJSONFields(row)

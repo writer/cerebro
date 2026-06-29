@@ -3610,6 +3610,10 @@ paths:
       responses:
         '200':
           description: Audit-ready program, framework, control, request, packet, review, activity, export, and snapshot records assembled from live evidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCEvidencePacketsResponse'
   /grc/control-packets/detail:
     get:
       summary: GRC control evidence detail for one control
@@ -5170,6 +5174,327 @@ components:
         minimum: 1
         maximum: 500
   schemas:
+    GRCEvidencePacketsResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        program:
+          $ref: '#/components/schemas/GRCAuditProgram'
+        snapshot:
+          $ref: '#/components/schemas/GRCAuditSnapshot'
+        evidence_packets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCEvidencePacket'
+        questionnaire_answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireAnswer'
+    GRCAuditProgram:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        profile_id:
+          type: string
+        status:
+          type: string
+        readiness_score:
+          type: integer
+        questionnaire_answer_count:
+          type: integer
+    GRCAuditSnapshot:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        hash:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        questionnaire_answer_count:
+          type: integer
+    GRCEvidencePacket:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        control_id:
+          type: string
+        framework_id:
+          type: string
+        evidence_type:
+          type: string
+        status:
+          type: string
+        quality:
+          type: string
+        reason:
+          type: string
+        source:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        manual:
+          type: boolean
+        citations:
+          $ref: '#/components/schemas/GRCEvidenceCitations'
+        freshness:
+          $ref: '#/components/schemas/GRCEvidenceFreshness'
+    GRCQuestionnaireAnswer:
+      type: object
+      required:
+        - id
+        - question_id
+        - question
+        - answer
+        - answer_state
+        - review_state
+        - reasoning_contract
+        - confidence
+        - controls
+        - citations
+        - freshness
+      properties:
+        id:
+          type: string
+        question_id:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+        answer_state:
+          type: string
+        review_state:
+          type: string
+        reasoning_contract:
+          $ref: '#/components/schemas/GRCQuestionnaireReasoningContract'
+        confidence:
+          $ref: '#/components/schemas/GRCQuestionnaireAnswerConfidence'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireControlRef'
+        framework_mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireFrameworkMapping'
+        source_evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireEvidenceRef'
+        policy_documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireEvidenceRef'
+        evidence_packet_ids:
+          type: array
+          items:
+            type: string
+        citations:
+          $ref: '#/components/schemas/GRCEvidenceCitations'
+        freshness:
+          $ref: '#/components/schemas/GRCEvidenceFreshness'
+        missing_evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireEvidenceGap'
+        guardrails:
+          type: array
+          items:
+            type: string
+    GRCQuestionnaireReasoningContract:
+      type: object
+      required:
+        - intent
+        - surface
+        - graph_question
+        - freshness
+        - confidence
+        - manual_review_state
+      properties:
+        intent:
+          type: string
+        surface:
+          type: string
+        graph_question:
+          type: string
+        relevant_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireControlRef'
+        source_citations:
+          type: array
+          items:
+            type: string
+        policy_citations:
+          type: array
+          items:
+            type: string
+        evidence_packet_ids:
+          type: array
+          items:
+            type: string
+        freshness:
+          $ref: '#/components/schemas/GRCEvidenceFreshness'
+        confidence:
+          type: string
+        unsupported_claims:
+          type: array
+          items:
+            type: string
+        manual_review_state:
+          type: string
+        missing_evidence_ids:
+          type: array
+          items:
+            type: string
+    GRCQuestionnaireAnswerConfidence:
+      type: object
+      required: [level, score]
+      properties:
+        level:
+          type: string
+        score:
+          type: integer
+        reason:
+          type: string
+    GRCQuestionnaireControlRef:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        control_id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+    GRCQuestionnaireFrameworkMapping:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        framework_version:
+          type: string
+        family_id:
+          type: string
+        family_name:
+          type: string
+        control_id:
+          type: string
+        control_title:
+          type: string
+        mapped_rules:
+          type: array
+          items:
+            type: string
+    GRCQuestionnaireEvidenceRef:
+      type: object
+      required:
+        - id
+        - freshness
+        - citations
+      properties:
+        id:
+          type: string
+        evidence_packet_id:
+          type: string
+        evidence_type:
+          type: string
+        source:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        freshness:
+          $ref: '#/components/schemas/GRCEvidenceFreshness'
+        review_state:
+          type: string
+        citations:
+          $ref: '#/components/schemas/GRCEvidenceCitations'
+    GRCQuestionnaireEvidenceGap:
+      type: object
+      required: [id, code]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        field:
+          type: string
+        reason:
+          type: string
+        control_id:
+          type: string
+        evidence_request_id:
+          type: string
+        evidence_packet_id:
+          type: string
+        review_state:
+          type: string
+    GRCEvidenceCitations:
+      type: object
+      properties:
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        rule_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        run_ids:
+          type: array
+          items:
+            type: string
+    GRCEvidenceFreshness:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        sla:
+          type: string
+        reason:
+          type: string
+        observed_at:
+          type: string
+        expires_at:
+          type: string
     IdentityListMeta:
       type: object
       required: [limit, loaded, configured, persisted]

@@ -20,30 +20,29 @@ import (
 const ContractVersion = "2026-06-24"
 
 type Response struct {
-	Version     string                    `json:"version"`
-	GeneratedAt time.Time                 `json:"generated_at"`
-	Program     AuditProgram              `json:"program"`
-	Frameworks  []FrameworkPosture        `json:"frameworks"`
-	Controls    []ControlPosture          `json:"controls"`
-	Requests    []EvidenceRequest         `json:"evidence_requests"`
-	Packets     []EvidencePacket          `json:"evidence_packets"`
-	Reviews     []EvidenceReview          `json:"evidence_reviews"`
-	Activity    []EvidenceActivity        `json:"activity"`
-	Scope       AssessmentScope           `json:"assessment_scope"`
-	Sources     []CollectionSource        `json:"collection_sources"`
-	Items       []EvidenceItemRecord      `json:"evidence_items"`
-	Findings    []FindingWorkflow         `json:"finding_workflow"`
-	Resources   []ResourceSubject         `json:"resource_subjects"`
-	Lineage     []EvidenceLineage         `json:"evidence_lineage"`
-	Claims      []ClaimRecord             `json:"claim_records"`
-	Runs        []EvaluationRun           `json:"evaluation_runs"`
-	GraphRows   []GraphEvidenceRecord     `json:"graph_evidence_rows"`
-	GraphPaths  []GraphPathRecord         `json:"graph_path_records"`
-	Exceptions  []ExceptionAcceptance     `json:"exceptions_acceptances"`
-	Artifacts   []EvidenceExportArtifact  `json:"export_artifacts"`
-	Export      EvidenceExport            `json:"export"`
-	Snapshot    AuditSnapshot             `json:"snapshot"`
-	Metadata    grccontrol.ReportMetadata `json:"metadata"`
+	Version     string                `json:"version"`
+	GeneratedAt time.Time             `json:"generated_at"`
+	Program     AuditProgram          `json:"program"`
+	Frameworks  []FrameworkPosture    `json:"frameworks"`
+	Controls    []ControlPosture      `json:"controls"`
+	Requests    []EvidenceRequest     `json:"evidence_requests"`
+	Packets     []EvidencePacket      `json:"evidence_packets"`
+	Reviews     []EvidenceReview      `json:"evidence_reviews"`
+	Activity    []EvidenceActivity    `json:"activity"`
+	Scope       AssessmentScope       `json:"assessment_scope"`
+	Sources     []CollectionSource    `json:"collection_sources"`
+	Items       []EvidenceItemRecord  `json:"evidence_items"`
+	Findings    []FindingWorkflow     `json:"finding_workflow"`
+	Resources   []ResourceSubject     `json:"resource_subjects"`
+	Lineage     []EvidenceLineage     `json:"evidence_lineage"`
+	Claims      []ClaimRecord         `json:"claim_records"`
+	Runs        []EvaluationRun       `json:"evaluation_runs"`
+	GraphRows   []GraphEvidenceRecord `json:"graph_evidence_rows"`
+	GraphPaths  []GraphPathRecord     `json:"graph_path_records"`
+	Exceptions  []ExceptionAcceptance `json:"exceptions_acceptances"`
+	Answers     []QuestionnaireAnswer `json:"questionnaire_answers"`
+	EvidenceExportRecords
+	Metadata grccontrol.ReportMetadata `json:"metadata"`
 }
 
 type AuditProgram struct {
@@ -63,6 +62,7 @@ type AuditProgram struct {
 	ClaimCount        int    `json:"claim_record_count"`
 	RunCount          int    `json:"evaluation_run_count"`
 	GraphPathCount    int    `json:"graph_path_count"`
+	AnswerCount       int    `json:"questionnaire_answer_count"`
 	OpenReviewCount   int    `json:"open_review_count"`
 }
 
@@ -89,6 +89,7 @@ type ControlPosture struct {
 
 type ControlPostureIdentity struct {
 	ID                 string `json:"id"`
+	ControlID          string `json:"control_id,omitempty"`
 	FrameworkID        string `json:"framework_id,omitempty"`
 	FrameworkName      string `json:"framework_name,omitempty"`
 	Title              string `json:"title,omitempty"`
@@ -385,6 +386,96 @@ type EvidenceExportArtifact struct {
 	Included    bool   `json:"included"`
 }
 
+type EvidenceExportRecords struct {
+	Artifacts []EvidenceExportArtifact `json:"export_artifacts"`
+	Export    EvidenceExport           `json:"export"`
+	Snapshot  AuditSnapshot            `json:"snapshot"`
+}
+
+type QuestionnaireAnswer struct {
+	ID                string                          `json:"id"`
+	QuestionID        string                          `json:"question_id"`
+	Question          string                          `json:"question"`
+	Answer            string                          `json:"answer"`
+	AnswerState       string                          `json:"answer_state"`
+	ReviewState       string                          `json:"review_state"`
+	Reasoning         QuestionnaireReasoningContract  `json:"reasoning_contract"`
+	Confidence        QuestionnaireAnswerConfidence   `json:"confidence"`
+	Controls          []QuestionnaireControlRef       `json:"controls"`
+	FrameworkMappings []QuestionnaireFrameworkMapping `json:"framework_mappings,omitempty"`
+	SourceEvidence    []QuestionnaireEvidenceRef      `json:"source_evidence,omitempty"`
+	PolicyDocuments   []QuestionnaireEvidenceRef      `json:"policy_documents,omitempty"`
+	EvidencePackets   []string                        `json:"evidence_packet_ids,omitempty"`
+	Citations         EvidenceCitations               `json:"citations"`
+	Freshness         EvidenceFreshness               `json:"freshness"`
+	MissingEvidence   []QuestionnaireEvidenceGap      `json:"missing_evidence,omitempty"`
+	Guardrails        []string                        `json:"guardrails,omitempty"`
+}
+
+type QuestionnaireReasoningContract struct {
+	Intent             string                    `json:"intent"`
+	Surface            string                    `json:"surface"`
+	GraphQuestion      string                    `json:"graph_question"`
+	RelevantControls   []QuestionnaireControlRef `json:"relevant_controls,omitempty"`
+	SourceCitations    []string                  `json:"source_citations,omitempty"`
+	PolicyCitations    []string                  `json:"policy_citations,omitempty"`
+	EvidencePacketIDs  []string                  `json:"evidence_packet_ids,omitempty"`
+	Freshness          EvidenceFreshness         `json:"freshness"`
+	Confidence         string                    `json:"confidence"`
+	UnsupportedClaims  []string                  `json:"unsupported_claims,omitempty"`
+	ManualReviewState  string                    `json:"manual_review_state"`
+	MissingEvidenceIDs []string                  `json:"missing_evidence_ids,omitempty"`
+}
+
+type QuestionnaireAnswerConfidence struct {
+	Level  string `json:"level"`
+	Score  int    `json:"score"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type QuestionnaireControlRef struct {
+	ID            string `json:"id"`
+	FrameworkID   string `json:"framework_id,omitempty"`
+	FrameworkName string `json:"framework_name,omitempty"`
+	ControlID     string `json:"control_id,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Status        string `json:"status,omitempty"`
+}
+
+type QuestionnaireFrameworkMapping struct {
+	FrameworkID      string   `json:"framework_id,omitempty"`
+	FrameworkName    string   `json:"framework_name,omitempty"`
+	FrameworkVersion string   `json:"framework_version,omitempty"`
+	FamilyID         string   `json:"family_id,omitempty"`
+	FamilyName       string   `json:"family_name,omitempty"`
+	ControlID        string   `json:"control_id,omitempty"`
+	ControlTitle     string   `json:"control_title,omitempty"`
+	MappedRules      []string `json:"mapped_rules,omitempty"`
+}
+
+type QuestionnaireEvidenceRef struct {
+	ID               string            `json:"id"`
+	EvidencePacketID string            `json:"evidence_packet_id,omitempty"`
+	EvidenceType     string            `json:"evidence_type,omitempty"`
+	Source           string            `json:"source,omitempty"`
+	SourceID         string            `json:"source_id,omitempty"`
+	RuntimeID        string            `json:"runtime_id,omitempty"`
+	Freshness        EvidenceFreshness `json:"freshness"`
+	ReviewState      string            `json:"review_state,omitempty"`
+	Citations        EvidenceCitations `json:"citations"`
+}
+
+type QuestionnaireEvidenceGap struct {
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	Field       string `json:"field,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	ControlID   string `json:"control_id,omitempty"`
+	RequestID   string `json:"evidence_request_id,omitempty"`
+	PacketID    string `json:"evidence_packet_id,omitempty"`
+	ReviewState string `json:"review_state,omitempty"`
+}
+
 type recordLinks struct {
 	ControlIDs []string
 	RequestIDs []string
@@ -405,6 +496,7 @@ type AuditSnapshot struct {
 	ClaimCount        int       `json:"claim_record_count"`
 	RunCount          int       `json:"evaluation_run_count"`
 	GraphPathCount    int       `json:"graph_path_count"`
+	AnswerCount       int       `json:"questionnaire_answer_count"`
 	ReviewOpenCount   int       `json:"open_review_count"`
 }
 
@@ -434,6 +526,7 @@ func Build(result grccontrol.PacketResult) Response {
 		control := ControlPosture{
 			ControlPostureIdentity: ControlPostureIdentity{
 				ID:                 controlID,
+				ControlID:          strings.TrimSpace(item.ControlID),
 				FrameworkID:        frameworkID,
 				FrameworkName:      strings.TrimSpace(item.FrameworkName),
 				Title:              strings.TrimSpace(item.Title),
@@ -518,12 +611,14 @@ func Build(result grccontrol.PacketResult) Response {
 	runs := evaluationRunsFromItems(items)
 	graphRows, graphPaths := graphRecordsFromEvidence(result.Evidence)
 	sources := collectionSources(result.Runtimes, result.SourceIDs, result.Controls, items)
+	answers := questionnaireAnswers(controls, requests, packets, items)
 	sort.Slice(controls, func(i, j int) bool { return controls[i].ID < controls[j].ID })
 	sort.Slice(requests, func(i, j int) bool { return requests[i].ID < requests[j].ID })
 	sort.Slice(packets, func(i, j int) bool { return packets[i].ID < packets[j].ID })
 	sort.Slice(reviews, func(i, j int) bool { return reviews[i].ID < reviews[j].ID })
 	sort.Slice(activity, func(i, j int) bool { return activity[i].ID < activity[j].ID })
 	sort.Slice(exceptions, func(i, j int) bool { return exceptions[i].ID < exceptions[j].ID })
+	sort.Slice(answers, func(i, j int) bool { return answers[i].ID < answers[j].ID })
 	openReviews := countOpenReviews(reviews)
 	program := AuditProgram{
 		ID:                stableID("audit-program", result.Profile.ID),
@@ -542,6 +637,7 @@ func Build(result grccontrol.PacketResult) Response {
 		ClaimCount:        len(claims),
 		RunCount:          len(runs),
 		GraphPathCount:    len(graphPaths),
+		AnswerCount:       len(answers),
 		OpenReviewCount:   openReviews,
 	}
 	snapshot := AuditSnapshot{
@@ -557,9 +653,10 @@ func Build(result grccontrol.PacketResult) Response {
 		ClaimCount:        len(claims),
 		RunCount:          len(runs),
 		GraphPathCount:    len(graphPaths),
+		AnswerCount:       len(answers),
 		ReviewOpenCount:   openReviews,
 	}
-	snapshot.Hash = snapshotHash(program, frameworks, controls, requests, packets, items, findings, resources, lineage, claims, runs, graphRows, graphPaths, exceptions)
+	snapshot.Hash = snapshotHash(program, frameworks, controls, requests, packets, items, findings, resources, lineage, claims, runs, graphRows, graphPaths, exceptions, answers)
 	export := EvidenceExport{
 		ID:        stableID("evidence-export", result.Profile.ID),
 		Formats:   []string{"json"},
@@ -588,10 +685,13 @@ func Build(result grccontrol.PacketResult) Response {
 		GraphRows:   graphRows,
 		GraphPaths:  graphPaths,
 		Exceptions:  exceptions,
-		Artifacts:   artifacts,
-		Export:      export,
-		Snapshot:    snapshot,
-		Metadata:    result.Metadata,
+		Answers:     answers,
+		EvidenceExportRecords: EvidenceExportRecords{
+			Artifacts: artifacts,
+			Export:    export,
+			Snapshot:  snapshot,
+		},
+		Metadata: result.Metadata,
 	}
 }
 
@@ -1094,6 +1194,402 @@ func packetsForExpectation(control ControlPosture, request EvidenceRequest, item
 	return packets
 }
 
+func questionnaireAnswers(controls []ControlPosture, requests []EvidenceRequest, packets []EvidencePacket, items []EvidenceItemRecord) []QuestionnaireAnswer {
+	controlsByID := map[string]ControlPosture{}
+	for _, control := range controls {
+		controlsByID[control.ID] = control
+	}
+	packetsByRequest := map[string][]EvidencePacket{}
+	for _, packet := range packets {
+		packetsByRequest[packet.RequestID] = append(packetsByRequest[packet.RequestID], packet)
+	}
+	itemsByEvidenceID := map[string]EvidenceItemRecord{}
+	for _, item := range items {
+		itemsByEvidenceID[item.ID] = item
+	}
+	answers := make([]QuestionnaireAnswer, 0, len(requests))
+	for _, request := range requests {
+		control := controlsByID[request.ControlID]
+		answerPackets := packetsByRequest[request.ID]
+		citations := citationsForPackets(answerPackets)
+		freshness := answerFreshness(request, answerPackets)
+		gaps := answerGaps(control, request, answerPackets)
+		reviewState := answerReviewState(request, answerPackets, gaps)
+		answerState := answerState(request, answerPackets, gaps, reviewState)
+		confidence := answerConfidence(request, answerPackets, gaps, answerState)
+		controls := []QuestionnaireControlRef{questionnaireControlRef(control)}
+		sourceEvidence := answerEvidenceRefs(answerPackets, itemsByEvidenceID, false)
+		policyDocuments := answerEvidenceRefs(answerPackets, itemsByEvidenceID, true)
+		answerPacketIDs := packetIDs(answerPackets)
+		answer := QuestionnaireAnswer{
+			ID:                stableID("questionnaire-answer", request.ID),
+			QuestionID:        request.ID,
+			Question:          answerQuestion(request),
+			Answer:            answerText(control, request, answerState),
+			AnswerState:       answerState,
+			ReviewState:       reviewState,
+			Reasoning:         answerReasoningContract(request, controls, sourceEvidence, policyDocuments, answerPacketIDs, freshness, confidence, reviewState, gaps),
+			Confidence:        confidence,
+			Controls:          controls,
+			FrameworkMappings: []QuestionnaireFrameworkMapping{questionnaireFrameworkMapping(control)},
+			SourceEvidence:    sourceEvidence,
+			PolicyDocuments:   policyDocuments,
+			EvidencePackets:   answerPacketIDs,
+			Citations:         citations,
+			Freshness:         freshness,
+			MissingEvidence:   gaps,
+			Guardrails:        answerGuardrails(answerState, reviewState, gaps),
+		}
+		answers = append(answers, answer)
+	}
+	return answers
+}
+
+func answerQuestion(request EvidenceRequest) string {
+	return firstNonEmpty(request.Title, request.Description, request.Type, request.ID)
+}
+
+func answerReasoningContract(request EvidenceRequest, controls []QuestionnaireControlRef, sourceEvidence []QuestionnaireEvidenceRef, policyDocuments []QuestionnaireEvidenceRef, packetIDs []string, freshness EvidenceFreshness, confidence QuestionnaireAnswerConfidence, reviewState string, gaps []QuestionnaireEvidenceGap) QuestionnaireReasoningContract {
+	question := answerQuestion(request)
+	return QuestionnaireReasoningContract{
+		Intent:             "questionnaire_evidence_answer",
+		Surface:            "graph-reasoning",
+		GraphQuestion:      "Answer from bounded graph evidence for: " + question,
+		RelevantControls:   controls,
+		SourceCitations:    answerCitationIDs(sourceEvidence),
+		PolicyCitations:    answerCitationIDs(policyDocuments),
+		EvidencePacketIDs:  packetIDs,
+		Freshness:          freshness,
+		Confidence:         confidence.Level,
+		UnsupportedClaims:  answerUnsupportedClaims(question, gaps),
+		ManualReviewState:  reviewState,
+		MissingEvidenceIDs: missingEvidenceIDs(gaps),
+	}
+}
+
+func answerCitationIDs(refs []QuestionnaireEvidenceRef) []string {
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, firstNonEmpty(ref.ID, ref.EvidencePacketID))
+	}
+	return uniqueStrings(ids)
+}
+
+func answerUnsupportedClaims(question string, gaps []QuestionnaireEvidenceGap) []string {
+	if len(gaps) == 0 {
+		return nil
+	}
+	claims := []string{}
+	for _, gap := range gaps {
+		switch gap.Code {
+		case "missing_required_evidence":
+			claims = append(claims, "Do not claim the answer is fully supported until required evidence is collected: "+question)
+		case "stale_evidence":
+			claims = append(claims, "Do not claim the evidence is current without a fresh source observation: "+question)
+		case "manual_review_required":
+			claims = append(claims, "Do not send the answer externally before reviewer approval: "+question)
+		default:
+			claims = append(claims, "Do not overstate unsupported evidence for: "+question)
+		}
+	}
+	return uniqueStrings(claims)
+}
+
+func missingEvidenceIDs(gaps []QuestionnaireEvidenceGap) []string {
+	ids := make([]string, 0, len(gaps))
+	for _, gap := range gaps {
+		ids = append(ids, gap.ID)
+	}
+	return uniqueStrings(ids)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
+}
+
+func answerText(control ControlPosture, request EvidenceRequest, state string) string {
+	subject := firstNonEmpty(control.Title, request.Title, control.ControlID, request.ID)
+	switch state {
+	case "supported":
+		return "Supported by current evidence for " + subject + "."
+	case "manual_review":
+		return "Evidence is available for " + subject + ", but manual review is required."
+	case "partial":
+		return "Partial evidence is available for " + subject + "."
+	case "not_required":
+		return "No answer is required for " + subject + " in this packet."
+	default:
+		return "No answer is ready because required evidence is missing for " + subject + "."
+	}
+}
+
+func questionnaireControlRef(control ControlPosture) QuestionnaireControlRef {
+	return QuestionnaireControlRef{
+		ID:            control.ID,
+		FrameworkID:   control.FrameworkID,
+		FrameworkName: control.FrameworkName,
+		ControlID:     control.IDFromControl(),
+		Title:         control.Title,
+		Status:        control.Status,
+	}
+}
+
+func (control ControlPosture) IDFromControl() string {
+	return strings.TrimSpace(control.ControlID)
+}
+
+func questionnaireFrameworkMapping(control ControlPosture) QuestionnaireFrameworkMapping {
+	return QuestionnaireFrameworkMapping{
+		FrameworkID:      control.FrameworkID,
+		FrameworkName:    control.FrameworkName,
+		FrameworkVersion: control.FrameworkVersion,
+		FamilyID:         control.FamilyID,
+		FamilyName:       control.FamilyName,
+		ControlID:        control.IDFromControl(),
+		ControlTitle:     control.Title,
+		MappedRules:      append([]string(nil), control.MappedRules...),
+	}
+}
+
+func answerEvidenceRefs(packets []EvidencePacket, itemsByEvidenceID map[string]EvidenceItemRecord, policyOnly bool) []QuestionnaireEvidenceRef {
+	refs := []QuestionnaireEvidenceRef{}
+	for _, packet := range packets {
+		if policyOnly != evidencePacketIsPolicyDocument(packet) {
+			continue
+		}
+		evidenceIDs := packet.Citations.EvidenceIDs
+		if len(evidenceIDs) == 0 {
+			evidenceIDs = []string{packet.ID}
+		}
+		for _, evidenceID := range evidenceIDs {
+			item := itemsByEvidenceID[strings.TrimSpace(evidenceID)]
+			refs = append(refs, QuestionnaireEvidenceRef{
+				ID:               firstNonEmpty(evidenceID, packet.ID),
+				EvidencePacketID: packet.ID,
+				EvidenceType:     packet.EvidenceType,
+				Source:           packet.Source,
+				SourceID:         item.SourceID,
+				RuntimeID:        item.RuntimeID,
+				Freshness:        packet.Freshness,
+				ReviewState:      packet.Review.Status,
+				Citations:        packet.Citations,
+			})
+		}
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		if refs[i].EvidencePacketID != refs[j].EvidencePacketID {
+			return refs[i].EvidencePacketID < refs[j].EvidencePacketID
+		}
+		return refs[i].ID < refs[j].ID
+	})
+	return refs
+}
+
+func evidencePacketIsPolicyDocument(packet EvidencePacket) bool {
+	for _, value := range []string{packet.EvidenceType, packet.Reason} {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "policy_document" || value == "policy.document" || value == "assurance_document" || value == "assurance.document" || strings.Contains(value, "policy_document") || strings.Contains(value, "policy document") || strings.Contains(value, "assurance_document") || strings.Contains(value, "assurance document") {
+			return true
+		}
+	}
+	return false
+}
+
+func answerState(request EvidenceRequest, packets []EvidencePacket, gaps []QuestionnaireEvidenceGap, reviewState string) string {
+	if !request.Required && len(packets) == 0 {
+		return "not_required"
+	}
+	if len(packets) == 0 || gapWithCode(gaps, "missing_required_evidence") {
+		return "not_answered"
+	}
+	if reviewState == "needs_review" || gapWithCode(gaps, "manual_review_required") {
+		return "manual_review"
+	}
+	if len(gaps) != 0 || request.Status != string(compliance.ControlEvidenceExpectationSatisfied) {
+		return "partial"
+	}
+	return "supported"
+}
+
+func answerReviewState(request EvidenceRequest, packets []EvidencePacket, gaps []QuestionnaireEvidenceGap) string {
+	if gapWithCode(gaps, "missing_required_evidence") {
+		return "blocked"
+	}
+	for _, packet := range packets {
+		if packet.Review.Status != "" && packet.Review.Status != "ready" && packet.Review.Status != "accepted" && packet.Review.Status != "not_required" {
+			return "needs_review"
+		}
+	}
+	if request.ReviewStatus != "" {
+		return request.ReviewStatus
+	}
+	return "ready"
+}
+
+func answerConfidence(request EvidenceRequest, packets []EvidencePacket, gaps []QuestionnaireEvidenceGap, state string) QuestionnaireAnswerConfidence {
+	switch state {
+	case "supported":
+		return QuestionnaireAnswerConfidence{Level: "high", Score: 90, Reason: "Required evidence is present, fresh, and mapped to the control."}
+	case "manual_review":
+		return QuestionnaireAnswerConfidence{Level: "medium", Score: 60, Reason: "Evidence is present, but a reviewer must confirm it before reliance."}
+	case "partial":
+		return QuestionnaireAnswerConfidence{Level: "medium", Score: 50, Reason: "Some evidence is present, but gaps or freshness issues remain."}
+	case "not_required":
+		return QuestionnaireAnswerConfidence{Level: "low", Score: 0, Reason: "The packet marks this request as optional."}
+	}
+	if request.Required && len(packets) == 0 {
+		return QuestionnaireAnswerConfidence{Level: "low", Score: 10, Reason: "Required evidence has not been collected."}
+	}
+	if len(gaps) != 0 {
+		return QuestionnaireAnswerConfidence{Level: "low", Score: 25, Reason: "Evidence gaps prevent a supported answer."}
+	}
+	return QuestionnaireAnswerConfidence{Level: "low", Score: 20, Reason: "No supported answer is available from the current packet."}
+}
+
+func answerFreshness(request EvidenceRequest, packets []EvidencePacket) EvidenceFreshness {
+	if len(packets) == 0 {
+		status := "missing"
+		if !request.Required {
+			status = "not_required"
+		}
+		return EvidenceFreshness{Status: status, SLA: request.FreshnessSLA, Reason: "No evidence packet is linked to this request."}
+	}
+	status := "fresh"
+	reason := ""
+	observedAt := ""
+	expiresAt := ""
+	for _, packet := range packets {
+		observedAt = maxTimeString(observedAt, packet.Freshness.ObservedAt)
+		expiresAt = minTimeString(expiresAt, packet.Freshness.ExpiresAt)
+		switch packet.Freshness.Status {
+		case "missing":
+			status = "missing"
+		case "stale":
+			if status != "missing" {
+				status = "stale"
+			}
+		}
+		if reason == "" && strings.TrimSpace(packet.Freshness.Reason) != "" {
+			reason = packet.Freshness.Reason
+		}
+	}
+	return EvidenceFreshness{Status: status, SLA: request.FreshnessSLA, Reason: reason, ObservedAt: observedAt, ExpiresAt: expiresAt}
+}
+
+func answerGaps(control ControlPosture, request EvidenceRequest, packets []EvidencePacket) []QuestionnaireEvidenceGap {
+	gaps := []QuestionnaireEvidenceGap{}
+	if request.Required && (len(packets) == 0 || request.Status == string(compliance.ControlEvidenceExpectationMissing)) {
+		gaps = append(gaps, QuestionnaireEvidenceGap{
+			ID:        stableID("questionnaire-gap", request.ID, "missing-required-evidence"),
+			Code:      "missing_required_evidence",
+			Field:     "evidence_packet_ids",
+			Reason:    firstNonEmpty(request.Description, "Required evidence has not been collected for this request."),
+			ControlID: control.ID,
+			RequestID: request.ID,
+		})
+	}
+	if request.Status == string(compliance.ControlEvidenceExpectationStale) {
+		gaps = append(gaps, QuestionnaireEvidenceGap{
+			ID:        stableID("questionnaire-gap", request.ID, "stale-evidence"),
+			Code:      "stale_evidence",
+			Field:     "freshness",
+			Reason:    firstNonEmpty(request.FreshnessSLA, "Evidence is outside the expected freshness window."),
+			ControlID: control.ID,
+			RequestID: request.ID,
+		})
+	}
+	for _, packet := range packets {
+		if packet.Freshness.Status == "stale" {
+			gaps = append(gaps, QuestionnaireEvidenceGap{
+				ID:        stableID("questionnaire-gap", request.ID, packet.ID, "stale-evidence"),
+				Code:      "stale_evidence",
+				Field:     "freshness",
+				Reason:    firstNonEmpty(packet.Freshness.Reason, "Evidence is outside the expected freshness window."),
+				ControlID: control.ID,
+				RequestID: request.ID,
+				PacketID:  packet.ID,
+			})
+		}
+		if packet.Review.Status != "" && packet.Review.Status != "ready" && packet.Review.Status != "accepted" && packet.Review.Status != "not_required" {
+			gaps = append(gaps, QuestionnaireEvidenceGap{
+				ID:          stableID("questionnaire-gap", request.ID, packet.ID, "manual-review"),
+				Code:        "manual_review_required",
+				Field:       "review_state",
+				Reason:      firstNonEmpty(packet.Review.Reason, "Evidence needs manual review before reliance."),
+				ControlID:   control.ID,
+				RequestID:   request.ID,
+				PacketID:    packet.ID,
+				ReviewState: packet.Review.Status,
+			})
+		}
+	}
+	sort.Slice(gaps, func(i, j int) bool { return gaps[i].ID < gaps[j].ID })
+	return gaps
+}
+
+func answerGuardrails(state string, reviewState string, gaps []QuestionnaireEvidenceGap) []string {
+	guardrails := []string{"Retain source citations with the answer."}
+	if state != "supported" {
+		guardrails = append(guardrails, "Do not present this as a complete answer.")
+	}
+	if reviewState == "needs_review" || reviewState == "blocked" {
+		guardrails = append(guardrails, "Route to a reviewer before sending outside the operating team.")
+	}
+	if len(gaps) != 0 {
+		guardrails = append(guardrails, "Show missing or stale evidence gaps with the answer.")
+	}
+	return uniqueSortedStrings(guardrails)
+}
+
+func packetIDs(packets []EvidencePacket) []string {
+	ids := make([]string, 0, len(packets))
+	for _, packet := range packets {
+		ids = append(ids, packet.ID)
+	}
+	return uniqueSortedStrings(ids)
+}
+
+func citationsForPackets(packets []EvidencePacket) EvidenceCitations {
+	citations := EvidenceCitations{}
+	for _, packet := range packets {
+		citations.EvidenceIDs = append(citations.EvidenceIDs, packet.Citations.EvidenceIDs...)
+		citations.RuleIDs = append(citations.RuleIDs, packet.Citations.RuleIDs...)
+		citations.EventIDs = append(citations.EventIDs, packet.Citations.EventIDs...)
+		citations.ClaimIDs = append(citations.ClaimIDs, packet.Citations.ClaimIDs...)
+		citations.GraphRoots = append(citations.GraphRoots, packet.Citations.GraphRoots...)
+		citations.RunIDs = append(citations.RunIDs, packet.Citations.RunIDs...)
+	}
+	citations.EvidenceIDs = uniqueSortedStrings(citations.EvidenceIDs)
+	citations.RuleIDs = uniqueSortedStrings(citations.RuleIDs)
+	citations.EventIDs = uniqueSortedStrings(citations.EventIDs)
+	citations.ClaimIDs = uniqueSortedStrings(citations.ClaimIDs)
+	citations.GraphRoots = uniqueSortedStrings(citations.GraphRoots)
+	citations.RunIDs = uniqueSortedStrings(citations.RunIDs)
+	return citations
+}
+
+func gapWithCode(gaps []QuestionnaireEvidenceGap, code string) bool {
+	for _, gap := range gaps {
+		if gap.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func testResults(controlID string, item grccontrol.ControlItem, evidenceIDs map[string][]string) []ControlTestResult {
 	results := make([]ControlTestResult, 0, len(item.MappedRules))
 	failingRules := failingRulesByID(item.Findings)
@@ -1372,6 +1868,19 @@ func maxTimeString(a string, b string) string {
 		return a
 	}
 	if b > a {
+		return b
+	}
+	return a
+}
+
+func minTimeString(a string, b string) string {
+	if a == "" {
+		return b
+	}
+	if b == "" {
+		return a
+	}
+	if b < a {
 		return b
 	}
 	return a

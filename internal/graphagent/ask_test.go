@@ -131,6 +131,76 @@ func TestServiceUsesDeterministicFastPathForCommonTopRiskAsk(t *testing.T) {
 	}
 }
 
+func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"control_urn":                       "urn:cerebro:writer:policy:control:iam-1",
+				"control_label":                     "Access control",
+				"control_ref":                       "IAM-1",
+				"control_attributes_json_internal":  `{"policy_type":"control","control_id":"IAM-1","status":"monitored"}`,
+				"support_urn":                       "urn:cerebro:writer:okta_policy_rule:mfa-global",
+				"support_label":                     "Okta MFA rule",
+				"support_type":                      "okta.policy_rule",
+				"support_source_id":                 "okta",
+				"support_relation":                  "supports",
+				"support_attributes_json_internal":  `{"status":"active","source_system":"okta"}`,
+				"evidence_urn":                      "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot",
+				"evidence_label":                    "Okta MFA snapshot",
+				"evidence_type":                     "runtime_evidence",
+				"evidence_source_id":                "okta",
+				"evidence_relation":                 "has_evidence",
+				"evidence_attributes_json_internal": `{"evidence_type":"okta_policy","status":"ready"}`,
+				"source_urn":                        "urn:cerebro:writer:source:okta",
+				"source_label":                      "Okta",
+				"source_attributes_json_internal":   `{"status":"healthy","last_sync_at":"2026-06-29T12:00:00Z"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftErr: errors.New("draft should be skipped"),
+		Summary:  "Okta MFA is supported by `urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot`; review any uncovered lifecycle claims manually.",
+	}
+	service := NewServiceWithOptions(store, llm, ValidatorOptions{}, ServiceOptions{EnableDeterministicFastPath: true})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Does Okta enforce MFA for access?",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("DraftCypher called %#v, want deterministic graph retrieval before LLM summary", llm.DraftRequests)
+	}
+	if len(llm.SummaryRequests) != 1 {
+		t.Fatalf("Summary requests = %#v, want one grounded LLM summary", llm.SummaryRequests)
+	}
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Plan.Intent != IntentQuestionnaireEvidence || planEvent.Source != "deterministic_fast_path" {
+		t.Fatalf("query plan event = %#v, want questionnaire evidence fast path", planEvent)
+	}
+	if !strings.Contains(store.requests[0].Query, "qauto_match_text CONTAINS 'okta'") || !strings.Contains(store.requests[0].Query, "relation: 'has_evidence'") {
+		t.Fatalf("store request did not retrieve bounded questionnaire graph evidence:\n%s", store.requests[0].Query)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if got := rowsEvent.Rows[0]["last_sync_at"]; got != "2026-06-29T12:00:00Z" {
+		t.Fatalf("last_sync_at = %#v, want sanitized source freshness", got)
+	}
+	if _, leaked := rowsEvent.Rows[0]["source_attributes_json_internal"]; leaked {
+		t.Fatalf("rows leaked raw source attributes: %#v", rowsEvent.Rows[0])
+	}
+	summaryEvent := events[8].Data.(SummaryEvent)
+	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot" {
+		t.Fatalf("citations = %#v, want cited evidence urn", summaryEvent.Citations)
+	}
+}
+
 func TestValidateRequestRejectsUnsupportedModel(t *testing.T) {
 	err := ValidateRequest(AskRequest{
 		TenantID: "writer",
