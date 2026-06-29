@@ -1192,6 +1192,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 	if got := policy.Label; got != "Production Sign-On" {
 		t.Fatalf("policy Label = %q, want Production Sign-On", got)
 	}
+	assertProjectedLinkMissing(t, state, wantURN, relationBelongsTo, "urn:cerebro:writer:okta_policyrule:pol-1")
 	assertProjectedLink(t, state, wantURN, relationBelongsTo, policyURN)
 	assertProjectedLink(t, state, policyURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 	assertProjectedLink(t, state, wantURN, relationTargeted, "urn:cerebro:writer:okta_application:app-prod")

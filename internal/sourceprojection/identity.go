@@ -629,14 +629,13 @@ func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile ident
 }
 
 func identityPolicyResourceType(profile identityProjectionProfile, attributes map[string]string) string {
-	if profile.Provider != "azure" {
-		return "policy"
-	}
-	if resourceType := normalizeIdentifier(attributes["resource_type"]); resourceType != "" && resourceType != "resource" {
-		return resourceType
-	}
-	if normalizeIdentifier(attributes["policy_type"]) == "conditional_access" {
-		return "conditional_access_policy"
+	if profile.Provider == "azure" {
+		if resourceType := normalizeIdentifier(attributes["resource_type"]); resourceType == "conditional_access_policy" {
+			return resourceType
+		}
+		if normalizeIdentifier(attributes["policy_type"]) == "conditional_access" {
+			return "conditional_access_policy"
+		}
 	}
 	return "policy"
 }
