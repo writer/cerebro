@@ -179,8 +179,10 @@ sources:
         high_value: true
         families:
           - s3_bucket
-          - replication
-          - s3
+          - s3_buckets
+          - aws_s3_bucket
+          - aws_s3_buckets
+          - s3_cross_region_replication
         evidence_types:
           - encryption_configuration
           - network_exposure
@@ -312,9 +314,9 @@ sources:
         support_level: supported
         high_value: true
         families:
-          - ecs
           - security_group
           - security_groups
+          - ecs_security_group
         evidence_types:
           - network_exposure
         control_domains:
@@ -1900,9 +1902,9 @@ sources:
         high_value: true
         families:
           - sagemaker_notebook_instance
-          - notebook
-          - root_access
-          - sagemaker
+          - sagemaker_notebook
+          - sagemaker_notebook_root_access
+          - notebook_instance
         evidence_types:
           - ai_governance
           - configuration_state
@@ -2662,6 +2664,26 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+      - dimension_id: aks_cluster
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - aks_cluster
+          - aks
+          - containerservice_managed_cluster
+        evidence_types:
+          - cloud_configuration
+          - identity_configuration
+          - network_exposure
+          - security_monitoring
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - cloud_security
+          - identity_access
+          - network_security
+          - security_operations
       - dimension_id: application
         dimension_type: entity_family
         support_level: supported
@@ -2675,6 +2697,22 @@ sources:
         control_refs:
           - framework: SOC 2
             control_id: CC6.1
+      - dimension_id: app_service
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - app_service
+          - app_service_web_app
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+          - network_security
       - dimension_id: application_insight
         dimension_type: entity_family
         support_level: supported
@@ -2713,16 +2751,40 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: cosmos_account
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cosmos_account
+          - cosmosdb
+          - cosmosdb_account
+        evidence_types:
+          - cloud_configuration
+          - identity_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - cloud_security
+          - identity_access
+          - network_security
       - dimension_id: credential
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
           - credential
+          - service_principal_credential
+          - sp_credential
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
@@ -2761,12 +2823,17 @@ sources:
         support_level: supported
         high_value: true
         families:
+          - aks_defender
           - defender_config
           - security_setting
         evidence_types:
+          - cloud_configuration
+          - security_monitoring
           - source_snapshot
         control_domains:
           - asset_inventory
+          - cloud_security
+          - security_operations
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -2832,10 +2899,22 @@ sources:
         high_value: true
         families:
           - key_vault
+          - keyvault
+          - keyvault_vault
+          - key_vault_vault
         evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - identity_configuration
+          - network_exposure
+          - resilience_control
           - source_snapshot
         control_domains:
           - asset_inventory
+          - availability_resilience
+          - data_protection
+          - identity_access
+          - network_security
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -2847,6 +2926,20 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+      - dimension_id: key_vault_key
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - key_vault_key
+          - keyvault_key
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
       - dimension_id: key_vault_secret
         dimension_type: entity_family
         support_level: supported
@@ -2903,6 +2996,21 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: managed_disk
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - managed_disk
+          - vm_disk
+          - virtual_machine_disk
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
       - dimension_id: network_security_group
         dimension_type: entity_family
         support_level: supported
@@ -2916,6 +3024,23 @@ sources:
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
+      - dimension_id: postgresql_server
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - postgresql_server
+          - postgresql_firewall_rule
+          - azure_postgresql
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - data_protection
+          - network_security
       - dimension_id: security_contact
         dimension_type: entity_family
         support_level: supported
@@ -2943,10 +3068,15 @@ sources:
         high_value: true
         families:
           - service_principal
+          - azure_ad_service_principal
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -2964,10 +3094,14 @@ sources:
         high_value: true
         families:
           - sql_database
+          - azure_sql_database
         evidence_types:
+          - cloud_configuration
+          - encryption_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -2985,10 +3119,14 @@ sources:
         high_value: true
         families:
           - sql_server
+          - azure_sql_server
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3006,10 +3144,18 @@ sources:
         high_value: true
         families:
           - storage_account
+          - azure_storage_account
         evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - identity_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
+          - network_security
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3080,10 +3226,14 @@ sources:
         high_value: true
         families:
           - user
+          - azure_ad_user
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3101,10 +3251,14 @@ sources:
         high_value: true
         families:
           - virtual_machine
+          - compute_virtual_machine
         evidence_types:
+          - cloud_configuration
+          - encryption_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3256,10 +3410,15 @@ sources:
         high_value: true
         families:
           - bigquery_dataset
+          - bigquery
+          - bigquery_cmek
         evidence_types:
+          - data_security_posture
+          - encryption_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3313,25 +3472,93 @@ sources:
         high_value: true
         families:
           - cloud_run_service
+          - cloud_run
+          - cloudrun
+          - run_service
         evidence_types:
+          - application_access_control
+          - cloud_configuration
+          - identity_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
+          - network_security
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
           - framework: SOC 2
             control_id: CC6.1
+      - dimension_id: cloud_run_revision
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloud_run_revision
+          - cloudrun_revision
+          - cloudrun
+          - cloud_run
+        evidence_types:
+          - application_access_control
+          - cloud_configuration
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+      - dimension_id: cloud_sql_instance
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - cloud_sql_instance
+          - cloud_sql
+          - cloudsql
+          - sql_database_instance
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - network_exposure
+          - resilience_control
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - availability_resilience
+          - data_protection
+          - network_security
+      - dimension_id: compute_firewall
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - compute_firewall
+          - firewall_rule
+          - gcp_firewall
+        evidence_types:
+          - cloud_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+          - network_security
       - dimension_id: compute_instance
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
           - compute_instance
+          - compute
+          - gcp_compute_instance
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - cloud_security
+          - identity_access
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
@@ -3379,38 +3606,143 @@ sources:
         high_value: true
         families:
           - gcs_bucket
+          - storage_bucket
+          - cloud_storage_bucket
+          - gcp_storage_bucket
         evidence_types:
+          - cloud_configuration
+          - data_security_posture
+          - identity_configuration
+          - network_exposure
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
+          - network_security
         control_refs:
           - framework: NIST 800-53 r5
             control_id: AC-3
           - framework: SOC 2
             control_id: CC6.1
+      - dimension_id: dns_managed_zone
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - dns_managed_zone
+          - cloud_dns
+          - dns_dnssec
+        evidence_types:
+          - cloud_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - network_security
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "12"
+          - framework: NIST 800-53 r5
+            control_id: SC-20
+          - framework: NIST 800-53 r5
+            control_id: SC-21
+          - framework: SOC 2
+            control_id: CC6.6
+      - dimension_id: gke_cluster
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - gke_cluster
+          - gke
+          - container_cluster
+          - shielded_nodes
+        evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - cloud_security
+          - data_protection
+          - identity_access
+          - network_security
+        control_refs:
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.1.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.3.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.5.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.6.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.6.3"
+          - framework: NIST 800-53 r5
+            control_id: SI-7
       - dimension_id: gke_node_pool
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
           - gke_node_pool
+          - container_node_pool
+          - node_pool
+          - node_pools
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - availability_resilience
+          - cloud_security
+          - identity_access
         control_refs:
           - framework: SOC 2
             control_id: CC7.1
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.2.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.5.1"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.5.2"
+          - framework: CIS GKE Benchmark v1.4
+            control_id: "5.5.4"
+      - dimension_id: iam_role_assignment
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - iam_role_assignment
+          - iam_policy
+          - iam_binding
+          - iam_member
+        evidence_types:
+          - cloud_configuration
+          - identity_configuration
+          - relationship_evidence
+        control_domains:
+          - identity_access
       - dimension_id: kms_key
         dimension_type: entity_family
         support_level: supported
         high_value: true
         families:
           - kms_key
+          - kms
+          - cloud_kms
+          - crypto_key
         evidence_types:
+          - cloud_configuration
+          - encryption_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - data_protection
+          - identity_access
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3512,10 +3844,15 @@ sources:
         high_value: true
         families:
           - service_account
+          - iam_service_account
+          - default_service_account
         evidence_types:
+          - cloud_configuration
+          - identity_configuration
           - source_snapshot
         control_domains:
           - asset_inventory
+          - identity_access
         control_refs:
           - framework: CIS Controls v8
             control_id: "4"
@@ -3527,6 +3864,21 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+      - dimension_id: vpc_access_connector
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - vpc_access_connector
+          - vpc_connector
+          - serverless_vpc_connector
+        evidence_types:
+          - cloud_configuration
+          - network_exposure
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - network_security
       - dimension_id: service_account_key
         dimension_type: entity_family
         support_level: supported

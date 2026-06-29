@@ -2184,7 +2184,7 @@ coverage_contract:
     - id: s3_bucket
       type: entity_family
       title: AWS S3 buckets
-      families: [s3_bucket, replication, s3]
+      families: [s3_bucket, s3_buckets, aws_s3_bucket, aws_s3_buckets, s3_cross_region_replication]
       support: supported
       high_value: true
       evidence_types: [encryption_configuration, network_exposure, resilience_control]
@@ -2269,7 +2269,7 @@ coverage_contract:
     - id: sagemaker_notebook_instance
       type: entity_family
       title: AWS SageMaker notebook instances
-      families: [sagemaker_notebook_instance, notebook, root_access, sagemaker]
+      families: [sagemaker_notebook_instance, sagemaker_notebook, sagemaker_notebook_root_access, notebook_instance]
       support: supported
       high_value: true
       evidence_types: [ai_governance, configuration_state, identity_configuration, source_snapshot]
@@ -2298,7 +2298,7 @@ coverage_contract:
     - id: security_group
       type: entity_family
       title: AWS security groups
-      families: [ecs, security_group, security_groups]
+      families: [security_group, security_groups, ecs_security_group]
       support: supported
       high_value: true
       evidence_types: [network_exposure]

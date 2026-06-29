@@ -228,6 +228,58 @@ func TestPolicySourceCoverageExplicitRefsRequireDimensionMatch(t *testing.T) {
 	}
 }
 
+func TestPolicySourceCoverageRejectsConflictingCloudProviderDimension(t *testing.T) {
+	detection := PublicDetection{
+		ID:                        "azure-nsg-admin-port",
+		Name:                      "NSG Allows Admin Ports from Internet",
+		Description:               "Flags failed resource-state evidence for azure network security group.",
+		SourceID:                  policyRuleSourceID,
+		Tags:                      []string{"azure", "nsg", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "cloud_configuration"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID: "aws",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:            "security_group",
+				Type:          "entity_family",
+				Families:      []string{"security_group"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"network_exposure"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		},
+		{
+			SourceID: "azure",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:            "network_security_group",
+				Type:          "entity_family",
+				Families:      []string{"network_security_group", "nsg"},
+				Support:       sourcecdk.CoverageSupportSupported,
+				EvidenceTypes: []string{"network_exposure"},
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want only azure network security group: %#v", len(refs), refs)
+	}
+	if refs[0].SourceID != "azure" || refs[0].DimensionID != "network_security_group" {
+		t.Fatalf("SourceCoverageRefs[0] = %#v, want azure/network_security_group", refs[0])
+	}
+}
+
 func TestCoverageControlIDMatchesGDPRArticleAliases(t *testing.T) {
 	for _, legacy := range []string{"Art.5", "Art-5", "Art 5"} {
 		matched, exact := coverageControlIDMatches(legacy, "Article 5")

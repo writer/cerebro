@@ -613,11 +613,11 @@ coverage_contract:
     - id: bigquery_dataset
       type: entity_family
       title: BigQuery datasets
-      families: [bigquery_dataset]
+      families: [bigquery_dataset, bigquery, bigquery_cmek]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [data_security_posture, encryption_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection]
     - id: bigquery_table
       type: entity_family
       title: BigQuery tables
@@ -701,27 +701,27 @@ coverage_contract:
     - id: cloud_run_revision
       type: entity_family
       title: Cloud Run revisions
-      families: [cloud_run_revision]
+      families: [cloud_run_revision, cloudrun_revision, cloudrun, cloud_run]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [application_access_control, cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
     - id: cloud_run_service
       type: entity_family
       title: Cloud Run services
-      families: [cloud_run_service]
+      families: [cloud_run_service, cloud_run, cloudrun, run_service]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [application_access_control, cloud_configuration, identity_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, identity_access, network_security]
     - id: cloud_sql_instance
       type: entity_family
       title: Cloud SQL instances
-      families: [cloud_sql_instance]
+      families: [cloud_sql_instance, cloud_sql, cloudsql, sql_database_instance]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, network_exposure, resilience_control, source_snapshot]
+      control_domains: [asset_inventory, availability_resilience, data_protection, network_security]
     - id: cloud_sql_database
       type: entity_family
       title: Cloud SQL databases
@@ -781,11 +781,11 @@ coverage_contract:
     - id: compute_firewall
       type: entity_family
       title: Compute firewall rules
-      families: [compute_firewall]
+      families: [compute_firewall, firewall_rule, gcp_firewall]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, identity_access, network_security]
     - id: compute_forwarding_rule
       type: entity_family
       title: Compute forwarding rules
@@ -805,11 +805,11 @@ coverage_contract:
     - id: compute_instance
       type: entity_family
       title: Compute instances
-      families: [compute_instance]
+      families: [compute_instance, compute, gcp_compute_instance]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, cloud_security, identity_access]
     - id: compute_instance_group
       type: entity_family
       title: Compute instance groups
@@ -1021,11 +1021,20 @@ coverage_contract:
     - id: dns_managed_zone
       type: entity_family
       title: Cloud DNS managed zones
-      families: [dns_managed_zone]
+      families: [dns_managed_zone, cloud_dns, dns_dnssec]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, source_snapshot]
+      control_domains: [asset_inventory, network_security]
+      control_refs:
+        - framework_name: CIS Controls v8
+          control_id: "12"
+        - framework_name: NIST 800-53 r5
+          control_id: SC-20
+        - framework_name: NIST 800-53 r5
+          control_id: SC-21
+        - framework_name: SOC 2
+          control_id: CC6.6
     - id: dns_record_set
       type: entity_family
       title: Cloud DNS record sets
@@ -1037,11 +1046,11 @@ coverage_contract:
     - id: gcs_bucket
       type: entity_family
       title: Cloud Storage buckets
-      families: [gcs_bucket]
+      families: [gcs_bucket, storage_bucket, cloud_storage_bucket, gcp_storage_bucket]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, data_security_posture, identity_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, data_protection, identity_access, network_security]
     - id: gcs_object
       type: entity_family
       title: Cloud Storage objects
@@ -1053,19 +1062,41 @@ coverage_contract:
     - id: gke_cluster
       type: entity_family
       title: GKE clusters
-      families: [gke_cluster]
+      families: [gke_cluster, gke, container_cluster, shielded_nodes]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, cloud_security, data_protection, identity_access, network_security]
+      control_refs:
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.1.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.3.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.5.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.6.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.6.3"
+        - framework_name: NIST 800-53 r5
+          control_id: SI-7
     - id: gke_node_pool
       type: entity_family
       title: GKE node pools
-      families: [gke_node_pool]
+      families: [gke_node_pool, container_node_pool, node_pool, node_pools]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, availability_resilience, cloud_security, identity_access]
+      control_refs:
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.2.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.5.1"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.5.2"
+        - framework_name: CIS GKE Benchmark v1.4
+          control_id: "5.5.4"
     - id: group
       type: entity_family
       title: Cloud Identity groups
@@ -1085,10 +1116,10 @@ coverage_contract:
     - id: iam_role_assignment
       type: app_entitlement
       title: IAM policy bindings
-      families: [iam_role_assignment]
+      families: [iam_role_assignment, iam_policy, iam_binding, iam_member]
       support: supported
       high_value: true
-      evidence_types: [identity_configuration]
+      evidence_types: [cloud_configuration, identity_configuration, relationship_evidence]
       control_domains: [identity_access]
     - id: effective_permission
       type: app_entitlement
@@ -1109,11 +1140,11 @@ coverage_contract:
     - id: kms_key
       type: entity_family
       title: Cloud KMS keys
-      families: [kms_key]
+      families: [kms_key, kms, cloud_kms, crypto_key]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection, identity_access]
     - id: logging_project_sink
       type: entity_family
       title: Cloud Logging project sinks
@@ -1213,11 +1244,11 @@ coverage_contract:
     - id: service_account
       type: entity_family
       title: Service accounts
-      families: [service_account]
+      families: [service_account, iam_service_account, default_service_account]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
     - id: service_account_impersonation
       type: relationship
       title: Service account impersonation bindings
@@ -1261,11 +1292,11 @@ coverage_contract:
     - id: vpc_access_connector
       type: entity_family
       title: Serverless VPC Access connectors
-      families: [vpc_access_connector]
+      families: [vpc_access_connector, vpc_connector, serverless_vpc_connector]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, network_security]
     - id: workload_identity_pool
       type: entity_family
       title: Workload Identity pools
