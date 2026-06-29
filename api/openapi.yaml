@@ -15,6 +15,7 @@ tags:
   - name: GRC
   - name: Graph
   - name: Health
+  - name: Identity
   - name: Knowledge
   - name: MCP
   - name: OAuth
@@ -4914,6 +4915,60 @@ paths:
             application/json:
               schema:
                 type: object
+  /identity/orgs:
+    get:
+      summary: List identity organizations
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: org_id
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-scoped organizations from configured auth grants and stored identity directory records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityOrganizationListResponse'
+        '403':
+          description: Tenant access forbidden.
+        '500':
+          description: Identity organizations are unavailable.
+  /identity/users:
+    get:
+      summary: List identity users
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: org_id
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Tenant-scoped users from configured auth grants and stored identity directory records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityUserListResponse'
+        '403':
+          description: Tenant access forbidden.
+        '500':
+          description: Identity users are unavailable.
   /user/preferences:
     get:
       summary: Get current user preferences
@@ -5115,6 +5170,122 @@ components:
         minimum: 1
         maximum: 500
   schemas:
+    IdentityListMeta:
+      type: object
+      required: [limit, loaded, configured, persisted]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+        loaded:
+          type: integer
+          minimum: 0
+        configured:
+          type: integer
+          minimum: 0
+        persisted:
+          type: integer
+          minimum: 0
+    IdentityOrganization:
+      type: object
+      required: [org_id, tenant_id, name, source, user_count]
+      properties:
+        org_id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        domain:
+          type: string
+        provider:
+          type: string
+        source:
+          type: string
+        external_id:
+          type: string
+        user_count:
+          type: integer
+          minimum: 0
+        last_synced_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IdentityOrganizationListResponse:
+      type: object
+      required: [organizations, meta]
+      properties:
+        tenant_id:
+          type: string
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/IdentityOrganization'
+        meta:
+          $ref: '#/components/schemas/IdentityListMeta'
+    IdentityUser:
+      type: object
+      required: [user_id, tenant_id, display_name, status, source]
+      properties:
+        user_id:
+          type: string
+        tenant_id:
+          type: string
+        org_id:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+        provider:
+          type: string
+        source:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            type: string
+        last_seen_at:
+          type: string
+          format: date-time
+        last_synced_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IdentityUserListResponse:
+      type: object
+      required: [users, meta]
+      properties:
+        tenant_id:
+          type: string
+        org_id:
+          type: string
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/IdentityUser'
+        meta:
+          $ref: '#/components/schemas/IdentityListMeta'
     A2AAgentCard:
       type: object
       required:

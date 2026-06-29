@@ -10,5 +10,6 @@ type OIDCProvider interface {
 type Identity struct {
 	Subject string
 	Email   string
+	Name    string
 	Groups  []string
 }
