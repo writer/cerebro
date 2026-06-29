@@ -177,3 +177,64 @@ func TestRegistryRoutesSlackDeclaredKinds(t *testing.T) {
 		})
 	}
 }
+
+func TestSlackRuntimeKindLiteralsProjectThroughRegistry(t *testing.T) {
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "slack-team-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.team",
+			Attributes: map[string]string{
+				"team_id": "T1",
+				"name":    "Writer",
+			},
+		},
+		{
+			Id:       "slack-user-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.user",
+			Attributes: map[string]string{
+				"user_id":  "U1",
+				"team_id":  "T1",
+				"email":    "alice@writer.com",
+				"is_admin": "true",
+				"has_2fa":  "false",
+			},
+		},
+		{
+			Id:       "slack-channel-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.channel",
+			Attributes: map[string]string{
+				"channel_id": "C1",
+				"team_id":    "T1",
+				"creator":    "U1",
+			},
+		},
+		{
+			Id:       "slack-user-group-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.user_group",
+			Attributes: map[string]string{
+				"group_id": "S1",
+				"team_id":  "T1",
+				"handle":   "eng",
+			},
+		},
+	}
+	for _, event := range events {
+		t.Run(event.GetKind(), func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(event)
+			if err != nil {
+				t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+			}
+			if len(entities) == 0 {
+				t.Fatalf("Project(%s) emitted no entities", event.GetKind())
+			}
+		})
+	}
+}

@@ -51,6 +51,7 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
+	slacksource "github.com/writer/cerebro/sources/slack"
 )
 
 func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
@@ -1745,8 +1746,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 4 {
-		t.Fatalf("/sources entries = %#v, want 4 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 5 {
+		t.Fatalf("/sources entries = %#v, want 5 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
@@ -1914,8 +1915,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 4 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 4", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 5 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 5", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -7710,7 +7711,11 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, okta, sdk)
+	slack, err := slacksource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, auth0, okta, sdk, slack)
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

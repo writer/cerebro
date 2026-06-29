@@ -1,0 +1,25 @@
+[
+  {
+    "id": "slack-team-T1",
+    "tenant_id": "tenant",
+    "source_id": "slack",
+    "kind": "slack.team",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "slack/team/v1",
+    "payload": {
+      "id": "T1",
+      "name": "Writer",
+      "domain": "writer"
+    },
+    "attributes": {
+      "domain": "writer",
+      "external_id": "T1",
+      "family": "team",
+      "name": "Writer",
+      "provider": "slack",
+      "source_product": "slack",
+      "source_provider": "slack",
+      "team_id": "T1"
+    }
+  }
+]

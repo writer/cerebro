@@ -16,6 +16,7 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	slacksource "github.com/writer/cerebro/sources/slack"
 )
 
 func TestList(t *testing.T) {
@@ -25,8 +26,8 @@ func TestList(t *testing.T) {
 	}
 	service := New(registry)
 	response := service.List()
-	if len(response.Sources) != 4 {
-		t.Fatalf("len(List().Sources) = %d, want 4", len(response.Sources))
+	if len(response.Sources) != 5 {
+		t.Fatalf("len(List().Sources) = %d, want 5", len(response.Sources))
 	}
 }
 
@@ -485,7 +486,11 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, auth0, googleWorkspace, okta)
+	slack, err := slacksource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, auth0, googleWorkspace, okta, slack)
 }
 
 func captureSourceOpsStderr(t *testing.T, fn func()) string {
