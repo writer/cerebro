@@ -3,6 +3,7 @@ package pagerduty
 import (
 	"context"
 	"embed"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -13,20 +14,21 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID                 = "pagerduty"
-	defaultFamily            = familyUser
-	familyUser               = "user"
-	familyTeam               = "team"
-	familyService            = "service"
-	familySchedule           = "schedule"
-	familyEscalationPolicy   = "escalation_policy"
-	familyIntegration        = "integration"
-	familyVendor             = "vendor"
-	pagerDutySourceProduct   = "pagerduty"
-	pagerDutyCursorParam     = "offset"
-	pagerDutyHasMoreKey      = "more"
-	pagerDutyPageSizeParam   = "limit"
-	pagerDutyServiceIDConfig = "service_id"
+	sourceID                  = "pagerduty"
+	defaultFamily             = familyUser
+	familyUser                = "user"
+	familyTeam                = "team"
+	familyService             = "service"
+	familySchedule            = "schedule"
+	familyEscalationPolicy    = "escalation_policy"
+	familyIntegration         = "integration"
+	familyVendor              = "vendor"
+	pagerDutySourceProduct    = "pagerduty"
+	pagerDutyCursorParam      = "offset"
+	pagerDutyHasMoreKey       = "more"
+	pagerDutyPageSizeParam    = "limit"
+	pagerDutyServiceIDConfig  = "service_id"
+	pagerDutyServiceIDsConfig = "service_ids"
 )
 
 type Source struct{ inner *jsonapi.Source }
@@ -52,12 +54,27 @@ func New() (*Source, error) {
 
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.inner.Spec() }
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
+	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
+		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+			return s.inner.CheckPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
+		}
+	}
 	return s.inner.Check(ctx, cfg)
 }
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
+		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+			return s.inner.DiscoverPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
+		}
+	}
 	return s.inner.Discover(ctx, cfg)
 }
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
+		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+			return s.inner.ReadPathParamValues(ctx, cfg, cursor, pagerDutyServiceIDConfig, serviceIDs)
+		}
+	}
 	return s.inner.Read(ctx, cfg, cursor)
 }
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -211,4 +228,22 @@ func pagerDutyPagedFamily(family jsonapi.Family) jsonapi.Family {
 
 func pagerDutyStaticAttributes() map[string]string {
 	return map[string]string{"source_product": pagerDutySourceProduct}
+}
+
+func pagerDutyIntegrationServiceIDs(cfg sourcecdk.Config) []string {
+	if values := splitConfigList(sourcecdk.ConfigValue(cfg, pagerDutyServiceIDsConfig)); len(values) > 0 {
+		return values
+	}
+	return splitConfigList(sourcecdk.ConfigValue(cfg, pagerDutyServiceIDConfig))
+}
+
+func splitConfigList(value string) []string {
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }
