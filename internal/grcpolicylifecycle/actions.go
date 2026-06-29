@@ -543,7 +543,7 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 	rows := [][]string{}
 	policyTitles := exportPolicyTitles(response.Policies)
 	for _, policy := range response.Policies {
-		if exportWindowIncludesAny(window, policy.NextReviewDueAt) {
+		if exportWindowIncludesAny(window, policy.EffectiveAt, policy.LastReviewedAt, policy.NextReviewDueAt) {
 			rows = append(rows, auditExportRow([]string{"policy", policy.ID, policy.ID, policy.Title, policy.LatestVersion, policy.Status, policy.Owner, policy.Reviewer, "", "", "", policy.NextReviewDueAt, policy.EffectiveAt, "", exportControls(policy.Controls), exportEvidence(policy.Evidence), policy.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, "", policy.ExceptionPath, "", ""))
 		}
 		for _, version := range policy.Versions {

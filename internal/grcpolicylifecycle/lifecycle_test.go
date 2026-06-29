@@ -991,6 +991,50 @@ func TestAuditExportRowsIncludesUndatedGovernanceGapsInWindow(t *testing.T) {
 	t.Fatalf("rows = %+v, want undated governance gap in windowed export", rows)
 }
 
+func TestAuditExportRowsIncludesPoliciesWithActivityDatesInWindow(t *testing.T) {
+	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)
+	response := Response{
+		Policies: []grcPolicyLifecyclePolicy{{
+			ID:    "access-policy",
+			Title: "Access Policy",
+			grcPolicyLifecyclePolicyMetadata: grcPolicyLifecyclePolicyMetadata{
+				EffectiveAt: "2026-02-15",
+			},
+		}, {
+			ID:    "vendor-policy",
+			Title: "Vendor Policy",
+			grcPolicyLifecyclePolicyMetadata: grcPolicyLifecyclePolicyMetadata{
+				LastReviewedAt: "2026-02-20",
+			},
+		}, {
+			ID:    "old-policy",
+			Title: "Old Policy",
+			grcPolicyLifecyclePolicyMetadata: grcPolicyLifecyclePolicyMetadata{
+				EffectiveAt: "2026-01-15",
+			},
+		}},
+	}
+
+	rows := AuditExportRows(response, ExportWindow{Start: &start, End: &end})
+	foundEffective := false
+	foundReviewed := false
+	for _, row := range rows {
+		if row[0] == "policy" && row[1] == "access-policy" {
+			foundEffective = true
+		}
+		if row[0] == "policy" && row[1] == "vendor-policy" {
+			foundReviewed = true
+		}
+		if row[0] == "policy" && row[1] == "old-policy" {
+			t.Fatalf("rows = %+v, did not expect out-of-window policy", rows)
+		}
+	}
+	if !foundEffective || !foundReviewed {
+		t.Fatalf("rows = %+v, want policies with effective or last-reviewed dates in window", rows)
+	}
+}
+
 func TestAuditExportRowsIncludesEvidenceSnippetsInWindow(t *testing.T) {
 	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 2, 28, 23, 59, 59, 0, time.UTC)
