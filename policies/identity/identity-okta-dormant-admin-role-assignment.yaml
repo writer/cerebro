@@ -3,7 +3,7 @@ kind: PolicyFindingRule
 metadata:
     id: identity-okta-dormant-admin-role-assignment
     name: Okta Dormant Admin Role Assignment
-    description: Detects each active Okta admin-role assignment whose assigned user has observed stale login activity, preserving per-role evidence for access review.
+    description: Detects each active Okta admin-role assignment whose assigned user has observed stale login activity, preserving per-role evidence for access review alongside account-level stale-login findings.
     tags:
         - okta
         - identity
@@ -69,10 +69,10 @@ spec:
         assessmentMethods:
             - examine
         freshnessSLA: 24h
-        auditorStatement: Each Okta admin-role assignment should be reviewed when the assigned user has no recent login activity.
+        auditorStatement: Each Okta admin-role assignment should be reviewed when the assigned user has no recent login activity, even when a separate account-level stale-login finding also exists.
         riskStatement: A dormant user can retain one or more distinct Okta admin roles outside normal activity patterns.
         remediationIntent: Remove the specific admin role assignment, disable the dormant account, or document the reviewed break-glass use case.
-        auditorGuidance: Use the per-role graph path from user to admin role and the Okta last_login_at source fact before deciding remediation.
+        auditorGuidance: Use the per-role graph path from user to admin role and the Okta last_login_at source fact before deciding remediation. This rule intentionally emits one finding per admin-role assignment; account-level stale-login rules should remain account posture evidence.
         falsePositives:
             - A break-glass account may intentionally have no recent login; retain review and monitoring evidence before suppressing.
             - Last login can be absent for source-limited accounts; this rule waits for last_login_at source evidence before emitting.

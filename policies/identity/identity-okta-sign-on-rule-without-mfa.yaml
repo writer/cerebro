@@ -53,7 +53,7 @@ spec:
                 - scoped_applications
                 - source_policy_rule
     evidence:
-        type: identity_configuration
+        type: identity_governance
         assessmentMethods:
             - examine
             - test
@@ -73,7 +73,7 @@ spec:
             - policy_id
             - policy_rule_id
     audit:
-        evidenceType: identity_configuration
+        evidenceType: identity_governance
         assessmentMethods:
             - examine
             - test
