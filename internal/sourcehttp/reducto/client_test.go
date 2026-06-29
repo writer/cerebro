@@ -106,7 +106,7 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	if parsed.TextPreview != "Access control policy Review access quarterly" {
 		t.Fatalf("TextPreview = %q", parsed.TextPreview)
 	}
-	if parsed.StructureStatus != "completed" || parsed.StructureSchema != "grc_upload_v1" {
+	if parsed.StructureStatus != "structured" || parsed.StructureSchema != "grc_upload_v1" {
 		t.Fatalf("structured status/schema = %#v", parsed)
 	}
 	if len(parsed.StructuredFields) != 2 {
@@ -114,6 +114,73 @@ func TestReductoClientParseUploadsAndParsesDocument(t *testing.T) {
 	}
 	if parsed.StructuredSummary != "Access policy summary" {
 		t.Fatalf("StructuredSummary = %q", parsed.StructuredSummary)
+	}
+}
+
+func TestReductoClientMarksUnstructuredWhenNoFieldsExtracted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upload":
+			writeJSON(t, w, map[string]string{"file_id": "file-1"})
+		case "/extract":
+			writeJSON(t, w, map[string]any{
+				"parse_id": "parse-1",
+				"status":   "completed",
+				"result": map[string]any{
+					"chunks": []map[string]string{
+						{"content": "Policy content only"},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		APIKey:  "reducto-token",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	}, WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	parsed, err := client.Parse(context.Background(), "Access Policy.pdf", "application/pdf", strings.NewReader("policy body"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if parsed.StructureStatus != "unstructured" {
+		t.Fatalf("StructureStatus = %q, want unstructured", parsed.StructureStatus)
+	}
+	if len(parsed.StructuredFields) != 0 {
+		t.Fatalf("StructuredFields = %#v, want none", parsed.StructuredFields)
+	}
+}
+
+func TestStructuredFieldsFromPayloadIndexesArrayObjects(t *testing.T) {
+	fields := structuredFieldsFromPayload(map[string]any{
+		"result": map[string]any{
+			"controls": []any{
+				map[string]any{"name": "Access review", "owner": "Security"},
+				map[string]any{"name": "Vendor review", "owner": "GRC"},
+			},
+		},
+	})
+	got := map[string]string{}
+	for _, field := range fields {
+		got[field.Key] = field.Value
+	}
+	want := map[string]string{
+		"controls.1.name":  "Access review",
+		"controls.1.owner": "Security",
+		"controls.2.name":  "Vendor review",
+		"controls.2.owner": "GRC",
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("field %s = %q, want %q; fields=%#v", key, got[key], value, fields)
+		}
 	}
 }
 

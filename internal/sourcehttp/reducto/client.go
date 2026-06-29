@@ -184,6 +184,7 @@ func (c *Client) extract(ctx context.Context, fileID string) (grcupload.ParsedDo
 		parsed = mergeParsedDocument(parsed, parsedDocumentFromPayload(resultPayload))
 	}
 	parsed.ProviderFileID = firstNonEmpty(parsed.ProviderFileID, fileID)
+	parsed.StructureStatus = structureStatus(parsed.StructureStatus, parsed.StructuredFields)
 	parsed.StructureSchema = firstNonEmpty(parsed.StructureSchema, grcUploadStructureSchema)
 	return parsed, nil
 }
@@ -288,7 +289,7 @@ func parsedDocumentFromPayload(payload any) grcupload.ParsedDocument {
 		TextPreview:       preview,
 		ChunkCount:        len(chunks),
 		PageCount:         pageCount,
-		StructureStatus:   firstNonEmpty(lookupTopString(payload, "structure_status", "extract_status"), lookupTopString(payload, "status"), "structured"),
+		StructureStatus:   lookupTopString(payload, "structure_status", "extract_status"),
 		StructureSchema:   grcUploadStructureSchema,
 		StructuredSummary: structuredSummary,
 		StructuredFields:  structuredFields,
@@ -516,12 +517,26 @@ func structuredFieldsFromValue(value any, prefix string) []grcupload.StructuredF
 			return []grcupload.StructuredField{{Key: prefix, Label: labelForFieldKey(prefix), Value: strings.Join(values, "; ")}}
 		}
 		fields := []grcupload.StructuredField{}
-		for _, rawValue := range typed {
-			fields = append(fields, structuredFieldsFromValue(rawValue, prefix)...)
+		for index, rawValue := range typed {
+			itemPrefix := prefix
+			if _, ok := rawValue.(map[string]any); ok && prefix != "" {
+				itemPrefix = fmt.Sprintf("%s.%d", prefix, index+1)
+			}
+			fields = append(fields, structuredFieldsFromValue(rawValue, itemPrefix)...)
 		}
 		return fields
 	}
 	return nil
+}
+
+func structureStatus(status string, fields []grcupload.StructuredField) string {
+	if status = strings.TrimSpace(status); status != "" {
+		return status
+	}
+	if len(fields) > 0 {
+		return "structured"
+	}
+	return "unstructured"
 }
 
 func scalarStrings(value any) []string {
