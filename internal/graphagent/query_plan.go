@@ -19,6 +19,7 @@ const (
 	IntentConnectorHealth           = "connector_health"
 
 	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
+	confidentPlanThreshold          = 0.70
 )
 
 type AskQueryPlan struct {
@@ -264,7 +265,7 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 	}
 	out.Intent = canonicalIntent(out.Intent)
 	requestIntent := inferIntent(request.Question, cypher)
-	if requestIntent == IntentFailingControls && out.Intent != IntentFailingControls {
+	if requestIntent == IntentFailingControls && out.Intent != IntentFailingControls && out.Confidence < confidentPlanThreshold {
 		out.Intent = IntentFailingControls
 		out.Filters = map[string]string{}
 	}

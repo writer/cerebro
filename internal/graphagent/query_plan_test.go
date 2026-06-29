@@ -290,6 +290,33 @@ LIMIT 25`
 	}
 }
 
+func TestConvertDraftToQueryPreservesConfidentSpecificIntentOverFailingControlsHeuristic(t *testing.T) {
+	draftCypher := `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn
+LIMIT 25`
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show findings with failed access control compliance",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{
+			Intent:     IntentTopRiskFindings,
+			Confidence: 0.91,
+			Filters:    map[string]string{"status": "open"},
+		},
+		Cypher: draftCypher,
+	})
+
+	if result.Plan.Intent != IntentTopRiskFindings || !result.Deterministic || result.Source != "deterministic_template" {
+		t.Fatalf("conversion result = %#v, want confident top risk plan preserved", result)
+	}
+	if strings.Contains(result.Cypher, "filter_control_refs <> ''") {
+		t.Fatalf("converted cypher used failing controls template:\n%s", result.Cypher)
+	}
+	if !strings.Contains(result.Cypher, "toLower(filter_status) = 'open'") {
+		t.Fatalf("converted cypher missing top risk status filter:\n%s", result.Cypher)
+	}
+}
+
 func TestPostProcessFailingControlRowsGroupsOpenFindings(t *testing.T) {
 	rows := []map[string]any{
 		{
