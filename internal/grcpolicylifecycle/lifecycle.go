@@ -1409,7 +1409,7 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 				if _, ok := snippetsSeen[snippet.URN]; !ok {
 					snippetsSeen[snippet.URN] = struct{}{}
 					summary.EvidenceSnippets++
-					if strings.Contains(strings.ToLower(snippet.ReviewState), "review") {
+					if grcPolicySnippetNeedsReview(snippet) {
 						summary.SnippetsNeedingReview++
 					}
 				}
@@ -1486,7 +1486,7 @@ func grcPolicyLifecycleSummaryFrom(policies []grcPolicyLifecyclePolicy, template
 				if _, ok := snippetsSeen[snippet.URN]; !ok {
 					snippetsSeen[snippet.URN] = struct{}{}
 					summary.EvidenceSnippets++
-					if strings.Contains(strings.ToLower(snippet.ReviewState), "review") {
+					if grcPolicySnippetNeedsReview(snippet) {
 						summary.SnippetsNeedingReview++
 					}
 				}
@@ -1531,6 +1531,11 @@ func grcPolicyGovernanceGaps(documents []grcPolicyDocumentItem, riskRegister []g
 	return grcPolicyGovernanceGapsFor(documents, riskRegister, grcPolicyGovernanceRules(""), nil, time.Time{})
 }
 
+func grcPolicySnippetNeedsReview(snippet grcPolicyEvidenceSnippetItem) bool {
+	state := firstNonEmpty(snippet.ManualReviewState, snippet.ReviewState)
+	return strings.Contains(strings.ToLower(state), "review")
+}
+
 func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister []grcPolicyRiskRegisterItem, rules []grcPolicyGovernanceRule, events []grcPolicyLifecycleEventItem, now time.Time) []grcPolicyGovernanceGap {
 	gaps := []grcPolicyGovernanceGap{}
 	rulesByID := grcPolicyGovernanceRuleMap(rules)
@@ -1554,7 +1559,7 @@ func grcPolicyGovernanceGapsFor(documents []grcPolicyDocumentItem, riskRegister 
 		if rule, ok := rulesByID["document.controls"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Controls) == 0 {
 			gaps = append(gaps, grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "controls", "No mapped controls"))
 		}
-		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Evidence) == 0 {
+		if rule, ok := rulesByID["document.evidence"]; ok && grcPolicyDocumentNeedsControlMapping(document) && len(document.Evidence) == 0 && len(document.EvidenceSnippets) == 0 {
 			gap := grcPolicyDocumentGovernanceGap(document, rule, documentID, policyID, "evidence", "No evidence")
 			gap.SourceFields = sourceFields
 			gaps = append(gaps, gap)

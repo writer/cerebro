@@ -516,6 +516,17 @@ func TestStrictGovernanceRulesRequireDocumentEvidence(t *testing.T) {
 	if len(strict) != 1 || strict[0].RuleID != "document.evidence" || strict[0].ActionID != "governance_gap.attach_evidence" {
 		t.Fatalf("strict gaps = %+v, want document evidence gap", strict)
 	}
+
+	document.EvidenceSnippets = []grcPolicyEvidenceSnippetItem{{
+		ID:                "access-review",
+		URN:               "urn:policy_evidence_snippet:access-review",
+		DocumentID:        "secure-development",
+		ManualReviewState: "ready_to_project",
+	}}
+	strict = grcPolicyGovernanceGapsFor([]grcPolicyDocumentItem{document}, nil, grcPolicyGovernanceRules("strict"), nil, time.Time{})
+	if len(strict) != 0 {
+		t.Fatalf("strict gaps with snippet evidence = %+v, want none", strict)
+	}
 }
 
 func TestGovernanceGapLifecycleEventsDoNotCreateUnmappedPolicy(t *testing.T) {
@@ -1045,7 +1056,7 @@ func TestPolicyDocumentEvidenceFieldsFlowToLifecycleAndExport(t *testing.T) {
 		"policy_citations":    "Access requests should be reviewed before approval.",
 		"confidence":          "0.62",
 		"manual_review_state": "needs_review",
-		"review_state":        "needs_review",
+		"review_state":        "ready_to_project",
 		"unsupported_claims":  "Access approvals are fully automated",
 		"question_ids":        "q-access-2",
 		"source_provenance":   "manual upload",
