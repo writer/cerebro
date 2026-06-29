@@ -106,10 +106,11 @@ func Event(settings Settings, stack cloudformationtypes.Stack) (*primitives.Even
 	attributes := commonCloudAssetAttributes(settings, settings.Region, FamilyStack, arn, name, "aws_cloudformation_stack", tags)
 	terminationProtection := awssdk.ToBool(stack.EnableTerminationProtection)
 	driftStatus := driftStatus(stack.DriftInformation)
+	driftDetected := driftStatus == string(cloudformationtypes.StackDriftStatusDrifted)
 	attributes["arn"] = arn
-	attributes["cloudformation_stack_drift_detected_compliant"] = boolString(driftStatus == string(cloudformationtypes.StackDriftStatusInSync))
+	attributes["cloudformation_stack_drift_detected_compliant"] = boolString(!driftDetected)
 	attributes["cloudformation_stack_termination_protection_compliant"] = boolString(terminationProtection)
-	attributes["drift_detected"] = boolString(driftStatus == string(cloudformationtypes.StackDriftStatusDrifted))
+	attributes["drift_detected"] = boolString(driftDetected)
 	attributes["drift_status"] = driftStatus
 	attributes["stack_id"] = stackID
 	attributes["stack_name"] = name
