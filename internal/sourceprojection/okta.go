@@ -465,6 +465,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	payload := payloadMap(event)
 	domain := strings.TrimSpace(attributes["domain"])
 	userID := strings.TrimSpace(attributes["user_id"])
 	email := strings.TrimSpace(attributes["email"])
@@ -513,7 +514,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 			"status_changed_at",
 			"user_type",
 		} {
-			if v := strings.TrimSpace(attributes[key]); v != "" {
+			if v := firstNonEmpty(attributes[key], nestedString(payload, "timestamps."+key)); v != "" {
 				userAttrs[key] = v
 			}
 		}

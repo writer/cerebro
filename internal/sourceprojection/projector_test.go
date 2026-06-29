@@ -1224,22 +1224,26 @@ func TestProjectOktaUserCarriesLifecycleMFAAndSourceFacts(t *testing.T) {
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(observed),
 		Attributes: map[string]string{
-			"activated_at":           "2026-01-02T03:04:05Z",
-			"created_at":             "2026-01-01T03:04:05Z",
 			"domain":                 "writer.okta.com",
 			"email":                  "admin@writer.com",
 			"employee_number":        "E-123",
-			"last_login_at":          "2026-05-01T03:04:05Z",
-			"last_updated_at":        "2026-05-02T03:04:05Z",
 			"login":                  "admin@writer.com",
 			"mfa_enrolled":           "true",
 			"mfa_factor_count":       "2",
 			"mfa_factor_types":       "okta_verify,webauthn",
 			"mfa_phishing_resistant": "true",
 			"status":                 "ACTIVE",
-			"status_changed_at":      "2026-01-03T03:04:05Z",
 			"user_id":                "00u1",
 		},
+		Payload: mustJSON(t, map[string]any{
+			"timestamps": map[string]any{
+				"activated_at":      "2026-01-02T03:04:05Z",
+				"created_at":        "2026-01-01T03:04:05Z",
+				"last_login_at":     "2026-05-01T03:04:05Z",
+				"last_updated_at":   "2026-05-02T03:04:05Z",
+				"status_changed_at": "2026-01-03T03:04:05Z",
+			},
+		}),
 	}); err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
