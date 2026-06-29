@@ -348,7 +348,7 @@ jobs:
   deploy-sec-dev-main:
     name: Deploy sec-dev
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     needs: [changes, static-validation]
     if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true' }}"
     concurrency:
@@ -531,7 +531,7 @@ jobs:
             args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-id okta --source-target-concurrency 4 --stop-running-source-before-run)
           fi
           if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-sec-dev --github-output "$GITHUB_OUTPUT")
+            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-process-timeout-seconds 1200 --graph-health-heal-wait-timeout-seconds 1200 --graph-health-issue --graph-health-artifact-name graph-health-sec-dev --github-output "$GITHUB_OUTPUT")
             if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health_cache_allowed }}" = "true" ]; then
               args+=(--allow-graph-health-cache --graph-health-cache-path graph-health-sec-dev-cache.tsv)
             fi
@@ -582,7 +582,7 @@ jobs:
   deploy-go-prod:
     name: Deploy go-prod
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     needs: [changes, static-validation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_go_prod == 'true'
     environment: production
@@ -766,7 +766,7 @@ jobs:
             args+=(--source-runtime-verify --source-runtime-observability-targets --source-id panopticon --source-id okta --source-target-concurrency 2)
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
+            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-process-timeout-seconds 1200 --graph-health-heal-wait-timeout-seconds 1200 --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
             if [ "${{ needs.changes.outputs.aws_go_prod_graph_health_cache_allowed }}" = "true" ]; then
               args+=(--allow-graph-health-cache --graph-health-cache-path graph-health-go-prod-cache.tsv)
             fi
@@ -1002,6 +1002,7 @@ jobs:
   deploy-manual:
     name: Manual Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     if: github.event_name == 'workflow_dispatch'
     needs: static-validation
     environment: production
@@ -1211,7 +1212,7 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          args=(--source-runtime-verify --graph-health --graph-health-output "graph-health-${STACK_NAME}.tsv" --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name "graph-health-${STACK_NAME}" --github-output "$GITHUB_OUTPUT")
+          args=(--source-runtime-verify --graph-health --graph-health-output "graph-health-${STACK_NAME}.tsv" --allow-graph-health-degradation --graph-health-heal --graph-health-process-timeout-seconds 1200 --graph-health-heal-wait-timeout-seconds 1200 --graph-health-issue --graph-health-artifact-name "graph-health-${STACK_NAME}" --github-output "$GITHUB_OUTPUT")
           if [ "${STACK_NAME}" = "sec-dev" ]; then
             args+=(--source-runtime-observability-targets --source-id panopticon --source-target-concurrency 4 --stop-running-source-before-run)
           elif [ "${STACK_NAME}" = "go-prod" ]; then
