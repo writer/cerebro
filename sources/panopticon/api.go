@@ -265,7 +265,7 @@ func nativeRecord(st settings, item map[string]interface{}, kind, schemaRef stri
 		severity := firstString(nestedString(item, "severity", "severity_name"), nativeString(item, "severity"), nativeString(item, "alert_severity_id"))
 		status := firstString(nestedString(item, "status", "status_name"), nativeString(item, "status"), nativeString(item, "alert_status_id"))
 		title := firstString(nativeString(item, "alert_title"), nativeString(item, "title"))
-		occurredAt := firstNativeTime(item, "observed_at", "alert_source_event_time", "created_at", "alert_creation_time")
+		occurredAt := firstNativeTime(item, "alert_source_event_time", "observed_at", "alert_creation_time", "created_at")
 		observedAt := firstString(nativeString(item, "observed_at"), nativeString(item, "alert_source_event_time"))
 		createdAt := firstString(nativeString(item, "created_at"), nativeString(item, "alert_creation_time"))
 		updatedAt := firstString(nativeString(item, "updated_at"), nativeString(item, "last_updated_at"), nativeString(item, "modified_at"), nativeString(item, "alert_updated_time"))

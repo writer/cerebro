@@ -285,6 +285,34 @@ func TestReadAlertAPIPromotesClosureFields(t *testing.T) {
 	}
 }
 
+func TestReadAlertAPIPreservesSourceEventTimeForOccurredAt(t *testing.T) {
+	fixed := fixedTime()
+	observedAt := fixed.Add(30 * time.Minute).Format(time.RFC3339Nano)
+	sourceEventAt := fixed.Format(time.RFC3339Nano)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alert := validNativeAlert("mixed-times-1", fixed)
+		alert["alert_source_event_time"] = sourceEventAt
+		alert["observed_at"] = observedAt
+		writePage(w, []map[string]interface{}{alert}, 1, 0)
+	}))
+	defer server.Close()
+
+	src := newTestSource(t)
+	pull, err := src.Read(context.Background(), apiConfig(server.URL, map[string]string{"family": familyAlert}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want one alert event", len(pull.Events))
+	}
+	if got := pull.Events[0].GetOccurredAt().AsTime(); !got.Equal(fixed) {
+		t.Fatalf("occurred_at = %s, want %s", got.Format(time.RFC3339Nano), sourceEventAt)
+	}
+	if got := pull.Events[0].GetAttributes()["observed_at"]; got != observedAt {
+		t.Fatalf("observed_at = %q, want %q", got, observedAt)
+	}
+}
+
 func TestReadCaseAPIPromotesResolvedAt(t *testing.T) {
 	fixed := fixedTime()
 	resolvedAt := fixed.Add(3 * time.Hour).Format(time.RFC3339Nano)
