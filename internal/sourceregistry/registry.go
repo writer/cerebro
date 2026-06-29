@@ -45,6 +45,7 @@ import (
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	panopticonsource "github.com/writer/cerebro/sources/panopticon"
 	probelysource "github.com/writer/cerebro/sources/probely"
+	rootlysource "github.com/writer/cerebro/sources/rootly"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
@@ -285,6 +286,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "probely",
 		load: func() (sourcecdk.Source, error) {
 			return probelysource.New()
+		},
+	},
+	{
+		name: "rootly",
+		load: func() (sourcecdk.Source, error) {
+			return rootlysource.New()
 		},
 	},
 	{
