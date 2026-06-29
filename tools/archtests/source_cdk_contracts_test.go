@@ -53,7 +53,7 @@ func TestGeneratedSourceUsesSourceCDKTemplateHelpers(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"sourcecdk.RenderConfigTemplate",
+		"sourcehttp.ResolveClientCredentialsRuntimeConfig",
 		"sourcecdk.ConfigValue",
 		"kind_lifecycle:",
 		"status: active",

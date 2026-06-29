@@ -1,0 +1,21 @@
+sourceId: biapi
+secretKeys:
+  - BIAPI_ID_CONNECTION
+  - BIAPI_ID_CONNECTOR
+  - BIAPI_ID_USER
+  - BIAPI_ID_WEBHOOK
+  - BIAPI_TOKEN
+runtimes:
+  - localId: logo
+    config:
+      id_connection: env:BIAPI_ID_CONNECTION
+      id_connector: env:BIAPI_ID_CONNECTOR
+      id_user: env:BIAPI_ID_USER
+      id_webhook: env:BIAPI_ID_WEBHOOK
+      family: logo
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /banks/${config.id_connector}/logos
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:BIAPI_TOKEN

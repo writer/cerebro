@@ -1,0 +1,107 @@
+id: lambdatest
+name: "LambdaTest"
+description: "Collects profile, resolution, and location from LambdaTest and projects them into the Cerebro graph as audit events and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - lambdatest.profile
+  - lambdatest.resolution
+  - lambdatest.location
+  - lambdatest.resource
+kind_lifecycle:
+  - kind: lambdatest.profile
+    status: active
+  - kind: lambdatest.resolution
+    status: active
+  - kind: lambdatest.location
+    status: active
+  - kind: lambdatest.resource
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: lambdatest
+  dimensions:
+    - id: profile
+      type: audit_event
+      title: "Profile"
+      families: [profile]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resolution
+      type: entity_family
+      title: "Resolution"
+      families: [resolution]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: location
+      type: entity_family
+      title: "Location"
+      families: [location]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource
+      type: entity_family
+      title: "Resource"
+      families: [resource]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: lambdatest.profile
+    schema_ref: lambdatest/profile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: lambdatest.resolution
+    schema_ref: lambdatest/resolution/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: lambdatest.location
+    schema_ref: lambdatest/location/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: lambdatest.resource
+    schema_ref: lambdatest/resource/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - activity_id

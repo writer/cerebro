@@ -1,0 +1,15 @@
+sourceId: fireworks_ai
+secretKeys:
+  - FIREWORKS_AI_ACCOUNT_ID
+  - FIREWORKS_AI_TOKEN
+runtimes:
+  - localId: model-deployments
+    config:
+      account_id: env:FIREWORKS_AI_ACCOUNT_ID
+      family: model_deployments
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:FIREWORKS_AI_TOKEN

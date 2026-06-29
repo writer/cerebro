@@ -382,7 +382,7 @@ func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirement
 	familyKeywords := trimNonEmptyStrings(selector.FamilyKeywords)
 	controlIDPrefixes := trimNonEmptyStrings(selector.ControlIDPrefixes)
 	if values := trimNonEmptyStrings(selector.Frameworks); len(values) != 0 {
-		if !containsStringFold(values, control.FrameworkName) {
+		if !controlEvidenceRequirementFrameworkMatches(values, control.FrameworkName) {
 			return false
 		}
 		if len(familyKeywords) == 0 && len(controlIDPrefixes) == 0 {
@@ -401,6 +401,10 @@ func controlEvidenceRequirementProfileApplies(profile ControlEvidenceRequirement
 		return true
 	}
 	return false
+}
+
+func controlEvidenceRequirementFrameworkMatches(values []string, frameworkName string) bool {
+	return containsStringFold(values, "*") || containsStringFold(values, frameworkName)
 }
 
 func controlEvidenceRequirementSelectorEmpty(selector ControlEvidenceRequirementSelector) bool {

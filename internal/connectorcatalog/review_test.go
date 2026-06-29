@@ -280,13 +280,19 @@ func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
 
 func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	analysis := Analysis{
-		Summary: Summary{Total: 2, Generateable: 2},
+		Summary: Summary{Total: 3, Generateable: 3},
 		Entries: []Entry{
 			{
 				Path:         "devops/github.yaml",
 				Status:       StatusGenerateable,
 				Generateable: true,
 				Definition:   reviewDefinition("github", "GitHub", []connectordefinitions.ResourceFamily{reviewDetailedFamily("audit", "audit_event")}),
+			},
+			{
+				Path:         "devops/generated.yaml",
+				Status:       StatusGenerateable,
+				Generateable: true,
+				Definition:   reviewDefinition("generated", "Generated", []connectordefinitions.ResourceFamily{reviewDetailedFamily("users", "identity_user")}),
 			},
 			{
 				Path:         "identity/catalog_only.yaml",
@@ -312,6 +318,20 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasCoverageContract:     true,
 			RuntimeFamilies:         []string{"audit"},
 		},
+		"generated": {
+			SourceID:                "generated",
+			PackagePath:             "sources/generated",
+			Score:                   75,
+			HasSourcePackage:        true,
+			HasSourceCatalog:        true,
+			HasSourceImplementation: true,
+			HasSourceTests:          true,
+			HasDeployManifest:       true,
+			HasEventContracts:       true,
+			HasCoverageContract:     true,
+			RuntimeFamilies:         []string{"users"},
+			Missing:                 []string{"runtime:fixture_pair", "runtime:projector_tests"},
+		},
 	}
 
 	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
@@ -322,11 +342,14 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if report.Summary.RuntimeDepth.ReferenceRuntimeSources != 1 {
 		t.Fatalf("reference runtime sources = %d, want 1", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
 	}
-	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 1 {
-		t.Fatalf("needs runtime depth = %d, want 1", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 2 {
+		t.Fatalf("needs runtime depth = %d, want 2", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
 	}
 	if _, ok := runtimeDepthFor(report, "github"); ok {
 		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
+	}
+	if _, ok := runtimeDepthFor(report, "generated"); !ok {
+		t.Fatalf("runtime depth queue = %#v, want generated source", report.RuntimeDepthQueue)
 	}
 	candidate, ok := runtimeDepthFor(report, "catalog_only")
 	if !ok {
@@ -337,6 +360,15 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 	if !hasQuestion(report, "catalog_only", "runtime_depth") {
 		t.Fatalf("questions = %#v, want runtime_depth question", report.Questions)
+	}
+	if !hasQueue(report, "runtime_depth", "generated") {
+		t.Fatalf("promotion queues = %#v, want generated in runtime_depth queue", report.PromotionQueues)
+	}
+	if hasQueue(report, "sourcegen_ready", "generated") {
+		t.Fatalf("promotion queues = %#v, did not expect generated in sourcegen_ready queue", report.PromotionQueues)
+	}
+	if hasQueue(report, "sourcegen_ready", "github") || hasQueue(report, "runtime_depth", "github") {
+		t.Fatalf("promotion queues = %#v, did not expect reference runtime github in promotion queues", report.PromotionQueues)
 	}
 }
 

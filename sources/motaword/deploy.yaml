@@ -1,0 +1,23 @@
+sourceId: motaword
+secretKeys:
+  - MOTAWORD_ACTIVITYID
+  - MOTAWORD_CORPORATEID
+  - MOTAWORD_ID
+  - MOTAWORD_PROJECTID
+  - MOTAWORD_USERID
+  - MOTAWORD_TOKEN
+runtimes:
+  - localId: comment
+    config:
+      activityid: env:MOTAWORD_ACTIVITYID
+      corporateid: env:MOTAWORD_CORPORATEID
+      id: env:MOTAWORD_ID
+      projectid: env:MOTAWORD_PROJECTID
+      userid: env:MOTAWORD_USERID
+      family: comment
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /projects/${config.projectid}/comments
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:MOTAWORD_TOKEN

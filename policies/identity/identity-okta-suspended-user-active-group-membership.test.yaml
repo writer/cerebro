@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: suspended user with active group membership fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-suspended
+        primary_label: suspended@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-suspended|urn:cerebro:writer:okta_group:finance-users
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-suspended
+          - urn:cerebro:writer:okta_group:finance-users
+        severity: HIGH
+        summary: Okta suspended user suspended@example.com remains in group Finance Users
+        action: Remove stale group membership and verify downstream access removal
+        evidence:
+          - urn: urn:cerebro:writer:okta_group:finance-users
+    wantFinding: true
+  - name: suspended user without group membership passes
+    resource:
+      placeholder: true
+    wantFinding: false

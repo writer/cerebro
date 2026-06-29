@@ -1,0 +1,15 @@
+sourceId: tyk
+secretKeys:
+  - TYK_APIID
+  - TYK_TOKEN
+runtimes:
+  - localId: key
+    config:
+      apiid: env:TYK_APIID
+      family: key
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /tyk/keys/
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TYK_TOKEN

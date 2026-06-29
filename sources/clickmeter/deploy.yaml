@@ -1,0 +1,19 @@
+sourceId: clickmeter
+secretKeys:
+  - CLICKMETER_CONVERSIONID
+  - CLICKMETER_ID
+  - CLICKMETER_TAGID
+  - CLICKMETER_API_TOKEN
+runtimes:
+  - localId: clickstream
+    config:
+      conversionid: env:CLICKMETER_CONVERSIONID
+      id: env:CLICKMETER_ID
+      tagid: env:CLICKMETER_TAGID
+      family: clickstream
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /clickstream
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:CLICKMETER_API_TOKEN

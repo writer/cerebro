@@ -1,0 +1,107 @@
+id: cohere
+name: "Cohere"
+description: "Collects model catalog, connectors, datasets, and fine-tuned models from Cohere and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - cohere.model_catalog
+  - cohere.connectors
+  - cohere.datasets
+  - cohere.fine_tuned_models
+kind_lifecycle:
+  - kind: cohere.model_catalog
+    status: active
+  - kind: cohere.connectors
+    status: active
+  - kind: cohere.datasets
+    status: active
+  - kind: cohere.fine_tuned_models
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cohere
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: connectors
+      type: entity_family
+      title: "Connectors"
+      families: [connectors]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datasets
+      type: entity_family
+      title: "Datasets"
+      families: [datasets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: fine_tuned_models
+      type: deployment_state
+      title: "Fine Tuned Models"
+      families: [fine_tuned_models]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cohere.model_catalog
+    schema_ref: cohere/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: cohere.connectors
+    schema_ref: cohere/connectors/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cohere.datasets
+    schema_ref: cohere/datasets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cohere.fine_tuned_models
+    schema_ref: cohere/fine_tuned_models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id

@@ -1,0 +1,290 @@
+id: akeneo
+name: "Akeneo"
+description: "Collects attribute, attribute group, option, reference entities attribute, attributes option, and asset from Akeneo and projects them into the Cerebro graph as assets and groups for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - akeneo.attribute
+  - akeneo.attribute_group
+  - akeneo.option
+  - akeneo.reference_entities_attribute
+  - akeneo.attributes_option
+  - akeneo.asset
+  - akeneo.asset_family
+  - akeneo.draft
+  - akeneo.products_uuid_draft
+  - akeneo.products_draft
+  - akeneo.asset_families_attribute
+  - akeneo.v1_attribute
+kind_lifecycle:
+  - kind: akeneo.attribute
+    status: active
+  - kind: akeneo.attribute_group
+    status: active
+  - kind: akeneo.option
+    status: active
+  - kind: akeneo.reference_entities_attribute
+    status: active
+  - kind: akeneo.attributes_option
+    status: active
+  - kind: akeneo.asset
+    status: active
+  - kind: akeneo.asset_family
+    status: active
+  - kind: akeneo.draft
+    status: active
+  - kind: akeneo.products_uuid_draft
+    status: active
+  - kind: akeneo.products_draft
+    status: active
+  - kind: akeneo.asset_families_attribute
+    status: active
+  - kind: akeneo.v1_attribute
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: akeneo
+  dimensions:
+    - id: attribute
+      type: entity_family
+      title: "Attribute"
+      families: [attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: attribute_group
+      type: entity_family
+      title: "Attribute Group"
+      families: [attribute_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: option
+      type: entity_family
+      title: "Option"
+      families: [option]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: reference_entities_attribute
+      type: entity_family
+      title: "Reference Entities Attribute"
+      families: [reference_entities_attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: attributes_option
+      type: entity_family
+      title: "Attributes Option"
+      families: [attributes_option]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: asset
+      type: entity_family
+      title: "Asset"
+      families: [asset]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: asset_family
+      type: entity_family
+      title: "Asset Family"
+      families: [asset_family]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: draft
+      type: entity_family
+      title: "Draft"
+      families: [draft]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: products_uuid_draft
+      type: entity_family
+      title: "Products Uuid Draft"
+      families: [products_uuid_draft]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: products_draft
+      type: entity_family
+      title: "Products Draft"
+      families: [products_draft]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: asset_families_attribute
+      type: entity_family
+      title: "Asset Families Attribute"
+      families: [asset_families_attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: v1_attribute
+      type: entity_family
+      title: "V1 Attribute"
+      families: [v1_attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: akeneo.attribute
+    schema_ref: akeneo/attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - allowed_extensions
+  - kind: akeneo.attribute_group
+    schema_ref: akeneo/attribute_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.option
+    schema_ref: akeneo/option/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - code
+  - kind: akeneo.reference_entities_attribute
+    schema_ref: akeneo/reference_entities_attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - allowed_extensions
+  - kind: akeneo.attributes_option
+    schema_ref: akeneo/attributes_option/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - code
+  - kind: akeneo.asset
+    schema_ref: akeneo/asset/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.asset_family
+    schema_ref: akeneo/asset_family/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - assign_assets_to
+  - kind: akeneo.draft
+    schema_ref: akeneo/draft/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.products_uuid_draft
+    schema_ref: akeneo/products_uuid_draft/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.products_draft
+    schema_ref: akeneo/products_draft/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.asset_families_attribute
+    schema_ref: akeneo/asset_families_attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: akeneo.v1_attribute
+    schema_ref: akeneo/v1_attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

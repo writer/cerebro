@@ -1,0 +1,13 @@
+sourceId: confluence
+secretKeys:
+  - CONFLUENCE_TOKEN
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /wiki/rest/api/user/current
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CONFLUENCE_TOKEN

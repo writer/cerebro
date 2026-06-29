@@ -1,0 +1,19 @@
+sourceId: aws_bedrock
+secretKeys:
+  - AWS_BEDROCK_REGION
+  - AWS_BEDROCK_SERVICE
+  - AWS_BEDROCK_ACCESS_KEY
+  - AWS_BEDROCK_SECRET_KEY
+runtimes:
+  - localId: foundation-models
+    config:
+      region: env:AWS_BEDROCK_REGION
+      service: env:AWS_BEDROCK_SERVICE
+      family: foundation_models
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /foundation-models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      access_key: env:AWS_BEDROCK_ACCESS_KEY
+      secret_key: env:AWS_BEDROCK_SECRET_KEY

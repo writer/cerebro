@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -537,11 +538,12 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 	source := readGeneratedFile(t, outputDir, "sources/auth0/source.go")
 	for _, want := range []string{
 		"oauthTokenURLTemplate",
-		"sourcehttp.ClientCredentialsOptions",
-		"TokenURLTemplate: oauthTokenURLTemplate",
+		"sourcehttp.ClientCredentialsRuntimeConfigOptions",
+		"TokenURLTemplate:",
+		"oauthTokenURLTemplate",
 		"sourcehttp.ClientCredentialsCache",
 		"oauthTokenExpirationBuffer",
-		"sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate",
+		"sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, cfg, options)",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)
@@ -622,6 +624,106 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)
 		}
+	}
+}
+
+func TestGenerateDefinitionCatalogUsesProjectionCoverageDimensions(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-demo_runtime",
+			TenantID:      "tenant-a",
+			SourceID:      "demo_runtime",
+			DisplayName:   "Demo Runtime",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/me",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{
+				projectionCoverageFamily("repositories", "repository"),
+				projectionCoverageFamily("findings", "finding"),
+				projectionCoverageFamily("policies", "policy"),
+				projectionCoverageFamily("deployments", "deployment"),
+				projectionCoverageFamily("alerts", "alert"),
+				projectionCoverageFamily("audit_events", "audit_event"),
+			},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog([]byte(readGeneratedFile(t, outputDir, "sources/demo_runtime/catalog.yaml")))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	if catalog.CoverageContract == nil {
+		t.Fatal("CoverageContract = nil")
+	}
+	dimensions := map[string]sourcecdk.CoverageDimension{}
+	for _, dimension := range catalog.CoverageContract.Dimensions {
+		dimensions[dimension.ID] = dimension
+	}
+	tests := []struct {
+		id            string
+		dimensionType string
+		evidenceTypes []string
+		controlDomain []string
+	}{
+		{id: "repositories", dimensionType: "entity_family", evidenceTypes: []string{"source_snapshot"}, controlDomain: []string{"asset_inventory"}},
+		{id: "findings", dimensionType: "remediation_state", evidenceTypes: []string{"remediation_state"}, controlDomain: []string{"remediation"}},
+		{id: "policies", dimensionType: "lifecycle_state", evidenceTypes: []string{"configuration_state"}, controlDomain: []string{"security_operations"}},
+		{id: "deployments", dimensionType: "deployment_state", evidenceTypes: []string{"change_management"}, controlDomain: []string{"secure_delivery"}},
+		{id: "alerts", dimensionType: "alert_state", evidenceTypes: []string{"security_monitoring"}, controlDomain: []string{"logging_monitoring", "security_operations"}},
+		{id: "audit_events", dimensionType: "audit_event", evidenceTypes: []string{"logging_configuration"}, controlDomain: []string{"logging_monitoring"}},
+	}
+	for _, test := range tests {
+		t.Run(test.id, func(t *testing.T) {
+			dimension, ok := dimensions[test.id]
+			if !ok {
+				t.Fatalf("coverage dimension %q missing: %#v", test.id, dimensions)
+			}
+			if dimension.Type != test.dimensionType {
+				t.Fatalf("dimension type = %q, want %q", dimension.Type, test.dimensionType)
+			}
+			if !slices.Equal(dimension.EvidenceTypes, test.evidenceTypes) {
+				t.Fatalf("evidence types = %#v, want %#v", dimension.EvidenceTypes, test.evidenceTypes)
+			}
+			if !slices.Equal(dimension.ControlDomains, test.controlDomain) {
+				t.Fatalf("control domains = %#v, want %#v", dimension.ControlDomains, test.controlDomain)
+			}
+		})
+	}
+}
+
+func projectionCoverageFamily(id string, template string) connectordefinitions.ResourceFamily {
+	return connectordefinitions.ResourceFamily{
+		ID:             id,
+		Path:           "/v1/" + id,
+		RecordSelector: "$.data[*]",
+		IDField:        "id",
+		Event: connectordefinitions.EventMappingSpec{
+			Kind:      "demo_runtime." + id,
+			SchemaRef: "demo_runtime/" + id + "/v1",
+		},
+		Projection: &connectordefinitions.ProjectionSpec{
+			Template: template,
+		},
+		Coverage: []connectordefinitions.CoverageDimensionSpec{{
+			Type:    coverageDimensionType(template),
+			Support: "partial",
+		}},
 	}
 }
 
@@ -1028,12 +1130,12 @@ func TestGenerateFindingOnlyScaffold(t *testing.T) {
 		}
 	}
 	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source.go")
-	for _, want := range []string{"demoSourceFindingVulnerabilityProjections", "demoSourceFindingProjections", "relationAffects", "relationSupports"} {
+	for _, want := range []string{"demoSourceFindingVulnerabilityProjections", "demoSourceGenericFindingProjections", "relationAffects", "relationSupports", `EntityType: "runtime_evidence"`} {
 		if !strings.Contains(projection, want) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
 	}
-	if strings.Contains(projection, "demoSourceAssetProjections") {
+	if strings.Contains(projection, "demoSourceGenericAssetProjections") {
 		t.Fatalf("finding-only projection emitted unused asset helper:\n%s", projection)
 	}
 	projectionTest := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source_test.go")
@@ -1052,13 +1154,35 @@ func TestGenerateAssetOnlySkipsUnusedFindingHelper(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 	projection := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source.go")
-	for _, want := range []string{"demoSourceAssetHostProjections", "demoSourceAssetProjections", "relationHasEvidence"} {
+	for _, want := range []string{"demoSourceAssetHostProjections", "demoSourceGenericAssetProjections", "relationHasEvidence"} {
 		if !strings.Contains(projection, want) {
 			t.Fatalf("projection missing %q:\n%s", want, projection)
 		}
 	}
-	if strings.Contains(projection, "demoSourceFindingProjections") {
+	if strings.Contains(projection, "demoSourceGenericFindingProjections") {
 		t.Fatalf("asset-only projection emitted unused finding helper:\n%s", projection)
+	}
+}
+
+func TestGenerateProjectionTestsEveryFamily(t *testing.T) {
+	outputDir := t.TempDir()
+	if _, err := Generate(Request{
+		SourceID:     "demo_source",
+		AssetSchemas: []string{"host", "database"},
+		OutputDir:    outputDir,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	projectionTest := readGeneratedFile(t, outputDir, "internal/sourceprojection/demo_source_test.go")
+	for _, want := range []string{
+		"TestDemoSourceAssetProjection",
+		"TestDemoSourceAssetDatabaseProjection",
+		"demoSourceAssetHostProjections",
+		"demoSourceAssetDatabaseProjections",
+	} {
+		if !strings.Contains(projectionTest, want) {
+			t.Fatalf("projection test missing %q:\n%s", want, projectionTest)
+		}
 	}
 }
 

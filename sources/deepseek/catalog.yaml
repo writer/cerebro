@@ -1,0 +1,62 @@
+id: deepseek
+name: "DeepSeek"
+description: "Collects model catalog and account balances from DeepSeek and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - deepseek.model_catalog
+  - deepseek.account_balances
+kind_lifecycle:
+  - kind: deepseek.model_catalog
+    status: active
+  - kind: deepseek.account_balances
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: deepseek
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_balances
+      type: entity_family
+      title: "Account Balances"
+      families: [account_balances]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: deepseek.model_catalog
+    schema_ref: deepseek/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: deepseek.account_balances
+    schema_ref: deepseek/account_balances/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - currency

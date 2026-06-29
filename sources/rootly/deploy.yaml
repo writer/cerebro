@@ -1,0 +1,55 @@
+sourceId: rootly
+secretKeys:
+  - ROOTLY_BASE_URL
+  - ROOTLY_TOKEN
+runtimes:
+  - localId: alerts
+    config:
+      base_url: env:ROOTLY_BASE_URL
+      family: alerts
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ROOTLY_TOKEN
+  - localId: incidents
+    config:
+      base_url: env:ROOTLY_BASE_URL
+      family: incidents
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ROOTLY_TOKEN
+  - localId: monitors
+    config:
+      base_url: env:ROOTLY_BASE_URL
+      family: monitors
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ROOTLY_TOKEN
+  - localId: dashboards
+    config:
+      base_url: env:ROOTLY_BASE_URL
+      family: dashboards
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ROOTLY_TOKEN
+  - localId: audit-events
+    config:
+      base_url: env:ROOTLY_BASE_URL
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ROOTLY_TOKEN

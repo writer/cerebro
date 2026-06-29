@@ -1,0 +1,15 @@
+sourceId: twitter
+secretKeys:
+  - TWITTER_ID
+  - TWITTER_TOKEN
+runtimes:
+  - localId: list-membership
+    config:
+      id: env:TWITTER_ID
+      family: list_membership
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /2/users/${config.id}/list_memberships
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TWITTER_TOKEN

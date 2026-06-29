@@ -1,0 +1,80 @@
+id: checkr
+name: "Checkr"
+description: "Collects access accounts, candidates, and background checks from Checkr and projects them into the Cerebro graph as users and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - checkr.users
+  - checkr.candidates
+  - checkr.background_checks
+kind_lifecycle:
+  - kind: checkr.users
+    status: active
+  - kind: checkr.candidates
+    status: active
+  - kind: checkr.background_checks
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: checkr
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: candidates
+      type: entity_family
+      title: "Candidates"
+      families: [candidates]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: background_checks
+      type: audit_event
+      title: "Background Checks"
+      families: [background_checks]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: checkr.users
+    schema_ref: checkr/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: checkr.candidates
+    schema_ref: checkr/candidates/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: checkr.background_checks
+    schema_ref: checkr/background_checks/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

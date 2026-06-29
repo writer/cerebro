@@ -301,6 +301,9 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	if !stringSliceContains(summary.UnsupportedQuery.SuggestedRewrites, "Answer an Okta MFA questionnaire item from bounded graph evidence.") {
 		t.Fatalf("suggested rewrites = %#v, want questionnaire evidence rewrite", summary.UnsupportedQuery.SuggestedRewrites)
 	}
+	if !stringSliceContains(summary.UnsupportedQuery.SupportedIntents, IntentFailingControls) {
+		t.Fatalf("supported intents = %#v, want failing controls intent", summary.UnsupportedQuery.SupportedIntents)
+	}
 	done := events[6].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")

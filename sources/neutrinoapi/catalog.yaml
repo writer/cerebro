@@ -1,0 +1,108 @@
+id: neutrinoapi
+name: "Neutrino API"
+description: "Collects IP blocklist, host reputation, bin lookup, and geocode address from Neutrino API and projects them into the Cerebro graph as assets for alert, incident, service health, and response context."
+emitted_kinds:
+  - neutrinoapi.ip_blocklist
+  - neutrinoapi.host_reputation
+  - neutrinoapi.bin_lookup
+  - neutrinoapi.geocode_address
+kind_lifecycle:
+  - kind: neutrinoapi.ip_blocklist
+    status: active
+  - kind: neutrinoapi.host_reputation
+    status: active
+  - kind: neutrinoapi.bin_lookup
+    status: active
+  - kind: neutrinoapi.geocode_address
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: neutrinoapi
+  dimensions:
+    - id: ip_blocklist
+      type: entity_family
+      title: "Ip Blocklist"
+      families: [ip_blocklist]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: host_reputation
+      type: entity_family
+      title: "Host Reputation"
+      families: [host_reputation]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bin_lookup
+      type: entity_family
+      title: "Bin Lookup"
+      families: [bin_lookup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: geocode_address
+      type: entity_family
+      title: "Geocode Address"
+      families: [geocode_address]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: neutrinoapi.ip_blocklist
+    schema_ref: neutrinoapi/ip_blocklist/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: neutrinoapi.host_reputation
+    schema_ref: neutrinoapi/host_reputation/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - is-listed
+  - kind: neutrinoapi.bin_lookup
+    schema_ref: neutrinoapi/bin_lookup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: neutrinoapi.geocode_address
+    schema_ref: neutrinoapi/geocode_address/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - address

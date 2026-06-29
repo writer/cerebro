@@ -1,0 +1,15 @@
+sourceId: cyberark_identity
+secretKeys:
+  - CYBERARK_IDENTITY_CLIENT_ID
+  - CYBERARK_IDENTITY_CLIENT_SECRET
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /Security/Whoami
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:CYBERARK_IDENTITY_CLIENT_ID
+      client_secret: env:CYBERARK_IDENTITY_CLIENT_SECRET

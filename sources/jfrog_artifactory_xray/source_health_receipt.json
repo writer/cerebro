@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/xray/api/v1/system/ping",
+  "auth_model": "bearer_token",
+  "evidence_cas_reference_kind": "jfrog_artifactory_xray.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=jfrog_artifactory_xray",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "jfrog_artifactory_xray",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

@@ -1,0 +1,15 @@
+sourceId: databricks
+secretKeys:
+  - DATABRICKS_WORKSPACE_URL
+  - DATABRICKS_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      workspace_url: env:DATABRICKS_WORKSPACE_URL
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/2.0/preview/scim/v2/Me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:DATABRICKS_TOKEN

@@ -1,0 +1,13 @@
+sourceId: veracode
+secretKeys:
+  - VERACODE_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /appsec/v1/applications
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:VERACODE_TOKEN

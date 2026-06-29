@@ -1,0 +1,282 @@
+id: osisoft
+name: "OSIsoft PI Web API"
+description: "Collects search, securityidentity, notificationcontacttemplates search, analysisruleplugin, baseelementtemplate, and assetserver from OSIsoft PI Web API and projects them into the Cerebro graph as alerts, assets, audit events, findings, policies, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - osisoft.search
+  - osisoft.securityidentity
+  - osisoft.notificationcontacttemplates_search
+  - osisoft.analysisruleplugin
+  - osisoft.baseelementtemplate
+  - osisoft.assetserver
+  - osisoft.elementtemplate
+  - osisoft.eventframe
+  - osisoft.elements_eventframe
+  - osisoft.eventframes_eventframe
+  - osisoft.eventframeattribute
+  - osisoft.eventframes_eventframeattribute
+kind_lifecycle:
+  - kind: osisoft.search
+    status: active
+  - kind: osisoft.securityidentity
+    status: active
+  - kind: osisoft.notificationcontacttemplates_search
+    status: active
+  - kind: osisoft.analysisruleplugin
+    status: active
+  - kind: osisoft.baseelementtemplate
+    status: active
+  - kind: osisoft.assetserver
+    status: active
+  - kind: osisoft.elementtemplate
+    status: active
+  - kind: osisoft.eventframe
+    status: active
+  - kind: osisoft.elements_eventframe
+    status: active
+  - kind: osisoft.eventframes_eventframe
+    status: active
+  - kind: osisoft.eventframeattribute
+    status: active
+  - kind: osisoft.eventframes_eventframeattribute
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: osisoft
+  dimensions:
+    - id: search
+      type: audit_event
+      title: "Search"
+      families: [search]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: securityidentity
+      type: entity_family
+      title: "Securityidentity"
+      families: [securityidentity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notificationcontacttemplates_search
+      type: alert_state
+      title: "Notificationcontacttemplates Search"
+      families: [notificationcontacttemplates_search]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: analysisruleplugin
+      type: lifecycle_state
+      title: "Analysisruleplugin"
+      families: [analysisruleplugin]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: baseelementtemplate
+      type: remediation_state
+      title: "Baseelementtemplate"
+      families: [baseelementtemplate]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: assetserver
+      type: entity_family
+      title: "Assetserver"
+      families: [assetserver]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: elementtemplate
+      type: audit_event
+      title: "Elementtemplate"
+      families: [elementtemplate]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: eventframe
+      type: audit_event
+      title: "Eventframe"
+      families: [eventframe]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: elements_eventframe
+      type: audit_event
+      title: "Elements Eventframe"
+      families: [elements_eventframe]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: eventframes_eventframe
+      type: audit_event
+      title: "Eventframes Eventframe"
+      families: [eventframes_eventframe]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: eventframeattribute
+      type: audit_event
+      title: "Eventframeattribute"
+      families: [eventframeattribute]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: eventframes_eventframeattribute
+      type: audit_event
+      title: "Eventframes Eventframeattribute"
+      families: [eventframes_eventframeattribute]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: osisoft.search
+    schema_ref: osisoft/search/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.securityidentity
+    schema_ref: osisoft/securityidentity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.notificationcontacttemplates_search
+    schema_ref: osisoft/notificationcontacttemplates_search/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - Id
+  - kind: osisoft.analysisruleplugin
+    schema_ref: osisoft/analysisruleplugin/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - Id
+  - kind: osisoft.baseelementtemplate
+    schema_ref: osisoft/baseelementtemplate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - Id
+  - kind: osisoft.assetserver
+    schema_ref: osisoft/assetserver/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.elementtemplate
+    schema_ref: osisoft/elementtemplate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.eventframe
+    schema_ref: osisoft/eventframe/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.elements_eventframe
+    schema_ref: osisoft/elements_eventframe/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.eventframes_eventframe
+    schema_ref: osisoft/eventframes_eventframe/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.eventframeattribute
+    schema_ref: osisoft/eventframeattribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id
+  - kind: osisoft.eventframes_eventframeattribute
+    schema_ref: osisoft/eventframes_eventframeattribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - Id

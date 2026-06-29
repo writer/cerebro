@@ -1,0 +1,13 @@
+sourceId: bitbucket_cloud
+secretKeys:
+  - BITBUCKET_CLOUD_TOKEN
+runtimes:
+  - localId: repositories
+    config:
+      family: repositories
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /2.0/user
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:BITBUCKET_CLOUD_TOKEN

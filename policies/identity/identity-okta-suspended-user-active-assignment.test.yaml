@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: suspended user with active app assignment fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-suspended
+        primary_label: suspended@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-suspended|urn:cerebro:writer:okta_application:app-payroll
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-suspended
+          - urn:cerebro:writer:okta_application:app-payroll
+        severity: HIGH
+        summary: Okta suspended user suspended@example.com still has active assignment to Payroll
+        action: Remove app assignment and verify downstream deprovisioning
+        evidence:
+          - urn: urn:cerebro:writer:okta_application:app-payroll
+    wantFinding: true
+  - name: suspended user without app assignment passes
+    resource:
+      placeholder: true
+    wantFinding: false

@@ -1,0 +1,108 @@
+id: sakari
+name: "Sakari"
+description: "Collects webhook, campaign, contact, and conversation from Sakari and projects them into the Cerebro graph as assets for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - sakari.webhook
+  - sakari.campaign
+  - sakari.contact
+  - sakari.conversation
+kind_lifecycle:
+  - kind: sakari.webhook
+    status: active
+  - kind: sakari.campaign
+    status: active
+  - kind: sakari.contact
+    status: active
+  - kind: sakari.conversation
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: sakari
+  dimensions:
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: campaign
+      type: entity_family
+      title: "Campaign"
+      families: [campaign]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: contact
+      type: entity_family
+      title: "Contact"
+      families: [contact]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: conversation
+      type: entity_family
+      title: "Conversation"
+      families: [conversation]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: sakari.webhook
+    schema_ref: sakari/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - eventTypes
+  - kind: sakari.campaign
+    schema_ref: sakari/campaign/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: sakari.contact
+    schema_ref: sakari/contact/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: sakari.conversation
+    schema_ref: sakari/conversation/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

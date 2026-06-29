@@ -132,8 +132,30 @@ func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
 	if got := inferIntent("show top risk findings from the GitHub source", ""); got != IntentTopRiskFindings {
 		t.Fatalf("inferIntent() = %q, want %q", got, IntentTopRiskFindings)
 	}
+	if got := inferIntent("show high risk findings from failed access control", ""); got != IntentTopRiskFindings {
+		t.Fatalf("inferIntent(high risk failed access control findings) = %q, want %q", got, IntentTopRiskFindings)
+	}
 	if got := inferIntent("show top finding sources", ""); got != IntentAggregateFindingsBySource {
 		t.Fatalf("inferIntent(top finding sources) = %q, want %q", got, IntentAggregateFindingsBySource)
+	}
+}
+
+func TestInferIntentDetectsFailingControls(t *testing.T) {
+	for _, question := range []string{
+		"Which controls are failing?",
+		"show failed controls",
+		"show control failures",
+		"controls not passing",
+	} {
+		if got := inferIntent(question, ""); got != IntentFailingControls {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentFailingControls)
+		}
+	}
+}
+
+func TestInferIntentPrefersConnectorHealthWhenControlFailureIsContext(t *testing.T) {
+	if got := inferIntent("show source health control failures", ""); got != IntentConnectorHealth {
+		t.Fatalf("inferIntent(source health control failures) = %q, want %q", got, IntentConnectorHealth)
 	}
 }
 
@@ -245,6 +267,144 @@ LIMIT 25`
 		if strings.Contains(result.Cypher, forbidden) {
 			t.Fatalf("filtered cypher should leave ranking to Go; found %q:\n%s", forbidden, result.Cypher)
 		}
+	}
+}
+
+func TestConvertDraftToQueryUsesFailingControlsTemplate(t *testing.T) {
+	draftCypher := `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn
+LIMIT 25`
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Which controls are failing?",
+	}, &DraftResponse{
+		Plan:   &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"status": "fail"}},
+		Cypher: draftCypher,
+	})
+
+	if result.Plan.Intent != IntentFailingControls || !result.Deterministic || result.Source != "deterministic_template" {
+		t.Fatalf("conversion result = %#v, want deterministic failing controls template", result)
+	}
+	for _, want := range []string{
+		`"control_refs":"`,
+		`"controlRefs":"`,
+		"filter_control_refs <> ''",
+		"toLower(filter_status) = 'open'",
+		"finding_attributes_json_internal",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	if strings.Contains(result.Cypher, "'fail'") || strings.Contains(result.Cypher, "'failing'") {
+		t.Fatalf("converted cypher should not filter finding status as fail/failing:\n%s", result.Cypher)
+	}
+}
+
+func TestConvertDraftToQueryPreservesConfidentSpecificIntentOverFailingControlsHeuristic(t *testing.T) {
+	draftCypher := `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn
+LIMIT 25`
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show findings with failed access control compliance",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{
+			Intent:     IntentTopRiskFindings,
+			Confidence: 0.91,
+			Filters:    map[string]string{"status": "open"},
+		},
+		Cypher: draftCypher,
+	})
+
+	if result.Plan.Intent != IntentTopRiskFindings || !result.Deterministic || result.Source != "deterministic_template" {
+		t.Fatalf("conversion result = %#v, want confident top risk plan preserved", result)
+	}
+	if strings.Contains(result.Cypher, "filter_control_refs <> ''") {
+		t.Fatalf("converted cypher used failing controls template:\n%s", result.Cypher)
+	}
+	if !strings.Contains(result.Cypher, "toLower(filter_status) = 'open'") {
+		t.Fatalf("converted cypher missing top risk status filter:\n%s", result.Cypher)
+	}
+}
+
+func TestDeterministicFastPathKeepsTopRiskFindingIntentWhenControlFailureIsContext(t *testing.T) {
+	plan, ok := deterministicFastPathPlan(AskRequest{
+		TenantID: "writer",
+		Question: "show high risk findings from failed access control",
+	})
+	if !ok {
+		t.Fatalf("deterministicFastPathPlan() did not produce a plan")
+	}
+	if plan.Intent != IntentTopRiskFindings {
+		t.Fatalf("plan.Intent = %q, want %q", plan.Intent, IntentTopRiskFindings)
+	}
+}
+
+func TestPostProcessFailingControlRowsGroupsOpenFindings(t *testing.T) {
+	rows := []map[string]any{
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f1",
+			"finding_label":                     "Critical finding",
+			"resource_urn":                      "urn:cerebro:writer:asset:a",
+			"resource_label":                    "Asset A",
+			"relation_attributes_json_internal": `{"status":"open"}`,
+			"finding_attributes_json_internal":  `{"status":"open","effective_severity":"CRITICAL","risk_score":"91","control_refs":"SOC 2:CC6.1,ISO 27001:2022:A.8.9"}`,
+		},
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f2",
+			"finding_label":                     "Resolved finding",
+			"resource_urn":                      "urn:cerebro:writer:asset:b",
+			"relation_attributes_json_internal": `{"status":"resolved"}`,
+			"finding_attributes_json_internal":  `{"status":"resolved","effective_severity":"HIGH","risk_score":"80","control_refs":"SOC 2:CC6.2"}`,
+		},
+	}
+
+	result := postProcessFailingControlRows(AskQueryPlan{Intent: IntentFailingControls, Limit: 25}, rows)
+	if len(result) != 2 {
+		t.Fatalf("len(result) = %d, want 2: %#v", len(result), result)
+	}
+	first := result[0]
+	if first["framework_name"] != "ISO 27001:2022" || first["control_id"] != "A.8.9" {
+		t.Fatalf("first control = %#v, want ISO 27001:2022 A.8.9", first)
+	}
+	if first["status"] != "failing" || first["open_findings"] != 1 || first["critical_findings"] != 1 || first["risk_score"] != 91 {
+		t.Fatalf("first control posture = %#v", first)
+	}
+	second := result[1]
+	if second["framework_name"] != "SOC 2" || second["control_id"] != "CC6.1" {
+		t.Fatalf("second control = %#v, want SOC 2 CC6.1", second)
+	}
+}
+
+func TestPostProcessFailingControlRowsKeepsDuplicateFindingSeverityConsistent(t *testing.T) {
+	rows := []map[string]any{
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f1",
+			"finding_label":                     "Finding 1",
+			"resource_urn":                      "urn:cerebro:writer:asset:a",
+			"relation_attributes_json_internal": `{"status":"open","effective_severity":"HIGH","risk_score":"70","controlRefs":"SOC 2:CC6.1"}`,
+			"finding_attributes_json_internal":  `{"status":"open","effective_severity":"HIGH","risk_score":"70"}`,
+		},
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f1",
+			"finding_label":                     "Finding 1",
+			"resource_urn":                      "urn:cerebro:writer:asset:b",
+			"relation_attributes_json_internal": `{"status":"open","controlRefs":"SOC 2:CC6.1"}`,
+			"finding_attributes_json_internal":  `{"status":"open","effective_severity":"CRITICAL","risk_score":"95"}`,
+		},
+	}
+
+	result := postProcessFailingControlRows(AskQueryPlan{Intent: IntentFailingControls, Limit: 25}, rows)
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1: %#v", len(result), result)
+	}
+	control := result[0]
+	if control["severity"] != "HIGH" || control["critical_findings"] != 0 || control["high_findings"] != 1 {
+		t.Fatalf("duplicate finding severity summary = %#v, want HIGH with one high finding", control)
+	}
+	if control["risk_score"] != 70 {
+		t.Fatalf("duplicate finding risk_score = %#v, want first-seen score 70", control["risk_score"])
 	}
 }
 
@@ -486,6 +646,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 	}{
 		{name: "source aggregation", intent: IntentAggregateFindingsBySource, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "top risk", intent: IntentTopRiskFindings, scope: "urn:cerebro:writer:asset:alpha"},
+		{name: "failing controls", intent: IntentFailingControls, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "explain finding", intent: IntentExplainFinding, scope: "urn:cerebro:writer:finding:alpha"},
 		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
 		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},

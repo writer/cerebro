@@ -1,0 +1,80 @@
+id: teleport
+name: "Teleport"
+description: "Collects users, groups, and audit events from Teleport and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
+emitted_kinds:
+  - teleport.users
+  - teleport.groups
+  - teleport.audit_events
+kind_lifecycle:
+  - kind: teleport.users
+    status: active
+  - kind: teleport.groups
+    status: active
+  - kind: teleport.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: teleport
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: teleport.users
+    schema_ref: teleport/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: teleport.groups
+    schema_ref: teleport/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: teleport.audit_events
+    schema_ref: teleport/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

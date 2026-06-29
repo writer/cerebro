@@ -1,0 +1,108 @@
+id: threatjammer
+name: "ThreatJammer"
+description: "Collects activity, all, IP, and reported IP from ThreatJammer and projects them into the Cerebro graph as audit events, assets, and findings for alert, incident, service health, and response context."
+emitted_kinds:
+  - threatjammer.activity
+  - threatjammer.all
+  - threatjammer.ip
+  - threatjammer.reported_ip
+kind_lifecycle:
+  - kind: threatjammer.activity
+    status: active
+  - kind: threatjammer.all
+    status: active
+  - kind: threatjammer.ip
+    status: active
+  - kind: threatjammer.reported_ip
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: threatjammer
+  dimensions:
+    - id: activity
+      type: audit_event
+      title: "Activity"
+      families: [activity]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: all
+      type: entity_family
+      title: "All"
+      families: [all]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ip
+      type: remediation_state
+      title: "Ip"
+      families: [ip]
+      support: partial
+      high_value: true
+      evidence_types: [remediation_state]
+      control_domains: [remediation]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: reported_ip
+      type: entity_family
+      title: "Reported Ip"
+      families: [reported_ip]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: threatjammer.activity
+    schema_ref: threatjammer/activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - self
+  - kind: threatjammer.all
+    schema_ref: threatjammer/all/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - self
+  - kind: threatjammer.ip
+    schema_ref: threatjammer/ip/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: threatjammer.reported_ip
+    schema_ref: threatjammer/reported_ip/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - self

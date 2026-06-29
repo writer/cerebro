@@ -1,0 +1,127 @@
+id: jfrog_artifactory
+name: "Jfrog Artifactory"
+description: "Collects users, projects, repositories, deployments, and audit events from Jfrog Artifactory and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - jfrog_artifactory.users
+  - jfrog_artifactory.projects
+  - jfrog_artifactory.repositories
+  - jfrog_artifactory.deployments
+  - jfrog_artifactory.audit_events
+kind_lifecycle:
+  - kind: jfrog_artifactory.users
+    status: active
+  - kind: jfrog_artifactory.projects
+    status: active
+  - kind: jfrog_artifactory.repositories
+    status: active
+  - kind: jfrog_artifactory.deployments
+    status: active
+  - kind: jfrog_artifactory.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: jfrog_artifactory
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: repositories
+      type: entity_family
+      title: "Repositories"
+      families: [repositories]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: deployment_state
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: jfrog_artifactory.users
+    schema_ref: jfrog_artifactory/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: jfrog_artifactory.projects
+    schema_ref: jfrog_artifactory/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: jfrog_artifactory.repositories
+    schema_ref: jfrog_artifactory/repositories/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: jfrog_artifactory.deployments
+    schema_ref: jfrog_artifactory/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: jfrog_artifactory.audit_events
+    schema_ref: jfrog_artifactory/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,105 @@
+id: elmah
+name: "elmah.io"
+description: "Collects log, deployment, uptimecheck, and message from elmah.io and projects them into the Cerebro graph as audit events, deployments, and assets for alert, incident, service health, and response context."
+emitted_kinds:
+  - elmah.log
+  - elmah.deployment
+  - elmah.uptimecheck
+  - elmah.message
+kind_lifecycle:
+  - kind: elmah.log
+    status: active
+  - kind: elmah.deployment
+    status: active
+  - kind: elmah.uptimecheck
+    status: active
+  - kind: elmah.message
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: elmah
+  dimensions:
+    - id: log
+      type: audit_event
+      title: "Log"
+      families: [log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployment
+      type: deployment_state
+      title: "Deployment"
+      families: [deployment]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: uptimecheck
+      type: entity_family
+      title: "Uptimecheck"
+      families: [uptimecheck]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: message
+      type: audit_event
+      title: "Message"
+      families: [message]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: elmah.log
+    schema_ref: elmah/log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: elmah.deployment
+    schema_ref: elmah/deployment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: elmah.uptimecheck
+    schema_ref: elmah/uptimecheck/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: elmah.message
+    schema_ref: elmah/message/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,126 @@
+id: helpscout
+name: "Helpscout"
+description: "Collects users, groups, workspaces, documents, and audit events from Helpscout and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - helpscout.users
+  - helpscout.groups
+  - helpscout.workspaces
+  - helpscout.documents
+  - helpscout.audit_events
+kind_lifecycle:
+  - kind: helpscout.users
+    status: active
+  - kind: helpscout.groups
+    status: active
+  - kind: helpscout.workspaces
+    status: active
+  - kind: helpscout.documents
+    status: active
+  - kind: helpscout.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: helpscout
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: documents
+      type: entity_family
+      title: "Documents"
+      families: [documents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: helpscout.users
+    schema_ref: helpscout/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: helpscout.groups
+    schema_ref: helpscout/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: helpscout.workspaces
+    schema_ref: helpscout/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: helpscout.documents
+    schema_ref: helpscout/documents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: helpscout.audit_events
+    schema_ref: helpscout/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

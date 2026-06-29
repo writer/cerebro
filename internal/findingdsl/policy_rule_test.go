@@ -47,6 +47,139 @@ spec:
 	}
 }
 
+func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
+	root := repoRoot(t)
+	rules, issues, err := LoadPolicyRules(root)
+	if err != nil {
+		t.Fatalf("LoadPolicyRules() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none", issues)
+	}
+	byID := map[string]PolicyFindingRule{}
+	for _, rule := range rules {
+		byID[rule.Metadata.ID] = rule
+	}
+	graphPolicyIDs := []string{
+		"identity-okta-sign-on-rule-without-mfa",
+		"identity-okta-privileged-missing-owner",
+		"identity-okta-suspended-user-active-assignment",
+		"identity-okta-suspended-user-active-group-membership",
+		"identity-okta-external-account-no-owner",
+		"identity-okta-dormant-admin-role-assignment",
+		"identity-okta-stale-app-assignment-graph-30d",
+		"identity-okta-stale-group-membership-graph-90d",
+		"identity-okta-group-grants-admin-app-graph",
+	}
+	for _, id := range graphPolicyIDs {
+		rule, ok := byID[id]
+		if !ok {
+			t.Fatalf("policy %s not loaded", id)
+		}
+		if strings.TrimSpace(rule.Spec.Match.Query) != "" {
+			t.Fatalf("%s has spec.match.query; want graph-only finding", id)
+		}
+		query := strings.ToLower(rule.Spec.Graph.Query)
+		if strings.TrimSpace(query) == "" {
+			t.Fatalf("%s missing spec.graph.query", id)
+		}
+		for _, want := range []string{"graph_path", "finding_attributes", "evidence_basis", "source_provenance", "remediation_intent", "limitation"} {
+			if !strings.Contains(query, want) {
+				t.Fatalf("%s graph query missing %q", id, want)
+			}
+		}
+		for _, column := range []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"} {
+			if !stringSliceContains(rule.Spec.Graph.RequiredColumns, column) {
+				t.Fatalf("%s spec.graph.requiredColumns missing %s", id, column)
+			}
+		}
+		if rule.Spec.Graph.RowLimit <= 0 || rule.Spec.Graph.RowLimit > 500 {
+			t.Fatalf("%s rowLimit = %d, want bounded <= 500", id, rule.Spec.Graph.RowLimit)
+		}
+	}
+	for _, id := range []string{
+		"identity-okta-privileged-missing-owner",
+		"identity-okta-suspended-user-active-assignment",
+		"identity-okta-suspended-user-active-group-membership",
+		"identity-okta-external-account-no-owner",
+		"identity-okta-dormant-admin-role-assignment",
+		"identity-okta-stale-app-assignment-graph-30d",
+		"identity-okta-stale-group-membership-graph-90d",
+	} {
+		query := strings.ToLower(byID[id].Spec.Graph.Query)
+		for _, want := range []string{"lifecycle_state", "mfa_state"} {
+			if !strings.Contains(query, want) {
+				t.Fatalf("%s graph query missing %q", id, want)
+			}
+		}
+	}
+	for _, id := range []string{"identity-okta-dormant-admin-role-assignment", "identity-okta-stale-group-membership-graph-90d"} {
+		if query := strings.ToLower(byID[id].Spec.Graph.Query); !strings.Contains(query, "last_login_at") {
+			t.Fatalf("%s graph query missing last_login_at source fact", id)
+		}
+	}
+	for _, tc := range []struct {
+		id       string
+		duration string
+	}{
+		{id: "identity-okta-dormant-admin-role-assignment", duration: "P30D"},
+		{id: "identity-okta-stale-group-membership-graph-90d", duration: "P90D"},
+	} {
+		query := byID[tc.id].Spec.Graph.Query
+		if strings.Contains(query, "datetime(last_login_at)") {
+			t.Fatalf("%s graph query parses extracted login timestamps with datetime():\n%s", tc.id, query)
+		}
+		for _, want := range []string{
+			"last_login_at =~ '^[0-9]{4}-",
+			"substring(toString(datetime() - duration('" + tc.duration + "')), 0, 19)",
+			"malformed login timestamps are ignored",
+		} {
+			if !strings.Contains(query, want) {
+				t.Fatalf("%s graph query missing %q:\n%s", tc.id, want, query)
+			}
+		}
+	}
+	for _, id := range []string{
+		"identity-okta-stale-app-assignment-30d",
+		"identity-okta-stale-group-membership-90d",
+		"identity-okta-group-grants-admin-app",
+	} {
+		rule, ok := byID[id]
+		if !ok {
+			t.Fatalf("legacy policy %s not loaded", id)
+		}
+		if strings.TrimSpace(rule.Spec.Match.Query) == "" {
+			t.Fatalf("%s missing legacy spec.match.query", id)
+		}
+		if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
+			t.Fatalf("%s has spec.graph.query; legacy query-backed rule must not silently change evaluation mode", id)
+		}
+	}
+	groupAdminGraph := byID["identity-okta-group-grants-admin-app-graph"].Spec.Graph.Query
+	if strings.Contains(groupAdminGraph, "toLower(coalesce(app.label, '') + ' ' + coalesce(app.attributes_json, '')) AS app_text") {
+		t.Fatalf("group admin graph query should not match admin-like terms across full application attributes:\n%s", groupAdminGraph)
+	}
+	if !strings.Contains(groupAdminGraph, "toLower(coalesce(app.label, '')) AS app_text") {
+		t.Fatalf("group admin graph query should restrict app_text to the application label:\n%s", groupAdminGraph)
+	}
+	staleAppGraph := byID["identity-okta-stale-app-assignment-graph-30d"].Spec.Graph.Query
+	for _, want := range []string{
+		"[assignment:RELATION {relation: 'assigned_to'}]",
+		"toLower(coalesce(assignment.attributes_json, '')) AS assignment_attrs",
+		"NOT assignment_attrs CONTAINS '\"status\":'",
+		"assignment_attrs CONTAINS '\"status\":\"active\"'",
+		"assignment_attrs CONTAINS '\"status\":\"assigned\"'",
+		"activity.attributes_json, '') CONTAINS '\"event_type\":\"app.oauth2.token.grant.",
+	} {
+		if !strings.Contains(staleAppGraph, want) {
+			t.Fatalf("stale app assignment graph query missing %q:\n%s", want, staleAppGraph)
+		}
+	}
+	if strings.Contains(staleAppGraph, "CONTAINS '\"event_type\":\"app.oauth2.token.grant\"'") {
+		t.Fatalf("stale app assignment graph query must match OAuth token grant event prefixes with a suffix separator:\n%s", staleAppGraph)
+	}
+}
+
 func TestLoadPolicyRulesLoadsContractMetadataBlocks(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "policies/identity/privileged-no-mfa.yaml", `
@@ -809,4 +942,26 @@ func writeTestFile(t *testing.T, root string, rel string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	root := filepath.Clean(filepath.Join(wd, "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("repo root %s missing go.mod: %v", root, err)
+	}
+	return root
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

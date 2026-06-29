@@ -1,0 +1,19 @@
+sourceId: learnifier
+secretKeys:
+  - LEARNIFIER_GROUPID
+  - LEARNIFIER_ORGID
+  - LEARNIFIER_PROJECTID
+  - LEARNIFIER_TOKEN
+runtimes:
+  - localId: globalusergroup
+    config:
+      groupid: env:LEARNIFIER_GROUPID
+      orgid: env:LEARNIFIER_ORGID
+      projectid: env:LEARNIFIER_PROJECTID
+      family: globalusergroup
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /globalusergroups
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:LEARNIFIER_TOKEN

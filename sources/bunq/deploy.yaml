@@ -1,0 +1,15 @@
+sourceId: bunq
+secretKeys:
+  - BUNQ_USERID
+  - BUNQ_TOKEN
+runtimes:
+  - localId: event
+    config:
+      userid: env:BUNQ_USERID
+      family: event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /user/${config.userid}/event
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:BUNQ_TOKEN

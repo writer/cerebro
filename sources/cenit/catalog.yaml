@@ -1,0 +1,287 @@
+id: cenit
+name: "Cenit"
+description: "Collects observer, connection role, webhook, connection, data type, and flow from Cenit and projects them into the Cerebro graph as assets, audit events, and groups for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - cenit.observer
+  - cenit.connection_role
+  - cenit.webhook
+  - cenit.connection
+  - cenit.data_type
+  - cenit.flow
+  - cenit.namespace
+  - cenit.scheduler
+  - cenit.schema
+  - cenit.translator
+  - cenit.setup_connection_role
+  - cenit.setup_webhook
+kind_lifecycle:
+  - kind: cenit.observer
+    status: active
+  - kind: cenit.connection_role
+    status: active
+  - kind: cenit.webhook
+    status: active
+  - kind: cenit.connection
+    status: active
+  - kind: cenit.data_type
+    status: active
+  - kind: cenit.flow
+    status: active
+  - kind: cenit.namespace
+    status: active
+  - kind: cenit.scheduler
+    status: active
+  - kind: cenit.schema
+    status: active
+  - kind: cenit.translator
+    status: active
+  - kind: cenit.setup_connection_role
+    status: active
+  - kind: cenit.setup_webhook
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cenit
+  dimensions:
+    - id: observer
+      type: audit_event
+      title: "Observer"
+      families: [observer]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: connection_role
+      type: entity_family
+      title: "Connection Role"
+      families: [connection_role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: connection
+      type: entity_family
+      title: "Connection"
+      families: [connection]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: data_type
+      type: entity_family
+      title: "Data Type"
+      families: [data_type]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: flow
+      type: entity_family
+      title: "Flow"
+      families: [flow]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: namespace
+      type: entity_family
+      title: "Namespace"
+      families: [namespace]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: scheduler
+      type: entity_family
+      title: "Scheduler"
+      families: [scheduler]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: schema
+      type: entity_family
+      title: "Schema"
+      families: [schema]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: translator
+      type: entity_family
+      title: "Translator"
+      families: [translator]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: setup_connection_role
+      type: entity_family
+      title: "Setup Connection Role"
+      families: [setup_connection_role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: setup_webhook
+      type: entity_family
+      title: "Setup Webhook"
+      families: [setup_webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cenit.observer
+    schema_ref: cenit/observer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: cenit.connection_role
+    schema_ref: cenit/connection_role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: cenit.webhook
+    schema_ref: cenit/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.connection
+    schema_ref: cenit/connection/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.data_type
+    schema_ref: cenit/data_type/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.flow
+    schema_ref: cenit/flow/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.namespace
+    schema_ref: cenit/namespace/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.scheduler
+    schema_ref: cenit/scheduler/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.schema
+    schema_ref: cenit/schema/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.translator
+    schema_ref: cenit/translator/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cenit.setup_connection_role
+    schema_ref: cenit/setup_connection_role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: cenit.setup_webhook
+    schema_ref: cenit/setup_webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - key

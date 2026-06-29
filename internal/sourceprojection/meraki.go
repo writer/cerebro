@@ -20,10 +20,10 @@ func merakiMerakiauthuserProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 }
 
 func merakiAccesspolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return merakiPolicyProjections(event)
+	return merakiGenericPolicyProjections(event)
 }
 
-func merakiPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func merakiGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err

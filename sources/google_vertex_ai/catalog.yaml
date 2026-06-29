@@ -1,0 +1,150 @@
+id: google_vertex_ai
+name: "Google Vertex AI"
+description: "Collects models, endpoints, custom jobs, batch prediction jobs, indexes, and reasoning engines from Google Vertex AI and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - google_vertex_ai.models
+  - google_vertex_ai.endpoints
+  - google_vertex_ai.custom_jobs
+  - google_vertex_ai.batch_prediction_jobs
+  - google_vertex_ai.indexes
+  - google_vertex_ai.reasoning_engines
+kind_lifecycle:
+  - kind: google_vertex_ai.models
+    status: active
+  - kind: google_vertex_ai.endpoints
+    status: active
+  - kind: google_vertex_ai.custom_jobs
+    status: active
+  - kind: google_vertex_ai.batch_prediction_jobs
+    status: active
+  - kind: google_vertex_ai.indexes
+    status: active
+  - kind: google_vertex_ai.reasoning_engines
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: google_vertex_ai
+  dimensions:
+    - id: models
+      type: entity_family
+      title: "Models"
+      families: [models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: endpoints
+      type: deployment_state
+      title: "Endpoints"
+      families: [endpoints]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: custom_jobs
+      type: deployment_state
+      title: "Custom Jobs"
+      families: [custom_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: batch_prediction_jobs
+      type: deployment_state
+      title: "Batch Prediction Jobs"
+      families: [batch_prediction_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: indexes
+      type: entity_family
+      title: "Indexes"
+      families: [indexes]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: reasoning_engines
+      type: deployment_state
+      title: "Reasoning Engines"
+      families: [reasoning_engines]
+      support: partial
+      high_value: true
+      evidence_types: [change_management]
+      control_domains: [secure_delivery]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: google_vertex_ai.models
+    schema_ref: google_vertex_ai/models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: google_vertex_ai.endpoints
+    schema_ref: google_vertex_ai/endpoints/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: google_vertex_ai.custom_jobs
+    schema_ref: google_vertex_ai/custom_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: google_vertex_ai.batch_prediction_jobs
+    schema_ref: google_vertex_ai/batch_prediction_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: google_vertex_ai.indexes
+    schema_ref: google_vertex_ai/indexes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: google_vertex_ai.reasoning_engines
+    schema_ref: google_vertex_ai/reasoning_engines/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name

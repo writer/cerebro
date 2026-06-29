@@ -1,0 +1,13 @@
+sourceId: fleetdm
+secretKeys:
+  - FLEETDM_TOKEN
+runtimes:
+  - localId: hosts
+    config:
+      family: hosts
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/v1/fleet/health
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:FLEETDM_TOKEN

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -179,6 +180,50 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReadReturnsSlackEnvelopeError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/users.list" {
+			t.Fatalf("request path = %q, want /users.list", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":       false,
+			"error":    "missing_scope",
+			"needed":   "users:read",
+			"provided": "team:read",
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyUser,
+		"tenant_id": "writer",
+		"token":     "slack-token",
+	})
+	_, err = source.Read(context.Background(), config, nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want Slack envelope error")
+	}
+	message := err.Error()
+	for _, want := range []string{
+		"slack API returned ok=false: missing_scope",
+		"needed=users:read",
+		"provided=team:read",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("Read() error = %q, want to contain %q", message, want)
+		}
+	}
+	if strings.Contains(message, "response did not contain a record list") {
+		t.Fatalf("Read() error = %q, want provider envelope error before record-list parsing", message)
 	}
 }
 

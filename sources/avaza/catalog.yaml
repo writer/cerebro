@@ -1,0 +1,288 @@
+id: avaza
+name: "Avaza"
+description: "Collects projectmember, lookup, userprofile, webhook, bill, and billpayment from Avaza and projects them into the Cerebro graph as assets and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - avaza.projectmember
+  - avaza.lookup
+  - avaza.userprofile
+  - avaza.webhook
+  - avaza.bill
+  - avaza.billpayment
+  - avaza.company
+  - avaza.contact
+  - avaza.creditnote
+  - avaza.currency
+  - avaza.estimate
+  - avaza.expense
+kind_lifecycle:
+  - kind: avaza.projectmember
+    status: active
+  - kind: avaza.lookup
+    status: active
+  - kind: avaza.userprofile
+    status: active
+  - kind: avaza.webhook
+    status: active
+  - kind: avaza.bill
+    status: active
+  - kind: avaza.billpayment
+    status: active
+  - kind: avaza.company
+    status: active
+  - kind: avaza.contact
+    status: active
+  - kind: avaza.creditnote
+    status: active
+  - kind: avaza.currency
+    status: active
+  - kind: avaza.estimate
+    status: active
+  - kind: avaza.expense
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: avaza
+  dimensions:
+    - id: projectmember
+      type: entity_family
+      title: "Projectmember"
+      families: [projectmember]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: lookup
+      type: entity_family
+      title: "Lookup"
+      families: [lookup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: userprofile
+      type: entity_family
+      title: "Userprofile"
+      families: [userprofile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: webhook
+      type: entity_family
+      title: "Webhook"
+      families: [webhook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bill
+      type: entity_family
+      title: "Bill"
+      families: [bill]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: billpayment
+      type: entity_family
+      title: "Billpayment"
+      families: [billpayment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: company
+      type: entity_family
+      title: "Company"
+      families: [company]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: contact
+      type: entity_family
+      title: "Contact"
+      families: [contact]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: creditnote
+      type: entity_family
+      title: "Creditnote"
+      families: [creditnote]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: currency
+      type: entity_family
+      title: "Currency"
+      families: [currency]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: estimate
+      type: entity_family
+      title: "Estimate"
+      families: [estimate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: expense
+      type: entity_family
+      title: "Expense"
+      families: [expense]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: avaza.projectmember
+    schema_ref: avaza/projectmember/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - Email
+  - kind: avaza.lookup
+    schema_ref: avaza/lookup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Name
+  - kind: avaza.userprofile
+    schema_ref: avaza/userprofile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - Email
+  - kind: avaza.webhook
+    schema_ref: avaza/webhook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - EventCode
+  - kind: avaza.bill
+    schema_ref: avaza/bill/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - AccountIDFK
+  - kind: avaza.billpayment
+    schema_ref: avaza/billpayment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - AccountIDFK
+  - kind: avaza.company
+    schema_ref: avaza/company/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - BillingAddress
+  - kind: avaza.contact
+    schema_ref: avaza/contact/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Email
+  - kind: avaza.creditnote
+    schema_ref: avaza/creditnote/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Balance
+  - kind: avaza.currency
+    schema_ref: avaza/currency/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Name
+  - kind: avaza.estimate
+    schema_ref: avaza/estimate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - AccountIDFK
+  - kind: avaza.expense
+    schema_ref: avaza/expense/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - Email

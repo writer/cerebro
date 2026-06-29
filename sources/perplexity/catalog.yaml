@@ -1,0 +1,103 @@
+id: perplexity
+name: "Perplexity"
+description: "Collects API groups, API keys, team members, and usage reports from Perplexity and projects them into the Cerebro graph as groups, secrets, users, and assets for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - perplexity.api_groups
+  - perplexity.api_keys
+  - perplexity.team_members
+  - perplexity.usage_reports
+kind_lifecycle:
+  - kind: perplexity.api_groups
+    status: active
+  - kind: perplexity.api_keys
+    status: active
+  - kind: perplexity.team_members
+    status: active
+  - kind: perplexity.usage_reports
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: perplexity
+  dimensions:
+    - id: api_groups
+      type: entity_family
+      title: "Api Groups"
+      families: [api_groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: team_members
+      type: entity_family
+      title: "Team Members"
+      families: [team_members]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usage_reports
+      type: entity_family
+      title: "Usage Reports"
+      families: [usage_reports]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: perplexity.api_groups
+    schema_ref: perplexity/api_groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: perplexity.api_keys
+    schema_ref: perplexity/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: perplexity.team_members
+    schema_ref: perplexity/team_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: perplexity.usage_reports
+    schema_ref: perplexity/usage_reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,108 @@
+id: truora
+name: "Truora"
+description: "Collects hook, report, check, and config from Truora and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - truora.hook
+  - truora.report
+  - truora.check
+  - truora.config
+kind_lifecycle:
+  - kind: truora.hook
+    status: active
+  - kind: truora.report
+    status: active
+  - kind: truora.check
+    status: active
+  - kind: truora.config
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: truora
+  dimensions:
+    - id: hook
+      type: entity_family
+      title: "Hook"
+      families: [hook]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: report
+      type: entity_family
+      title: "Report"
+      families: [report]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: check
+      type: entity_family
+      title: "Check"
+      families: [check]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: config
+      type: entity_family
+      title: "Config"
+      families: [config]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: truora.hook
+    schema_ref: truora/hook/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - actions
+  - kind: truora.report
+    schema_ref: truora/report/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: truora.check
+    schema_ref: truora/check/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - birth_certificate
+  - kind: truora.config
+    schema_ref: truora/config/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - ScoreConfigByCountry

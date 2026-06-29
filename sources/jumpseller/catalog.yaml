@@ -1,0 +1,292 @@
+id: jumpseller
+name: "Jumpseller"
+description: "Collects hooks json, checkout custom fields json, countries json, custom fields json, customer categories json, and customers json from Jumpseller and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - jumpseller.hooks_json
+  - jumpseller.checkout_custom_fields_json
+  - jumpseller.countries_json
+  - jumpseller.custom_fields_json
+  - jumpseller.customer_categories_json
+  - jumpseller.customers_json
+  - jumpseller.fulfillments_json
+  - jumpseller.jsapps_json
+  - jumpseller.orders_json
+  - jumpseller.pages_json
+  - jumpseller.payment_methods_json
+  - jumpseller.products_json
+kind_lifecycle:
+  - kind: jumpseller.hooks_json
+    status: active
+  - kind: jumpseller.checkout_custom_fields_json
+    status: active
+  - kind: jumpseller.countries_json
+    status: active
+  - kind: jumpseller.custom_fields_json
+    status: active
+  - kind: jumpseller.customer_categories_json
+    status: active
+  - kind: jumpseller.customers_json
+    status: active
+  - kind: jumpseller.fulfillments_json
+    status: active
+  - kind: jumpseller.jsapps_json
+    status: active
+  - kind: jumpseller.orders_json
+    status: active
+  - kind: jumpseller.pages_json
+    status: active
+  - kind: jumpseller.payment_methods_json
+    status: active
+  - kind: jumpseller.products_json
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: jumpseller
+  dimensions:
+    - id: hooks_json
+      type: entity_family
+      title: "Hooks Json"
+      families: [hooks_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: checkout_custom_fields_json
+      type: entity_family
+      title: "Checkout Custom Fields Json"
+      families: [checkout_custom_fields_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: countries_json
+      type: entity_family
+      title: "Countries Json"
+      families: [countries_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: custom_fields_json
+      type: entity_family
+      title: "Custom Fields Json"
+      families: [custom_fields_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customer_categories_json
+      type: entity_family
+      title: "Customer Categories Json"
+      families: [customer_categories_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customers_json
+      type: entity_family
+      title: "Customers Json"
+      families: [customers_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: fulfillments_json
+      type: entity_family
+      title: "Fulfillments Json"
+      families: [fulfillments_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: jsapps_json
+      type: entity_family
+      title: "Jsapps Json"
+      families: [jsapps_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: orders_json
+      type: entity_family
+      title: "Orders Json"
+      families: [orders_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: pages_json
+      type: entity_family
+      title: "Pages Json"
+      families: [pages_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: payment_methods_json
+      type: entity_family
+      title: "Payment Methods Json"
+      families: [payment_methods_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: products_json
+      type: entity_family
+      title: "Products Json"
+      families: [products_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: jumpseller.hooks_json
+    schema_ref: jumpseller/hooks_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - hook
+  - kind: jumpseller.checkout_custom_fields_json
+    schema_ref: jumpseller/checkout_custom_fields_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - checkout_custom_field
+  - kind: jumpseller.countries_json
+    schema_ref: jumpseller/countries_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: jumpseller.custom_fields_json
+    schema_ref: jumpseller/custom_fields_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - custom_field
+  - kind: jumpseller.customer_categories_json
+    schema_ref: jumpseller/customer_categories_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - category
+  - kind: jumpseller.customers_json
+    schema_ref: jumpseller/customers_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - customer
+  - kind: jumpseller.fulfillments_json
+    schema_ref: jumpseller/fulfillments_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - category
+  - kind: jumpseller.jsapps_json
+    schema_ref: jumpseller/jsapps_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: jumpseller.orders_json
+    schema_ref: jumpseller/orders_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - order
+  - kind: jumpseller.pages_json
+    schema_ref: jumpseller/pages_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - page
+  - kind: jumpseller.payment_methods_json
+    schema_ref: jumpseller/payment_methods_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - payment_method
+  - kind: jumpseller.products_json
+    schema_ref: jumpseller/products_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - product

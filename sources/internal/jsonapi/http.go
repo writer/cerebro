@@ -289,6 +289,11 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.Header, decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
 	}
+	if s.options.ResponseError != nil {
+		if err := s.options.ResponseError(resp.Body); err != nil {
+			return resp.Header, err
+		}
+	}
 	if target == nil {
 		return resp.Header, nil
 	}

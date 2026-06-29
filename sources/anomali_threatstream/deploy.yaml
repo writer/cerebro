@@ -1,0 +1,15 @@
+sourceId: anomali_threatstream
+secretKeys:
+  - ANOMALI_THREATSTREAM_BASE_URL
+  - ANOMALI_THREATSTREAM_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      base_url: env:ANOMALI_THREATSTREAM_BASE_URL
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ANOMALI_THREATSTREAM_TOKEN

@@ -1,0 +1,107 @@
+id: godaddy
+name: "GoDaddy"
+description: "Collects optin, domain, maintenance, and tld from GoDaddy and projects them into the Cerebro graph as alerts and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - godaddy.optin
+  - godaddy.domain
+  - godaddy.maintenance
+  - godaddy.tld
+kind_lifecycle:
+  - kind: godaddy.optin
+    status: active
+  - kind: godaddy.domain
+    status: active
+  - kind: godaddy.maintenance
+    status: active
+  - kind: godaddy.tld
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: godaddy
+  dimensions:
+    - id: optin
+      type: alert_state
+      title: "Optin"
+      families: [optin]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: domain
+      type: entity_family
+      title: "Domain"
+      families: [domain]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: maintenance
+      type: entity_family
+      title: "Maintenance"
+      families: [maintenance]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: tld
+      type: entity_family
+      title: "Tld"
+      families: [tld]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: godaddy.optin
+    schema_ref: godaddy/optin/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - addedAt
+  - kind: godaddy.domain
+    schema_ref: godaddy/domain/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - authCode
+  - kind: godaddy.maintenance
+    schema_ref: godaddy/maintenance/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: godaddy.tld
+    schema_ref: godaddy/tld/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

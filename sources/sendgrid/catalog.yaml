@@ -1,0 +1,102 @@
+id: sendgrid
+name: "SendGrid"
+description: "Collects activity, API key, group, and invalid email from SendGrid and projects them into the Cerebro graph as audit events, secrets, groups, and users for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - sendgrid.activity
+  - sendgrid.api_key
+  - sendgrid.group
+  - sendgrid.invalid_email
+kind_lifecycle:
+  - kind: sendgrid.activity
+    status: active
+  - kind: sendgrid.api_key
+    status: active
+  - kind: sendgrid.group
+    status: active
+  - kind: sendgrid.invalid_email
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: sendgrid
+  dimensions:
+    - id: activity
+      type: audit_event
+      title: "Activity"
+      families: [activity]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_key
+      type: entity_family
+      title: "Api Key"
+      families: [api_key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: invalid_email
+      type: entity_family
+      title: "Invalid Email"
+      families: [invalid_email]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: sendgrid.activity
+    schema_ref: sendgrid/activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - allowed
+  - kind: sendgrid.api_key
+    schema_ref: sendgrid/api_key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - name
+  - kind: sendgrid.group
+    schema_ref: sendgrid/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: sendgrid.invalid_email
+    schema_ref: sendgrid/invalid_email/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email

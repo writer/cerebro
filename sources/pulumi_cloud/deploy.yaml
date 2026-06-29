@@ -1,0 +1,13 @@
+sourceId: pulumi_cloud
+secretKeys:
+  - PULUMI_CLOUD_API_TOKEN
+runtimes:
+  - localId: repositories
+    config:
+      family: repositories
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /user
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:PULUMI_CLOUD_API_TOKEN

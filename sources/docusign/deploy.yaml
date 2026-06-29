@@ -1,0 +1,15 @@
+sourceId: docusign
+secretKeys:
+  - DOCUSIGN_ACCOUNTID
+  - DOCUSIGN_TOKEN
+runtimes:
+  - localId: bcc-email-archive
+    config:
+      accountid: env:DOCUSIGN_ACCOUNTID
+      family: bcc_email_archive
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2.1/accounts/${config.accountid}/settings/bcc_email_archives
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:DOCUSIGN_TOKEN

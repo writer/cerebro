@@ -1,0 +1,103 @@
+id: docusign
+name: "DocuSign"
+description: "Collects bcc email archive, signing group, request log, and permission profile from DocuSign and projects them into the Cerebro graph as users, groups, audit events, and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - docusign.bcc_email_archive
+  - docusign.signing_group
+  - docusign.request_log
+  - docusign.permission_profile
+kind_lifecycle:
+  - kind: docusign.bcc_email_archive
+    status: active
+  - kind: docusign.signing_group
+    status: active
+  - kind: docusign.request_log
+    status: active
+  - kind: docusign.permission_profile
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: docusign
+  dimensions:
+    - id: bcc_email_archive
+      type: entity_family
+      title: "Bcc Email Archive"
+      families: [bcc_email_archive]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: signing_group
+      type: entity_family
+      title: "Signing Group"
+      families: [signing_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: request_log
+      type: audit_event
+      title: "Request Log"
+      families: [request_log]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission_profile
+      type: entity_family
+      title: "Permission Profile"
+      families: [permission_profile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: docusign.bcc_email_archive
+    schema_ref: docusign/bcc_email_archive/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: docusign.signing_group
+    schema_ref: docusign/signing_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - created
+  - kind: docusign.request_log
+    schema_ref: docusign/request_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - createdDateTime
+  - kind: docusign.permission_profile
+    schema_ref: docusign/permission_profile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - modifiedByUsername

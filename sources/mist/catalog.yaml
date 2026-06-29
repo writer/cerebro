@@ -1,0 +1,103 @@
+id: mist
+name: "Juniper Mist"
+description: "Collects call event, sitegroup, alarmtemplate, and secpolicy from Juniper Mist and projects them into the Cerebro graph as audit events, groups, alerts, and policies for repository, build, deployment, and release context."
+emitted_kinds:
+  - mist.call_event
+  - mist.sitegroup
+  - mist.alarmtemplate
+  - mist.secpolicy
+kind_lifecycle:
+  - kind: mist.call_event
+    status: active
+  - kind: mist.sitegroup
+    status: active
+  - kind: mist.alarmtemplate
+    status: active
+  - kind: mist.secpolicy
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: mist
+  dimensions:
+    - id: call_event
+      type: audit_event
+      title: "Call Event"
+      families: [call_event]
+      support: partial
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sitegroup
+      type: entity_family
+      title: "Sitegroup"
+      families: [sitegroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: alarmtemplate
+      type: alert_state
+      title: "Alarmtemplate"
+      families: [alarmtemplate]
+      support: partial
+      high_value: true
+      evidence_types: [security_monitoring]
+      control_domains: [logging_monitoring, security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: secpolicy
+      type: lifecycle_state
+      title: "Secpolicy"
+      families: [secpolicy]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [security_operations]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: mist.call_event
+    schema_ref: mist/call_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - key
+  - kind: mist.sitegroup
+    schema_ref: mist/sitegroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: mist.alarmtemplate
+    schema_ref: mist/alarmtemplate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: mist.secpolicy
+    schema_ref: mist/secpolicy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
