@@ -2724,7 +2724,7 @@ sources:
             control_id: A.8.5
       - dimension_id: mfa_posture
         dimension_type: app_entitlement
-        support_level: supported
+        support_level: partial
         high_value: true
         families:
           - enrolled_factor
@@ -3168,7 +3168,7 @@ sources:
             control_id: A.8.9
       - dimension_id: user_lifecycle
         dimension_type: lifecycle_state
-        support_level: supported
+        support_level: partial
         high_value: true
         families:
           - active_account

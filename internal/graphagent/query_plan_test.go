@@ -166,6 +166,9 @@ func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
 			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
 		}
 	}
+	if got := inferIntent("Which privileged Okta users have Slack app access?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(Slack access) = %q, want non-MFA intent", got)
+	}
 }
 
 func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {

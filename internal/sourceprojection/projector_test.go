@@ -2497,10 +2497,10 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		"event_kind":      "okta.user",
 		"job_title":       "Product Designer",
 		"last_login_at":   "2022-12-15T10:00:00Z",
+		"last_updated_at": "2023-01-01T00:00:00Z",
 		"manager":         "manager@example.com",
 		"manager_id":      "00u-manager",
 		"mfa_enrolled":    "false",
-		"observed_at":     "2023-01-01T00:00:00Z",
 		"organization":    "Writer",
 		"source_event_id": "okta-user-stale-profile",
 		"user_type":       "employee",
@@ -2508,6 +2508,17 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		if got := entity.Attributes[key]; got != want {
 			t.Fatalf("user entity attributes[%q] = %q, want %q", key, got, want)
 		}
+	}
+	rawObservedAt := entity.Attributes["observed_at"]
+	observedAt, err := time.Parse(time.RFC3339, rawObservedAt)
+	if err != nil {
+		t.Fatalf("user entity observed_at = %q is not RFC3339: %v", rawObservedAt, err)
+	}
+	if observedAt.Equal(historicalProfileEdit) {
+		t.Fatalf("user entity observed_at = %q matches profile history; expected projection observation time", rawObservedAt)
+	}
+	if observedAt.Before(before.Add(-time.Second)) || observedAt.After(after.Add(time.Second)) {
+		t.Fatalf("user entity observed_at = %v not within projection window [%v, %v]", observedAt, before, after)
 	}
 }
 

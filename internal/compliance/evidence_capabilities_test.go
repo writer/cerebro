@@ -54,8 +54,8 @@ func TestOktaEvidenceCapabilitiesDeclareComplianceIdentityDepth(t *testing.T) {
 		controlDomain  string
 		requiredFamily string
 	}{
-		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "supported", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "suspended"},
-		{id: "mfa_posture", dimensionType: "app_entitlement", support: "supported", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
+		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "suspended"},
+		{id: "mfa_posture", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
 		{id: "dormant_users", dimensionType: "lifecycle_state", support: "supported", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "stale_login"},
 		{id: "deprovisioning", dimensionType: "lifecycle_state", support: "partial", evidenceType: "remediation_state", controlDomain: "remediation", requiredFamily: "terminated_account"},
 		{id: "group_memberships", dimensionType: "relationship", support: "supported", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},

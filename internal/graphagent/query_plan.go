@@ -350,7 +350,7 @@ func inferIntent(question string, cypher string) string {
 		return IntentConnectorHealth
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
-	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "privileged") && (strings.Contains(haystack, "strong mfa") || strings.Contains(haystack, "weak mfa") || strings.Contains(haystack, "phishing resistant") || strings.Contains(haystack, "lack") || strings.Contains(haystack, "without mfa")):
+	case strings.Contains(haystack, "okta") && containsWord(haystack, "privileged") && (strings.Contains(haystack, "strong mfa") || strings.Contains(haystack, "weak mfa") || strings.Contains(haystack, "phishing resistant") || containsWord(haystack, "lack") || containsWord(haystack, "lacks") || containsWord(haystack, "lacking") || strings.Contains(haystack, "without mfa")):
 		return IntentOktaPrivilegedWeakMFA
 	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "dormant") && (strings.Contains(haystack, "access") || strings.Contains(haystack, "admin") || strings.Contains(haystack, "app")):
 		return IntentOktaDormantAccess
