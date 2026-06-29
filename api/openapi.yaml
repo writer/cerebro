@@ -2217,7 +2217,7 @@ paths:
                   type: string
       responses:
         '202':
-          description: Accepted policy and document upload events after Reducto parsing.
+          description: Accepted policy and document upload events after Reducto structured extraction.
           content:
             application/json:
               schema:
@@ -3020,7 +3020,7 @@ paths:
                   type: string
       responses:
         '202':
-          description: Accepted vendor and assurance-document upload events after Reducto parsing.
+          description: Accepted vendor and assurance-document upload events after Reducto structured extraction.
           content:
             application/json:
               schema:
@@ -9350,6 +9350,15 @@ components:
           type: string
         record_urn:
           type: string
+    GRCUploadStructuredField:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
     GRCUploadResponse:
       type: object
       properties:
@@ -9374,6 +9383,16 @@ components:
           type: integer
         page_count:
           type: integer
+        structure_status:
+          type: string
+        structure_schema:
+          type: string
+        structured_summary:
+          type: string
+        structured_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCUploadStructuredField'
         events:
           type: array
           items:

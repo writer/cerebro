@@ -1667,9 +1667,19 @@ export type GRCUploadResponse = {
   parse_status?: string;
   reducto_file_id?: string;
   reducto_parse_id?: string;
+  structure_schema?: string;
+  structure_status?: string;
+  structured_fields?: GRCUploadStructuredField[];
+  structured_summary?: string;
   target?: "policy" | "vendor";
   text_preview?: string;
   upload_id?: string;
+};
+
+export type GRCUploadStructuredField = {
+  key?: string;
+  label?: string;
+  value?: string;
 };
 
 export type GetEntityNeighborhoodResponse = {

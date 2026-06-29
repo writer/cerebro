@@ -27,12 +27,19 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 			"ignored":            "drop-me",
 		},
 	}, ParsedDocument{
-		ProviderFileID: "file-1",
-		ParseID:        "parse-1",
-		Status:         "completed",
-		TextPreview:    "  Access   policy body.  ",
-		ChunkCount:     4,
-		PageCount:      2,
+		ProviderFileID:    "file-1",
+		ParseID:           "parse-1",
+		Status:            "completed",
+		TextPreview:       "  Access   policy body.  ",
+		ChunkCount:        4,
+		PageCount:         2,
+		StructureStatus:   "structured",
+		StructureSchema:   "grc_upload_v1",
+		StructuredSummary: "Access policy summary",
+		StructuredFields: []StructuredField{
+			{Key: "summary", Label: "Summary", Value: "Access policy summary"},
+			{Key: "owner", Value: "Owner 1"},
+		},
 	}, now)
 	if err != nil {
 		t.Fatalf("BuildEvents() error = %v", err)
@@ -42,6 +49,9 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	}
 	if response.TextPreview != "Access policy body." || response.ChunkCount != 4 || response.PageCount != 2 {
 		t.Fatalf("parsed response fields = %#v", response)
+	}
+	if response.StructureStatus != "structured" || response.StructureSchema != "grc_upload_v1" || response.StructuredSummary != "Access policy summary" || len(response.StructuredFields) != 2 {
+		t.Fatalf("structured response fields = %#v", response)
 	}
 	if len(events) != 2 || len(response.Events) != 2 {
 		t.Fatalf("events length = %d, response refs = %d, want 2", len(events), len(response.Events))
@@ -65,6 +75,12 @@ func TestBuildEventsBuildsPolicyAndDocumentEvents(t *testing.T) {
 	}
 	if got := policy.GetAttributes()["parsed_text_preview"]; got != "Access policy body." {
 		t.Fatalf("parsed_text_preview = %q", got)
+	}
+	if got := policy.GetAttributes()["structured_summary"]; got != "Access policy summary" {
+		t.Fatalf("structured_summary = %q", got)
+	}
+	if got := policy.GetAttributes()["structured_field_count"]; got != "2" {
+		t.Fatalf("structured_field_count = %q", got)
 	}
 	if _, ok := policy.GetAttributes()["ignored"]; ok {
 		t.Fatal("policy event included unapproved upload field")

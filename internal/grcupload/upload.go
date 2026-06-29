@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	defaultSourceID = "grc"
-	uploadProvider  = "cerebro_upload"
+	defaultSourceID              = "grc"
+	uploadProvider               = "cerebro_upload"
+	maxStructuredFields          = 12
+	maxStructuredFieldValueChars = 300
+	maxStructuredSummaryChars    = 600
 
 	SchemaRefPolicy            = "grc/policy/v1"
 	SchemaRefDocument          = "grc/document/v1"
@@ -42,12 +45,22 @@ const (
 )
 
 type ParsedDocument struct {
-	ProviderFileID string
-	ParseID        string
-	Status         string
-	TextPreview    string
-	ChunkCount     int
-	PageCount      int
+	ProviderFileID    string
+	ParseID           string
+	Status            string
+	TextPreview       string
+	ChunkCount        int
+	PageCount         int
+	StructureStatus   string
+	StructureSchema   string
+	StructuredSummary string
+	StructuredFields  []StructuredField
+}
+
+type StructuredField struct {
+	Key   string `json:"key"`
+	Label string `json:"label,omitempty"`
+	Value string `json:"value"`
 }
 
 type UploadRequest struct {
@@ -72,20 +85,24 @@ type EventRef struct {
 }
 
 type Response struct {
-	UploadID           string     `json:"upload_id"`
-	Target             string     `json:"target"`
-	FileName           string     `json:"file_name"`
-	ContentType        string     `json:"content_type,omitempty"`
-	ReductoFileID      string     `json:"reducto_file_id,omitempty"`
-	ReductoParseID     string     `json:"reducto_parse_id,omitempty"`
-	ParseStatus        string     `json:"parse_status,omitempty"`
-	TextPreview        string     `json:"text_preview,omitempty"`
-	ChunkCount         int        `json:"chunk_count,omitempty"`
-	PageCount          int        `json:"page_count,omitempty"`
-	ProjectionStatus   string     `json:"projection_status,omitempty"`
-	ProjectionFailures int        `json:"projection_failures,omitempty"`
-	Events             []EventRef `json:"events"`
-	GeneratedAt        time.Time  `json:"generated_at"`
+	UploadID           string            `json:"upload_id"`
+	Target             string            `json:"target"`
+	FileName           string            `json:"file_name"`
+	ContentType        string            `json:"content_type,omitempty"`
+	ReductoFileID      string            `json:"reducto_file_id,omitempty"`
+	ReductoParseID     string            `json:"reducto_parse_id,omitempty"`
+	ParseStatus        string            `json:"parse_status,omitempty"`
+	TextPreview        string            `json:"text_preview,omitempty"`
+	ChunkCount         int               `json:"chunk_count,omitempty"`
+	PageCount          int               `json:"page_count,omitempty"`
+	StructureStatus    string            `json:"structure_status,omitempty"`
+	StructureSchema    string            `json:"structure_schema,omitempty"`
+	StructuredSummary  string            `json:"structured_summary,omitempty"`
+	StructuredFields   []StructuredField `json:"structured_fields,omitempty"`
+	ProjectionStatus   string            `json:"projection_status,omitempty"`
+	ProjectionFailures int               `json:"projection_failures,omitempty"`
+	Events             []EventRef        `json:"events"`
+	GeneratedAt        time.Time         `json:"generated_at"`
 }
 
 func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([]*cerebrov1.EventEnvelope, Response, error) {
@@ -108,6 +125,10 @@ func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([
 	parsed.ParseID = strings.TrimSpace(parsed.ParseID)
 	parsed.Status = strings.TrimSpace(parsed.Status)
 	parsed.TextPreview = compactWhitespace(parsed.TextPreview)
+	parsed.StructureStatus = strings.TrimSpace(parsed.StructureStatus)
+	parsed.StructureSchema = strings.TrimSpace(parsed.StructureSchema)
+	parsed.StructuredSummary = truncateRunes(compactWhitespace(parsed.StructuredSummary), maxStructuredSummaryChars)
+	parsed.StructuredFields = sanitizeStructuredFields(parsed.StructuredFields)
 
 	var specs []eventSpec
 	switch request.Target {
@@ -140,18 +161,22 @@ func BuildEvents(request UploadRequest, parsed ParsedDocument, now time.Time) ([
 		})
 	}
 	return events, Response{
-		UploadID:       uploadID,
-		Target:         string(request.Target),
-		FileName:       request.FileName,
-		ContentType:    request.ContentType,
-		ReductoFileID:  parsed.ProviderFileID,
-		ReductoParseID: parsed.ParseID,
-		ParseStatus:    parsed.Status,
-		TextPreview:    parsed.TextPreview,
-		ChunkCount:     parsed.ChunkCount,
-		PageCount:      parsed.PageCount,
-		Events:         refs,
-		GeneratedAt:    now,
+		UploadID:          uploadID,
+		Target:            string(request.Target),
+		FileName:          request.FileName,
+		ContentType:       request.ContentType,
+		ReductoFileID:     parsed.ProviderFileID,
+		ReductoParseID:    parsed.ParseID,
+		ParseStatus:       parsed.Status,
+		TextPreview:       parsed.TextPreview,
+		ChunkCount:        parsed.ChunkCount,
+		PageCount:         parsed.PageCount,
+		StructureStatus:   parsed.StructureStatus,
+		StructureSchema:   parsed.StructureSchema,
+		StructuredSummary: parsed.StructuredSummary,
+		StructuredFields:  parsed.StructuredFields,
+		Events:            refs,
+		GeneratedAt:       now,
 	}, nil
 }
 
@@ -362,22 +387,26 @@ func normalizeRequest(request UploadRequest) UploadRequest {
 
 func commonAttrs(request UploadRequest, parsed ParsedDocument, uploadID string, now time.Time) map[string]string {
 	attrs := map[string]string{
-		"provider":              uploadProvider,
-		"source_system":         uploadProvider,
-		"upload_id":             uploadID,
-		"file_name":             request.FileName,
-		"content_type":          request.ContentType,
-		"uploaded_at":           now.Format(time.RFC3339),
-		"parse_provider":        "reducto",
-		"reducto_file_id":       parsed.ProviderFileID,
-		"reducto_parse_id":      parsed.ParseID,
-		"reducto_parse_status":  parsed.Status,
-		"parsed_text_preview":   parsed.TextPreview,
-		"parsed_chunk_count":    intString(parsed.ChunkCount),
-		"parsed_page_count":     intString(parsed.PageCount),
-		"uploaded_by_user_id":   request.ActorUserID,
-		"created_by_user_id":    request.ActorUserID,
-		"source_upload_surface": "cerebro-web",
+		"provider":               uploadProvider,
+		"source_system":          uploadProvider,
+		"upload_id":              uploadID,
+		"file_name":              request.FileName,
+		"content_type":           request.ContentType,
+		"uploaded_at":            now.Format(time.RFC3339),
+		"parse_provider":         "reducto",
+		"reducto_file_id":        parsed.ProviderFileID,
+		"reducto_parse_id":       parsed.ParseID,
+		"reducto_parse_status":   parsed.Status,
+		"parsed_text_preview":    parsed.TextPreview,
+		"parsed_chunk_count":     intString(parsed.ChunkCount),
+		"parsed_page_count":      intString(parsed.PageCount),
+		"structure_status":       parsed.StructureStatus,
+		"structure_schema":       parsed.StructureSchema,
+		"structured_summary":     parsed.StructuredSummary,
+		"structured_field_count": intString(len(parsed.StructuredFields)),
+		"uploaded_by_user_id":    request.ActorUserID,
+		"created_by_user_id":     request.ActorUserID,
+		"source_upload_surface":  "cerebro-web",
 	}
 	if request.FileSize > 0 {
 		attrs["file_size_bytes"] = fmt.Sprintf("%d", request.FileSize)
@@ -509,6 +538,17 @@ func compactWhitespace(value string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 }
 
+func truncateRunes(value string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes])
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -524,4 +564,36 @@ func intString(value int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", value)
+}
+
+func sanitizeStructuredFields(fields []StructuredField) []StructuredField {
+	if len(fields) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	sanitized := make([]StructuredField, 0, min(len(fields), maxStructuredFields))
+	for _, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		value := truncateRunes(compactWhitespace(field.Value), maxStructuredFieldValueChars)
+		if key == "" || value == "" {
+			continue
+		}
+		normalizedKey := strings.ToLower(key)
+		if _, ok := seen[normalizedKey]; ok {
+			continue
+		}
+		seen[normalizedKey] = struct{}{}
+		sanitized = append(sanitized, StructuredField{
+			Key:   key,
+			Label: compactWhitespace(field.Label),
+			Value: value,
+		})
+		if len(sanitized) >= maxStructuredFields {
+			break
+		}
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
 }
