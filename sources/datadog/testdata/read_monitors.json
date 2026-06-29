@@ -1,0 +1,33 @@
+[
+  {
+    "id": "datadog-monitors-123",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.monitors",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/monitors/v1",
+    "payload": {
+      "id": 123,
+      "name": "Payments latency",
+      "type": "query alert",
+      "query": "avg(last_5m):p95:service.payments.latency{env:prod} > 500",
+      "overall_state": "OK",
+      "tags": ["service:payments", "team:platform"]
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "123",
+      "external_id": "123",
+      "family": "monitors",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "monitor_id": "123",
+      "name": "Payments latency",
+      "type": "query alert",
+      "query": "avg(last_5m):p95:service.payments.latency{env:prod} > 500",
+      "state": "OK",
+      "overall_state": "OK",
+      "tags": "service:payments,team:platform"
+    }
+  }
+]

@@ -48,6 +48,9 @@ type FamilyConfig struct {
 	ConfigAttributes map[string]string
 	EncodeURNID      bool
 	ResourceURNKind  string
+	TotalKeys        []string
+	OffsetKeys       []string
+	LimitKeys        []string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

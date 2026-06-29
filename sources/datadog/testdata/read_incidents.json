@@ -1,0 +1,35 @@
+[
+  {
+    "id": "datadog-incidents-inc-1",
+    "tenant_id": "tenant",
+    "source_id": "datadog",
+    "kind": "datadog.incidents",
+    "occurred_at": "2026-06-02T00:00:00Z",
+    "schema_ref": "datadog/incidents/v1",
+    "payload": {
+      "id": "inc-1",
+      "type": "incidents",
+      "attributes": {
+        "title": "Checkout outage",
+        "state": "active",
+        "severity": "SEV-2",
+        "service": "checkout",
+        "created": "2026-06-02T00:00:00Z"
+      }
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "inc-1",
+      "external_id": "inc-1",
+      "family": "incidents",
+      "source_provider": "datadog",
+      "source_product": "datadog",
+      "incident_id": "inc-1",
+      "title": "Checkout outage",
+      "state": "active",
+      "severity": "SEV-2",
+      "service": "checkout",
+      "created_at": "2026-06-02T00:00:00Z"
+    }
+  }
+]

@@ -22,6 +22,7 @@ import (
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	conjursource "github.com/writer/cerebro/sources/conjur"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
+	datadogsource "github.com/writer/cerebro/sources/datadog"
 	discordsource "github.com/writer/cerebro/sources/discord"
 	dopplersource "github.com/writer/cerebro/sources/doppler"
 	duosource "github.com/writer/cerebro/sources/duo"
@@ -158,6 +159,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
+		},
+	},
+	{
+		name: "datadog",
+		load: func() (sourcecdk.Source, error) {
+			return datadogsource.New()
 		},
 	},
 	{

@@ -22,6 +22,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `conjur` | Conjur source | conjur.authenticator, conjur.resource, conjur.resource_2, conjur.resource_3 |
 | `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `datadog` | Datadog observability and incident source | users, roles, teams, monitors, SLOs, dashboards, incidents, audit events |
 | `discord` | Discord source | discord.audit_log, discord.member, discord.permission, discord.role |
 | `doppler` | Doppler secrets management source | secrets, projects, audit events |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |

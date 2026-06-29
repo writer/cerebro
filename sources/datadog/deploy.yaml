@@ -1,0 +1,85 @@
+sourceId: datadog
+secretKeys:
+  - DATADOG_API_KEY
+  - DATADOG_APP_KEY
+runtimes:
+  - localId: users
+    config:
+      family: users
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: roles
+    config:
+      family: roles
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: teams
+    config:
+      family: teams
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: monitors
+    config:
+      family: monitors
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: slos
+    config:
+      family: slos
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: dashboards
+    config:
+      family: dashboards
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: incidents
+    config:
+      family: incidents
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: audit-events
+    config:
+      family: audit_events
+      api_key: env:DATADOG_API_KEY
+      application_key: env:DATADOG_APP_KEY
+      health_path: /api/v1/validate
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift

@@ -2,11 +2,11 @@ package sourceprojection
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 func genericInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -25,7 +25,11 @@ func genericInventoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		entityID = strings.TrimSpace(event.GetId())
 	}
 	entityType := sourceID + "." + family
-	entityURN := fmt.Sprintf("urn:cerebro:%s:%s:%s", url.PathEscape(tenantID), url.PathEscape(strings.ReplaceAll(entityType, ".", "_")), url.PathEscape(entityID))
+	entityURN := fmt.Sprintf("urn:cerebro:%s:%s:%s",
+		cerebrourn.EncodeSegment(tenantID),
+		cerebrourn.EncodeSegment(strings.ReplaceAll(entityType, ".", "_")),
+		cerebrourn.EncodeSegment(entityID),
+	)
 	entityAttrs := cloneAttributes(attrs)
 	entityAttrs["event_kind"] = event.GetKind()
 	entityAttrs["source_event_id"] = event.GetId()
@@ -73,6 +77,16 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		return joinProjectionIdentity(attrs, "pool_id", "id")
 	case "cloudflare.worker_script":
 		return joinRequiredScopedProjectionIdentity(attrs, "account_id", "script_id", "id")
+	case "datadog.audit_events":
+		return joinProjectionIdentity(attrs, "audit_id", "external_id")
+	case "datadog.dashboards":
+		return joinProjectionIdentity(attrs, "dashboard_id", "external_id")
+	case "datadog.incidents":
+		return joinProjectionIdentity(attrs, "incident_id", "external_id")
+	case "datadog.monitors":
+		return joinProjectionIdentity(attrs, "monitor_id", "external_id")
+	case "datadog.slos":
+		return joinProjectionIdentity(attrs, "slo_id", "external_id")
 	case "trivy.image_scan":
 		return joinProjectionIdentity(attrs, "image_digest")
 	case "trivy.image_package":
