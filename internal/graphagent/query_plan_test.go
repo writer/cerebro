@@ -158,6 +158,7 @@ func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
 		want     string
 	}{
 		{question: "Which privileged Okta users lack strong MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which privileged Okta users lack MFA?", want: IntentOktaPrivilegedWeakMFA},
 		{question: "Which dormant Okta users still have app or admin access?", want: IntentOktaDormantAccess},
 		{question: "Which Okta group memberships create compliance risk?", want: IntentOktaGroupAccessRisk},
 	}
@@ -168,6 +169,9 @@ func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
 	}
 	if got := inferIntent("Which privileged Okta users have Slack app access?", ""); got == IntentOktaPrivilegedWeakMFA {
 		t.Fatalf("inferIntent(Slack access) = %q, want non-MFA intent", got)
+	}
+	if got := inferIntent("Which privileged Okta users lack app assignments?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(lack app assignments) = %q, want non-MFA intent", got)
 	}
 }
 

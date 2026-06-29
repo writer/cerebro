@@ -257,6 +257,17 @@ func containsWord(haystack string, needle string) bool {
 	return pattern.MatchString(strings.ToLower(haystack))
 }
 
+func mentionsOktaMFAPosture(haystack string) bool {
+	return strings.Contains(haystack, "mfa") || strings.Contains(haystack, "factor") || strings.Contains(haystack, "phishing resistant")
+}
+
+func lacksOktaMFAPosture(haystack string) bool {
+	if !mentionsOktaMFAPosture(haystack) {
+		return false
+	}
+	return containsWord(haystack, "lack") || containsWord(haystack, "lacks") || containsWord(haystack, "lacking") || containsWord(haystack, "missing") || strings.Contains(haystack, "without mfa")
+}
+
 func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaultMaxRows int) AskQueryPlan {
 	var out AskQueryPlan
 	if plan != nil {
@@ -350,7 +361,7 @@ func inferIntent(question string, cypher string) string {
 		return IntentConnectorHealth
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
-	case strings.Contains(haystack, "okta") && containsWord(haystack, "privileged") && (strings.Contains(haystack, "strong mfa") || strings.Contains(haystack, "weak mfa") || strings.Contains(haystack, "phishing resistant") || containsWord(haystack, "lack") || containsWord(haystack, "lacks") || containsWord(haystack, "lacking") || strings.Contains(haystack, "without mfa")):
+	case strings.Contains(haystack, "okta") && containsWord(haystack, "privileged") && (strings.Contains(haystack, "strong mfa") || strings.Contains(haystack, "weak mfa") || strings.Contains(haystack, "phishing resistant") || lacksOktaMFAPosture(haystack)):
 		return IntentOktaPrivilegedWeakMFA
 	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "dormant") && (strings.Contains(haystack, "access") || strings.Contains(haystack, "admin") || strings.Contains(haystack, "app")):
 		return IntentOktaDormantAccess
