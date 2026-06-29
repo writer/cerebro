@@ -280,6 +280,7 @@ LIMIT 25`
 	}
 	for _, want := range []string{
 		`"control_refs":"`,
+		`"controlRefs":"`,
 		"filter_control_refs <> ''",
 		"toLower(filter_status) = 'open'",
 		"finding_attributes_json_internal",
@@ -366,6 +367,37 @@ func TestPostProcessFailingControlRowsGroupsOpenFindings(t *testing.T) {
 	second := result[1]
 	if second["framework_name"] != "SOC 2" || second["control_id"] != "CC6.1" {
 		t.Fatalf("second control = %#v, want SOC 2 CC6.1", second)
+	}
+}
+
+func TestPostProcessFailingControlRowsKeepsDuplicateFindingSeverityConsistent(t *testing.T) {
+	rows := []map[string]any{
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f1",
+			"finding_label":                     "Finding 1",
+			"resource_urn":                      "urn:cerebro:writer:asset:a",
+			"relation_attributes_json_internal": `{"status":"open","effective_severity":"HIGH","risk_score":"70","controlRefs":"SOC 2:CC6.1"}`,
+			"finding_attributes_json_internal":  `{"status":"open","effective_severity":"HIGH","risk_score":"70"}`,
+		},
+		{
+			"finding_urn":                       "urn:cerebro:writer:finding:f1",
+			"finding_label":                     "Finding 1",
+			"resource_urn":                      "urn:cerebro:writer:asset:b",
+			"relation_attributes_json_internal": `{"status":"open","controlRefs":"SOC 2:CC6.1"}`,
+			"finding_attributes_json_internal":  `{"status":"open","effective_severity":"CRITICAL","risk_score":"95"}`,
+		},
+	}
+
+	result := postProcessFailingControlRows(AskQueryPlan{Intent: IntentFailingControls, Limit: 25}, rows)
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1: %#v", len(result), result)
+	}
+	control := result[0]
+	if control["severity"] != "HIGH" || control["critical_findings"] != 0 || control["high_findings"] != 1 {
+		t.Fatalf("duplicate finding severity summary = %#v, want HIGH with one high finding", control)
+	}
+	if control["risk_score"] != 70 {
+		t.Fatalf("duplicate finding risk_score = %#v, want first-seen score 70", control["risk_score"])
 	}
 }
 

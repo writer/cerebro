@@ -742,6 +742,12 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 				case 3:
 					current.HighFindings++
 				}
+				if riskScore > current.riskScore {
+					current.riskScore = riskScore
+				}
+				if rank := severityRank(severity); rank > current.severityRank {
+					current.severityRank = rank
+				}
 			}
 			if resourceURN != "" {
 				if _, seen := current.seenResources[resourceURN]; !seen {
@@ -749,12 +755,6 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 					current.ResourceURNs = append(current.ResourceURNs, resourceURN)
 					current.ResourceLabels = append(current.ResourceLabels, resourceLabel)
 				}
-			}
-			if riskScore > current.riskScore {
-				current.riskScore = riskScore
-			}
-			if rank := severityRank(severity); rank > current.severityRank {
-				current.severityRank = rank
 			}
 		}
 	}

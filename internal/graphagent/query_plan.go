@@ -421,8 +421,8 @@ LIMIT %d`, strings.Join([]string{
 			cypherJSONStringAttributes("r.attributes_json", "status"),
 			cypherJSONStringAttributes("finding.attributes_json", "status"),
 		}, ",\n       "), strings.Join([]string{
-			cypherJSONStringAttributes("r.attributes_json", "control_refs"),
-			cypherJSONStringAttributes("finding.attributes_json", "control_refs"),
+			cypherJSONStringAttributes("r.attributes_json", "control_refs", "controlRefs"),
+			cypherJSONStringAttributes("finding.attributes_json", "control_refs", "controlRefs"),
 		}, ",\n       "), postProcessingCandidateRowLimit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
