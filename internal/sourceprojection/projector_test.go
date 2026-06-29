@@ -1132,6 +1132,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 		SourceId: "okta",
 		Kind:     "okta.policy_rule",
 		Attributes: map[string]string{
+			"access":                   "ALLOW",
 			"app_exclude_ids":          "app-legacy",
 			"app_include_ids":          "app-prod",
 			"client_include_ids":       "0oa-client,ALL_CLIENTS",
@@ -1146,6 +1147,7 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 			"policy_rule_id":           "rul-1",
 			"policy_type":              "OKTA_SIGN_ON",
 			"priority":                 "1",
+			"requires_mfa":             "false",
 			"resource_type":            "PolicyRule",
 			"status":                   "INACTIVE",
 			"system":                   "false",
@@ -1178,6 +1180,8 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 		"status":         "INACTIVE",
 		"priority":       "1",
 		"system":         "false",
+		"access":         "ALLOW",
+		"requires_mfa":   "false",
 	}
 	for key, want := range wantAttributes {
 		if got := entity.Attributes[key]; got != want {
