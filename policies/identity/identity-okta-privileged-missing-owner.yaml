@@ -1,0 +1,123 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRule
+metadata:
+    id: identity-okta-privileged-missing-owner
+    name: Okta Privileged Account Missing Lifecycle Owner
+    description: Detects active Okta users with admin-role graph edges and no manager or lifecycle owner evidence on the source user record.
+    tags:
+        - okta
+        - identity
+        - privileged-access
+        - owner-evidence
+        - graph-backed
+    references:
+        - https://www.iso.org/standard/27001
+spec:
+    severity: HIGH
+    category: identity
+    resourceType: okta_admin_role
+    remediation:
+        summary: Assign a lifecycle owner or manager to the privileged account and review whether the admin role is still needed.
+    frameworks:
+        - name: SOC 2
+          controls:
+            - CC6.1
+            - CC6.2
+        - name: ISO 27001:2022
+          controls:
+            - A.5.18
+    input:
+        sourceKinds:
+            - okta.admin_role
+            - okta.user
+        requiredFields:
+            - user_id
+            - role_type
+            - status
+            - manager
+            - manager_id
+        freshnessSLA: 24h
+    context:
+        graph:
+            anchors:
+                - primary_urn
+                - resource_urns
+            enrich:
+                - admin_role
+                - lifecycle_owner
+                - privileged_capability
+                - source_user
+    evidence:
+        type: identity_governance
+        assessmentMethods:
+            - examine
+        requiredForAudit: true
+        acceptableSources:
+            - okta
+        requiredFields:
+            - user_id
+            - role_type
+            - manager
+            - manager_id
+            - graph_evidence_count
+        fingerprintFields:
+            - tenant_id
+            - policy_id
+            - resource_urn
+            - resource_id
+    audit:
+        evidenceType: identity_governance
+        assessmentMethods:
+            - examine
+        freshnessSLA: 24h
+        auditorStatement: Privileged Okta access should have an accountable lifecycle owner in current source evidence.
+        riskStatement: Privileged accounts without manager or owner evidence are harder to approve, review, and deprovision.
+        remediationIntent: Add owner evidence to the user profile or remove the admin role when ownership cannot be established.
+        auditorGuidance: Confirm the graph path from user to admin role and review the source user attributes for missing owner fields.
+        falsePositives:
+            - A break-glass account may use a separately documented owner; attach the exception evidence before suppressing.
+    verification:
+        fixtures:
+            - name: active admin without owner
+              expect: finding
+              description: Active Okta user has an admin-role graph edge and no manager or manager_id source evidence.
+            - name: admin with owner evidence
+              expect: pass
+              description: Okta admin user has manager evidence or the admin role is removed.
+        mutationChecks:
+            - add_manager_evidence
+            - remove_admin_role_edge
+        remediationCheck:
+            rerunAfter: source_sync
+            expectedStatus: closed
+    graph:
+        query: |-
+            MATCH (user:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.user'})-[:RELATION {relation: 'can_admin'}]->(role:Entity {tenant_id: $tenant_id, source_id: 'okta', entity_type: 'okta.admin_role'})
+            OPTIONAL MATCH (role)-[:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})
+            OPTIONAL MATCH (entitlement)-[:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+            WITH user, role, collect(DISTINCT entitlement) AS entitlements, collect(DISTINCT capability) AS capabilities,
+                 toLower(coalesce(user.attributes_json, '')) AS user_attrs
+            WHERE (user_attrs CONTAINS '"status":"active"' OR user_attrs CONTAINS '"status":"provisioned"' OR user_attrs CONTAINS '"status":"enabled"')
+              AND NOT user_attrs CONTAINS '"manager":'
+              AND NOT user_attrs CONTAINS '"manager_id":'
+            RETURN user.urn AS primary_urn,
+                   user.label AS primary_label,
+                   user.entity_type AS primary_type,
+                   user.urn + '|' + role.urn AS fingerprint_key,
+                   'HIGH' AS severity,
+                   'Okta privileged account ' + coalesce(user.label, user.urn) + ' has no lifecycle owner evidence' AS summary,
+                   'Add manager or owner evidence to the account, or remove the admin role' AS action,
+                   [user.urn, role.urn] AS resource_urns,
+                   [{urn: role.urn, label: role.label, entity_type: role.entity_type, relation: 'can_admin', attributes_json: coalesce(role.attributes_json, '')}] +
+                   [e IN entitlements | {urn: e.urn, label: e.label, entity_type: e.entity_type, relation: 'grants_entitlement', attributes_json: coalesce(e.attributes_json, '')}] +
+                   [c IN capabilities | {urn: c.urn, label: c.label, entity_type: c.entity_type, relation: 'confers_capability', attributes_json: coalesce(c.attributes_json, '')}] AS evidence,
+                   {evidence_basis: 'okta_user_to_admin_role_graph_path', confidence: 'high', remediation_intent: 'Add lifecycle owner evidence or remove the Okta admin role', lifecycle_state: CASE WHEN user_attrs CONTAINS '"status":"active"' THEN 'active' WHEN user_attrs CONTAINS '"status":"provisioned"' THEN 'provisioned' WHEN user_attrs CONTAINS '"status":"enabled"' THEN 'enabled' ELSE 'active_or_provisioned' END, mfa_state: CASE WHEN user_attrs CONTAINS '"mfa_enrolled":"true"' THEN 'enrolled' WHEN user_attrs CONTAINS '"mfa_enrolled":"false"' THEN 'not_enrolled' ELSE 'unknown' END, source_provenance: 'okta.user graph node plus okta.admin_role can_admin edge', limitation: 'Owner absence is based on manager and manager_id fields projected from Okta user inventory.'} AS finding_attributes
+            ORDER BY user.urn, role.urn
+            LIMIT $row_limit
+        rowLimit: 500
+        requiredColumns:
+            - primary_urn
+            - fingerprint_key
+            - summary
+            - resource_urns
+    enabled: true

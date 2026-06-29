@@ -1,0 +1,22 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+  - name: dormant admin role assignment fails
+    queryRows:
+      - primary_urn: urn:cerebro:writer:okta_user:00u-admin
+        primary_label: admin@example.com
+        primary_type: okta.user
+        fingerprint_key: urn:cerebro:writer:okta_user:00u-admin|urn:cerebro:writer:okta_admin_role:org-admin
+        resource_urns:
+          - urn:cerebro:writer:okta_user:00u-admin
+          - urn:cerebro:writer:okta_admin_role:org-admin
+        severity: HIGH
+        summary: Okta admin admin@example.com has stale login activity for role org-admin
+        action: Remove the admin role or document active break-glass review evidence
+        evidence:
+          - urn: urn:cerebro:writer:okta_admin_role:org-admin
+    wantFinding: true
+  - name: recent admin role assignment passes
+    resource:
+      placeholder: true
+    wantFinding: false
