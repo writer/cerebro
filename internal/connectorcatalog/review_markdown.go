@@ -17,10 +17,10 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 	b.WriteString("## Summary\n\n")
 	b.WriteString("| Metric | Count |\n| --- | ---: |\n")
 	writeMetric(&b, "Sources", report.Summary.Total)
-	writeMetric(&b, "Sourcegen ready", report.Summary.Generateable)
+	writeMetric(&b, "Sourcegen-ready definitions", report.Summary.Generateable)
 	writeMetric(&b, "Needs auth extension", report.Summary.NeedsAuthExtension)
 	writeMetric(&b, "Needs bespoke runtime", report.Summary.NeedsBespokeRuntime)
-	writeMetric(&b, "Reference-depth sources", report.Summary.HighFidelitySources)
+	writeMetric(&b, "Reference catalog sources", report.Summary.HighFidelitySources)
 	writeMetric(&b, "Needs fidelity review", report.Summary.NeedsFidelityReview)
 	if report.Summary.RuntimeDepth != nil {
 		writeMetric(&b, "Runtime-backed sources", report.Summary.RuntimeDepth.RuntimeBackedSources)
