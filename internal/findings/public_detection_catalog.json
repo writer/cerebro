@@ -23330,22 +23330,22 @@
         {
           "source_id": "aws_bedrock",
           "dimension_id": "guardrails",
-          "dimension_type": "entity_family",
+          "dimension_type": "lifecycle_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "guardrails"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "configuration_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "security_operations"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 42001",
-              "control_id": "A.2.2"
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         },
@@ -23827,6 +23827,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "aws_bedrock",
+          "dimension_id": "guardrails",
+          "dimension_type": "lifecycle_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "guardrails"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
         {
           "source_id": "github",
           "dimension_id": "audit_events",
@@ -77697,6 +77719,34 @@
           "framework_name": "CIS Controls v8",
           "control_id": "7"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "wiz",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerabilities"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -81584,22 +81634,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -240221,22 +240275,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -242269,6 +242327,34 @@
         {
           "framework_name": "CIS Controls v8",
           "control_id": "7"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "wiz",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerabilities"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
+            }
+          ]
         }
       ]
     },
@@ -251261,6 +251347,36 @@
           ]
         },
         {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AU-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -251429,6 +251545,36 @@
             "cloud_configuration",
             "logging_configuration",
             "security_monitoring"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AU-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
           ],
           "control_domains": [
             "logging_monitoring"
@@ -268991,22 +269137,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -269265,6 +269415,34 @@
           "framework_name": "CIS Controls v8",
           "control_id": "7"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "wiz",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerabilities"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -269394,22 +269572,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -270751,22 +270933,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -271082,22 +271268,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -271239,22 +271429,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -271462,26 +271656,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
             }
           ]
         },
@@ -272086,26 +272280,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
             }
           ]
         },
@@ -272436,22 +272630,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
@@ -272641,26 +272839,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "SI-2"
             }
           ]
         },
@@ -272834,22 +273032,26 @@
         {
           "source_id": "wiz",
           "dimension_id": "vulnerabilities",
-          "dimension_type": "entity_family",
+          "dimension_type": "remediation_state",
           "support_level": "partial",
           "high_value": true,
           "families": [
             "vulnerabilities"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "remediation_state"
           ],
           "control_domains": [
-            "asset_inventory"
+            "remediation"
           ],
           "matched_control_refs": [
             {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
+              "control_id": "SI-2"
             }
           ]
         },
