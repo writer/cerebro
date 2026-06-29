@@ -525,13 +525,23 @@ func postProcessAskRows(conversion conversionResult, rows []map[string]any) []ma
 		return postProcessTopRiskFindingRows(conversion.Plan, rows)
 	case IntentFailingControls:
 		return postProcessFailingControlRows(conversion.Plan, rows)
+	case IntentQuestionnaireEvidence:
+		return postProcessQuestionnaireEvidenceRows(conversion.Plan, rows)
 	default:
 		return rows
 	}
 }
 
 func usesPostProcessingCandidates(conversion conversionResult) bool {
-	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings || conversion.Plan.Intent == IntentFailingControls)
+	if !conversion.Deterministic {
+		return false
+	}
+	switch conversion.Plan.Intent {
+	case IntentAggregateFindingsBySource, IntentTopRiskFindings, IntentFailingControls, IntentQuestionnaireEvidence:
+		return true
+	default:
+		return false
+	}
 }
 
 func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
@@ -821,6 +831,41 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 		})
 	}
 	return result
+}
+
+func postProcessQuestionnaireEvidenceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	limit := postProcessedRowLimit(plan)
+	result := make([]map[string]any, 0, limit)
+	seen := map[string]struct{}{}
+	for index, row := range rows {
+		key := questionnaireEvidenceCandidateKey(row, index)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, row)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func questionnaireEvidenceCandidateKey(row map[string]any, index int) string {
+	parts := []string{
+		stringRowValue(row, "control_urn"),
+		stringRowValue(row, "support_urn"),
+		stringRowValue(row, "evidence_urn"),
+		stringRowValue(row, "finding_urn"),
+		stringRowValue(row, "exception_urn"),
+		stringRowValue(row, "source_urn"),
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			return strings.Join(parts, "\x00")
+		}
+	}
+	return fmt.Sprintf("row:%d", index)
 }
 
 func failingControlRefsFromAttributes(attrs ...map[string]any) []failingControlRef {

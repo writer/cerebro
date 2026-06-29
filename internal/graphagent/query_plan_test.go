@@ -2,6 +2,7 @@ package graphagent
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -518,6 +519,7 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"source_attributes_json_internal",
 		"exception_attributes_json_internal",
 		"finding_attributes_json_internal",
+		"LIMIT " + strconv.Itoa(postProcessingCandidateRowLimit),
 	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)

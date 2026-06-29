@@ -188,6 +188,9 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	if !strings.Contains(store.requests[0].Query, "qauto_match_text CONTAINS 'okta'") || !strings.Contains(store.requests[0].Query, "relation: 'has_evidence'") {
 		t.Fatalf("store request did not retrieve bounded questionnaire graph evidence:\n%s", store.requests[0].Query)
 	}
+	if store.requests[0].RowLimit != postProcessingCandidateRowLimit {
+		t.Fatalf("store row limit = %d, want questionnaire candidate row limit %d", store.requests[0].RowLimit, postProcessingCandidateRowLimit)
+	}
 	rowsEvent := events[6].Data.(RowsEvent)
 	for field, want := range map[string]any{
 		"control_status":      "monitored",
@@ -209,6 +212,37 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	summaryEvent := events[8].Data.(SummaryEvent)
 	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot" {
 		t.Fatalf("citations = %#v, want cited evidence urn", summaryEvent.Citations)
+	}
+}
+
+func TestPostProcessQuestionnaireEvidenceRowsDeduplicatesAndLimitsCandidates(t *testing.T) {
+	rows := []map[string]any{
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-1",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-1",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-1",
+		},
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-1",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-1",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-1",
+		},
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-2",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-2",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-2",
+		},
+	}
+
+	result := postProcessQuestionnaireEvidenceRows(AskQueryPlan{Intent: IntentQuestionnaireEvidence, Limit: 2}, rows)
+	if len(result) != 2 {
+		t.Fatalf("rows = %#v, want two distinct questionnaire candidates", result)
+	}
+	if got := result[0]["control_urn"]; got != "urn:cerebro:writer:policy:control:ac-1" {
+		t.Fatalf("first control_urn = %#v, want first distinct candidate", got)
+	}
+	if got := result[1]["control_urn"]; got != "urn:cerebro:writer:policy:control:ac-2" {
+		t.Fatalf("second control_urn = %#v, want second distinct candidate", got)
 	}
 }
 

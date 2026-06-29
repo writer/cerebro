@@ -643,7 +643,7 @@ RETURN DISTINCT control.urn AS control_urn,
        coalesce(source.label, source.urn) AS source_label,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY control_label, support_label, evidence_label
-LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, limit), true
+LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, postProcessingCandidateRowLimit), true
 	default:
 		return "", false
 	}
