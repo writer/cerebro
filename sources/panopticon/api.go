@@ -272,28 +272,9 @@ func nativeRecord(st settings, item map[string]interface{}, kind, schemaRef stri
 		closedAt := firstString(nativeString(item, "closed_at"), nativeString(item, "close_date"), nativeString(item, "alert_closed_time"))
 		resolvedAt := firstString(nativeString(item, "resolved_at"), nativeString(item, "resolved_date"), nativeString(item, "alert_resolved_time"))
 		caseID := nativeString(item, "case_id")
-		return canonicalRecord(st, item, kind, schemaRef, "alert-"+alertID, occurredAt, map[string]string{
-			"alert_id":    alertID,
-			"severity":    severity,
-			"status":      status,
-			"observed_at": observedAt,
-			"created_at":  createdAt,
-			"updated_at":  updatedAt,
-			"closed_at":   closedAt,
-			"resolved_at": resolvedAt,
-			"case_id":     caseID,
-		}, map[string]interface{}{
-			"alert_id":    alertID,
-			"severity":    severity,
-			"status":      status,
-			"title":       title,
-			"observed_at": observedAt,
-			"created_at":  createdAt,
-			"updated_at":  updatedAt,
-			"closed_at":   closedAt,
-			"resolved_at": resolvedAt,
-			"case_id":     caseID,
-		})
+		return canonicalRecord(st, item, kind, schemaRef, "alert-"+alertID, occurredAt,
+			map[string]string{"alert_id": alertID, "severity": severity, "status": status, "observed_at": observedAt, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt, "case_id": caseID},
+			map[string]interface{}{"alert_id": alertID, "severity": severity, "status": status, "title": title, "observed_at": observedAt, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt, "case_id": caseID})
 	case kindCase:
 		caseID := nativeString(item, "case_id")
 		status := firstString(nestedString(item, "state", "state_name"), nativeString(item, "status"), nativeString(item, "status_id"))
@@ -303,22 +284,9 @@ func nativeRecord(st settings, item map[string]interface{}, kind, schemaRef stri
 		updatedAt := firstString(nativeString(item, "updated_at"), nativeString(item, "last_updated_at"), nativeString(item, "modified_at"))
 		closedAt := firstString(nativeString(item, "closed_at"), nativeString(item, "close_date"))
 		resolvedAt := firstString(nativeString(item, "resolved_at"), nativeString(item, "resolved_date"))
-		return canonicalRecord(st, item, kind, schemaRef, "case-"+caseID, occurredAt, map[string]string{
-			"case_id":     caseID,
-			"status":      status,
-			"created_at":  createdAt,
-			"updated_at":  updatedAt,
-			"closed_at":   closedAt,
-			"resolved_at": resolvedAt,
-		}, map[string]interface{}{
-			"case_id":     caseID,
-			"status":      status,
-			"title":       title,
-			"created_at":  createdAt,
-			"updated_at":  updatedAt,
-			"closed_at":   closedAt,
-			"resolved_at": resolvedAt,
-		})
+		return canonicalRecord(st, item, kind, schemaRef, "case-"+caseID, occurredAt,
+			map[string]string{"case_id": caseID, "status": status, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt},
+			map[string]interface{}{"case_id": caseID, "status": status, "title": title, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt})
 	case kindIOC:
 		iocID := nativeString(item, "ioc_id")
 		iocType := firstString(nestedString(item, "ioc_type", "type_name"), nativeString(item, "ioc_type"), nativeString(item, "ioc_type_id"))

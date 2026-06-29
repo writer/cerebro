@@ -153,41 +153,9 @@ func promotePayloadAttributes(kind string, attributes map[string]string, payload
 func payloadPromotedAttributeKeys(kind string) []string {
 	switch kind {
 	case kindAlert:
-		return []string{
-			"alert_id",
-			"severity",
-			"status",
-			"title",
-			"case_id",
-			"case_title",
-			"case_status",
-			"created_at",
-			"updated_at",
-			"observed_at",
-			"closed_at",
-			"resolved_at",
-			"alert_creation_time",
-			"alert_source_event_time",
-			"alert_closed_time",
-			"alert_resolved_time",
-			"close_date",
-			"resolved_date",
-		}
+		return []string{"alert_id", "severity", "status", "title", "case_id", "case_title", "case_status", "created_at", "updated_at", "observed_at", "closed_at", "resolved_at", "alert_creation_time", "alert_source_event_time", "alert_closed_time", "alert_resolved_time", "close_date", "resolved_date"}
 	case kindCase:
-		return []string{
-			"case_id",
-			"status",
-			"title",
-			"created_at",
-			"updated_at",
-			"observed_at",
-			"closed_at",
-			"resolved_at",
-			"initial_date",
-			"open_date",
-			"close_date",
-			"resolved_date",
-		}
+		return []string{"case_id", "status", "title", "created_at", "updated_at", "observed_at", "closed_at", "resolved_at", "initial_date", "open_date", "close_date", "resolved_date"}
 	case kindIOC:
 		return []string{"ioc_id", "ioc_type", "value"}
 	default:
