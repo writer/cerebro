@@ -409,12 +409,12 @@ sources:
     assessment_notes: Scope evidence to tenant, organizational unit, and benchmark version.
   - framework: NIST SP 800-177
     framework_id: nistsp800177
-    version: final
+    version: Rev. 1
     lifecycle: current
     authority: NIST
-    source_type: cloud_computing_guidance
-    source_url: https://csrc.nist.gov/pubs/sp/800/177/final
+    source_type: email_security_guidance
+    source_url: https://csrc.nist.gov/pubs/sp/800/177/r1/final
     source_status: official_publication
-    control_model: Cloud computing security reference guidance.
-    evidence_model: Cloud service, cloud customer, provider responsibility, architecture, and operational evidence.
-    assessment_notes: Use as cloud responsibility and evidence-context guidance, not as a standalone audit framework.
+    control_model: Trustworthy email guidance for domain authentication, mail transport security, and message-content security.
+    evidence_model: Sending domain, DNS mail-authentication records, DNS mail-routing records, related mail-security DNS records, validation timestamp, and remediation evidence.
+    assessment_notes: Use for email-domain authentication and related mail transport evidence; do not treat it as cloud shared-responsibility evidence. Keep message-content protection as separate evidence unless a source supplies it.
