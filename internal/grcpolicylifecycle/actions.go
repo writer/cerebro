@@ -533,6 +533,9 @@ func AuditExportHeader() []string {
 		"status", "owner", "reviewer", "action", "actor",
 		"occurred_at", "due_at", "effective_at", "expires_at",
 		"controls", "evidence", "record_urn", "gap_subject_title", "gap_missing_fields", "gap_rule_id",
+		"policy_type", "approving_authority", "review_cadence", "last_reviewed_at",
+		"acknowledgement_evidence", "exception_path", "source_provenance", "source_url",
+		"policy_citations", "manual_review_state", "confidence", "unsupported_claims", "question_refs",
 	}
 }
 
@@ -540,54 +543,67 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 	rows := [][]string{}
 	policyTitles := exportPolicyTitles(response.Policies)
 	for _, policy := range response.Policies {
-		if exportWindowIncludesAny(window, policy.NextReviewDueAt) {
-			rows = append(rows, []string{"policy", policy.ID, policy.ID, policy.Title, policy.LatestVersion, policy.Status, policy.Owner, policy.Reviewer, "", "", "", policy.NextReviewDueAt, "", "", exportControls(policy.Controls), exportEvidence(policy.Evidence), policy.URN, "", "", ""})
+		if exportWindowIncludesAny(window, policy.EffectiveAt, policy.LastReviewedAt, policy.NextReviewDueAt) {
+			rows = append(rows, auditExportRow([]string{"policy", policy.ID, policy.ID, policy.Title, policy.LatestVersion, policy.Status, policy.Owner, policy.Reviewer, "", "", "", policy.NextReviewDueAt, policy.EffectiveAt, "", exportControls(policy.Controls), exportEvidence(policy.Evidence), policy.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, "", policy.ExceptionPath, "", ""))
 		}
 		for _, version := range policy.Versions {
 			if !exportWindowIncludesAny(window, version.CreatedAt, version.ApprovedAt, version.EffectiveAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.version", version.ID, policy.ID, policy.Title, version.Version, version.Status, firstNonEmpty(version.Owner, policy.Owner), "", "", version.Author, firstNonEmpty(version.CreatedAt, version.ApprovedAt), "", version.EffectiveAt, "", exportControls(version.Controls), exportEvidence(version.Evidence), version.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.version", version.ID, policy.ID, policy.Title, version.Version, version.Status, firstNonEmpty(version.Owner, policy.Owner), "", "", version.Author, firstNonEmpty(version.CreatedAt, version.ApprovedAt), "", version.EffectiveAt, "", exportControls(version.Controls), exportEvidence(version.Evidence), version.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, "", policy.ExceptionPath, "", ""))
 		}
 		for _, approval := range policy.Approvals {
 			if !exportWindowIncludesAny(window, approval.RequestedAt, approval.ApprovedAt, approval.DueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.approval", approval.ID, policy.ID, policy.Title, approval.VersionID, approval.Status, firstNonEmpty(approval.RequestedBy, firstNonEmpty(approval.Approvers...)), "", "approval", firstNonEmpty(approval.Approvers...), firstNonEmpty(approval.ApprovedAt, approval.RequestedAt), approval.DueAt, "", "", "", "", approval.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.approval", approval.ID, policy.ID, policy.Title, approval.VersionID, approval.Status, firstNonEmpty(approval.RequestedBy, firstNonEmpty(approval.Approvers...)), "", "approval", firstNonEmpty(approval.Approvers...), firstNonEmpty(approval.ApprovedAt, approval.RequestedAt), approval.DueAt, "", "", "", "", approval.URN, "", "", ""}, policy.PolicyType, firstNonEmpty(policy.ApprovingAuthority, approval.Step, firstNonEmpty(approval.Approvers...)), policy.ReviewCadence, policy.LastReviewedAt, "", policy.ExceptionPath, "", ""))
 		}
 		for _, attestation := range policy.Attestations {
 			if !exportWindowIncludesAny(window, attestation.AcceptedAt, attestation.DueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.acceptance", attestation.ID, policy.ID, policy.Title, attestation.VersionID, attestation.Status, firstNonEmpty(attestation.Person, firstNonEmpty(attestation.Assignees...)), "", "attestation", attestation.Person, attestation.AcceptedAt, attestation.DueAt, "", "", "", "", attestation.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, attestation.AcknowledgementEvidence, policy.ExceptionPath, "", ""))
 		}
 		for _, review := range policy.Reviews {
 			if !exportWindowIncludesAny(window, review.ReviewedAt, review.ReviewDueAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.review", review.ID, policy.ID, policy.Title, review.VersionID, review.Status, firstNonEmpty(review.Owner, policy.Owner), firstNonEmpty(review.Reviewers...), "review", firstNonEmpty(review.Reviewers...), review.ReviewedAt, review.ReviewDueAt, "", "", "", "", review.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.review", review.ID, policy.ID, policy.Title, review.VersionID, review.Status, firstNonEmpty(review.Owner, policy.Owner), firstNonEmpty(review.Reviewers...), "review", firstNonEmpty(review.Reviewers...), review.ReviewedAt, review.ReviewDueAt, "", "", "", "", review.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, firstNonEmpty(review.Cadence, policy.ReviewCadence), firstNonEmpty(review.ReviewedAt, policy.LastReviewedAt), "", policy.ExceptionPath, "", ""))
 		}
 		for _, exception := range policy.Exceptions {
 			if !exportWindowIncludesAny(window, exception.ApprovedAt, exception.ExpiresAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.exception", exception.ID, policy.ID, policy.Title, exception.VersionID, exception.Status, firstNonEmpty(exception.Owner, policy.Owner), firstNonEmpty(exception.Approvers...), "exception", firstNonEmpty(exception.Approvers...), exception.ApprovedAt, "", "", exception.ExpiresAt, exportControls(exception.Controls), "", exception.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.exception", exception.ID, policy.ID, policy.Title, exception.VersionID, exception.Status, firstNonEmpty(exception.Owner, policy.Owner), firstNonEmpty(exception.Approvers...), "exception", firstNonEmpty(exception.Approvers...), exception.ApprovedAt, "", "", exception.ExpiresAt, exportControls(exception.Controls), "", exception.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, "", firstNonEmpty(policy.ExceptionPath, exception.Reason), "", ""))
 		}
 		for _, event := range policy.Events {
 			if !exportWindowIncludesAny(window, event.OccurredAt) {
 				continue
 			}
-			rows = append(rows, []string{"policy.lifecycle.event", event.ID, policy.ID, policy.Title, event.VersionID, event.Status, "", "", event.Action, event.Actor, event.OccurredAt, "", "", "", "", "", event.URN, "", "", ""})
+			rows = append(rows, auditExportRow([]string{"policy.lifecycle.event", event.ID, policy.ID, policy.Title, event.VersionID, event.Status, "", "", event.Action, event.Actor, event.OccurredAt, "", "", "", "", "", event.URN, "", "", ""}, policy.PolicyType, policy.ApprovingAuthority, policy.ReviewCadence, policy.LastReviewedAt, "", policy.ExceptionPath, "", ""))
 		}
 	}
+	for _, document := range response.Documents {
+		if !exportWindowIncludesAny(window, document.ApprovedAt, document.EffectiveAt, document.LastReviewedAt, document.NextReviewDueAt) {
+			continue
+		}
+		policyID := grcPolicyFirstDocumentRefID(document.Policies)
+		rows = append(rows, auditExportRow([]string{"document", document.ID, policyID, policyTitles[policyID], document.Version, document.Status, document.Owner, "", "document", "", firstNonEmpty(document.ApprovedAt, document.LastReviewedAt), document.NextReviewDueAt, document.EffectiveAt, "", exportControls(document.Controls), exportEvidence(document.Evidence), document.URN, document.Title, "", ""}, document.PolicyType, document.ApprovingAuthority, document.ReviewCadence, document.LastReviewedAt, document.AcknowledgementEvidence, document.ExceptionPath, document.SourceProvenance, document.SourceURL))
+	}
+	for _, snippet := range response.EvidenceSnippets {
+		if !exportWindowIncludesEvidenceSnippet(window, snippet) {
+			continue
+		}
+		rows = append(rows, auditExportSnippetRow(snippet, policyTitles[snippet.PolicyID]))
+	}
 	for _, mapping := range response.Mappings {
-		rows = append(rows, []string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN, "", "", ""})
+		rows = append(rows, auditExportRow([]string{"policy.mapping", "", mapping.PolicyID, mapping.PolicyTitle, "", "", "", "", "mapping", "", "", "", "", "", exportControls(mapping.Controls), exportEvidence(mapping.Evidence), mapping.SourceURN, "", "", ""}, "", "", "", "", "", "", "", ""))
 	}
 	for _, gap := range response.GovernanceGaps {
 		if !exportWindowIncludesGovernanceGap(window, gap) {
 			continue
 		}
-		rows = append(rows, []string{"governance.gap", gap.SubjectID, gap.PolicyID, policyTitles[gap.PolicyID], "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", "", "", gap.ID, gap.Title, strings.Join(gap.MissingFields, "; "), gap.RuleID})
+		rows = append(rows, auditExportRow([]string{"governance.gap", gap.SubjectID, gap.PolicyID, policyTitles[gap.PolicyID], "", gap.GapState, gap.Owner, "", gap.Action, gap.LastActor, gap.StateUpdatedAt, gap.DueAt, "", "", "", "", gap.ID, gap.Title, strings.Join(gap.MissingFields, "; "), gap.RuleID}, "", "", "", "", "", "", "", ""))
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i][0] == rows[j][0] {
@@ -596,6 +612,23 @@ func AuditExportRows(response Response, window ExportWindow) [][]string {
 		return rows[i][0] < rows[j][0]
 	})
 	return rows
+}
+
+func auditExportRow(base []string, policyType string, approvingAuthority string, reviewCadence string, lastReviewedAt string, acknowledgementEvidence string, exceptionPath string, sourceProvenance string, sourceURL string) []string {
+	row := append([]string{}, base...)
+	return append(row, policyType, approvingAuthority, reviewCadence, lastReviewedAt, acknowledgementEvidence, exceptionPath, sourceProvenance, sourceURL, "", "", "", "", "")
+}
+
+func auditExportSnippetRow(snippet grcPolicyEvidenceSnippetItem, policyTitle string) []string {
+	base := []string{
+		"policy.evidence_snippet", snippet.ID, snippet.PolicyID, policyTitle, "",
+		snippet.ManualReviewState, "", "", "policy_citation", "",
+		"", "", "", "",
+		exportControls(snippet.Controls), strings.Join(snippet.PolicyCitations, "; "), snippet.URN,
+		firstNonEmpty(snippet.SectionTitle, snippet.Title), "", "",
+	}
+	row := append([]string{}, base...)
+	return append(row, "", "", "", "", "", "", snippet.SourceProvenance, "", strings.Join(snippet.PolicyCitations, "; "), snippet.ManualReviewState, snippet.Confidence, strings.Join(snippet.UnsupportedClaims, "; "), strings.Join(snippet.QuestionIDs, "; "))
 }
 
 func exportPolicyTitles(policies []grcPolicyLifecyclePolicy) map[string]string {
@@ -613,6 +646,29 @@ func exportWindowIncludesGovernanceGap(window ExportWindow, gap grcPolicyGoverna
 		return true
 	}
 	return (window.Start != nil || window.End != nil) && strings.TrimSpace(gap.DueAt) == "" && strings.TrimSpace(gap.StateUpdatedAt) == ""
+}
+
+func exportWindowIncludesEvidenceSnippet(window ExportWindow, snippet grcPolicyEvidenceSnippetItem) bool {
+	if window.Start == nil && window.End == nil {
+		return true
+	}
+	values := []string{
+		snippet.Attributes["created_at"],
+		snippet.Attributes["updated_at"],
+		snippet.Attributes["observed_at"],
+		snippet.Attributes["source_observed_at"],
+		snippet.Attributes["reviewed_at"],
+		snippet.Attributes["uploaded_at"],
+	}
+	if exportWindowIncludesAny(window, values...) {
+		return true
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func exportControls(items []grcPolicyControlRef) string {
