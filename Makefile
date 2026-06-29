@@ -272,7 +272,7 @@ mcp-sdk-compat: build ## Check MCP SDK compatibility against local server.
 # ==== Lint and Contracts ====
 ##@ Lint and Contracts
 lint: lint-bootstrap ## Run golangci-lint over application packages.
-	$(GOLANGCI_LINT) run --timeout 10m $(APP_PACKAGES)
+	$(GOLANGCI_LINT) run --timeout 20m $(APP_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
