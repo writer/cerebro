@@ -67,9 +67,9 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 		"identity-okta-suspended-user-active-group-membership",
 		"identity-okta-external-account-no-owner",
 		"identity-okta-dormant-admin-role-assignment",
-		"identity-okta-stale-app-assignment-30d",
-		"identity-okta-stale-group-membership-90d",
-		"identity-okta-group-grants-admin-app",
+		"identity-okta-stale-app-assignment-graph-30d",
+		"identity-okta-stale-group-membership-graph-90d",
+		"identity-okta-group-grants-admin-app-graph",
 	}
 	for _, id := range graphPolicyIDs {
 		rule, ok := byID[id]
@@ -103,8 +103,8 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 		"identity-okta-suspended-user-active-group-membership",
 		"identity-okta-external-account-no-owner",
 		"identity-okta-dormant-admin-role-assignment",
-		"identity-okta-stale-app-assignment-30d",
-		"identity-okta-stale-group-membership-90d",
+		"identity-okta-stale-app-assignment-graph-30d",
+		"identity-okta-stale-group-membership-graph-90d",
 	} {
 		query := strings.ToLower(byID[id].Spec.Graph.Query)
 		for _, want := range []string{"lifecycle_state", "mfa_state"} {
@@ -113,7 +113,7 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 			}
 		}
 	}
-	for _, id := range []string{"identity-okta-dormant-admin-role-assignment", "identity-okta-stale-group-membership-90d"} {
+	for _, id := range []string{"identity-okta-dormant-admin-role-assignment", "identity-okta-stale-group-membership-graph-90d"} {
 		if query := strings.ToLower(byID[id].Spec.Graph.Query); !strings.Contains(query, "last_login_at") {
 			t.Fatalf("%s graph query missing last_login_at source fact", id)
 		}
@@ -123,7 +123,7 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 		duration string
 	}{
 		{id: "identity-okta-dormant-admin-role-assignment", duration: "P30D"},
-		{id: "identity-okta-stale-group-membership-90d", duration: "P90D"},
+		{id: "identity-okta-stale-group-membership-graph-90d", duration: "P90D"},
 	} {
 		query := byID[tc.id].Spec.Graph.Query
 		if strings.Contains(query, "datetime(last_login_at)") {
@@ -137,6 +137,22 @@ func TestOktaCompliancePoliciesStayGraphReasoned(t *testing.T) {
 			if !strings.Contains(query, want) {
 				t.Fatalf("%s graph query missing %q:\n%s", tc.id, want, query)
 			}
+		}
+	}
+	for _, id := range []string{
+		"identity-okta-stale-app-assignment-30d",
+		"identity-okta-stale-group-membership-90d",
+		"identity-okta-group-grants-admin-app",
+	} {
+		rule, ok := byID[id]
+		if !ok {
+			t.Fatalf("legacy policy %s not loaded", id)
+		}
+		if strings.TrimSpace(rule.Spec.Match.Query) == "" {
+			t.Fatalf("%s missing legacy spec.match.query", id)
+		}
+		if strings.TrimSpace(rule.Spec.Graph.Query) != "" {
+			t.Fatalf("%s has spec.graph.query; legacy query-backed rule must not silently change evaluation mode", id)
 		}
 	}
 }

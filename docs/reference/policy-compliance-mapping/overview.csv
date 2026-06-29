@@ -1,34 +1,34 @@
 metric,value
-policy finding rules,1506
-policy-control rows,10044
-tag rows,15043
+policy finding rules,1509
+policy-control rows,10050
+tag rows,15067
 unique tags,1023
 domains,36
 frameworks,23
 
 all finding metric,value
-public detections,1592
+public detections,1595
 non-policy detections,86
-finding-control rows,10228
-finding-tag rows,38559
-source-coverage rows,4284
-finding compliance review rows,1592
+finding-control rows,10234
+finding-tag rows,38601
+source-coverage rows,4295
+finding compliance review rows,1595
 unique finding review tags,1575
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
 detections missing source coverage refs,393
-detections source-backed,416
-detections partial source-backed,783
+detections source-backed,418
+detections partial source-backed,784
 detections control-only,393
 
 evidence mode,rules
 cel,992
-query,504
+query,507
 graph,10
 
 domain,rules
-identity,433
+identity,436
 github,346
 aws,135
 cerebro,122
@@ -66,9 +66,9 @@ graph,1
 telemetry,1
 
 framework,rules
-SOC 2,1412
+SOC 2,1415
 NIST 800-53 r5,1030
-ISO 27001:2022,970
+ISO 27001:2022,973
 CIS Controls v8,513
 PCI DSS v4.0.1,428
 CIS AWS Foundations Benchmark v2.0,50
@@ -91,11 +91,11 @@ CIS EKS Benchmark v1.3,1
 CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
-event,1552
+event,1555
 graph,40
 
 finding pack,detections
-policy,1506
+policy,1509
 github,15
 grc,15
 identity,15
@@ -128,7 +128,7 @@ trivy,1
 trusted_endpoint,1
 
 finding source,detections
-policy,1496
+policy,1499
 github,16
 okta,15
 grc,12
@@ -164,8 +164,8 @@ trusted_endpoint,1
 
 finding framework,control rows
 NIST 800-53 r5,3016
-SOC 2,2750
-ISO 27001:2022,1864
+SOC 2,2753
+ISO 27001:2022,1867
 CIS Controls v8,1136
 PCI DSS v4.0.1,962
 ISO 42001,139
@@ -189,7 +189,7 @@ CIS Google Workspace Benchmark,1
 NIST SP 800-177,1
 
 finding audit domain,detections
-identity,459
+identity,462
 github,307
 aws,142
 vulnerability,107

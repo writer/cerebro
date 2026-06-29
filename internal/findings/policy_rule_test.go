@@ -331,9 +331,9 @@ func TestOktaVendorBroadGroupPolicyFingerprintsByApp(t *testing.T) {
 }
 
 func TestOktaStaleAppAssignmentPolicyUsesStringSafeActivityCutoff(t *testing.T) {
-	config := generatedPolicyRuleConfigByID("identity-okta-stale-app-assignment-30d")
+	config := generatedPolicyRuleConfigByID("identity-okta-stale-app-assignment-graph-30d")
 	if config == nil {
-		t.Fatal("identity-okta-stale-app-assignment-30d missing from generated policy catalog")
+		t.Fatal("identity-okta-stale-app-assignment-graph-30d missing from generated policy catalog")
 	}
 	query := config.Graph.Query
 	if strings.Contains(query, "datetime(split(split") {
@@ -356,7 +356,7 @@ func TestOktaLastLoginPoliciesUseStringSafeCutoffs(t *testing.T) {
 		duration string
 	}{
 		{id: "identity-okta-dormant-admin-role-assignment", duration: "P30D"},
-		{id: "identity-okta-stale-group-membership-90d", duration: "P90D"},
+		{id: "identity-okta-stale-group-membership-graph-90d", duration: "P90D"},
 	} {
 		config := generatedPolicyRuleConfigByID(tc.id)
 		if config == nil {

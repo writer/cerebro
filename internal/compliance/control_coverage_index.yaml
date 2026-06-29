@@ -83896,7 +83896,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 22
         unmapped_controls: 14
-        mapped_rules: 590
+        mapped_rules: 591
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -84291,7 +84291,7 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 12
+          rule_count: 13
           mapped_rules:
             - anthropic-unmanaged-active-api-key
             - github-org-owner-role-review-needed
@@ -84301,6 +84301,7 @@ profiles:
             - identity-okta-api-token-revoked-30d
             - identity-okta-dormant-admin-role-assignment
             - identity-okta-group-grants-admin-app
+            - identity-okta-group-grants-admin-app-graph
             - identity-okta-superadmin-count
             - identity-okta-support-session-impersonation-30d
             - openai-orphaned-privileged-api-key
@@ -87926,6 +87927,10 @@ profiles:
             - framework_name: ISO 27001:2022
               control_id: A.8.2
         - rule_id: identity-okta-group-grants-admin-app
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
+        - rule_id: identity-okta-group-grants-admin-app-graph
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.2
@@ -119047,7 +119052,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 32
         unmapped_controls: 4
-        mapped_rules: 1516
+        mapped_rules: 1519
         auditor_ready_controls: 36
         needs_enrichment_controls: 0
         placeholder_controls: 0
@@ -121823,7 +121828,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 1031
+          rule_count: 1034
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -122493,6 +122498,7 @@ profiles:
             - identity-okta-external-account-no-owner
             - identity-okta-group-description-missing
             - identity-okta-group-grants-admin-app
+            - identity-okta-group-grants-admin-app-graph
             - identity-okta-mfa-factor-reset-events-30d
             - identity-okta-mfa-missing-active
             - identity-okta-missing-email
@@ -122509,7 +122515,9 @@ profiles:
             - identity-okta-sign-on-rule-without-mfa
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
+            - identity-okta-stale-app-assignment-graph-30d
             - identity-okta-stale-group-membership-90d
+            - identity-okta-stale-group-membership-graph-90d
             - identity-okta-stale-login-180d
             - identity-okta-stale-login-365d
             - identity-okta-stale-login-90d
@@ -122923,7 +122931,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: AC-2
           coverage_status: mapped
-          rule_count: 331
+          rule_count: 333
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -123148,7 +123156,9 @@ profiles:
             - identity-okta-privileged-missing-owner
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
+            - identity-okta-stale-app-assignment-graph-30d
             - identity-okta-stale-group-membership-90d
+            - identity-okta-stale-group-membership-graph-90d
             - identity-okta-support-session-impersonation-30d
             - identity-okta-suspended-user-active-assignment
             - identity-okta-suspended-user-active-group-membership
@@ -123324,7 +123334,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
           coverage_status: mapped
-          rule_count: 310
+          rule_count: 312
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -123535,7 +123545,9 @@ profiles:
             - identity-okta-privileged-missing-owner
             - identity-okta-stale-app-assignment-30d
             - identity-okta-stale-app-assignment-90d
+            - identity-okta-stale-app-assignment-graph-30d
             - identity-okta-stale-group-membership-90d
+            - identity-okta-stale-group-membership-graph-90d
             - identity-okta-suspended-user-active-assignment
             - identity-okta-suspended-user-active-group-membership
             - identity-okta-vendor-app-broad-group-access
@@ -138521,6 +138533,10 @@ profiles:
           controls:
             - framework_name: SOC 2
               control_id: CC6.1
+        - rule_id: identity-okta-group-grants-admin-app-graph
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
         - rule_id: identity-okta-idp-lifecycle-changes-30d
           controls:
             - framework_name: SOC 2
@@ -138687,7 +138703,23 @@ profiles:
               control_id: CC6.2
             - framework_name: SOC 2
               control_id: CC6.3
+        - rule_id: identity-okta-stale-app-assignment-graph-30d
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: identity-okta-stale-group-membership-90d
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.1
+            - framework_name: SOC 2
+              control_id: CC6.2
+            - framework_name: SOC 2
+              control_id: CC6.3
+        - rule_id: identity-okta-stale-group-membership-graph-90d
           controls:
             - framework_name: SOC 2
               control_id: CC6.1

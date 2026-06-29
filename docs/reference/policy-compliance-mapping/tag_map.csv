@@ -145,8 +145,9 @@ access-review,routing,metadata,identity-kolide-stale-login-180d,Kolide Stale Act
 access-review,routing,metadata,identity-kolide-stale-login-365d,Kolide Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-kolide-stale-login-365d.yaml
 access-review,routing,metadata,identity-kolide-stale-login-90d,Kolide Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-kolide-stale-login-90d.yaml
 access-review,routing,metadata,identity-okta-active-no-employee-record,Okta Active Accounts Without Employee Record,identity,medium,query,policies/identity/identity-okta-active-no-employee-record.yaml
-access-review,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+access-review,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 access-review,routing,metadata,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
+access-review,routing,metadata,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
 access-review,routing,metadata,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 access-review,routing,metadata,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 access-review,routing,metadata,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -1541,7 +1542,8 @@ assessment:examine,assessment,derived,identity-okta-duplicate-username,Okta Dupl
 assessment:examine,assessment,derived,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 assessment:examine,assessment,derived,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 assessment:examine,assessment,derived,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
-assessment:examine,assessment,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+assessment:examine,assessment,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+assessment:examine,assessment,derived,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 assessment:examine,assessment,derived,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 assessment:examine,assessment,derived,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 assessment:examine,assessment,derived,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -1565,9 +1567,11 @@ assessment:examine,assessment,derived,identity-okta-privileged-recently-created-
 assessment:examine,assessment,derived,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 assessment:examine,assessment,derived,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
 assessment:examine,assessment,derived,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
-assessment:examine,assessment,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+assessment:examine,assessment,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 assessment:examine,assessment,derived,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
-assessment:examine,assessment,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+assessment:examine,assessment,derived,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+assessment:examine,assessment,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+assessment:examine,assessment,derived,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 assessment:examine,assessment,derived,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 assessment:examine,assessment,derived,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 assessment:examine,assessment,derived,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -5887,9 +5891,9 @@ events,routing,metadata,github-secops-app-installation-all-repos-event-secret-sc
 events,routing,metadata,github-secops-app-installation-all-repos-event-workflow-job,GitHub App Installation All Repos Event Workflow Job,github,high,cel,policies/github/github-secops-app-installation-all-repos-event-workflow-job.yaml
 events,routing,metadata,github-secops-app-installation-all-repos-event-workflow-run,GitHub App Installation All Repos Event Workflow Run,github,high,cel,policies/github/github-secops-app-installation-all-repos-event-workflow-run.yaml
 evidence:access_review,evidence,derived,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,identity,high,graph,policies/identity/identity-okta-dormant-admin-role-assignment.yaml
-evidence:access_review,evidence,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
-evidence:access_review,evidence,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
-evidence:access_review,evidence,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+evidence:access_review,evidence,derived,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
+evidence:access_review,evidence,derived,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+evidence:access_review,evidence,derived,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 evidence:ai_governance,evidence,derived,ai-agent-human-approval-destructive-actions,AI Agent Human Approval Destructive Actions,ai,high,cel,policies/ai/ai-agent-human-approval-destructive-actions.yaml
 evidence:ai_governance,evidence,derived,ai-agent-secret-redaction,AI Agent Secret Redaction,ai,medium,cel,policies/ai/ai-agent-secret-redaction.yaml
 evidence:ai_governance,evidence,derived,ai-agent-tool-allowlist-required,AI Agent Tool Allowlist Required,ai,medium,cel,policies/ai/ai-agent-tool-allowlist-required.yaml
@@ -6968,6 +6972,7 @@ evidence:identity_governance,evidence,derived,identity-okta-duplicate-username,O
 evidence:identity_governance,evidence,derived,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 evidence:identity_governance,evidence,derived,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 evidence:identity_governance,evidence,derived,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
+evidence:identity_governance,evidence,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
 evidence:identity_governance,evidence,derived,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -6989,7 +6994,9 @@ evidence:identity_governance,evidence,derived,identity-okta-privileged-personal-
 evidence:identity_governance,evidence,derived,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,identity,medium,query,policies/identity/identity-okta-privileged-recently-created-7d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
+evidence:identity_governance,evidence,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
+evidence:identity_governance,evidence,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 evidence:identity_governance,evidence,derived,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -8748,11 +8755,11 @@ governance,routing,metadata,identity-zoom-privileged-personal-email,Zoom Privile
 governance,routing,metadata,ml-model-registry-no-versioning,ML Model Registry No Versioning,ai,medium,cel,policies/ai/model-registry-no-versioning.yaml
 graph,generated,derived,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,identity,high,graph,policies/identity/identity-okta-dormant-admin-role-assignment.yaml
 graph,generated,derived,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
-graph,generated,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+graph,generated,derived,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 graph,generated,derived,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,identity,high,graph,policies/identity/identity-okta-privileged-missing-owner.yaml
 graph,generated,derived,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
-graph,generated,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
-graph,generated,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+graph,generated,derived,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+graph,generated,derived,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 graph,generated,derived,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,identity,high,graph,policies/identity/identity-okta-suspended-user-active-assignment.yaml
 graph,generated,derived,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,identity,high,graph,policies/identity/identity-okta-suspended-user-active-group-membership.yaml
 graph,generated,metadata,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,graph,low,graph,policies/graph/graph-orphan-nonfinding-node.yaml
@@ -9075,11 +9082,11 @@ graph-backed,routing,metadata,github-secops-secret-twilio-api-key-resolution-won
 graph-backed,routing,metadata,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,graph,low,graph,policies/graph/graph-orphan-nonfinding-node.yaml
 graph-backed,routing,metadata,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,identity,high,graph,policies/identity/identity-okta-dormant-admin-role-assignment.yaml
 graph-backed,routing,metadata,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
-graph-backed,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+graph-backed,routing,metadata,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 graph-backed,routing,metadata,identity-okta-privileged-missing-owner,Okta Privileged Account Missing Lifecycle Owner,identity,high,graph,policies/identity/identity-okta-privileged-missing-owner.yaml
 graph-backed,routing,metadata,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
-graph-backed,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
-graph-backed,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+graph-backed,routing,metadata,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+graph-backed,routing,metadata,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 graph-backed,routing,metadata,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,identity,high,graph,policies/identity/identity-okta-suspended-user-active-assignment.yaml
 graph-backed,routing,metadata,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,identity,high,graph,policies/identity/identity-okta-suspended-user-active-group-membership.yaml
 graph-hygiene,routing,metadata,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,graph,low,graph,policies/graph/graph-orphan-nonfinding-node.yaml
@@ -9087,9 +9094,11 @@ graphql,routing,metadata,aws-appsync-no-authorization,AWS AppSync No Authorizati
 group,routing,metadata,group-excessive-admin,Group with excessive admin privileges,cerebro,high,cel,policies/cerebro/group-excessive-admin.yaml
 group,routing,metadata,group-excessive-data-priv,Group with excessive data privileges,cerebro,high,cel,policies/cerebro/group-excessive-data-priv.yaml
 group,routing,metadata,group-excessive-high-priv,Group with excessive high privileges,cerebro,high,cel,policies/cerebro/group-excessive-high-priv.yaml
-group-access,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+group-access,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+group-access,routing,metadata,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 group-access,routing,metadata,identity-okta-vendor-app-broad-group-access,Okta Vendor App Assigned to Broad Group,identity,high,query,policies/identity/identity-okta-vendor-app-broad-group-access.yaml
-group-membership,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+group-membership,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+group-membership,routing,metadata,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 group-membership,routing,metadata,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,identity,high,graph,policies/identity/identity-okta-suspended-user-active-group-membership.yaml
 groups,routing,metadata,aws-iam-users-via-groups,IAM Users Receive Permissions Only Through Groups,aws,low,cel,policies/aws/aws-iam-users-via-groups.yaml
 groups,routing,metadata,identity-atlassian-duplicate-group-name,Atlassian Duplicate Group Names,identity,medium,query,policies/identity/identity-atlassian-duplicate-group-name.yaml
@@ -9572,7 +9581,8 @@ identity,routing,metadata,identity-okta-duplicate-username,Okta Duplicate Userna
 identity,routing,metadata,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 identity,routing,metadata,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 identity,routing,metadata,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
-identity,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+identity,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+identity,routing,metadata,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 identity,routing,metadata,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 identity,routing,metadata,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 identity,routing,metadata,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -9596,9 +9606,11 @@ identity,routing,metadata,identity-okta-privileged-recently-created-7d,Okta Newl
 identity,routing,metadata,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 identity,routing,metadata,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
 identity,routing,metadata,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
-identity,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+identity,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 identity,routing,metadata,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
-identity,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+identity,routing,metadata,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+identity,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+identity,routing,metadata,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 identity,routing,metadata,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 identity,routing,metadata,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 identity,routing,metadata,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -10198,7 +10210,8 @@ least-privilege,risk,metadata,identity-entra-never-logged-in-30d,Entra Accounts 
 least-privilege,risk,metadata,identity-entra-never-logged-in-90d,Entra ID Accounts Never Used (90 days),identity,medium,query,policies/identity/identity-entra-never-logged-in-90d.yaml
 least-privilege,risk,metadata,identity-google-workspace-never-logged-in-30d,Google Workspace Accounts Never Used After Provisioning,identity,medium,query,policies/identity/identity-google-workspace-never-logged-in-30d.yaml
 least-privilege,risk,metadata,identity-google-workspace-never-logged-in-90d,Google Workspace Accounts Never Used (90 days),identity,medium,query,policies/identity/identity-google-workspace-never-logged-in-90d.yaml
-least-privilege,risk,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+least-privilege,risk,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+least-privilege,risk,metadata,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 least-privilege,risk,metadata,identity-okta-never-logged-in-30d,Okta Accounts Never Used After Provisioning,identity,medium,query,policies/identity/identity-okta-never-logged-in-30d.yaml
 least-privilege,risk,metadata,identity-okta-never-logged-in-90d,Okta Accounts Never Used (90 days),identity,medium,query,policies/identity/identity-okta-never-logged-in-90d.yaml
 least-privilege,risk,metadata,identity-okta-superadmin-count,Excessive Okta Super Admins,identity,high,query,policies/identity/identity-okta-superadmin-count.yaml
@@ -10634,7 +10647,8 @@ okta,routing,metadata,identity-okta-duplicate-username,Okta Duplicate Usernames,
 okta,routing,metadata,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 okta,routing,metadata,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 okta,routing,metadata,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
-okta,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+okta,routing,metadata,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+okta,routing,metadata,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 okta,routing,metadata,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 okta,routing,metadata,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 okta,routing,metadata,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -10658,9 +10672,11 @@ okta,routing,metadata,identity-okta-privileged-recently-created-7d,Okta Newly Cr
 okta,routing,metadata,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 okta,routing,metadata,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
 okta,routing,metadata,identity-okta-sign-on-rule-without-mfa,Okta Sign-On Rule Allows Access Without MFA,identity,high,graph,policies/identity/identity-okta-sign-on-rule-without-mfa.yaml
-okta,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+okta,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 okta,routing,metadata,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
-okta,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+okta,routing,metadata,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+okta,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+okta,routing,metadata,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 okta,routing,metadata,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 okta,routing,metadata,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 okta,routing,metadata,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -11965,7 +11981,8 @@ policy,generated,derived,identity-okta-duplicate-username,Okta Duplicate Usernam
 policy,generated,derived,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 policy,generated,derived,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 policy,generated,derived,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
-policy,generated,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app.yaml
+policy,generated,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
+policy,generated,derived,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
 policy,generated,derived,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 policy,generated,derived,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 policy,generated,derived,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -11988,9 +12005,11 @@ policy,generated,derived,identity-okta-privileged-personal-email,Okta Privileged
 policy,generated,derived,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,identity,medium,query,policies/identity/identity-okta-privileged-recently-created-7d.yaml
 policy,generated,derived,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 policy,generated,derived,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
-policy,generated,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+policy,generated,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 policy,generated,derived,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
-policy,generated,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+policy,generated,derived,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+policy,generated,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+policy,generated,derived,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 policy,generated,derived,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 policy,generated,derived,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 policy,generated,derived,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -12955,6 +12974,7 @@ query,generated,derived,identity-okta-duplicate-group-name,Okta Duplicate Group 
 query,generated,derived,identity-okta-duplicate-username,Okta Duplicate Usernames,identity,medium,query,policies/identity/identity-okta-duplicate-username.yaml
 query,generated,derived,identity-okta-external-user-internal-app,External-Domain User Assigned Internal Okta App,identity,high,query,policies/identity/identity-okta-external-user-internal-app.yaml
 query,generated,derived,identity-okta-group-description-missing,Okta Groups Missing Description,identity,low,query,policies/identity/identity-okta-group-description-missing.yaml
+query,generated,derived,identity-okta-group-grants-admin-app,Okta Group Grants Admin-Like Application Access,identity,high,query,policies/identity/identity-okta-group-grants-admin-app.yaml
 query,generated,derived,identity-okta-idp-lifecycle-changes-30d,Okta Identity Provider Lifecycle Changes (30 days),identity,high,query,policies/identity/identity-okta-idp-lifecycle-changes-30d.yaml
 query,generated,derived,identity-okta-mfa-factor-reset-events-30d,Okta MFA Factor Reset/Suspend Events (30 days),identity,high,query,policies/identity/identity-okta-mfa-factor-reset-events-30d.yaml
 query,generated,derived,identity-okta-mfa-missing-active,Okta Active Accounts Without MFA,identity,high,query,policies/identity/identity-okta-mfa-missing-active.yaml
@@ -12976,7 +12996,9 @@ query,generated,derived,identity-okta-privileged-personal-email,Okta Privileged 
 query,generated,derived,identity-okta-privileged-recently-created-7d,Okta Newly Created Privileged Accounts,identity,medium,query,policies/identity/identity-okta-privileged-recently-created-7d.yaml
 query,generated,derived,identity-okta-privileged-stale-login-30d,Okta Privileged Accounts Stale (30 days),identity,high,query,policies/identity/identity-okta-privileged-stale-login-30d.yaml
 query,generated,derived,identity-okta-rate-limit-violations-24h,Okta Rate-Limit Violation Spike (24 hours),identity,medium,query,policies/identity/identity-okta-rate-limit-violations-24h.yaml
+query,generated,derived,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 query,generated,derived,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
+query,generated,derived,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
 query,generated,derived,identity-okta-stale-login-180d,Okta Stale Active Accounts (180 days),identity,high,query,policies/identity/identity-okta-stale-login-180d.yaml
 query,generated,derived,identity-okta-stale-login-365d,Okta Stale Active Accounts (365 days),identity,high,query,policies/identity/identity-okta-stale-login-365d.yaml
 query,generated,derived,identity-okta-stale-login-90d,Okta Stale Active Accounts (90 days),identity,high,query,policies/identity/identity-okta-stale-login-90d.yaml
@@ -14417,9 +14439,11 @@ sso,routing,metadata,slack-admin-without-sso,Slack Admin Without Sso,slack,high,
 ssrf,routing,metadata,aws-ec2-imdsv2-required,EC2 IMDSv2 Required,aws,high,cel,policies/aws/aws-ec2-imdsv2.yaml
 ssrf,routing,metadata,gcp-compute-metadata-v1,GCP Instance Metadata v1 Enabled,gcp,high,cel,policies/gcp/gcp-compute-metadata-v1.yaml
 stability,routing,metadata,gcp-gke-no-alpha-clusters,GKE Clusters No Alpha Features,gcp,medium,cel,policies/gcp/gcp-gke-no-alpha.yaml
-stale-access,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-30d.yaml
+stale-access,routing,metadata,identity-okta-stale-app-assignment-30d,Okta Stale App Assignment (30 days),identity,medium,query,policies/identity/identity-okta-stale-app-assignment-30d.yaml
 stale-access,routing,metadata,identity-okta-stale-app-assignment-90d,Okta Stale App Assignment (90 days),identity,high,query,policies/identity/identity-okta-stale-app-assignment-90d.yaml
-stale-access,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-90d.yaml
+stale-access,routing,metadata,identity-okta-stale-app-assignment-graph-30d,Okta Stale App Assignment Graph Evidence (30 days),identity,medium,graph,policies/identity/identity-okta-stale-app-assignment-graph-30d.yaml
+stale-access,routing,metadata,identity-okta-stale-group-membership-90d,Okta Stale Group Membership (90 days),identity,high,query,policies/identity/identity-okta-stale-group-membership-90d.yaml
+stale-access,routing,metadata,identity-okta-stale-group-membership-graph-90d,Okta Stale Group Membership Graph Evidence (90 days),identity,high,graph,policies/identity/identity-okta-stale-group-membership-graph-90d.yaml
 stale-access,routing,metadata,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,identity,high,graph,policies/identity/identity-okta-suspended-user-active-assignment.yaml
 stale-accounts,routing,metadata,identity-auth0-never-logged-in-30d,Auth0 Accounts Never Used After Provisioning,identity,medium,query,policies/identity/identity-auth0-never-logged-in-30d.yaml
 stale-accounts,routing,metadata,identity-auth0-never-logged-in-90d,Auth0 Accounts Never Used (90 days),identity,medium,query,policies/identity/identity-auth0-never-logged-in-90d.yaml
