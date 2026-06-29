@@ -534,6 +534,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	result.EventsEvaluated = boundedUint32(len(events))
 	evaluatedEventIDs := map[string]struct{}{}
+	var evaluationErr error
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
 			evaluatedEventIDs[eventID] = struct{}{}
@@ -544,7 +545,9 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			}
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
-				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+				ruleErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
+				evaluationErr = errors.Join(evaluationErr, ruleErr)
+				if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 					return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 				}
 				continue
@@ -561,14 +564,18 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 				if err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+					ruleErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				stored, isNewFinding, err := s.upsertFindingWithRiskAndNewness(ctx, record, runtime, startedAt)
 				if err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+					ruleErr := fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
@@ -577,14 +584,18 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				state.emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 				evidence, err := s.buildFindingEvidence(ctx, stored, state.result.Run)
 				if err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				if _, seen := state.evidenceIDs[evidence.GetId()]; !seen {
 					if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+						ruleErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
+						evaluationErr = errors.Join(evaluationErr, ruleErr)
+						if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 						}
 						break
@@ -593,20 +604,26 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					state.result.Evidence = append(state.result.Evidence, evidence)
 				}
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q external refs: %w", stored.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("project finding %q external refs: %w", stored.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				if isNewFinding {
 					if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
-						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)); failErr != nil {
+						ruleErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
+						evaluationErr = errors.Join(evaluationErr, ruleErr)
+						if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 						}
 						break
@@ -621,16 +638,19 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		}
 		resolvedCounterFindings, err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, events, evaluatedEventIDs, state.emittedFindingIDs)
 		if err != nil {
-			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
+			finalErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
 		}
 		if err := s.applyCounterEventResolutionResults(ctx, state.result.Run, state.result.Findings, &state.result.Evidence, state.evidenceIDs, resolvedCounterFindings); err != nil {
-			evaluationErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", state.result.Rule.GetId(), err)
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
+			finalErr := fmt.Errorf("persist counter-event close evidence for rule %q: %w", state.result.Rule.GetId(), err)
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, finalErr))
 		}
 		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, state.eventsMatched, findingIDs(state.result.Findings)); err != nil {
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), errors.Join(evaluationErr, err))
 		}
+	}
+	if evaluationErr != nil {
+		return result, evaluationErr
 	}
 	return result, nil
 }

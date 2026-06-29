@@ -34,6 +34,8 @@ func TestAppendLogRuntimeIndexSchemaShape(t *testing.T) {
 	for _, fragment := range []string{
 		"CREATE TABLE IF NOT EXISTS append_log_runtime_index",
 		"PRIMARY KEY (runtime_id, seq)",
+		"append_log_runtime_index_runtime_kind_seq_idx",
+		"(runtime_id, kind, seq DESC)",
 		"append_log_runtime_index_runtime_observed_idx",
 		"(runtime_id, occurred_at DESC NULLS LAST, seq DESC)",
 		"append_log_runtime_index_runtime_kind_observed_idx",

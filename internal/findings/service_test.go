@@ -3022,6 +3022,65 @@ func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *te
 	}
 }
 
+func TestEvaluateSourceRuntimeCandidateRulesReturnsErrorWhenAnyRuleFails(t *testing.T) {
+	ruleBErr := errors.New("candidate rule-b exploded")
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "okta-audit-1",
+		},
+		&failingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			err:                ruleBErr,
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithFindingCandidateStore(store)
+
+	result, err := service.EvaluateSourceRuntimeCandidateRules(context.Background(), EvaluateCandidateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeCandidateRules() error = nil, want rule failure")
+	}
+	if !errors.Is(err, ruleBErr) {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v, want %v", err, ruleBErr)
+	}
+	if result == nil || len(result.Evaluations) != 2 {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() result = %#v, want both rule evaluations returned with error", result)
+	}
+	ruleARun, ok := candidateRunForRule(store.candidateState.runs, "rule-a")
+	if !ok {
+		t.Fatal("rule-a candidate run missing")
+	}
+	if got := ruleARun.Status; got != "completed" {
+		t.Fatalf("rule-a candidate run status = %q, want completed", got)
+	}
+	ruleBRun, ok := candidateRunForRule(store.candidateState.runs, "rule-b")
+	if !ok {
+		t.Fatal("rule-b candidate run missing")
+	}
+	if got := ruleBRun.Status; got != "failed" {
+		t.Fatalf("rule-b candidate run status = %q, want failed", got)
+	}
+	if got := ruleBRun.Error; !strings.Contains(got, "candidate rule-b exploded") {
+		t.Fatalf("rule-b candidate run error = %q, want candidate rule-b exploded", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeCandidateRulesExpiresStaleCandidates(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
@@ -3898,6 +3957,65 @@ func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T)
 	request := store.listFindingsRequests[0]
 	if request.RuleID != "" || request.RuntimeID != "writer-aws-public-endpoint" || request.Status != findingStatusOpen {
 		t.Fatalf("stale probe request = %#v, want one runtime-wide open-finding query", request)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesReturnsErrorWhenAnyRuleFails(t *testing.T) {
+	ruleBErr := errors.New("rule-b exploded")
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "okta-audit-1",
+		},
+		&failingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			err:                ruleBErr,
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want rule failure")
+	}
+	if !errors.Is(err, ruleBErr) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, ruleBErr)
+	}
+	if result == nil || len(result.Evaluations) != 2 {
+		t.Fatalf("EvaluateSourceRuntimeRules() result = %#v, want both rule evaluations returned with error", result)
+	}
+	ruleARun, ok := runForRule(store.runs, "rule-a")
+	if !ok {
+		t.Fatal("rule-a run missing")
+	}
+	if got := ruleARun.GetStatus(); got != "completed" {
+		t.Fatalf("rule-a run status = %q, want completed", got)
+	}
+	ruleBRun, ok := runForRule(store.runs, "rule-b")
+	if !ok {
+		t.Fatal("rule-b run missing")
+	}
+	if got := ruleBRun.GetStatus(); got != "failed" {
+		t.Fatalf("rule-b run status = %q, want failed", got)
+	}
+	if got := ruleBRun.GetError(); !strings.Contains(got, "rule-b exploded") {
+		t.Fatalf("rule-b run error = %q, want rule-b exploded", got)
 	}
 }
 
@@ -6383,6 +6501,15 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 func runForRule(runs map[string]*cerebrov1.FindingEvaluationRun, ruleID string) (*cerebrov1.FindingEvaluationRun, bool) {
 	for _, run := range runs {
 		if strings.TrimSpace(run.GetRuleId()) == strings.TrimSpace(ruleID) {
+			return run, true
+		}
+	}
+	return nil, false
+}
+
+func candidateRunForRule(runs map[string]*ports.FindingCandidateRun, ruleID string) (*ports.FindingCandidateRun, bool) {
+	for _, run := range runs {
+		if strings.TrimSpace(run.RuleID) == strings.TrimSpace(ruleID) {
 			return run, true
 		}
 	}

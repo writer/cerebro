@@ -167,6 +167,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 		}
 	}
 	result.EventsEvaluated = boundedUint32(len(events))
+	var evaluationErr error
 	for _, event := range events {
 		for _, state := range states {
 			if state.failed || !state.rule.SupportsRuntime(runtime) {
@@ -174,7 +175,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 			}
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
-				if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding candidate rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+				ruleErr := fmt.Errorf("evaluate finding candidate rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)
+				evaluationErr = errors.Join(evaluationErr, ruleErr)
+				if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 					return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
 				}
 				continue
@@ -195,7 +198,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				candidateFinding := normalizeCandidateFinding(record, runtime, startedAt)
 				config, err := s.riskScoringConfigForFinding(ctx, candidateFinding)
 				if err != nil {
-					if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("load risk scoring config for candidate finding %q: %w", candidateFinding.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("load risk scoring config for candidate finding %q: %w", candidateFinding.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
 					}
 					break
@@ -203,7 +208,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				candidateFinding = recomputeFindingRiskWithConfig(candidateFinding, startedAt, config)
 				evidence, err := s.buildFindingEvidence(ctx, candidateFinding, candidateEvidenceRun(state.run))
 				if err != nil {
-					if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("build candidate evidence for finding %q: %w", candidateFinding.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("build candidate evidence for finding %q: %w", candidateFinding.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
 					}
 					break
@@ -211,7 +218,9 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 				candidate := newFindingCandidateRecord(candidateFinding, evidence, state.run.ID)
 				stored, err := s.candidateStore.UpsertFindingCandidate(ctx, candidate)
 				if err != nil {
-					if failErr := s.markCandidateEvaluationFailed(ctx, state, fmt.Errorf("persist finding candidate %q: %w", candidate.ID, err)); failErr != nil {
+					ruleErr := fmt.Errorf("persist finding candidate %q: %w", candidate.ID, err)
+					evaluationErr = errors.Join(evaluationErr, ruleErr)
+					if failErr := s.markCandidateEvaluationFailed(ctx, state, ruleErr); failErr != nil {
 						return nil, s.markCandidateEvaluationsFailed(ctx, states, failErr)
 					}
 					break
@@ -236,12 +245,17 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 			EvaluatedEventIDs: state.evaluatedEventIDs,
 			RunStartedAt:      state.run.StartedAt,
 		}); err != nil {
-			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("expire stale finding candidates for run %q: %w", state.run.ID, err))
+			finalErr := fmt.Errorf("expire stale finding candidates for run %q: %w", state.run.ID, err)
+			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), errors.Join(evaluationErr, finalErr))
 		}
 		if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
-			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err))
+			finalErr := fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err)
+			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), errors.Join(evaluationErr, finalErr))
 		}
 		emitFindingCandidateRunTelemetry(ctx, state.run)
+	}
+	if evaluationErr != nil {
+		return result, evaluationErr
 	}
 	return result, nil
 }
