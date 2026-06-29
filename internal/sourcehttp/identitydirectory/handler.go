@@ -519,17 +519,25 @@ func cloneUser(user *ports.IdentityUser) *ports.IdentityUser {
 }
 
 func capOrganizations(orgs []*ports.IdentityOrganization, limit uint32) []*ports.IdentityOrganization {
-	if uint32(len(orgs)) <= limit {
-		return orgs
+	remaining := limit
+	for index := range orgs {
+		if remaining == 0 {
+			return orgs[:index]
+		}
+		remaining--
 	}
-	return orgs[:limit]
+	return orgs
 }
 
 func capUsers(users []*ports.IdentityUser, limit uint32) []*ports.IdentityUser {
-	if uint32(len(users)) <= limit {
-		return users
+	remaining := limit
+	for index := range users {
+		if remaining == 0 {
+			return users[:index]
+		}
+		remaining--
 	}
-	return users[:limit]
+	return users
 }
 
 func directoryLimit(raw string) uint32 {

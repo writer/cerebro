@@ -79,8 +79,10 @@ import (
 // internal/sourcehttp/credentialstores; the read model lives in
 // internal/credentialstores. Finding-rule partial evaluation handling adds
 // only cache invalidation and job result mapping while rule execution and run
-// state stay in internal/findings.
-const bootstrapProductionGoLineBudget = 26707
+// state stay in internal/findings. Identity directory routes add only route
+// wiring while HTTP behavior lives in internal/sourcehttp/identitydirectory
+// and storage stays behind the IdentityDirectoryStore port.
+const bootstrapProductionGoLineBudget = 26714
 
 type bootstrapFileLineCount struct {
 	path  string
