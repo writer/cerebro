@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -600,15 +601,34 @@ func tenantSlug(tenantID string) string {
 }
 
 func oauthProvider(issuer string) string {
-	issuer = strings.ToLower(strings.TrimSpace(issuer))
 	switch {
-	case strings.Contains(issuer, "okta"):
+	case oktaIssuer(issuer):
 		return "okta"
-	case issuer != "":
+	case strings.TrimSpace(issuer) != "":
 		return "oidc"
 	default:
 		return ""
 	}
+}
+
+func oktaIssuer(issuer string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(issuer))
+	host := ""
+	if err == nil {
+		host = parsed.Hostname()
+	}
+	if host == "" {
+		host = strings.TrimSpace(issuer)
+	}
+	host = strings.ToLower(host)
+	return host == "okta.com" ||
+		host == "okta-emea.com" ||
+		host == "oktapreview.com" ||
+		host == "okta-gov.com" ||
+		strings.HasSuffix(host, ".okta.com") ||
+		strings.HasSuffix(host, ".okta-emea.com") ||
+		strings.HasSuffix(host, ".oktapreview.com") ||
+		strings.HasSuffix(host, ".okta-gov.com")
 }
 
 func identityOrgKey(org *ports.IdentityOrganization) string {

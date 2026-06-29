@@ -178,7 +178,7 @@ func (s *Store) ListIdentityOrganizations(ctx context.Context, filter ports.Iden
 	addIdentityStringClause(&clauses, &args, "org_id", filter.OrgID)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
-		clauses = append(clauses, fmt.Sprintf("(LOWER(org_id) LIKE $%d OR LOWER(name) LIKE $%d OR LOWER(domain) LIKE $%d)", len(args), len(args), len(args)))
+		clauses = append(clauses, fmt.Sprintf("(LOWER(org_id) LIKE $%d OR LOWER(name) LIKE $%d OR LOWER(domain) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d OR LOWER(external_id) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
 	}
 	args = append(args, identityDirectoryLimit(filter.Limit))
 	// #nosec G201 -- clauses and selected columns are fixed identifiers; values remain query parameters.
@@ -213,7 +213,7 @@ func (s *Store) ListIdentityUsers(ctx context.Context, filter ports.IdentityUser
 	addIdentityStringClause(&clauses, &args, "user_id", filter.UserID)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
-		clauses = append(clauses, fmt.Sprintf("(LOWER(user_id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(display_name) LIKE $%d)", len(args), len(args), len(args)))
+		clauses = append(clauses, fmt.Sprintf("(LOWER(user_id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(display_name) LIKE $%d OR LOWER(subject) LIKE $%d OR LOWER(provider) LIKE $%d OR LOWER(source) LIKE $%d)", len(args), len(args), len(args), len(args), len(args), len(args)))
 	}
 	args = append(args, identityDirectoryLimit(filter.Limit))
 	// #nosec G201 -- clauses and selected columns are fixed identifiers; values remain query parameters.

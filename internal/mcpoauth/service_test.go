@@ -379,6 +379,15 @@ func TestCallbackContinuesWhenIdentityDirectoryRecordFails(t *testing.T) {
 	}
 }
 
+func TestOAuthProviderFromIssuerUsesHost(t *testing.T) {
+	if got := oauthProviderFromIssuer("https://tenant.okta.com/oauth2/default"); got != "okta" {
+		t.Fatalf("oauthProviderFromIssuer(okta issuer) = %q, want okta", got)
+	}
+	if got := oauthProviderFromIssuer("https://booktaku.example.com/oauth2/default"); got != "oidc" {
+		t.Fatalf("oauthProviderFromIssuer(non-okta issuer) = %q, want oidc", got)
+	}
+}
+
 func base16Lower(raw []byte) string {
 	const alphabet = "0123456789abcdef"
 	out := make([]byte, len(raw)*2)

@@ -220,3 +220,12 @@ func TestConfiguredEntitlementUserIDPrefersSubject(t *testing.T) {
 		t.Fatalf("configured users = %+v, want subject-derived user id", users)
 	}
 }
+
+func TestOAuthProviderUsesIssuerHost(t *testing.T) {
+	if got := oauthProvider("https://tenant.okta.com/oauth2/default"); got != "okta" {
+		t.Fatalf("oauthProvider(okta issuer) = %q, want okta", got)
+	}
+	if got := oauthProvider("https://booktaku.example.com/oauth2/default"); got != "oidc" {
+		t.Fatalf("oauthProvider(non-okta issuer) = %q, want oidc", got)
+	}
+}
