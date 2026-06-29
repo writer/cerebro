@@ -69,7 +69,9 @@ type CoverageSourceFactInput struct {
 	DimensionType  string
 	SupportLevel   string
 	HighValue      bool
+	Families       []string
 	EvidenceTypes  []string
+	ControlDomains []string
 	ControlRefs    []ControlRef
 	ProvenanceURNs []string
 	Freshness      []string
@@ -312,7 +314,7 @@ func coverageMissingDimensions(input CoverageGapExplanationInput) []CoverageMiss
 		return nil
 	}
 	for _, fact := range input.SourceFacts {
-		if strings.EqualFold(strings.TrimSpace(fact.SourceID), input.RequirementSourceID) {
+		if coverageFactSatisfiesRequirement(fact, input) {
 			return nil
 		}
 	}
@@ -327,6 +329,25 @@ func coverageMissingDimensions(input CoverageGapExplanationInput) []CoverageMiss
 		Requirement:  requirement,
 		RecoveryHint: "Connect this source dimension or assign a manual evidence owner before claiming coverage.",
 	}}
+}
+
+func coverageFactSatisfiesRequirement(fact CoverageSourceFactInput, input CoverageGapExplanationInput) bool {
+	if !strings.EqualFold(strings.TrimSpace(fact.SourceID), input.RequirementSourceID) {
+		return false
+	}
+	requiredEntity := strings.TrimSpace(input.RequirementEntityType)
+	if requiredEntity == "" {
+		return true
+	}
+	values := append([]string{fact.DimensionID, fact.DimensionType}, fact.Families...)
+	values = append(values, fact.EvidenceTypes...)
+	values = append(values, fact.ControlDomains...)
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), requiredEntity) {
+			return true
+		}
+	}
+	return false
 }
 
 func coverageFreshness(input CoverageGapExplanationInput, state CoverageExplanationState) CoverageFreshness {

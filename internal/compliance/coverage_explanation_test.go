@@ -149,6 +149,43 @@ func TestBuildCoverageGapExplanationMissingRequiredDimension(t *testing.T) {
 	}
 }
 
+func TestBuildCoverageGapExplanationSameSourceWrongDimension(t *testing.T) {
+	explanation := BuildCoverageGapExplanation(CoverageGapExplanationInput{
+		CoverageFindingContext: CoverageFindingContext{
+			FindingID:       "aws-s3-bucket-no-public-access",
+			FindingSourceID: "aws",
+			Control:         ControlRef{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+		CoverageRequirementContext: CoverageRequirementContext{
+			RequirementProfile:    "baseline-control-review",
+			RequirementSourceID:   "aws",
+			RequirementEntityType: "control_evidence_packet",
+			RequiredFields:        []string{"control_ref", "reviewer", "reviewed_at"},
+		},
+		CoverageClaimContext: CoverageClaimContext{
+			ComplianceEvidenceStatus: "partial_source_backed",
+			ClaimStatus:              "partial_source_evidence_claim",
+		},
+		CoverageEvidenceContext: CoverageEvidenceContext{SourceFacts: []CoverageSourceFactInput{{
+			SourceID:      "aws",
+			DimensionID:   "s3_bucket",
+			DimensionType: "entity_family",
+			SupportLevel:  "supported",
+			ControlRefs:   []ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}},
+		}}},
+	})
+
+	if len(explanation.MissingDimensions) != 1 {
+		t.Fatalf("MissingDimensions = %#v, want missing control evidence packet", explanation.MissingDimensions)
+	}
+	if explanation.MissingDimensions[0].Requirement != "aws/control_evidence_packet" {
+		t.Fatalf("MissingDimensions[0].Requirement = %q, want aws/control_evidence_packet", explanation.MissingDimensions[0].Requirement)
+	}
+	if explanation.EvidencePacketReadiness != "missing_required_source_dimensions" {
+		t.Fatalf("EvidencePacketReadiness = %q, want missing_required_source_dimensions", explanation.EvidencePacketReadiness)
+	}
+}
+
 func TestBuildCoverageGapExplanationControlOnly(t *testing.T) {
 	explanation := BuildCoverageGapExplanation(CoverageGapExplanationInput{
 		CoverageFindingContext: CoverageFindingContext{

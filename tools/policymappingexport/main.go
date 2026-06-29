@@ -1387,6 +1387,7 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 	}
 	uniqueReviewTags := map[string]struct{}{}
 	requirementsByControl := expandedRequirementsByControl(requirements)
+	capabilityIndex := evidenceCapabilityIndex(capabilities, index)
 
 	for _, detection := range catalog.Detections {
 		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
@@ -1403,7 +1404,7 @@ func findingReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex,
 		complianceReview := findingComplianceReviewFor(detection, index, controlRefs)
 		evidenceBackingLevel := findingEvidenceBackingLevel(complianceReview, sourceCapabilityStatus, auditDepth)
 		evidenceBackingGaps := findingEvidenceBackingGaps(controlRefs, detection.SourceCoverageRefs, complianceReview, sourceCapabilityStatus, auditDepth)
-		operationalReview := findingOperationalReviewFromExplanations(detection, controlRefs, complianceReview, sourceCapabilityStatus, requirementsByControl)
+		operationalReview := findingOperationalReviewFromExplanations(detection, controlRefs, complianceReview, sourceCapabilityStatus, requirementsByControl, capabilityIndex)
 		reviewFlags := findingReviewFlags(controlRefs, catalogTags, sourceCoverageRefs, auditDepth, complianceReview)
 		qualityIssueRows = append(qualityIssueRows, findingQualityIssueRows(detection, controlRefs, complianceTags, auditDepth, sourceCapabilityStatus)...)
 
@@ -1666,7 +1667,7 @@ func findingOperationalReviewFor(detection publicDetection, controlRefs []contro
 	}
 }
 
-func findingOperationalReviewFromExplanations(detection publicDetection, controlRefs []controlRef, review findingComplianceReview, sourceCapabilityStatus string, requirementsByControl map[string][]expandedControlEvidenceRequirement) findingOperationalReview {
+func findingOperationalReviewFromExplanations(detection publicDetection, controlRefs []controlRef, review findingComplianceReview, sourceCapabilityStatus string, requirementsByControl map[string][]expandedControlEvidenceRequirement, capabilityIndex map[string]indexedEvidenceCapability) findingOperationalReview {
 	var explanations []coverageops.CoverageGapExplanation
 	for _, ref := range controlRefs {
 		requirements := requirementsByControl[controlRefKey(ref)]
@@ -1687,7 +1688,7 @@ func findingOperationalReviewFromExplanations(detection publicDetection, control
 					ClaimStatus:              "requirement_missing",
 				},
 				CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
-					SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}),
+					SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}, capabilityIndex),
 				},
 			}))
 			continue
@@ -1695,7 +1696,7 @@ func findingOperationalReviewFromExplanations(detection publicDetection, control
 		for _, requirement := range requirements {
 			matchStatus := findingRequirementMatchStatus(detection, requirement)
 			claimStatus := findingRequirementClaimStatus(review.ComplianceEvidenceStatus, matchStatus, sourceCapabilityStatus)
-			explanations = append(explanations, coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus))
+			explanations = append(explanations, coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus, capabilityIndex))
 		}
 	}
 	return operationalReviewFromCoverageExplanations(explanations)
@@ -3634,6 +3635,7 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 	for _, item := range items {
 		byControl[controlRefKey(item.Ref)] = append(byControl[controlRefKey(item.Ref)], item)
 	}
+	capabilityIndex := evidenceCapabilityIndex(capabilitySources, index)
 	var rows [][]string
 	for _, detection := range catalog.Detections {
 		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
@@ -3643,7 +3645,7 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 			for _, item := range byControl[controlRefKey(ref)] {
 				requirementMatchStatus := findingRequirementMatchStatus(detection, item)
 				claimStatus := findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus)
-				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus)
+				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus, capabilityIndex)
 				row := []string{
 					detection.ID,
 					detection.Name,
@@ -3688,6 +3690,7 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 
 func findingComplianceTagContractRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement, sourceIndex frameworkSourceIndex) [][]string {
 	byControl := expandedRequirementsByControl(items)
+	capabilityIndex := evidenceCapabilityIndex(capabilitySources, index)
 	var rows [][]string
 	for _, detection := range catalog.Detections {
 		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
@@ -3698,7 +3701,7 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 			requirements := byControl[controlRefKey(ref)]
 			claimStatus := bestFindingRequirementClaimStatus(detection, requirements, complianceReview, sourceCapabilityStatus)
 			sourceCoverageLabels := complianceReview.SourceCoverageRefsByControlKey[controlRefKey(ref)]
-			explanation := bestCoverageExplanationForRequirements(detection, ref, requirements, complianceReview, sourceCapabilityStatus)
+			explanation := bestCoverageExplanationForRequirements(detection, ref, requirements, complianceReview, sourceCapabilityStatus, capabilityIndex)
 			for _, tag := range complianceReviewTags([]controlRef{ref}) {
 				tagSource := "control_ref"
 				if _, ok := catalogTagSet[tag]; ok {
@@ -3745,6 +3748,7 @@ func findingComplianceTagContractRows(catalog publicDetectionCatalog, index cont
 
 func coverageGapExplanationRows(catalog publicDetectionCatalog, index controlFamilyIndex, capabilitySources []evidenceCapabilitySource, items []expandedControlEvidenceRequirement) [][]string {
 	byControl := expandedRequirementsByControl(items)
+	capabilityIndex := evidenceCapabilityIndex(capabilitySources, index)
 	var rows [][]string
 	for _, detection := range catalog.Detections {
 		controlRefs := publicDetectionControlRefs(detection.ControlRefs, index)
@@ -3754,7 +3758,7 @@ func coverageGapExplanationRows(catalog publicDetectionCatalog, index controlFam
 			for _, item := range byControl[controlRefKey(ref)] {
 				requirementMatchStatus := findingRequirementMatchStatus(detection, item)
 				claimStatus := findingRequirementClaimStatus(complianceReview.ComplianceEvidenceStatus, requirementMatchStatus, sourceCapabilityStatus)
-				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus)
+				explanation := coverageExplanationForRequirement(detection, ref, item, complianceReview, sourceCapabilityStatus, claimStatus, capabilityIndex)
 				rows = append(rows, coverageGapExplanationRow(explanation, requirementMatchStatus))
 			}
 		}
@@ -3807,7 +3811,7 @@ func coverageGapExplanationRow(explanation coverageops.CoverageGapExplanation, r
 	}
 }
 
-func coverageExplanationForRequirement(detection publicDetection, ref controlRef, item expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string, claimStatus string) coverageops.CoverageGapExplanation {
+func coverageExplanationForRequirement(detection publicDetection, ref controlRef, item expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string, claimStatus string, capabilityIndex map[string]indexedEvidenceCapability) coverageops.CoverageGapExplanation {
 	return coverageops.BuildCoverageGapExplanation(coverageops.CoverageGapExplanationInput{
 		CoverageFindingContext: coverageops.CoverageFindingContext{
 			FindingID:             strings.TrimSpace(detection.ID),
@@ -3839,19 +3843,19 @@ func coverageExplanationForRequirement(detection publicDetection, ref controlRef
 			ClaimStatus:              strings.TrimSpace(claimStatus),
 		},
 		CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
-			SourceFacts:        coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, item),
+			SourceFacts:        coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, item, capabilityIndex),
 			PolicyDocumentRefs: policyDocumentRefsForRequirement(detection, item),
 		},
 	})
 }
 
-func bestCoverageExplanationForRequirements(detection publicDetection, ref controlRef, requirements []expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string) coverageops.CoverageGapExplanation {
+func bestCoverageExplanationForRequirements(detection publicDetection, ref controlRef, requirements []expandedControlEvidenceRequirement, review findingComplianceReview, sourceCapabilityStatus string, capabilityIndex map[string]indexedEvidenceCapability) coverageops.CoverageGapExplanation {
 	var best coverageops.CoverageGapExplanation
 	bestRank := 1000
 	for _, requirement := range requirements {
 		matchStatus := findingRequirementMatchStatus(detection, requirement)
 		claimStatus := findingRequirementClaimStatus(review.ComplianceEvidenceStatus, matchStatus, sourceCapabilityStatus)
-		explanation := coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus)
+		explanation := coverageExplanationForRequirement(detection, ref, requirement, review, sourceCapabilityStatus, claimStatus, capabilityIndex)
 		rank := claimStatusRank(claimStatus)
 		if best.Version == "" || rank < bestRank {
 			best = explanation
@@ -3877,7 +3881,7 @@ func bestCoverageExplanationForRequirements(detection publicDetection, ref contr
 			ClaimStatus:              "requirement_missing",
 		},
 		CoverageEvidenceContext: coverageops.CoverageEvidenceContext{
-			SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}),
+			SourceFacts: coverageSourceFactsForRequirement(detection.SourceCoverageRefs, ref, expandedControlEvidenceRequirement{}, capabilityIndex),
 		},
 	})
 }
@@ -3905,7 +3909,7 @@ func policyDocumentRefsForRequirement(detection publicDetection, item expandedCo
 	return nil
 }
 
-func coverageSourceFactsForRequirement(refs []publicDetectionSourceCoverageRef, control controlRef, item expandedControlEvidenceRequirement) []coverageops.CoverageSourceFactInput {
+func coverageSourceFactsForRequirement(refs []publicDetectionSourceCoverageRef, control controlRef, item expandedControlEvidenceRequirement, capabilityIndex map[string]indexedEvidenceCapability) []coverageops.CoverageSourceFactInput {
 	var facts []coverageops.CoverageSourceFactInput
 	requiredSource := strings.TrimSpace(item.SourceRequirement.SourceID)
 	controlKey := controlRefKey(control)
@@ -3922,14 +3926,17 @@ func coverageSourceFactsForRequirement(refs []publicDetectionSourceCoverageRef, 
 		if requiredSource != "" && !strings.EqualFold(sourceID, requiredSource) && !matchesControl {
 			continue
 		}
+		capability := capabilityIndex[sourceID+"\x00"+strings.TrimSpace(ref.DimensionID)]
 		facts = append(facts, coverageops.CoverageSourceFactInput{
-			SourceID:      sourceID,
-			DimensionID:   strings.TrimSpace(ref.DimensionID),
-			DimensionType: strings.TrimSpace(ref.DimensionType),
-			SupportLevel:  strings.TrimSpace(ref.SupportLevel),
-			HighValue:     ref.HighValue,
-			EvidenceTypes: ref.EvidenceTypes,
-			ControlRefs:   coverageControlRefs(matchedRefs),
+			SourceID:       sourceID,
+			DimensionID:    strings.TrimSpace(ref.DimensionID),
+			DimensionType:  firstNonEmpty(strings.TrimSpace(ref.DimensionType), strings.TrimSpace(capability.Dimension.DimensionType)),
+			SupportLevel:   firstNonEmpty(strings.TrimSpace(ref.SupportLevel), strings.TrimSpace(capability.Dimension.SupportLevel)),
+			HighValue:      ref.HighValue || capability.Dimension.HighValue,
+			Families:       uniqueSorted(append(append([]string{}, ref.Families...), capability.Dimension.Families...)),
+			EvidenceTypes:  uniqueSorted(append(append([]string{}, ref.EvidenceTypes...), capability.Dimension.EvidenceTypes...)),
+			ControlDomains: uniqueSorted(append(append([]string{}, ref.ControlDomains...), capability.Dimension.ControlDomains...)),
+			ControlRefs:    coverageControlRefs(matchedRefs),
 			ProvenanceURNs: []string{
 				"coverage:" + sourceCoverageRefLabel(ref),
 			},
