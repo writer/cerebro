@@ -378,10 +378,10 @@ func inferIntent(question string, cypher string) string {
 		return IntentAggregateFindingsBySource
 	case strings.Contains(haystack, "connector") || strings.Contains(haystack, "runtime health") || strings.Contains(haystack, "source health"):
 		return IntentConnectorHealth
-	case looksLikeQuestionnaireEvidenceQuestion(haystack):
-		return IntentQuestionnaireEvidence
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
+	case looksLikeQuestionnaireEvidenceQuestion(haystack):
+		return IntentQuestionnaireEvidence
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
 	default:
@@ -521,14 +521,18 @@ WHERE CASE
         ELSE false
       END
 OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel
 OPTIONAL MATCH (control:Entity {tenant_id: $tenant_id})-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
-OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
-WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
-OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control:Entity {tenant_id: $tenant_id})
-WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
-WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, finding, findingRel, exception, exceptionRel,
+WHERE supportEvidence IS NULL
+WITH DISTINCT control, control_ref, support, supportRel,
      coalesce(supportEvidence, controlEvidence) AS evidence,
      coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel
+OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
+WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel
+OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control:Entity {tenant_id: $tenant_id})
+WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
+WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel
 WITH control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
      toLower(coalesce(control.label, '') + ' ' +
              coalesce(control.source_id, '') + ' ' +
@@ -669,7 +673,7 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
 	case "policy_documents":
 		return "WHERE qauto_match_text CONTAINS 'policy' OR qauto_match_text CONTAINS 'document'"
 	case "control_coverage":
-		return "WHERE true"
+		return "WHERE qauto_match_text CONTAINS 'control' OR qauto_match_text CONTAINS 'coverage' OR qauto_match_text CONTAINS 'evidence'"
 	default:
 		return ""
 	}
