@@ -356,6 +356,21 @@ func TestBuildAddsEvidenceBackedQuestionnaireAnswers(t *testing.T) {
 	}
 }
 
+func TestEvidencePacketPolicyDocumentClassificationUsesEvidenceType(t *testing.T) {
+	for _, evidenceType := range []string{"policy_document", "policy.document", "assurance-document", "procedure document"} {
+		if !evidencePacketIsPolicyDocument(EvidencePacket{EvidenceType: evidenceType}) {
+			t.Fatalf("evidence type %q not classified as policy document", evidenceType)
+		}
+	}
+	packet := EvidencePacket{
+		EvidenceType: "source_snapshot",
+		Reason:       "Required policy document evidence is missing.",
+	}
+	if evidencePacketIsPolicyDocument(packet) {
+		t.Fatalf("source evidence classified as policy document from reason text")
+	}
+}
+
 func TestStableIDEncodesUnsafePartsWithoutLossyCollisions(t *testing.T) {
 	withSlash := stableID("control", "soc2", "CC6/1")
 	withDash := stableID("control", "soc2", "CC6-1")

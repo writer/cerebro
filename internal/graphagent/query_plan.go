@@ -545,7 +545,7 @@ WITH control, control_ref, support, supportRel, evidence, evidenceRel, finding, 
 %s
 OPTIONAL MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
 WHERE evidence_source_id <> '' AND source.source_id = evidence_source_id
-RETURN control.urn AS control_urn,
+RETURN DISTINCT control.urn AS control_urn,
        coalesce(control.label, control_ref, control.urn) AS control_label,
        control_ref,
        coalesce(control.attributes_json, '') AS control_attributes_json_internal,
@@ -558,7 +558,7 @@ RETURN control.urn AS control_urn,
        evidence.urn AS evidence_urn,
        coalesce(evidence.label, evidence.urn) AS evidence_label,
        evidence.entity_type AS evidence_type,
-       evidence.source_id AS evidence_source_id,
+       evidence_source_id,
        evidenceRel.relation AS evidence_relation,
        coalesce(evidence.attributes_json, '') AS evidence_attributes_json_internal,
        finding.urn AS finding_urn,
@@ -668,6 +668,8 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
       END`
 	case "policy_documents":
 		return "WHERE qauto_match_text CONTAINS 'policy' OR qauto_match_text CONTAINS 'document'"
+	case "control_coverage":
+		return "WHERE true"
 	default:
 		return ""
 	}

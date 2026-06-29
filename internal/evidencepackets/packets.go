@@ -1399,13 +1399,18 @@ func answerEvidenceRefs(packets []EvidencePacket, itemsByEvidenceID map[string]E
 }
 
 func evidencePacketIsPolicyDocument(packet EvidencePacket) bool {
-	for _, value := range []string{packet.EvidenceType, packet.Reason} {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "policy_document" || value == "policy.document" || value == "assurance_document" || value == "assurance.document" || strings.Contains(value, "policy_document") || strings.Contains(value, "policy document") || strings.Contains(value, "assurance_document") || strings.Contains(value, "assurance document") {
-			return true
-		}
+	switch normalizedEvidenceType(packet.EvidenceType) {
+	case "policy", "policy_document", "assurance_document", "procedure_document", "standard_document":
+		return true
+	default:
+		return false
 	}
-	return false
+}
+
+func normalizedEvidenceType(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer(".", "_", "-", "_", " ", "_").Replace(value)
+	return strings.Trim(value, "_")
 }
 
 func answerState(request EvidenceRequest, packets []EvidencePacket, gaps []QuestionnaireEvidenceGap, reviewState string) string {

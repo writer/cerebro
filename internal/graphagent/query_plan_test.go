@@ -346,6 +346,8 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"relation: 'has_evidence'",
 		"qauto_match_text CONTAINS 'okta'",
 		"qauto_match_text CONTAINS 'mfa'",
+		"RETURN DISTINCT control.urn AS control_urn",
+		"evidence_source_id,",
 		"source_attributes_json_internal",
 		"exception_attributes_json_internal",
 		"finding_attributes_json_internal",
@@ -391,7 +393,7 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: "qauto_match_text CONTAINS 'access'"},
 		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: "qauto_match_text CONTAINS 'lifecycle'"},
 		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy'"},
-		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: "control_policy_type = 'control'"},
+		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: "WHERE true"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: tt.question}, true)
