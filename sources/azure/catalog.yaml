@@ -513,11 +513,38 @@ coverage_contract:
     - id: ad_authorization_policy
       type: entity_family
       title: Azure authorization policy
-      families: [authorization_policy]
+      families: [admin_consent, authorization_policy, external_user, guest_access, user_consent, user_permission]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: authentication_methods_policy
       type: entity_family
       title: Azure authentication methods policy
@@ -556,11 +583,34 @@ coverage_contract:
     - id: app_role_assignment
       type: app_entitlement
       title: Azure app role assignments
-      families: [app_role_assignment]
+      families: [app_role_assignment, app_role, service_principal_role]
       support: supported
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: application
       type: entity_family
       title: Azure applications
@@ -685,19 +735,63 @@ coverage_contract:
     - id: directory_audit
       type: audit_event
       title: Azure directory audits
-      families: [directory_audit]
+      families: [audit, conditional_access_policy, directory_audit, identity_audit, policy_change, role_change]
       support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-4
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
     - id: directory_role_assignment
       type: app_entitlement
       title: Azure directory role assignments
-      families: [directory_role_assignment]
+      families: [admin_role, directory_role_assignment, global_admin, pim, privileged, privileged_access, privileged_role, role_assignment]
       support: supported
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.2
     - id: effective_permission
       type: app_entitlement
       title: Azure effective permissions
@@ -738,14 +832,44 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: group_membership
       type: relationship
       title: Azure group memberships
-      families: [group_membership]
+      families: [external_member, group_member, group_membership, membership]
       support: supported
       high_value: true
-      evidence_types: [relationship_evidence]
-      control_domains: [asset_inventory]
+      evidence_types: [access_review, identity_configuration, relationship_evidence]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: iam_role_assignment
       type: app_entitlement
       title: Azure RBAC role assignments
@@ -941,11 +1065,38 @@ coverage_contract:
     - id: service_principal
       type: entity_family
       title: Azure service principals
-      families: [service_principal, azure_ad_service_principal]
+      families: [active_account, app_identity, azure_ad_service_principal, service_principal, stale_login, workload_identity]
       support: supported
       high_value: true
       evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
       control_domains: [asset_inventory, data_protection, identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
     - id: sql_database
       type: entity_family
       title: Azure SQL databases
@@ -1030,11 +1181,44 @@ coverage_contract:
     - id: user
       type: entity_family
       title: Azure users
-      families: [user, azure_ad_user]
+      families: [active_account, azure_ad_user, dormant_user, employee_record, external_user, last_login, never_logged_in, personal_email, stale_login, terminated_account, user]
       support: supported
       high_value: true
-      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      evidence_types: [access_review, cloud_configuration, identity_configuration, source_snapshot]
       control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: PS-4
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.1.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.11
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.16
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.6.5
     - id: virtual_machine
       type: entity_family
       title: Azure virtual machines
