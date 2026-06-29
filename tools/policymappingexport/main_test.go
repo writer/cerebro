@@ -409,15 +409,19 @@ func TestGenerateFilesIncludesCoverageGapExplanations(t *testing.T) {
 		requirementSourceCol: "email_domain_health",
 	})
 	assertCellEquals(t, header, emailRow, "coverage_state", "source_backed")
-	assertCellContains(t, header, emailRow, "graph_evidence", "supported_by_source_fact")
+	assertCellContains(t, header, emailRow, "graph_evidence", "observes_dimension")
+	assertCellContains(t, header, emailRow, "graph_evidence", "cites_graph_provenance")
 	assertCellContains(t, header, emailRow, "bounded_evidence", "email_domain_health/email_authentication_posture")
 	assertCellContains(t, header, emailRow, "source_citations", "source_fact:email_domain_health/email_authentication_posture")
 	assertCellContains(t, header, emailRow, "freshness", "status=freshness_requirement_defined")
 	assertCellEquals(t, header, emailRow, "confidence", "high")
 	assertCellEquals(t, header, emailRow, "unsupported_claims", "")
 	assertCellEquals(t, header, emailRow, "evidence_packet_readiness", "ready_for_packet")
+	assertCellContains(t, header, emailRow, "adjacent_control_rationale", "mail-domain control")
 	assertCellContains(t, header, emailRow, "llm_question", "Why is NIST SP 800-177 TLS-MAIL coverage source_backed")
 	assertCellContains(t, header, emailRow, "llm_answer_basis", "bounded_evidence=2")
+	assertCellContains(t, header, emailRow, "llm_next_action", "Package runtime evidence")
+	assertCellContains(t, header, emailRow, "llm_overclaim_guard", "Do not claim full trustworthy email coverage")
 
 	reviewRow := findRowByColumns(t, rows, map[int]string{
 		findingCol:           "email-domain-authentication-misconfigured",

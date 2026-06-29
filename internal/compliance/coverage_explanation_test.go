@@ -52,8 +52,11 @@ func TestBuildCoverageGapExplanationSourceBacked(t *testing.T) {
 	if len(explanation.GraphPath) < 4 {
 		t.Fatalf("GraphPath = %#v, want finding/source/control/requirement path", explanation.GraphPath)
 	}
-	if len(explanation.GraphEvidence) != len(explanation.GraphPath) {
-		t.Fatalf("GraphEvidence = %#v, want graph path projection", explanation.GraphEvidence)
+	if len(explanation.GraphEvidence) == 0 || len(explanation.GraphEvidence) == len(explanation.GraphPath) {
+		t.Fatalf("GraphEvidence = %#v GraphPath = %#v, want distinct source evidence facts", explanation.GraphEvidence, explanation.GraphPath)
+	}
+	if !coverageGraphFactsContain(explanation.GraphEvidence, "observes_dimension") || !coverageGraphFactsContain(explanation.GraphEvidence, "cites_graph_provenance") {
+		t.Fatalf("GraphEvidence = %#v, want source dimension and provenance facts", explanation.GraphEvidence)
 	}
 	if len(explanation.SourceCitations) != 1 {
 		t.Fatalf("SourceCitations = %#v, want one citation", explanation.SourceCitations)
@@ -79,6 +82,15 @@ func TestBuildCoverageGapExplanationSourceBacked(t *testing.T) {
 			t.Fatalf("marshaled explanation missing %s: %s", want, content)
 		}
 	}
+}
+
+func coverageGraphFactsContain(facts []CoverageGraphFact, relation string) bool {
+	for _, fact := range facts {
+		if fact.Relation == relation {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuildCoverageGapExplanationMissingRequiredDimension(t *testing.T) {

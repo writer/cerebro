@@ -196,6 +196,7 @@ func BuildCoverageGapExplanation(input CoverageGapExplanationInput) CoverageGapE
 	readiness := coveragePacketReadiness(state, missing)
 	owner := coverageOwner(input)
 	graphPath := coverageGraphPath(input)
+	graphEvidence := coverageGraphEvidence(input)
 	evidence := coverageEvidenceFacts(input.SourceFacts)
 	sourceCitations := coverageSourceCitations(input)
 	policyCitations := coveragePolicyCitations(input)
@@ -226,7 +227,7 @@ func BuildCoverageGapExplanation(input CoverageGapExplanationInput) CoverageGapE
 			ClaimStatus:              input.ClaimStatus,
 		},
 		CoverageGapEvidence: CoverageGapEvidence{
-			GraphEvidence:     graphPath,
+			GraphEvidence:     graphEvidence,
 			GraphPath:         graphPath,
 			BoundedEvidence:   evidence,
 			SourceCitations:   sourceCitations,
@@ -460,6 +461,31 @@ func coverageGraphPath(input CoverageGapExplanationInput) []CoverageGraphFact {
 		steps = append(steps, CoverageGraphFact{From: nodeID("requirement", input.ClaimRuleID), Relation: "requires_source_dimension", To: nodeID("source_requirement", input.RequirementSourceID+"/"+input.RequirementEntityType), Basis: strings.Join(input.RequiredFields, "; ")})
 	}
 	return steps
+}
+
+func coverageGraphEvidence(input CoverageGapExplanationInput) []CoverageGraphFact {
+	facts := []CoverageGraphFact{}
+	for _, sourceFact := range input.SourceFacts {
+		sourceNode := nodeID("source_fact", sourceFactLabel(sourceFact))
+		dimensionNode := nodeID("source_dimension", sourceFact.SourceID+"/"+sourceFact.DimensionID)
+		if sourceNode != "" && dimensionNode != "" {
+			facts = append(facts, CoverageGraphFact{From: sourceNode, Relation: "observes_dimension", To: dimensionNode, Basis: strings.Join(sourceFact.EvidenceTypes, "; ")})
+		}
+		for _, urn := range sourceFact.ProvenanceURNs {
+			if sourceNode == "" || strings.TrimSpace(urn) == "" {
+				continue
+			}
+			facts = append(facts, CoverageGraphFact{From: sourceNode, Relation: "cites_graph_provenance", To: strings.TrimSpace(urn), Basis: strings.Join(sourceFact.Freshness, "; ")})
+		}
+	}
+	controlNode := nodeID("control", controlRefLabel(input.Control))
+	for _, ref := range input.PolicyDocumentRefs {
+		if controlNode == "" || strings.TrimSpace(ref) == "" {
+			continue
+		}
+		facts = append(facts, CoverageGraphFact{From: controlNode, Relation: "requires_policy_document", To: strings.TrimSpace(ref), Basis: "policy document evidence"})
+	}
+	return facts
 }
 
 func coverageEvidenceFacts(sourceFacts []CoverageSourceFactInput) []CoverageEvidenceFact {
