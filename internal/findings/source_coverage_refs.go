@@ -53,6 +53,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			continue
 		}
 		sourceMatched := sourceMatchesDetection(detection, sourceID, searchText)
+		sourceConflicted := coverageSourceConflictsWithPolicyDetection(detection.SourceID, sourceID, searchText)
 		for _, dimension := range contract.Dimensions {
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
@@ -66,7 +67,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				coverageRefs = effectiveCoverageControlRefs(dimension)
 			}
 			matches, exactControlMatch := matchingCoverageControlRefs(detection.ControlRefs, coverageRefs)
-			if len(matches) == 0 || !coverageControlMatchAllowed(sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
+			if len(matches) == 0 || sourceConflicted || !coverageControlMatchAllowed(detection.SourceID, sourceMatched, dimensionMatched, evidenceMatched, exactControlMatch) {
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
@@ -175,14 +176,59 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 	return score + matchedControls
 }
 
-func coverageControlMatchAllowed(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
+func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {
 	if !sourceMatched && !dimensionMatched {
+		return false
+	}
+	if strings.TrimSpace(detectionSourceID) == policyRuleSourceID && !dimensionMatched {
 		return false
 	}
 	if !exactControlMatch && !dimensionMatched && !evidenceMatched {
 		return false
 	}
 	return true
+}
+
+func coverageSourceConflictsWithPolicyDetection(detectionSourceID string, coverageSourceID string, searchText string) bool {
+	if strings.TrimSpace(detectionSourceID) != policyRuleSourceID {
+		return false
+	}
+	return cloudProviderCoverageSourceConflicts(coverageSourceID, searchText)
+}
+
+var cloudProviderCoverageAliases = map[string][]string{
+	"aws":   {"aws", "amazon_web_services"},
+	"azure": {"azure", "microsoft_azure"},
+	"gcp":   {"gcp", "google_cloud", "google_cloud_platform"},
+}
+
+func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {
+	sourceID := normalizeCoverageText(coverageSourceID)
+	aliases, ok := cloudProviderCoverageAliases[sourceID]
+	if !ok {
+		return false
+	}
+	if coverageTextContainsAny(searchText, aliases) {
+		return false
+	}
+	for provider, providerAliases := range cloudProviderCoverageAliases {
+		if provider == sourceID {
+			continue
+		}
+		if coverageTextContainsAny(searchText, providerAliases) {
+			return true
+		}
+	}
+	return false
+}
+
+func coverageTextContainsAny(searchText string, values []string) bool {
+	for _, value := range values {
+		if coverageTextContains(searchText, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func appendUniqueMatchedCoverageRefs(base []ports.FindingControlRef, next []ports.FindingControlRef) []ports.FindingControlRef {

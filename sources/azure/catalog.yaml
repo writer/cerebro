@@ -449,11 +449,14 @@ coverage_contract:
     - id: aks_cluster
       type: entity_family
       title: Azure AKS clusters
-      families: [aks_cluster]
+      families: [aks_cluster, aks, containerservice_managed_cluster]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, network_exposure, security_monitoring, source_snapshot]
+      control_domains: [asset_inventory, cloud_security, identity_access, network_security, security_operations]
+      control_refs:
+        - framework_name: CIS Benchmarks
+          control_id: "5.1.1"
     - id: aks_node
       type: entity_family
       title: Azure AKS nodes and node pools
@@ -465,11 +468,11 @@ coverage_contract:
     - id: app_service
       type: entity_family
       title: Azure App Service apps
-      families: [app_service]
+      families: [app_service, app_service_web_app]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, data_protection, network_security]
     - id: app_role_assignment
       type: app_entitlement
       title: Azure app role assignments
@@ -546,11 +549,11 @@ coverage_contract:
     - id: cosmos_account
       type: entity_family
       title: Azure Cosmos DB accounts
-      families: [cosmos_account]
+      families: [cosmos_account, cosmosdb, cosmosdb_account]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, cloud_security, identity_access, network_security]
     - id: cosmos_postgresql
       type: entity_family
       title: Azure Cosmos DB for PostgreSQL
@@ -562,11 +565,11 @@ coverage_contract:
     - id: credential
       type: entity_family
       title: Azure application and service principal credentials
-      families: [credential]
+      families: [credential, service_principal_credential, sp_credential]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection, identity_access]
     - id: database
       type: entity_family
       title: Azure database services
@@ -658,19 +661,19 @@ coverage_contract:
     - id: key_vault
       type: entity_family
       title: Azure Key Vaults
-      families: [key_vault]
+      families: [key_vault, keyvault, keyvault_vault, key_vault_vault]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, identity_configuration, network_exposure, resilience_control, source_snapshot]
+      control_domains: [asset_inventory, availability_resilience, data_protection, identity_access, network_security]
     - id: key_vault_key
       type: entity_family
       title: Azure Key Vault keys
-      families: [key_vault_key]
+      families: [key_vault_key, keyvault_key]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection]
     - id: key_vault_secret
       type: entity_family
       title: Azure Key Vault secrets
@@ -706,11 +709,11 @@ coverage_contract:
     - id: managed_disk
       type: entity_family
       title: Azure managed disks
-      families: [managed_disk]
+      families: [managed_disk, vm_disk, virtual_machine_disk]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection]
     - id: metric_alert_rule
       type: entity_family
       title: Azure metric alert rules
@@ -722,11 +725,11 @@ coverage_contract:
     - id: defender_config
       type: entity_family
       title: Microsoft Defender for Cloud configuration
-      families: [defender_config, security_setting]
+      families: [defender_config, security_setting, aks_defender]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, security_monitoring, source_snapshot]
+      control_domains: [asset_inventory, cloud_security, security_operations]
     - id: network_security_group
       type: entity_family
       title: Azure Network Security Groups
@@ -738,11 +741,11 @@ coverage_contract:
     - id: postgresql_server
       type: entity_family
       title: Azure PostgreSQL servers
-      families: [postgresql_server, postgresql_firewall_rule]
+      families: [postgresql_server, postgresql_firewall_rule, azure_postgresql]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, data_protection, network_security]
     - id: public_ip_address
       type: entity_family
       title: Azure public IP addresses
@@ -810,19 +813,19 @@ coverage_contract:
     - id: service_principal
       type: entity_family
       title: Azure service principals
-      families: [service_principal]
+      families: [service_principal, azure_ad_service_principal]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection, identity_access]
     - id: sql_database
       type: entity_family
       title: Azure SQL databases
-      families: [sql_database]
+      families: [sql_database, azure_sql_database]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection]
     - id: sql_managed_instance
       type: entity_family
       title: Azure SQL managed instances
@@ -834,11 +837,11 @@ coverage_contract:
     - id: sql_server
       type: entity_family
       title: Azure SQL servers
-      families: [sql_server]
+      families: [sql_server, azure_sql_server]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
     - id: sql_server_on_virtual_machine
       type: entity_family
       title: Azure SQL Server on virtual machines
@@ -850,11 +853,11 @@ coverage_contract:
     - id: storage_account
       type: entity_family
       title: Azure Storage accounts
-      families: [storage_account]
+      families: [storage_account, azure_storage_account]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, identity_configuration, network_exposure, source_snapshot]
+      control_domains: [asset_inventory, data_protection, identity_access, network_security]
     - id: storage_blob
       type: entity_family
       title: Azure Storage blobs
@@ -899,19 +902,19 @@ coverage_contract:
     - id: user
       type: entity_family
       title: Azure users
-      families: [user]
+      families: [user, azure_ad_user]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, identity_configuration, source_snapshot]
+      control_domains: [asset_inventory, identity_access]
     - id: virtual_machine
       type: entity_family
       title: Azure virtual machines
-      families: [virtual_machine]
+      families: [virtual_machine, compute_virtual_machine]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [cloud_configuration, encryption_configuration, source_snapshot]
+      control_domains: [asset_inventory, data_protection]
     - id: virtual_machine_extension
       type: entity_family
       title: Azure virtual machine extensions

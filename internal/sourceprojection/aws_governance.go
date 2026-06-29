@@ -7,6 +7,34 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func awsAccountContactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	accountID := firstNonEmpty(awsAccountID(attributes["account_id"]), awsAccountID(attributes["resource_id"]), awsAccountID(attributes["domain"]))
+	accountURN := cloudAccountURN(tenantID, accountID)
+	if accountURN == "" {
+		return nil, nil, nil
+	}
+	accountAttributes := compactAttributes(cloneStringMap(attributes))
+	accountAttributes["account_id"] = accountID
+	accountAttributes["provider"] = "aws"
+	accountAttributes["resource_provider"] = "aws"
+	accountAttributes["resource_type"] = "aws_account"
+	entities := map[string]*ports.ProjectedEntity{}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        accountURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "cloud.account",
+		Label:      accountID,
+		Attributes: accountAttributes,
+	})
+	return identityProjectionResult(entities, nil)
+}
+
 func awsSSOAccountAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

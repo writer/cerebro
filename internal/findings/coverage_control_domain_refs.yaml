@@ -75,6 +75,18 @@ control_domains:
     - { framework_name: "CIS Controls v8", control_id: "3" }
     - { framework_name: "PCI DSS v4.0.1", control_id: "3.5" }
     - { framework_name: "ISO 27001:2022", control_id: "A.8.24" }
+  availability_resilience:
+    - { framework_name: "SOC 2", control_id: "A1.1" }
+    - { framework_name: "SOC 2", control_id: "A1.2" }
+    - { framework_name: "SOC 2", control_id: "A1.3" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CP-2" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CP-4" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CP-9" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CP-10" }
+    - { framework_name: "CIS Controls v8", control_id: "11" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.30" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.13" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.14" }
   logging_monitoring:
     - { framework_name: "SOC 2", control_id: "CC7.1" }
     - { framework_name: "SOC 2", control_id: "CC7.2" }

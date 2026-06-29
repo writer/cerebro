@@ -30,22 +30,21 @@ import (
 	"github.com/aws/smithy-go"
 
 	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/sources/internal/awscloud"
 )
 
 type secretsmanagertypesSecret = secretsmanagertypes.SecretListEntry
 
 type awsS3Bucket struct {
-	Bucket            s3types.Bucket
-	Name              string
-	ARN               string
-	Region            string
-	Tags              map[string]string
-	Encryption        string
-	KMSKeyID          string
-	BucketKeyEnabled  bool
-	Versioning        string
-	LoggingEnabled    bool
-	PublicAccessBlock *s3types.PublicAccessBlockConfiguration
+	Bucket                          s3types.Bucket
+	Name, ARN, Region               string
+	Tags                            map[string]string
+	Encryption                      string
+	KMSKeyID                        string
+	BucketKeyEnabled                bool
+	Versioning, VersioningMFADelete string
+	LoggingEnabled                  bool
+	PublicAccessBlock               *s3types.PublicAccessBlockConfiguration
 }
 
 type awsRDSInstance struct {
@@ -127,6 +126,7 @@ func listS3Buckets(ctx context.Context, clients awsClients, settings settings, _
 		}
 		if versioning, err := bucketS3.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Versioning = string(versioning.Status)
+			record.VersioningMFADelete = string(versioning.MFADelete)
 		} else if !optionalAWSError(err, "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket versioning %q: %w", name, err)
 		}
@@ -373,6 +373,8 @@ func s3BucketEvent(settings settings, record awsS3Bucket) (*primitives.Event, er
 	attributes["kms_key_id"] = record.KMSKeyID
 	attributes["bucket_key_enabled"] = boolString(record.BucketKeyEnabled)
 	attributes["versioning"] = record.Versioning
+	attributes["versioning_mfa_delete"] = record.VersioningMFADelete
+	attributes["versioning_status"] = record.Versioning
 	attributes["logging"] = boolString(record.LoggingEnabled)
 	attributes["public"] = boolString(public)
 	attributes["internet_exposed"] = boolString(public)
@@ -380,7 +382,7 @@ func s3BucketEvent(settings settings, record awsS3Bucket) (*primitives.Event, er
 	attributes["block_public_policy"] = boolString(s3PublicBlockBool(record.PublicAccessBlock, "block_public_policy"))
 	attributes["ignore_public_acls"] = boolString(s3PublicBlockBool(record.PublicAccessBlock, "ignore_public_acls"))
 	attributes["restrict_public_buckets"] = boolString(s3PublicBlockBool(record.PublicAccessBlock, "restrict_public_buckets"))
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": record.Region, "bucket": record.Bucket, "tags": record.Tags})
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": record.Region, "bucket": record.Bucket, "tags": record.Tags, "versioning": map[string]string{"mfa_delete": record.VersioningMFADelete, "status": record.Versioning}})
 	if err != nil {
 		return nil, err
 	}
@@ -600,21 +602,7 @@ func ecrPublicRepositoryEvent(settings settings, record awsECRPublicRepository) 
 }
 
 func commonCloudAssetAttributes(settings settings, region string, family string, resourceID string, resourceName string, resourceType string, tags map[string]string) map[string]string {
-	env := tagLookup(tags, "environment", "env", "stage")
-	return map[string]string{
-		"domain":            settings.accountID,
-		"env":               env,
-		"environment":       env,
-		"family":            family,
-		"owner":             tagLookup(tags, "owner", "application_owner", "business_owner", "service_owner"),
-		"region":            firstNonEmpty(region, settings.region),
-		"resource_id":       resourceID,
-		"resource_name":     resourceName,
-		"resource_provider": "aws",
-		"resource_type":     resourceType,
-		"tags":              encodeAWSTags(tags),
-		"team":              tagLookup(tags, "team", "squad", "group"),
-	}
+	return awscloud.AssetAttributes(settings.accountID, settings.region, region, family, resourceID, resourceName, resourceType, tags)
 }
 
 func s3BucketARN(name string) string {

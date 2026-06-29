@@ -44,12 +44,16 @@ type CredentialReportRow struct {
 	Values        map[string]string
 }
 
-func Families[S any, C any](clientFactory func(context.Context, S) (C, error), iamFromClients func(C) any, accountID func(S) string) []sourcecdk.Family[S] {
-	return []sourcecdk.Family[S]{
+func Families[S any, C any](clientFactory func(context.Context, S) (C, error), iamFromClients func(C) any, accountFromClients func(C) any, accountID func(S) string) []sourcecdk.Family[S] {
+	families := []sourcecdk.Family[S]{
 		family(clientFactory, iamFromClients, accountID, familyAccountSummary, "aws iam account summary", listAccountSummary, accountSummaryEvent, accountSummaryURN),
 		family(clientFactory, iamFromClients, accountID, familyAccountPasswordPolicy, "aws iam account password policy", listAccountPasswordPolicy, accountPasswordPolicyEvent, accountPasswordPolicyURN),
 		family(clientFactory, iamFromClients, accountID, familyCredentialReport, "aws iam credential report", listCredentialReport, credentialReportEvent, credentialReportURN),
 	}
+	if accountFromClients != nil {
+		families = append(families, accountContactFamily(clientFactory, accountFromClients, accountID))
+	}
+	return families
 }
 
 func family[S any, C any, T any](clientFactory func(context.Context, S) (C, error), iamFromClients func(C) any, accountID func(S) string, name string, label string, list func(context.Context, iamClient) ([]T, error), build func(string, T) (eventSpec, error), urn func(string, T) string) sourcecdk.Family[S] {

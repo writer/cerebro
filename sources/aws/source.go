@@ -21,6 +21,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	accountsvc "github.com/aws/aws-sdk-go-v2/service/account"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
@@ -31,6 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -102,6 +104,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/sources/internal/awsaccount"
 	"github.com/writer/cerebro/sources/internal/awsappsync"
+	"github.com/writer/cerebro/sources/internal/awscloudformation"
 	"github.com/writer/cerebro/sources/internal/awsnetwork"
 	"github.com/writer/cerebro/sources/internal/textutil"
 )
@@ -122,6 +125,7 @@ const (
 	awsAssumeRoleSessionName                 = "cerebro-source-runtime"
 	familyAccessKey                          = "access_key"
 	familyACMCertificate                     = "acm_certificate"
+	familyAccountContact                     = awsaccount.FamilyAccountContact
 	familyAppRunnerService                   = "apprunner_service"
 	familyAppSyncGraphQLAPI                  = "appsync_graphql_api"
 	familyAssetMetadata                      = "asset_metadata"
@@ -137,6 +141,7 @@ const (
 	familyBedrockProvisionedModelThroughput  = "bedrock_provisioned_model_throughput"
 	familyCodeBuildProject                   = "codebuild_project"
 	familyCodeBuildSourceCredential          = "codebuild_source_credential"
+	familyCloudFormationStack                = awscloudformation.FamilyStack
 	familyCloudTrail                         = "cloudtrail"
 	familyCloudWatchAlarm                    = "cloudwatch_alarm"
 	familyCloudWatchLogGroup                 = "cloudwatch_log_group"
@@ -333,8 +338,10 @@ type awsACMAPI interface {
 type awsPlatformClients struct {
 	cfg             awssdk.Config
 	acm             awsACMAPI
+	account         awsaccount.AccountClient
 	iam             awsIAMAPI
 	cloudTrail      awsCloudTrailAPI
+	cloudFormation  awscloudformation.Client
 	ec2             awsEC2API
 	route53         awsRoute53API
 	route53Resolver awsRoute53ResolverAPI
@@ -2637,7 +2644,10 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		}),
 	} // awscollectorgen:family-register
 	families = append(families, awsSecurityFamilies(s.clients)...)
-	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(settings settings) string { return settings.accountID })...)
+	families = append(families, awsaccount.Families(s.clients, func(clients awsClients) any { return clients.iam }, func(clients awsClients) any { return clients.account }, func(settings settings) string { return settings.accountID })...)
+	families = append(families, awscloudformation.Family(s.clients, func(clients awsClients) any { return clients.cloudFormation }, func(settings settings) awscloudformation.Settings {
+		return awscloudformation.Settings{AccountID: settings.accountID, Region: settings.region}
+	}))
 	return sourcecdk.NewFamilyEngineWithSourceID("aws", parseSettings, func(settings settings) string { return settings.family }, families...)
 }
 
@@ -2732,8 +2742,10 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		awsPlatformClients: awsPlatformClients{
 			cfg:             cfg,
 			acm:             acm.NewFromConfig(cfg),
+			account:         accountsvc.NewFromConfig(cfg),
 			iam:             iam.NewFromConfig(cfg),
 			cloudTrail:      cloudtrail.NewFromConfig(cfg),
+			cloudFormation:  cloudformation.NewFromConfig(cfg),
 			ec2:             ec2.NewFromConfig(cfg),
 			route53:         route53.NewFromConfig(cfg),
 			route53Resolver: route53resolver.NewFromConfig(cfg),
@@ -2872,7 +2884,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAccessAnalyzer, familyACMCertificate, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyBedrockCustomModel, familyBedrockProvisionedModelThroughput, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySageMakerEndpointConfig, familySageMakerModel, familySageMakerModelPackageGroup, familySageMakerNotebookInstance, familySageMakerTrainingJob, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyEFSMountTarget, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster: // awscollectorgen:normalize-families
+	case familyAccessAnalyzer, familyACMCertificate, familyAccountContact, familyAPIGatewayInteg, familyAPIGatewayMethod, familyAPIGatewayRestAPI, familyAPIGatewayRoute, familyAPIGatewayStage, familyAppRunnerService, familyAppSyncGraphQLAPI, familyAssetMetadata, familyAthenaDataCatalog, familyAthenaWorkgroup, familyBatchComputeEnv, familyBatchJobQueue, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyBackupVault, familyBedrockCustomModel, familyBedrockProvisionedModelThroughput, familyCodeBuildProject, familyCodeBuildSourceCredential, familyCloudFormationStack, familyCloudFrontDistribution, familyCloudFrontKeyGroup, familyCloudFrontOAC, familyCloudFrontPublicKey, familyCloudFrontRHP, familyCloudTrail, familyCloudWatchAlarm, familyCloudWatchLogGroup, familyConfigRecorder, familyDataSyncLocation, familyDataSyncTask, familyEBSSnapshot, familyEBSVolume, familyEC2EBSEncryptionByDefault, familyEC2AMI, familyEC2Instance, familyVPC, familySubnet, familySecurityGroup, familyRouteTable, familyNetworkACL, familyInternetGateway, familyNATGateway, familyVPCFlowLog, familyVPCEndpoint, familyECRPublicRepository, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyELBV2LoadBalancer, familyELBV2Listener, familyELBV2TargetGroup, familyEventBridgeArchive, familyEventBridgeBus, familyEventBridgePipe, familyEventBridgeRule, familyFirehoseDelivery, familyGAEndpointGroup, familyGAListener, familyGlobalAccelerator, familyGlueCrawler, familyGlueDatabase, familyGlueJob, familyGlueTable, familyGuardDutyDetector, familyGuardDutyFinding, "iam_account_password_policy", "iam_account_summary", "iam_credential_report", familyIAMGroup, familyIAMPolicy, familyIAMRole, familyIAMRoleTrust, familyIAMSAMLProvider, familyIAMUser, familyIdentityCenterAssignment, familyIdentityCenterPermission, familyIdentityStoreGroup, familyIdentityStoreMember, familyIdentityStoreUser, familyInspector2Finding, familyKinesisStream, familyKMSKey, familyLakeFormationLFTag, familyLakeFormationPerm, familyLakeFormationRes, familyLambdaFunction, familyMacie2Finding, familyMSKCluster, familyNetworkFirewall, familyOrganizationsAcct, familyOrganizationsOU, familyOrganizationsPolicy, familyPublicEndpoint, familyRDSDBSnapshot, familyRDSInstance, familyResourceExposure, familyRoute53ResolverEndpoint, familyRoute53ResolverRule, familyS3AccessPoint, familyS3Bucket, familyS3MultiRegionAccessPoint, familySageMakerEndpointConfig, familySageMakerModel, familySageMakerModelPackageGroup, familySageMakerNotebookInstance, familySageMakerTrainingJob, familySchedulerGroup, familySchedulerSchedule, familySecret, familySecurityHubFinding, familySNSTopic, familySQSQueue, familySSMAssociation, familySSMDocument, familySSMManagedInstance, familySSMParameter, familySSOAssignment, familySSOInstance, familySSOPermissionSet, familyStepFunctionActivity, familyStepFunctionStateMachine, familyVPCLatticeListener, familyVPCLatticeService, familyVPCLatticeTG, familyWAFV2WebACL, familyDynamoDBBackup, familyDynamoDBStream, familyDynamoDBTable, familyEFSAccessPoint, familyEFSFileSystem, familyEFSMountTarget, familyOrganizationsRoot, familyElastiCacheCluster, familyElastiCacheReplicationGroup, familyElastiCacheSubnetGroup, familyFSxFileSystem, familyOpenSearchDomain, familyOpenSearchServerlessCollection, familyOpenSearchServerlessSecurityPolicy, familyDocDBCluster, familyDocDBInstance, familyNeptuneCluster, familyNeptuneInstance, familyRedshiftCluster: // awscollectorgen:normalize-families
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName

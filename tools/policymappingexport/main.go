@@ -25,6 +25,7 @@ const frameworkReviewAreasPath = "internal/compliance/framework_review_areas.yam
 const controlRelationshipsPath = "internal/compliance/control_relationships.yaml"
 const evidenceCapabilitiesPath = "internal/compliance/evidence_capabilities.yaml"
 const controlEvidenceRequirementsPath = "internal/compliance/control_evidence_requirements.yaml"
+const coverageControlDomainRefsPath = "internal/findings/coverage_control_domain_refs.yaml"
 const publicDetectionCatalogPath = "internal/findings/public_detection_catalog.json"
 
 type policyRuleExtensions struct {
@@ -186,6 +187,15 @@ type controlEvidenceClaimRule struct {
 type yamlControlRef struct {
 	Framework string `yaml:"framework"`
 	ControlID string `yaml:"control_id"`
+}
+
+type coverageControlDomainRefCatalog struct {
+	ControlDomains map[string][]coverageControlDomainRef `yaml:"control_domains"`
+}
+
+type coverageControlDomainRef struct {
+	FrameworkName string `yaml:"framework_name"`
+	ControlID     string `yaml:"control_id"`
 }
 
 type complianceControlCatalog struct {
@@ -382,6 +392,11 @@ func generateFiles(root string) ([]generatedFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	domainControlRefs, err := loadCoverageControlDomainRefs(root)
+	if err != nil {
+		return nil, err
+	}
+	evidenceCapabilities = enrichEvidenceCapabilitiesWithDomainRefs(evidenceCapabilities, domainControlRefs)
 	controlEvidenceRequirements, err := loadControlEvidenceRequirements(root)
 	if err != nil {
 		return nil, err
@@ -614,6 +629,75 @@ func loadEvidenceCapabilities(root string) ([]evidenceCapabilitySource, error) {
 		return nil, fmt.Errorf("decode %s: %w", evidenceCapabilitiesPath, err)
 	}
 	return catalog.Sources, nil
+}
+
+func loadCoverageControlDomainRefs(root string) (map[string][]yamlControlRef, error) {
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(coverageControlDomainRefsPath)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", coverageControlDomainRefsPath, err)
+	}
+	var catalog coverageControlDomainRefCatalog
+	if err := yaml.Unmarshal(content, &catalog); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", coverageControlDomainRefsPath, err)
+	}
+	refs := map[string][]yamlControlRef{}
+	for domain, domainRefs := range catalog.ControlDomains {
+		domain = strings.TrimSpace(domain)
+		if domain == "" {
+			continue
+		}
+		for _, ref := range domainRefs {
+			framework := strings.TrimSpace(ref.FrameworkName)
+			controlID := strings.TrimSpace(ref.ControlID)
+			if framework == "" || controlID == "" {
+				continue
+			}
+			refs[domain] = append(refs[domain], yamlControlRef{Framework: framework, ControlID: controlID})
+		}
+	}
+	return refs, nil
+}
+
+func enrichEvidenceCapabilitiesWithDomainRefs(sources []evidenceCapabilitySource, domainRefs map[string][]yamlControlRef) []evidenceCapabilitySource {
+	enriched := append([]evidenceCapabilitySource(nil), sources...)
+	for sourceIndex, source := range enriched {
+		source.Dimensions = append([]evidenceCapabilityDimension(nil), source.Dimensions...)
+		for dimensionIndex, dimension := range source.Dimensions {
+			nextRefs := append([]yamlControlRef(nil), dimension.ControlRefs...)
+			for _, domain := range dimension.ControlDomains {
+				nextRefs = append(nextRefs, domainRefs[strings.TrimSpace(domain)]...)
+			}
+			dimension.ControlRefs = uniqueYAMLControlRefs(nextRefs)
+			source.Dimensions[dimensionIndex] = dimension
+		}
+		enriched[sourceIndex] = source
+	}
+	return enriched
+}
+
+func uniqueYAMLControlRefs(refs []yamlControlRef) []yamlControlRef {
+	seen := map[string]struct{}{}
+	var unique []yamlControlRef
+	for _, ref := range refs {
+		ref.Framework = strings.TrimSpace(ref.Framework)
+		ref.ControlID = strings.TrimSpace(ref.ControlID)
+		if ref.Framework == "" || ref.ControlID == "" {
+			continue
+		}
+		key := strings.ToLower(ref.Framework) + "\x00" + strings.ToUpper(ref.ControlID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, ref)
+	}
+	sort.Slice(unique, func(i, j int) bool {
+		if unique[i].Framework != unique[j].Framework {
+			return unique[i].Framework < unique[j].Framework
+		}
+		return unique[i].ControlID < unique[j].ControlID
+	})
+	return unique
 }
 
 func loadControlEvidenceRequirements(root string) (controlEvidenceRequirementCatalog, error) {
@@ -3618,12 +3702,12 @@ func evidenceCapabilityRows(sources []evidenceCapabilitySource, index controlFam
 
 func sourceCapabilityReviewRows(catalog publicDetectionCatalog, index controlFamilyIndex, sources []evidenceCapabilitySource) [][]string {
 	capabilities := evidenceCapabilityIndex(sources, index)
-	coverage := sourceCoverageAggregate(catalog, index)
+	observedCoverage := sourceCoverageAggregate(catalog, index)
 	keys := map[string]struct{}{}
 	for key := range capabilities {
 		keys[key] = struct{}{}
 	}
-	for key := range coverage {
+	for key := range observedCoverage {
 		keys[key] = struct{}{}
 	}
 	var sorted []string
@@ -3636,7 +3720,7 @@ func sourceCapabilityReviewRows(catalog publicDetectionCatalog, index controlFam
 	for _, key := range sorted {
 		sourceID, dimensionID, _ := strings.Cut(key, "\x00")
 		capability := capabilities[key]
-		observed := coverage[key]
+		observed := observedCoverage[key]
 		capabilityRefs := evidenceCapabilityControlRefs(capability.Dimension, index)
 		catalogRefs := observed.ControlRefs
 		rows = append(rows, []string{
