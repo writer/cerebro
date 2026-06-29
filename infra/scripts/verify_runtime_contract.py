@@ -112,12 +112,18 @@ def _positive_int(value: Any) -> int | None:
     return parsed
 
 
+def _stack_runtime_entries(stack: dict[str, Any], *keys: str) -> list[Any]:
+    entries: list[Any] = []
+    for key in keys:
+        value = stack.get(key) or []
+        if isinstance(value, list):
+            entries.extend(value)
+    return entries
+
+
 def _stack_runtimes_by_source(stack: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     by_source: dict[str, list[dict[str, Any]]] = {}
-    runtimes = stack.get("sourceRuntimes") or []
-    if not isinstance(runtimes, list):
-        return by_source
-    for runtime in runtimes:
+    for runtime in _stack_runtime_entries(stack, "sourceRuntimes", "externalSourceRuntimes"):
         if not isinstance(runtime, dict):
             continue
         source_id = _runtime_value(runtime, "sourceId", "source_id")
@@ -316,7 +322,7 @@ def contract_drift(contract: dict[str, Any], stack: dict[str, Any]) -> list[str]
 
     stack_runtime_ids = {
         str(runtime.get("id") or "").strip()
-        for runtime in (stack.get("sourceRuntimes") or [])
+        for runtime in _stack_runtime_entries(stack, "sourceRuntimes", "externalSourceRuntimes")
         if isinstance(runtime, dict) and str(runtime.get("id") or "").strip()
     }
     for runtime_id in sorted(_contract_runtimes(contract)):

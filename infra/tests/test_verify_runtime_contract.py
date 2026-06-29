@@ -276,6 +276,23 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertTrue(any("contract runtime 'writer-github-audit' is not configured" in warning for warning in warnings))
         self.assertEqual(verify_runtime_contract.verify_contract(CONTRACT, stack), [])
 
+    def test_contract_drift_accepts_external_runtime_declaration(self) -> None:
+        stack = {
+            **STACK,
+            "sourceRuntimes": [STACK["sourceRuntimes"][1]],
+            "externalSourceRuntimes": [
+                {
+                    "id": "writer-github-audit",
+                    "sourceId": "github",
+                    "tenantId": "writer",
+                    "owner": "cerebro-platform",
+                    "reason": "External runtime.",
+                }
+            ],
+        }
+        warnings = verify_runtime_contract.contract_drift(CONTRACT, stack)
+        self.assertFalse(any("contract runtime 'writer-github-audit' is not configured" in warning for warning in warnings))
+
     def test_contract_drift_counts_missing_secrets_without_names(self) -> None:
         stack = {**STACK, "sourceSecretKeys": ["OKTA_API_TOKEN", "OKTA_DOMAIN"]}
         warnings = verify_runtime_contract.contract_drift(CONTRACT, stack)
