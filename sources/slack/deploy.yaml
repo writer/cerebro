@@ -1,0 +1,35 @@
+sourceId: slack
+secretKeys:
+  - SLACK_TOKEN
+runtimes:
+  - localId: teams
+    config:
+      family: team
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "200"
+      token: env:SLACK_TOKEN
+  - localId: users
+    config:
+      family: user
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "200"
+      token: env:SLACK_TOKEN
+  - localId: channels
+    config:
+      family: channel
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "200"
+      token: env:SLACK_TOKEN
+  - localId: user-groups
+    config:
+      family: user_group
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      token: env:SLACK_TOKEN

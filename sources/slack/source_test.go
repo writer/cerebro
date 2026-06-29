@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -26,14 +27,19 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		family   string
 		kind     string
 		path     string
+		method   string
+		query    map[string]string
+		noQuery  []string
 		response map[string]any
 		want     map[string]string
 	}{
 		{
 			name:   "team",
-			family: "team",
+			family: familyTeam,
 			kind:   "slack.team",
 			path:   "/auth.teams.list",
+			method: http.MethodPost,
+			query:  map[string]string{"limit": "100"},
 			response: map[string]any{"ok": true, "teams": []map[string]any{{
 				"id": "T1", "name": "Writer", "domain": "writer",
 			}}},
@@ -41,9 +47,11 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		},
 		{
 			name:   "user_privileged_no_mfa",
-			family: "user",
+			family: familyUser,
 			kind:   "slack.user",
 			path:   "/users.list",
+			method: http.MethodGet,
+			query:  map[string]string{"limit": "100"},
 			response: map[string]any{"ok": true, "members": []map[string]any{{
 				"id": "U1", "team_id": "T1", "name": "alice", "real_name": "Alice Admin",
 				"profile":  map[string]any{"email": "alice@writer.com"},
@@ -57,9 +65,11 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		},
 		{
 			name:   "user_privileged_with_mfa",
-			family: "user",
+			family: familyUser,
 			kind:   "slack.user",
 			path:   "/users.list",
+			method: http.MethodGet,
+			query:  map[string]string{"limit": "100"},
 			response: map[string]any{"ok": true, "members": []map[string]any{{
 				"id": "U2", "team_id": "T1", "name": "bob",
 				"profile":  map[string]any{"email": "bob@writer.com"},
@@ -71,9 +81,15 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		},
 		{
 			name:   "channel",
-			family: "channel",
+			family: familyChannel,
 			kind:   "slack.channel",
 			path:   "/conversations.list",
+			method: http.MethodGet,
+			query: map[string]string{
+				"exclude_archived": "false",
+				"limit":            "100",
+				"types":            "public_channel,private_channel",
+			},
 			response: map[string]any{"ok": true, "channels": []map[string]any{{
 				"id": "C1", "name": "general", "context_team_id": "T1",
 				"is_private": false, "is_archived": false, "creator": "U1", "num_members": 12,
@@ -82,9 +98,15 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		},
 		{
 			name:   "shared_channel",
-			family: "channel",
+			family: familyChannel,
 			kind:   "slack.channel",
 			path:   "/conversations.list",
+			method: http.MethodGet,
+			query: map[string]string{
+				"exclude_archived": "false",
+				"limit":            "100",
+				"types":            "public_channel,private_channel",
+			},
 			response: map[string]any{"ok": true, "channels": []map[string]any{{
 				"id": "C9", "name": "connect", "shared_team_ids": []string{"T1", "T2"},
 				"is_private": false, "creator": "U1",
@@ -93,9 +115,15 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 		},
 		{
 			name:   "user_group",
-			family: "user_group",
+			family: familyUserGroup,
 			kind:   "slack.user_group",
 			path:   "/usergroups.list",
+			method: http.MethodGet,
+			noQuery: []string{
+				"cursor",
+				"limit",
+				"per_page",
+			},
 			response: map[string]any{"ok": true, "usergroups": []map[string]any{{
 				"id": "S1", "team_id": "T1", "handle": "eng", "name": "Engineering",
 				"description": "Eng team", "is_disabled": false,
@@ -107,6 +135,22 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if got := r.URL.EscapedPath(); got != tt.path {
 					t.Fatalf("request path = %q, want %s", got, tt.path)
+				}
+				if got := r.Method; got != tt.method {
+					t.Fatalf("request method = %q, want %q", got, tt.method)
+				}
+				for key, want := range tt.query {
+					if got := r.URL.Query().Get(key); got != want {
+						t.Fatalf("query %q = %q, want %q", key, got, want)
+					}
+				}
+				if got := r.URL.Query().Get("per_page"); got != "" {
+					t.Fatalf("query per_page = %q, want empty", got)
+				}
+				for _, key := range tt.noQuery {
+					if got := r.URL.Query().Get(key); got != "" {
+						t.Fatalf("query %q = %q, want empty", key, got)
+					}
 				}
 				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
@@ -132,6 +176,127 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 			for key, value := range tt.want {
 				if got := event.Attributes[key]; got != value {
 					t.Fatalf("attribute %q = %q, want %q", key, got, value)
+				}
+			}
+		})
+	}
+}
+
+func TestReadUsesSlackCursorAndLimit(t *testing.T) {
+	expectedRequests := []struct {
+		cursor string
+	}{
+		{},
+		{cursor: "cursor-2"},
+	}
+	requestIndex := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requestIndex >= len(expectedRequests) {
+			t.Fatalf("unexpected request %d: %s", requestIndex+1, r.URL.RequestURI())
+		}
+		if got := r.URL.EscapedPath(); got != "/users.list" {
+			t.Fatalf("request path = %q, want /users.list", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "" {
+			t.Fatalf("per_page = %q, want empty", got)
+		}
+		expected := expectedRequests[requestIndex]
+		if expected.cursor != r.URL.Query().Get("cursor") {
+			t.Fatalf("cursor = %q, want %q", r.URL.Query().Get("cursor"), expected.cursor)
+		}
+		response := map[string]any{
+			"ok": true,
+			"members": []map[string]any{{
+				"id":      "U1",
+				"team_id": "T1",
+				"name":    "alice",
+			}},
+			"response_metadata": map[string]any{},
+		}
+		if expected.cursor == "" {
+			response["response_metadata"] = map[string]any{"next_cursor": "cursor-2"}
+		}
+		requestIndex++
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyUser,
+		"per_page":  "2",
+		"tenant_id": "writer",
+		"token":     "slack-token",
+	})
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("first Read() error = %v", err)
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "cursor-2" {
+		t.Fatalf("first NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), config, &cerebrov1.SourceCursor{Opaque: "cursor-2"})
+	if err != nil {
+		t.Fatalf("second Read() error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if requestIndex != len(expectedRequests) {
+		t.Fatalf("requests = %d, want %d", requestIndex, len(expectedRequests))
+	}
+}
+
+func TestNewFixtureReplaysSlackFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyTeam, familyUser, familyChannel, familyUserGroup} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		want   map[string]string
+	}{
+		{family: familyTeam, kind: "slack.team", want: map[string]string{"team_id": "T1", "domain": "writer"}},
+		{family: familyUser, kind: "slack.user", want: map[string]string{"user_id": "U1", "team_id": "T1", "email": "alice@example.test", "has_2fa": "false"}},
+		{family: familyChannel, kind: "slack.channel", want: map[string]string{"channel_id": "C1", "team_id": "T1", "creator": "U1"}},
+		{family: familyUserGroup, kind: "slack.user_group", want: map[string]string{"group_id": "S1", "team_id": "T1", "handle": "eng"}},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if got := event.Kind; got != tt.kind {
+				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			for key, want := range tt.want {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("attribute %q = %q, want %q", key, got, want)
 				}
 			}
 		})

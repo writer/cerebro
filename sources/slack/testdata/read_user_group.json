@@ -1,0 +1,33 @@
+[
+  {
+    "id": "slack-user-group-S1",
+    "tenant_id": "tenant",
+    "source_id": "slack",
+    "kind": "slack.user_group",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "slack/user_group/v1",
+    "payload": {
+      "id": "S1",
+      "team_id": "T1",
+      "handle": "eng",
+      "name": "Engineering",
+      "description": "Engineering team",
+      "is_disabled": false,
+      "date_create": 1780272000,
+      "date_update": 1780272000
+    },
+    "attributes": {
+      "description": "Engineering team",
+      "external_id": "S1",
+      "family": "user_group",
+      "group_id": "S1",
+      "handle": "eng",
+      "is_disabled": "false",
+      "name": "Engineering",
+      "provider": "slack",
+      "source_product": "slack",
+      "source_provider": "slack",
+      "team_id": "T1"
+    }
+  }
+]

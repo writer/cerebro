@@ -1,11 +1,16 @@
 id: slack
 name: Slack
-description: Slack team, user, channel, and user group source.
+description: Slack collaboration governance source covering workspaces, users, public and private channels, and user groups. The runtime emits team context, user privilege and MFA enrollment posture, channel ownership context, and user group membership anchors for graph projection and review.
 emitted_kinds:
   - slack.team
   - slack.user
   - slack.channel
   - slack.user_group
+families:
+  - id: team
+  - id: user
+  - id: channel
+  - id: user_group
 coverage_contract:
   owner_domain: collaboration
   authority_domain: slack
@@ -18,6 +23,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Reads public and private channel records so access review and asset inventory do not depend on public-channel visibility alone.
     - id: teams
       type: entity_family
       title: Teams
@@ -26,6 +33,8 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - Team records anchor Slack users, channels, and user groups to the workspace context projected on the graph.
     - id: user_groups
       type: relationship
       title: User groups
@@ -34,6 +43,8 @@ coverage_contract:
       high_value: true
       evidence_types: [relationship_evidence]
       control_domains: [asset_inventory]
+      notes:
+        - User group records provide durable group anchors for ownership, notification, and access review workflows.
     - id: users
       type: entity_family
       title: Users
@@ -42,6 +53,18 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      notes:
+        - User snapshots include privilege flags, deletion state, email identifiers, and MFA enrollment state for identity posture projection.
+    - id: pagination
+      type: incremental_sync
+      title: Slack cursor pagination
+      families: [team, user, channel]
+      support: supported
+      high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Slack cursor responses are preserved through Source CDK cursors so scheduled reads can continue from the provider cursor.
 event_contracts:
   - kind: slack.team
     schema_ref: slack/team/v1
