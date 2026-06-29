@@ -1,0 +1,104 @@
+id: gitea
+name: "Gitea"
+description: "Collects search, email, team, and timeline from Gitea and projects them into the Cerebro graph as findings, users, groups, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - gitea.search
+  - gitea.email
+  - gitea.team
+  - gitea.timeline
+kind_lifecycle:
+  - kind: gitea.search
+    status: active
+  - kind: gitea.email
+    status: active
+  - kind: gitea.team
+    status: active
+  - kind: gitea.timeline
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: gitea
+  dimensions:
+    - id: search
+      type: entity_family
+      title: "Search"
+      families: [search]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: email
+      type: entity_family
+      title: "Email"
+      families: [email]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: team
+      type: entity_family
+      title: "Team"
+      families: [team]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: timeline
+      type: audit_event
+      title: "Timeline"
+      families: [timeline]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: gitea.search
+    schema_ref: gitea/search/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: gitea.email
+    schema_ref: gitea/email/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: gitea.team
+    schema_ref: gitea/team/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: gitea.timeline
+    schema_ref: gitea/timeline/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

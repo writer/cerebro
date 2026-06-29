@@ -1,0 +1,84 @@
+id: google_drive
+name: "Google Drive"
+description: "Collects files, shared drives, and drive changes from Google Drive and projects them into the Cerebro graph as assets and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - google_drive.files
+  - google_drive.shared_drives
+  - google_drive.changes
+kind_lifecycle:
+  - kind: google_drive.files
+    status: active
+  - kind: google_drive.shared_drives
+    status: active
+  - kind: google_drive.changes
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: google_drive
+  dimensions:
+    - id: files
+      type: entity_family
+      title: "Files"
+      families: [files]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: shared_drives
+      type: entity_family
+      title: "Shared Drives"
+      families: [shared_drives]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: changes
+      type: audit_event
+      title: "Changes"
+      families: [changes]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: google_drive.files
+    schema_ref: google_drive/files/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: google_drive.shared_drives
+    schema_ref: google_drive/shared_drives/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: google_drive.changes
+    schema_ref: google_drive/changes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - fileId

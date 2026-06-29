@@ -1,0 +1,87 @@
+id: cortex_xdr
+name: "Cortex XDR"
+description: "Collects assets, findings, and vulnerabilities from Cortex XDR and projects them into the Cerebro graph as assets, findings, and vulnerabilities for alert, incident, service health, and response context."
+emitted_kinds:
+  - cortex_xdr.assets
+  - cortex_xdr.findings
+  - cortex_xdr.vulnerabilities
+kind_lifecycle:
+  - kind: cortex_xdr.assets
+    status: active
+  - kind: cortex_xdr.findings
+    status: active
+  - kind: cortex_xdr.vulnerabilities
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cortex_xdr
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: entity_family
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cortex_xdr.assets
+    schema_ref: cortex_xdr/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cortex_xdr.findings
+    schema_ref: cortex_xdr/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: cortex_xdr.vulnerabilities
+    schema_ref: cortex_xdr/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

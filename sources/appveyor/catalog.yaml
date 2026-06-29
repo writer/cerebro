@@ -1,0 +1,103 @@
+id: appveyor
+name: "AppVeyor"
+description: "Collects role, user, artifact, and collaborator from AppVeyor and projects them into the Cerebro graph as groups, users, deployments, and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - appveyor.role
+  - appveyor.user
+  - appveyor.artifact
+  - appveyor.collaborator
+kind_lifecycle:
+  - kind: appveyor.role
+    status: active
+  - kind: appveyor.user
+    status: active
+  - kind: appveyor.artifact
+    status: active
+  - kind: appveyor.collaborator
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: appveyor
+  dimensions:
+    - id: role
+      type: entity_family
+      title: "Role"
+      families: [role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: artifact
+      type: entity_family
+      title: "Artifact"
+      families: [artifact]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: collaborator
+      type: entity_family
+      title: "Collaborator"
+      families: [collaborator]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: appveyor.role
+    schema_ref: appveyor/role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - name
+  - kind: appveyor.user
+    schema_ref: appveyor/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: appveyor.artifact
+    schema_ref: appveyor/artifact/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: appveyor.collaborator
+    schema_ref: appveyor/collaborator/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - email

@@ -1,0 +1,278 @@
+id: increase
+name: "Increase"
+description: "Collects event, account, digital wallet token, ach prenotification, oauth connection, and event subscription from Increase and projects them into the Cerebro graph as alerts, assets, audit events, secrets, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - increase.event
+  - increase.account
+  - increase.digital_wallet_token
+  - increase.ach_prenotification
+  - increase.oauth_connection
+  - increase.event_subscription
+  - increase.account_number
+  - increase.account_statement
+  - increase.account_transfer
+  - increase.external_account
+  - increase.ach_transfer
+  - increase.card
+kind_lifecycle:
+  - kind: increase.event
+    status: active
+  - kind: increase.account
+    status: active
+  - kind: increase.digital_wallet_token
+    status: active
+  - kind: increase.ach_prenotification
+    status: active
+  - kind: increase.oauth_connection
+    status: active
+  - kind: increase.event_subscription
+    status: active
+  - kind: increase.account_number
+    status: active
+  - kind: increase.account_statement
+    status: active
+  - kind: increase.account_transfer
+    status: active
+  - kind: increase.external_account
+    status: active
+  - kind: increase.ach_transfer
+    status: active
+  - kind: increase.card
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: increase
+  dimensions:
+    - id: event
+      type: audit_event
+      title: "Event"
+      families: [event]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: digital_wallet_token
+      type: entity_family
+      title: "Digital Wallet Token"
+      families: [digital_wallet_token]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ach_prenotification
+      type: entity_family
+      title: "Ach Prenotification"
+      families: [ach_prenotification]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: oauth_connection
+      type: entity_family
+      title: "Oauth Connection"
+      families: [oauth_connection]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: event_subscription
+      type: audit_event
+      title: "Event Subscription"
+      families: [event_subscription]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_number
+      type: entity_family
+      title: "Account Number"
+      families: [account_number]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_statement
+      type: entity_family
+      title: "Account Statement"
+      families: [account_statement]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_transfer
+      type: entity_family
+      title: "Account Transfer"
+      families: [account_transfer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: external_account
+      type: entity_family
+      title: "External Account"
+      families: [external_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ach_transfer
+      type: entity_family
+      title: "Ach Transfer"
+      families: [ach_transfer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: card
+      type: entity_family
+      title: "Card"
+      families: [card]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: increase.event
+    schema_ref: increase/event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: increase.account
+    schema_ref: increase/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: increase.digital_wallet_token
+    schema_ref: increase/digital_wallet_token/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: increase.ach_prenotification
+    schema_ref: increase/ach_prenotification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: increase.oauth_connection
+    schema_ref: increase/oauth_connection/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: increase.event_subscription
+    schema_ref: increase/event_subscription/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: increase.account_number
+    schema_ref: increase/account_number/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: increase.account_statement
+    schema_ref: increase/account_statement/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: increase.account_transfer
+    schema_ref: increase/account_transfer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: increase.external_account
+    schema_ref: increase/external_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: increase.ach_transfer
+    schema_ref: increase/ach_transfer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: increase.card
+    schema_ref: increase/card/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

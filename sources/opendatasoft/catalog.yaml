@@ -1,0 +1,288 @@
+id: opendatasoft
+name: "Opendatasoft"
+description: "Collects aggregate, page, dataset, facet, resource, and resource 2 from Opendatasoft and projects them into the Cerebro graph as assets and audit events for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - opendatasoft.aggregate
+  - opendatasoft.page
+  - opendatasoft.dataset
+  - opendatasoft.facet
+  - opendatasoft.resource
+  - opendatasoft.resource_2
+  - opendatasoft.metadata_template
+  - opendatasoft.datasets_aggregate
+  - opendatasoft.attachment
+  - opendatasoft.datasets_facet
+  - opendatasoft.record
+  - opendatasoft.reuses
+kind_lifecycle:
+  - kind: opendatasoft.aggregate
+    status: active
+  - kind: opendatasoft.page
+    status: active
+  - kind: opendatasoft.dataset
+    status: active
+  - kind: opendatasoft.facet
+    status: active
+  - kind: opendatasoft.resource
+    status: active
+  - kind: opendatasoft.resource_2
+    status: active
+  - kind: opendatasoft.metadata_template
+    status: active
+  - kind: opendatasoft.datasets_aggregate
+    status: active
+  - kind: opendatasoft.attachment
+    status: active
+  - kind: opendatasoft.datasets_facet
+    status: active
+  - kind: opendatasoft.record
+    status: active
+  - kind: opendatasoft.reuses
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: opendatasoft
+  dimensions:
+    - id: aggregate
+      type: audit_event
+      title: "Aggregate"
+      families: [aggregate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: page
+      type: entity_family
+      title: "Page"
+      families: [page]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: dataset
+      type: audit_event
+      title: "Dataset"
+      families: [dataset]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: facet
+      type: audit_event
+      title: "Facet"
+      families: [facet]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource
+      type: audit_event
+      title: "Resource"
+      families: [resource]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: resource_2
+      type: entity_family
+      title: "Resource 2"
+      families: [resource_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: metadata_template
+      type: entity_family
+      title: "Metadata Template"
+      families: [metadata_template]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datasets_aggregate
+      type: entity_family
+      title: "Datasets Aggregate"
+      families: [datasets_aggregate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: attachment
+      type: entity_family
+      title: "Attachment"
+      families: [attachment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datasets_facet
+      type: entity_family
+      title: "Datasets Facet"
+      families: [datasets_facet]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: record
+      type: entity_family
+      title: "Record"
+      families: [record]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: reuses
+      type: entity_family
+      title: "Reuses"
+      families: [reuses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: opendatasoft.aggregate
+    schema_ref: opendatasoft/aggregate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: opendatasoft.page
+    schema_ref: opendatasoft/page/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - links
+  - kind: opendatasoft.dataset
+    schema_ref: opendatasoft/dataset/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - dataset
+  - kind: opendatasoft.facet
+    schema_ref: opendatasoft/facet/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: opendatasoft.resource
+    schema_ref: opendatasoft/resource/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - href
+  - kind: opendatasoft.resource_2
+    schema_ref: opendatasoft/resource_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - href
+  - kind: opendatasoft.metadata_template
+    schema_ref: opendatasoft/metadata_template/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - href
+  - kind: opendatasoft.datasets_aggregate
+    schema_ref: opendatasoft/datasets_aggregate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: opendatasoft.attachment
+    schema_ref: opendatasoft/attachment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - href
+  - kind: opendatasoft.datasets_facet
+    schema_ref: opendatasoft/datasets_facet/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: opendatasoft.record
+    schema_ref: opendatasoft/record/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - links
+  - kind: opendatasoft.reuses
+    schema_ref: opendatasoft/reuses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

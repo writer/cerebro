@@ -930,7 +930,7 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "  dimensions:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "    - id: %s\n", family.Name)
-		fmt.Fprintf(&b, "      type: entity_family\n")
+		fmt.Fprintf(&b, "      type: %s\n", coverageDimensionType(family.Class))
 		fmt.Fprintf(&b, "      title: %s\n", yamlString(titleFromID(family.Name)))
 		fmt.Fprintf(&b, "      families: [%s]\n", family.Name)
 		fmt.Fprintf(&b, "      support: partial\n")
@@ -994,7 +994,9 @@ func renderDeploy(request normalizedRequest) string {
 	if len(request.ConfigKeys) == 0 && strings.TrimSpace(request.BaseURLTemplate) == "" {
 		fmt.Fprintf(&b, "      base_url: env:%s_BASE_URL\n", request.EnvPrefix)
 	}
+	writtenConfigKeys := map[string]struct{}{}
 	for _, key := range request.ConfigKeys {
+		writtenConfigKeys[key] = struct{}{}
 		fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
 	}
 	fmt.Fprintf(&b, "      family: %s\n", request.DefaultFamily)
@@ -1004,6 +1006,10 @@ func renderDeploy(request normalizedRequest) string {
 	fmt.Fprintf(&b, "      stale_after_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
 	fmt.Fprintf(&b, "      per_page: %q\n", "100")
 	for _, key := range authConfigKeys {
+		if _, ok := writtenConfigKeys[key]; ok {
+			continue
+		}
+		writtenConfigKeys[key] = struct{}{}
 		envName := envNameForConfigKey(request, key)
 		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
 			envName = tokenEnv
@@ -1011,6 +1017,15 @@ func renderDeploy(request normalizedRequest) string {
 		fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
 	}
 	return b.String()
+}
+
+func coverageDimensionType(class string) string {
+	switch strings.TrimSpace(class) {
+	case "audit_event":
+		return "audit_event"
+	default:
+		return "entity_family"
+	}
 }
 
 func deployAuthConfigKeys(request normalizedRequest) []string {
@@ -1542,38 +1557,48 @@ func renderProjectionGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/connectordefinitions\"\n")
 	}
 	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/ports\"\n)\n\n")
+	renderedProjectionResources := map[string]struct{}{}
 	for _, family := range request.Families {
 		if projectionFamilyNeedsAugmentation(family) {
+			if _, ok := renderedProjectionResources[family.ProjectorName]; ok {
+				continue
+			}
+			renderedProjectionResources[family.ProjectorName] = struct{}{}
 			fmt.Fprintf(&b, "var %sProjectionResource = connectordefinitions.ResourceFamily{\n\tID: %s,\n\tProjection: &connectordefinitions.ProjectionSpec{\n", family.ProjectorName, strconv.Quote(family.Name))
 			renderProjectionSpecLiteral(&b, family.Projection, "\t\t")
 			fmt.Fprintf(&b, "\t},\n}\n\n")
 		}
 	}
+	renderedProjectors := map[string]struct{}{}
 	for _, family := range request.Families {
+		if _, ok := renderedProjectors[family.ProjectorName]; ok {
+			continue
+		}
+		renderedProjectors[family.ProjectorName] = struct{}{}
 		switch family.Class {
 		case "asset":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"AssetProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericAssetProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "finding":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"FindingProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericFindingProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "secret":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"SecretProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericSecretProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "policy":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"PolicyProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericPolicyProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "deployment":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"DeploymentProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericDeploymentProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "alert":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
-			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"AlertProjections")
+			renderProjectionDispatchReturn(&b, request.SourceID, family, sourcePrefix+"GenericAlertProjections")
 			fmt.Fprintf(&b, "}\n\n")
 		case "identity_user":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
@@ -1614,27 +1639,27 @@ func renderProjectionGo(request normalizedRequest) string {
 		}
 	}
 	if firstFamilyClass(request.Families, "asset").Name != "" {
-		fmt.Fprintf(&b, "func %sAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tresourceID := firstNonEmpty(attributes[\"resource_id\"], attributes[\"external_id\"], event.GetId())\n\tresourceType := firstNonEmpty(attributes[\"resource_type\"], attributes[\"schema\"], \"asset\")\n\tresourceURN := firstNonEmpty(attributes[\"resource_urn\"], projectionURN(tenantID, \"runtime_\"+normalizeCloudType(resourceType), resourceID))\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: resourceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime.\" + strings.ReplaceAll(normalizeCloudType(resourceType), \"_\", \".\"), Label: firstNonEmpty(attributes[\"resource_name\"], resourceID), Attributes: map[string]string{\"resource_id\": resourceID, \"resource_type\": resourceType, \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime.evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n\n")
 	}
 	if firstFamilyClass(request.Families, "finding").Name != "" {
-		fmt.Fprintf(&b, "func %sFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tfindingID := firstNonEmpty(attributes[\"finding_id\"], event.GetId())\n\tfindingURN := projectionURN(tenantID, \"finding\", findingID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: findingURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"finding\", Label: firstNonEmpty(attributes[\"title\"], findingID), Attributes: map[string]string{\"finding_id\": findingID, \"severity\": strings.TrimSpace(attributes[\"severity\"]), \"status\": strings.TrimSpace(attributes[\"status\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif resourceURN := strings.TrimSpace(attributes[\"resource_urn\"]); resourceURN != \"\" {\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), findingURN, resourceURN, relationAffects, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, findingURN, relationSupports, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	if firstFamilyClass(request.Families, "secret").Name != "" {
-		fmt.Fprintf(&b, "func %sSecretProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericSecretProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tsecretID := firstNonEmpty(attributes[\"secret_id\"], event.GetId())\n\tsecretURN := projectionURN(tenantID, \"secret\", secretID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: secretURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"secret\", Label: firstNonEmpty(attributes[\"secret_name\"], secretID), Attributes: map[string]string{\"secret_id\": secretID, \"secret_type\": strings.TrimSpace(attributes[\"secret_type\"]), \"secret_status\": strings.TrimSpace(attributes[\"secret_status\"]), \"secret_rotation_enabled\": strings.TrimSpace(attributes[\"secret_rotation_enabled\"]), \"secret_last_rotated_at\": strings.TrimSpace(attributes[\"secret_last_rotated_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), secretURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n\n")
 	}
 	if firstFamilyClass(request.Families, "policy").Name != "" {
-		fmt.Fprintf(&b, "func %sPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tpolicyID := firstNonEmpty(attributes[\"policy_id\"], event.GetId())\n\tpolicyURN := projectionURN(tenantID, \"policy\", policyID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: policyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"policy\", Label: firstNonEmpty(attributes[\"policy_name\"], policyID), Attributes: map[string]string{\"policy_id\": policyID, \"policy_type\": strings.TrimSpace(attributes[\"policy_type\"]), \"policy_status\": strings.TrimSpace(attributes[\"policy_status\"]), \"policy_severity\": strings.TrimSpace(attributes[\"policy_severity\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	if firstFamilyClass(request.Families, "deployment").Name != "" {
-		fmt.Fprintf(&b, "func %sDeploymentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericDeploymentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\tdeploymentID := firstNonEmpty(attributes[\"deployment_id\"], event.GetId())\n\tdeploymentURN := projectionURN(tenantID, \"deployment\", deploymentID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: deploymentURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"deployment\", Label: firstNonEmpty(attributes[\"deployment_name\"], deploymentID), Attributes: map[string]string{\"deployment_id\": deploymentID, \"deployment_environment\": strings.TrimSpace(attributes[\"deployment_environment\"]), \"deployment_status\": strings.TrimSpace(attributes[\"deployment_status\"]), \"deployment_url\": strings.TrimSpace(attributes[\"deployment_url\"]), \"deployment_commit_sha\": strings.TrimSpace(attributes[\"deployment_commit_sha\"]), \"deployment_branch\": strings.TrimSpace(attributes[\"deployment_branch\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), deploymentURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	if firstFamilyClass(request.Families, "alert").Name != "" {
-		fmt.Fprintf(&b, "func %sAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
+		fmt.Fprintf(&b, "func %sGenericAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", sourcePrefix)
 		fmt.Fprintf(&b, "\ttenantID, err := tenantID(event)\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n\tattributes := event.GetAttributes()\n\talertID := firstNonEmpty(attributes[\"alert_id\"], event.GetId())\n\talertURN := projectionURN(tenantID, \"alert\", alertID)\n\tentities := map[string]*ports.ProjectedEntity{}\n\tlinks := map[string]*ports.ProjectedLink{}\n\taddEntity(entities, &ports.ProjectedEntity{URN: alertURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"alert\", Label: firstNonEmpty(attributes[\"alert_name\"], alertID), Attributes: map[string]string{\"alert_id\": alertID, \"alert_severity\": strings.TrimSpace(attributes[\"alert_severity\"]), \"alert_status\": strings.TrimSpace(attributes[\"alert_status\"]), \"alert_type\": strings.TrimSpace(attributes[\"alert_type\"]), \"alert_source\": strings.TrimSpace(attributes[\"alert_source\"]), \"alert_fired_at\": strings.TrimSpace(attributes[\"alert_fired_at\"]), \"alert_resolved_at\": strings.TrimSpace(attributes[\"alert_resolved_at\"]), \"source_runtime_id\": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})\n\tif evidenceID := strings.TrimSpace(attributes[\"evidence_id\"]); evidenceID != \"\" {\n\t\tevidenceURN := projectionURN(tenantID, \"runtime_evidence\", evidenceID)\n\t\taddEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: \"runtime_evidence\", Label: evidenceID, Attributes: map[string]string{\"evidence_id\": evidenceID, \"evidence_cas_uri\": strings.TrimSpace(attributes[\"evidence_cas_uri\"]), \"evidence_cas_digest\": strings.TrimSpace(attributes[\"evidence_cas_digest\"])}})\n\t\taddLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, evidenceURN, relationHasEvidence, map[string]string{\"event_id\": event.GetId()}))\n\t}\n\treturn identityProjectionResult(entities, links)\n}\n")
 	}
 	return b.String()

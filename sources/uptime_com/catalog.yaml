@@ -1,0 +1,130 @@
+id: uptime_com
+name: "Uptime.com"
+description: "Collects alerts, incidents, monitors, dashboards, and audit events from Uptime.com and projects them into the Cerebro graph as alerts, assets, audit events, and findings for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - uptime_com.alerts
+  - uptime_com.incidents
+  - uptime_com.monitors
+  - uptime_com.dashboards
+  - uptime_com.audit_events
+kind_lifecycle:
+  - kind: uptime_com.alerts
+    status: active
+  - kind: uptime_com.incidents
+    status: active
+  - kind: uptime_com.monitors
+    status: active
+  - kind: uptime_com.dashboards
+    status: active
+  - kind: uptime_com.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: uptime_com
+  dimensions:
+    - id: alerts
+      type: entity_family
+      title: "Alerts"
+      families: [alerts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incidents
+      type: entity_family
+      title: "Incidents"
+      families: [incidents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: monitors
+      type: entity_family
+      title: "Monitors"
+      families: [monitors]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: dashboards
+      type: entity_family
+      title: "Dashboards"
+      families: [dashboards]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: uptime_com.alerts
+    schema_ref: uptime_com/alerts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: uptime_com.incidents
+    schema_ref: uptime_com/incidents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: uptime_com.monitors
+    schema_ref: uptime_com/monitors/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: uptime_com.dashboards
+    schema_ref: uptime_com/dashboards/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: uptime_com.audit_events
+    schema_ref: uptime_com/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

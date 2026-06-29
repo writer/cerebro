@@ -1,0 +1,283 @@
+id: iqualify
+name: "iQualify"
+description: "Collects learners progress, group, user, pulses, progress, and responses from iQualify and projects them into the Cerebro graph as assets, audit events, groups, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - iqualify.learners_progress
+  - iqualify.group
+  - iqualify.user
+  - iqualify.pulses
+  - iqualify.progress
+  - iqualify.responses
+  - iqualify.social_note
+  - iqualify.unit_reaction
+  - iqualify.learner
+  - iqualify.courses
+  - iqualify.current
+  - iqualify.future
+kind_lifecycle:
+  - kind: iqualify.learners_progress
+    status: active
+  - kind: iqualify.group
+    status: active
+  - kind: iqualify.user
+    status: active
+  - kind: iqualify.pulses
+    status: active
+  - kind: iqualify.progress
+    status: active
+  - kind: iqualify.responses
+    status: active
+  - kind: iqualify.social_note
+    status: active
+  - kind: iqualify.unit_reaction
+    status: active
+  - kind: iqualify.learner
+    status: active
+  - kind: iqualify.courses
+    status: active
+  - kind: iqualify.current
+    status: active
+  - kind: iqualify.future
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: iqualify
+  dimensions:
+    - id: learners_progress
+      type: audit_event
+      title: "Learners Progress"
+      families: [learners_progress]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: pulses
+      type: entity_family
+      title: "Pulses"
+      families: [pulses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: progress
+      type: audit_event
+      title: "Progress"
+      families: [progress]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: responses
+      type: audit_event
+      title: "Responses"
+      families: [responses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: social_note
+      type: audit_event
+      title: "Social Note"
+      families: [social_note]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: unit_reaction
+      type: audit_event
+      title: "Unit Reaction"
+      families: [unit_reaction]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: learner
+      type: entity_family
+      title: "Learner"
+      families: [learner]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: courses
+      type: entity_family
+      title: "Courses"
+      families: [courses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: current
+      type: entity_family
+      title: "Current"
+      families: [current]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: future
+      type: entity_family
+      title: "Future"
+      families: [future]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: iqualify.learners_progress
+    schema_ref: iqualify/learners_progress/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - email
+  - kind: iqualify.group
+    schema_ref: iqualify/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.user
+    schema_ref: iqualify/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.pulses
+    schema_ref: iqualify/pulses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.progress
+    schema_ref: iqualify/progress/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.responses
+    schema_ref: iqualify/responses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - activityId
+  - kind: iqualify.social_note
+    schema_ref: iqualify/social_note/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - email
+  - kind: iqualify.unit_reaction
+    schema_ref: iqualify/unit_reaction/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - feedback
+  - kind: iqualify.learner
+    schema_ref: iqualify/learner/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.courses
+    schema_ref: iqualify/courses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.current
+    schema_ref: iqualify/current/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: iqualify.future
+    schema_ref: iqualify/future/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

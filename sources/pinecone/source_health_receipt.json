@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/indexes",
+  "auth_model": "api_key",
+  "evidence_cas_reference_kind": "pinecone.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=pinecone",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "pinecone",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

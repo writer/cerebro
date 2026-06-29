@@ -1,0 +1,127 @@
+id: zendesk_sell
+name: "Zendesk Sell"
+description: "Collects users, accounts, records, policies, and audit events from Zendesk Sell and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - zendesk_sell.users
+  - zendesk_sell.accounts
+  - zendesk_sell.records
+  - zendesk_sell.policies
+  - zendesk_sell.audit_events
+kind_lifecycle:
+  - kind: zendesk_sell.users
+    status: active
+  - kind: zendesk_sell.accounts
+    status: active
+  - kind: zendesk_sell.records
+    status: active
+  - kind: zendesk_sell.policies
+    status: active
+  - kind: zendesk_sell.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: zendesk_sell
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: records
+      type: entity_family
+      title: "Records"
+      families: [records]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: zendesk_sell.users
+    schema_ref: zendesk_sell/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: zendesk_sell.accounts
+    schema_ref: zendesk_sell/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: zendesk_sell.records
+    schema_ref: zendesk_sell/records/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: zendesk_sell.policies
+    schema_ref: zendesk_sell/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: zendesk_sell.audit_events
+    schema_ref: zendesk_sell/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

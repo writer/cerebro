@@ -1,0 +1,126 @@
+id: teamwork_projects
+name: "Teamwork Projects"
+description: "Collects users, groups, workspaces, documents, and audit events from Teamwork Projects and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - teamwork_projects.users
+  - teamwork_projects.groups
+  - teamwork_projects.workspaces
+  - teamwork_projects.documents
+  - teamwork_projects.audit_events
+kind_lifecycle:
+  - kind: teamwork_projects.users
+    status: active
+  - kind: teamwork_projects.groups
+    status: active
+  - kind: teamwork_projects.workspaces
+    status: active
+  - kind: teamwork_projects.documents
+    status: active
+  - kind: teamwork_projects.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: teamwork_projects
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: documents
+      type: entity_family
+      title: "Documents"
+      families: [documents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: teamwork_projects.users
+    schema_ref: teamwork_projects/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: teamwork_projects.groups
+    schema_ref: teamwork_projects/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: teamwork_projects.workspaces
+    schema_ref: teamwork_projects/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: teamwork_projects.documents
+    schema_ref: teamwork_projects/documents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: teamwork_projects.audit_events
+    schema_ref: teamwork_projects/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

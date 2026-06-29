@@ -1,0 +1,125 @@
+id: permit_io
+name: "Permit.io"
+description: "Collects users, groups, roles, applications, and audit events from Permit.io and projects them into the Cerebro graph as assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - permit_io.users
+  - permit_io.groups
+  - permit_io.roles
+  - permit_io.applications
+  - permit_io.audit_events
+kind_lifecycle:
+  - kind: permit_io.users
+    status: active
+  - kind: permit_io.groups
+    status: active
+  - kind: permit_io.roles
+    status: active
+  - kind: permit_io.applications
+    status: active
+  - kind: permit_io.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: permit_io
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: applications
+      type: entity_family
+      title: "Applications"
+      families: [applications]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: permit_io.users
+    schema_ref: permit_io/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: permit_io.groups
+    schema_ref: permit_io/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: permit_io.roles
+    schema_ref: permit_io/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: permit_io.applications
+    schema_ref: permit_io/applications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: permit_io.audit_events
+    schema_ref: permit_io/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

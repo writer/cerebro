@@ -1,0 +1,127 @@
+id: copper_crm
+name: "Copper CRM"
+description: "Collects users, accounts, records, policies, and audit events from Copper CRM and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - copper_crm.users
+  - copper_crm.accounts
+  - copper_crm.records
+  - copper_crm.policies
+  - copper_crm.audit_events
+kind_lifecycle:
+  - kind: copper_crm.users
+    status: active
+  - kind: copper_crm.accounts
+    status: active
+  - kind: copper_crm.records
+    status: active
+  - kind: copper_crm.policies
+    status: active
+  - kind: copper_crm.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: copper_crm
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: records
+      type: entity_family
+      title: "Records"
+      families: [records]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: copper_crm.users
+    schema_ref: copper_crm/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: copper_crm.accounts
+    schema_ref: copper_crm/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: copper_crm.records
+    schema_ref: copper_crm/records/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: copper_crm.policies
+    schema_ref: copper_crm/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: copper_crm.audit_events
+    schema_ref: copper_crm/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

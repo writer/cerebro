@@ -1,0 +1,85 @@
+id: circleci
+name: "CircleCI"
+description: "Collects pipelines, findings, and audit events from CircleCI and projects them into the Cerebro graph as assets, findings, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - circleci.pipelines
+  - circleci.findings
+  - circleci.audit_events
+kind_lifecycle:
+  - kind: circleci.pipelines
+    status: active
+  - kind: circleci.findings
+    status: active
+  - kind: circleci.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: circleci
+  dimensions:
+    - id: pipelines
+      type: entity_family
+      title: "Pipelines"
+      families: [pipelines]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: circleci.pipelines
+    schema_ref: circleci/pipelines/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: circleci.findings
+    schema_ref: circleci/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: circleci.audit_events
+    schema_ref: circleci/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

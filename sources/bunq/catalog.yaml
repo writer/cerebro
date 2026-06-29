@@ -1,0 +1,103 @@
+id: bunq
+name: "bunq"
+description: "Collects event, user, credential password IP, and notification filter push from bunq and projects them into the Cerebro graph as audit events, users, secrets, and alerts for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - bunq.event
+  - bunq.user
+  - bunq.credential_password_ip
+  - bunq.notification_filter_push
+kind_lifecycle:
+  - kind: bunq.event
+    status: active
+  - kind: bunq.user
+    status: active
+  - kind: bunq.credential_password_ip
+    status: active
+  - kind: bunq.notification_filter_push
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bunq
+  dimensions:
+    - id: event
+      type: audit_event
+      title: "Event"
+      families: [event]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: credential_password_ip
+      type: entity_family
+      title: "Credential Password Ip"
+      families: [credential_password_ip]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_filter_push
+      type: entity_family
+      title: "Notification Filter Push"
+      families: [notification_filter_push]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bunq.event
+    schema_ref: bunq/event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: bunq.user
+    schema_ref: bunq/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - UserApiKey
+  - kind: bunq.credential_password_ip
+    schema_ref: bunq/credential_password_ip/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: bunq.notification_filter_push
+    schema_ref: bunq/notification_filter_push/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - notification_filters

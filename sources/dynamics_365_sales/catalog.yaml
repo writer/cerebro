@@ -1,0 +1,127 @@
+id: dynamics_365_sales
+name: "Dynamics 365 Sales"
+description: "Collects users, accounts, records, policies, and audit events from Dynamics 365 Sales and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - dynamics_365_sales.users
+  - dynamics_365_sales.accounts
+  - dynamics_365_sales.records
+  - dynamics_365_sales.policies
+  - dynamics_365_sales.audit_events
+kind_lifecycle:
+  - kind: dynamics_365_sales.users
+    status: active
+  - kind: dynamics_365_sales.accounts
+    status: active
+  - kind: dynamics_365_sales.records
+    status: active
+  - kind: dynamics_365_sales.policies
+    status: active
+  - kind: dynamics_365_sales.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: dynamics_365_sales
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: records
+      type: entity_family
+      title: "Records"
+      families: [records]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: dynamics_365_sales.users
+    schema_ref: dynamics_365_sales/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: dynamics_365_sales.accounts
+    schema_ref: dynamics_365_sales/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: dynamics_365_sales.records
+    schema_ref: dynamics_365_sales/records/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: dynamics_365_sales.policies
+    schema_ref: dynamics_365_sales/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: dynamics_365_sales.audit_events
+    schema_ref: dynamics_365_sales/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

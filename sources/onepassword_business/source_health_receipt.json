@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/v1/vaults",
+  "auth_model": "bearer_token",
+  "evidence_cas_reference_kind": "onepassword_business.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=onepassword_business",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "onepassword_business",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

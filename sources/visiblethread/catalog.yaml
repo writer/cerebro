@@ -1,0 +1,108 @@
+id: visiblethread
+name: "VisibleThread"
+description: "Collects webscan, document, weburl, and document 2 from VisibleThread and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - visiblethread.webscan
+  - visiblethread.document
+  - visiblethread.weburl
+  - visiblethread.document_2
+kind_lifecycle:
+  - kind: visiblethread.webscan
+    status: active
+  - kind: visiblethread.document
+    status: active
+  - kind: visiblethread.weburl
+    status: active
+  - kind: visiblethread.document_2
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: visiblethread
+  dimensions:
+    - id: webscan
+      type: entity_family
+      title: "Webscan"
+      families: [webscan]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: document
+      type: entity_family
+      title: "Document"
+      families: [document]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: weburl
+      type: entity_family
+      title: "Weburl"
+      families: [weburl]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: document_2
+      type: entity_family
+      title: "Document 2"
+      families: [document_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: visiblethread.webscan
+    schema_ref: visiblethread/webscan/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: visiblethread.document
+    schema_ref: visiblethread/document/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: visiblethread.weburl
+    schema_ref: visiblethread/weburl/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - paragraphCounter
+  - kind: visiblethread.document_2
+    schema_ref: visiblethread/document_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - paragraphCounter

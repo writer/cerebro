@@ -1,0 +1,276 @@
+id: sinao
+name: "Sinao"
+description: "Collects product, account, organization, rule, access, and productcategory from Sinao and projects them into the Cerebro graph as assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - sinao.product
+  - sinao.account
+  - sinao.organization
+  - sinao.rule
+  - sinao.access
+  - sinao.productcategory
+  - sinao.productstock
+  - sinao.accountcategory
+  - sinao.accounting_entry
+  - sinao.person
+  - sinao.invite
+  - sinao.apps_organization
+kind_lifecycle:
+  - kind: sinao.product
+    status: active
+  - kind: sinao.account
+    status: active
+  - kind: sinao.organization
+    status: active
+  - kind: sinao.rule
+    status: active
+  - kind: sinao.access
+    status: active
+  - kind: sinao.productcategory
+    status: active
+  - kind: sinao.productstock
+    status: active
+  - kind: sinao.accountcategory
+    status: active
+  - kind: sinao.accounting_entry
+    status: active
+  - kind: sinao.person
+    status: active
+  - kind: sinao.invite
+    status: active
+  - kind: sinao.apps_organization
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: sinao
+  dimensions:
+    - id: product
+      type: audit_event
+      title: "Product"
+      families: [product]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: organization
+      type: entity_family
+      title: "Organization"
+      families: [organization]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: rule
+      type: entity_family
+      title: "Rule"
+      families: [rule]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: access
+      type: entity_family
+      title: "Access"
+      families: [access]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: productcategory
+      type: audit_event
+      title: "Productcategory"
+      families: [productcategory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: productstock
+      type: audit_event
+      title: "Productstock"
+      families: [productstock]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accountcategory
+      type: entity_family
+      title: "Accountcategory"
+      families: [accountcategory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounting_entry
+      type: entity_family
+      title: "Accounting Entry"
+      families: [accounting_entry]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: person
+      type: entity_family
+      title: "Person"
+      families: [person]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: invite
+      type: entity_family
+      title: "Invite"
+      families: [invite]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: apps_organization
+      type: entity_family
+      title: "Apps Organization"
+      families: [apps_organization]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: sinao.product
+    schema_ref: sinao/product/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: sinao.account
+    schema_ref: sinao/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: sinao.organization
+    schema_ref: sinao/organization/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: sinao.rule
+    schema_ref: sinao/rule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: sinao.access
+    schema_ref: sinao/access/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: sinao.productcategory
+    schema_ref: sinao/productcategory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: sinao.productstock
+    schema_ref: sinao/productstock/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: sinao.accountcategory
+    schema_ref: sinao/accountcategory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: sinao.accounting_entry
+    schema_ref: sinao/accounting_entry/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: sinao.person
+    schema_ref: sinao/person/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: sinao.invite
+    schema_ref: sinao/invite/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: sinao.apps_organization
+    schema_ref: sinao/apps_organization/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id

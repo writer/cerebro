@@ -1,0 +1,102 @@
+id: square
+name: "Square"
+description: "Collects activity, bank account, group, and team member booking profile from Square and projects them into the Cerebro graph as audit events, groups, memberships, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - square.activity
+  - square.bank_account
+  - square.group
+  - square.team_member_booking_profile
+kind_lifecycle:
+  - kind: square.activity
+    status: active
+  - kind: square.bank_account
+    status: active
+  - kind: square.group
+    status: active
+  - kind: square.team_member_booking_profile
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: square
+  dimensions:
+    - id: activity
+      type: audit_event
+      title: "Activity"
+      families: [activity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bank_account
+      type: entity_family
+      title: "Bank Account"
+      families: [bank_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: team_member_booking_profile
+      type: entity_family
+      title: "Team Member Booking Profile"
+      families: [team_member_booking_profile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: square.activity
+    schema_ref: square/activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - category
+  - kind: square.bank_account
+    schema_ref: square/bank_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: square.group
+    schema_ref: square/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: square.team_member_booking_profile
+    schema_ref: square/team_member_booking_profile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_id
+    required_payload_fields:
+      - description

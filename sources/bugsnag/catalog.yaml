@@ -1,0 +1,85 @@
+id: bugsnag
+name: "Bugsnag"
+description: "Collects projects, errors, and audit events from Bugsnag and projects them into the Cerebro graph as assets, findings, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - bugsnag.projects
+  - bugsnag.errors
+  - bugsnag.audit_events
+kind_lifecycle:
+  - kind: bugsnag.projects
+    status: active
+  - kind: bugsnag.errors
+    status: active
+  - kind: bugsnag.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bugsnag
+  dimensions:
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: errors
+      type: entity_family
+      title: "Errors"
+      families: [errors]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bugsnag.projects
+    schema_ref: bugsnag/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bugsnag.errors
+    schema_ref: bugsnag/errors/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: bugsnag.audit_events
+    schema_ref: bugsnag/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

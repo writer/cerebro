@@ -1,0 +1,82 @@
+id: pulumi_cloud
+name: "Pulumi Cloud"
+description: "Collects repositories, users, and audit events from Pulumi Cloud and projects them into the Cerebro graph as repositories, users, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - pulumi_cloud.repositories
+  - pulumi_cloud.users
+  - pulumi_cloud.audit_events
+kind_lifecycle:
+  - kind: pulumi_cloud.repositories
+    status: active
+  - kind: pulumi_cloud.users
+    status: active
+  - kind: pulumi_cloud.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: pulumi_cloud
+  dimensions:
+    - id: repositories
+      type: entity_family
+      title: "Repositories"
+      families: [repositories]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: pulumi_cloud.repositories
+    schema_ref: pulumi_cloud/repositories/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: pulumi_cloud.users
+    schema_ref: pulumi_cloud/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: pulumi_cloud.audit_events
+    schema_ref: pulumi_cloud/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

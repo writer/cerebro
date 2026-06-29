@@ -1,0 +1,84 @@
+id: bigfix
+name: "BigFix"
+description: "Collects computers, sites, and analyses from BigFix and projects them into the Cerebro graph as devices, assets, and audit events for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - bigfix.computers
+  - bigfix.sites
+  - bigfix.analyses
+kind_lifecycle:
+  - kind: bigfix.computers
+    status: active
+  - kind: bigfix.sites
+    status: active
+  - kind: bigfix.analyses
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bigfix
+  dimensions:
+    - id: computers
+      type: entity_family
+      title: "Computers"
+      families: [computers]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sites
+      type: entity_family
+      title: "Sites"
+      families: [sites]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: analyses
+      type: audit_event
+      title: "Analyses"
+      families: [analyses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bigfix.computers
+    schema_ref: bigfix/computers/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bigfix.sites
+    schema_ref: bigfix/sites/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bigfix.analyses
+    schema_ref: bigfix/analyses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

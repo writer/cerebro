@@ -1,0 +1,150 @@
+id: cloudflare_workers_ai
+name: "Cloudflare Workers AI"
+description: "Collects Workers AI models, AI Gateway configuration, gateway provider configs, gateway evaluations, gateway logs, and Vectorize indexes from Cloudflare."
+emitted_kinds:
+  - cloudflare_workers_ai.model_catalog
+  - cloudflare_workers_ai.ai_gateways
+  - cloudflare_workers_ai.gateway_provider_configs
+  - cloudflare_workers_ai.gateway_evaluations
+  - cloudflare_workers_ai.gateway_logs
+  - cloudflare_workers_ai.vectorize_indexes
+kind_lifecycle:
+  - kind: cloudflare_workers_ai.model_catalog
+    status: active
+  - kind: cloudflare_workers_ai.ai_gateways
+    status: active
+  - kind: cloudflare_workers_ai.gateway_provider_configs
+    status: active
+  - kind: cloudflare_workers_ai.gateway_evaluations
+    status: active
+  - kind: cloudflare_workers_ai.gateway_logs
+    status: active
+  - kind: cloudflare_workers_ai.vectorize_indexes
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cloudflare_workers_ai
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ai_gateways
+      type: entity_family
+      title: "Ai Gateways"
+      families: [ai_gateways]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: gateway_provider_configs
+      type: entity_family
+      title: "Gateway Provider Configs"
+      families: [gateway_provider_configs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: gateway_evaluations
+      type: entity_family
+      title: "Gateway Evaluations"
+      families: [gateway_evaluations]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: gateway_logs
+      type: audit_event
+      title: "Gateway Logs"
+      families: [gateway_logs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vectorize_indexes
+      type: entity_family
+      title: "Vectorize Indexes"
+      families: [vectorize_indexes]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cloudflare_workers_ai.model_catalog
+    schema_ref: cloudflare_workers_ai/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare_workers_ai.ai_gateways
+    schema_ref: cloudflare_workers_ai/ai_gateways/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: cloudflare_workers_ai.gateway_provider_configs
+    schema_ref: cloudflare_workers_ai/gateway_provider_configs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: cloudflare_workers_ai.gateway_evaluations
+    schema_ref: cloudflare_workers_ai/gateway_evaluations/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: cloudflare_workers_ai.gateway_logs
+    schema_ref: cloudflare_workers_ai/gateway_logs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: cloudflare_workers_ai.vectorize_indexes
+    schema_ref: cloudflare_workers_ai/vectorize_indexes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

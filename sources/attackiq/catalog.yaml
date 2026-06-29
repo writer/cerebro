@@ -1,0 +1,131 @@
+id: attackiq
+name: "Attackiq"
+description: "Collects assets, findings, vulnerabilities, policies, and audit events from Attackiq and projects them into the Cerebro graph as assets, findings, vulnerabilities, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - attackiq.assets
+  - attackiq.findings
+  - attackiq.vulnerabilities
+  - attackiq.policies
+  - attackiq.audit_events
+kind_lifecycle:
+  - kind: attackiq.assets
+    status: active
+  - kind: attackiq.findings
+    status: active
+  - kind: attackiq.vulnerabilities
+    status: active
+  - kind: attackiq.policies
+    status: active
+  - kind: attackiq.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: attackiq
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: entity_family
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: attackiq.assets
+    schema_ref: attackiq/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: attackiq.findings
+    schema_ref: attackiq/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: attackiq.vulnerabilities
+    schema_ref: attackiq/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: attackiq.policies
+    schema_ref: attackiq/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: attackiq.audit_events
+    schema_ref: attackiq/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

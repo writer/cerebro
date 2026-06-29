@@ -1,0 +1,102 @@
+id: combell
+name: "Combell"
+description: "Collects account, ssh, user, and account 2 from Combell and projects them into the Cerebro graph as users and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - combell.account
+  - combell.ssh
+  - combell.user
+  - combell.account_2
+kind_lifecycle:
+  - kind: combell.account
+    status: active
+  - kind: combell.ssh
+    status: active
+  - kind: combell.user
+    status: active
+  - kind: combell.account_2
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: combell
+  dimensions:
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ssh
+      type: entity_family
+      title: "Ssh"
+      families: [ssh]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_2
+      type: entity_family
+      title: "Account 2"
+      families: [account_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: combell.account
+    schema_ref: combell/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: combell.ssh
+    schema_ref: combell/ssh/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - fingerprint
+  - kind: combell.user
+    schema_ref: combell/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: combell.account_2
+    schema_ref: combell/account_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

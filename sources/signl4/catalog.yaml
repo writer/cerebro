@@ -1,0 +1,102 @@
+id: signl4
+name: "SIGNL4"
+description: "Collects team, user, membership, and image from SIGNL4 and projects them into the Cerebro graph as groups, users, group memberships, and alerts for alert, incident, service health, and response context."
+emitted_kinds:
+  - signl4.team
+  - signl4.user
+  - signl4.membership
+  - signl4.image
+kind_lifecycle:
+  - kind: signl4.team
+    status: active
+  - kind: signl4.user
+    status: active
+  - kind: signl4.membership
+    status: active
+  - kind: signl4.image
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: signl4
+  dimensions:
+    - id: team
+      type: entity_family
+      title: "Team"
+      families: [team]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: membership
+      type: entity_family
+      title: "Membership"
+      families: [membership]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: image
+      type: entity_family
+      title: "Image"
+      families: [image]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: signl4.team
+    schema_ref: signl4/team/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: signl4.user
+    schema_ref: signl4/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: signl4.membership
+    schema_ref: signl4/membership/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_id
+    required_payload_fields:
+      - id
+  - kind: signl4.image
+    schema_ref: signl4/image/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id

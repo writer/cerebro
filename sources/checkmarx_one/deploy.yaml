@@ -1,0 +1,15 @@
+sourceId: checkmarx_one
+secretKeys:
+  - CHECKMARX_ONE_CLIENT_ID
+  - CHECKMARX_ONE_CLIENT_SECRET
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /auth/realms/${config.tenant}/protocol/openid-connect/token
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:CHECKMARX_ONE_CLIENT_ID
+      client_secret: env:CHECKMARX_ONE_CLIENT_SECRET

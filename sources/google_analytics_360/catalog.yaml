@@ -1,0 +1,127 @@
+id: google_analytics_360
+name: "Google Analytics 360"
+description: "Collects users, accounts, records, policies, and audit events from Google Analytics 360 and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - google_analytics_360.users
+  - google_analytics_360.accounts
+  - google_analytics_360.records
+  - google_analytics_360.policies
+  - google_analytics_360.audit_events
+kind_lifecycle:
+  - kind: google_analytics_360.users
+    status: active
+  - kind: google_analytics_360.accounts
+    status: active
+  - kind: google_analytics_360.records
+    status: active
+  - kind: google_analytics_360.policies
+    status: active
+  - kind: google_analytics_360.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: google_analytics_360
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: records
+      type: entity_family
+      title: "Records"
+      families: [records]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: google_analytics_360.users
+    schema_ref: google_analytics_360/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: google_analytics_360.accounts
+    schema_ref: google_analytics_360/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: google_analytics_360.records
+    schema_ref: google_analytics_360/records/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: google_analytics_360.policies
+    schema_ref: google_analytics_360/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: google_analytics_360.audit_events
+    schema_ref: google_analytics_360/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

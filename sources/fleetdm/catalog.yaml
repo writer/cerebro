@@ -1,0 +1,83 @@
+id: fleetdm
+name: "Fleetdm"
+description: "Collects hosts, policies, and audit activities from Fleetdm and projects them into the Cerebro graph as devices, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - fleetdm.hosts
+  - fleetdm.policies
+  - fleetdm.audit_activities
+kind_lifecycle:
+  - kind: fleetdm.hosts
+    status: active
+  - kind: fleetdm.policies
+    status: active
+  - kind: fleetdm.audit_activities
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: fleetdm
+  dimensions:
+    - id: hosts
+      type: entity_family
+      title: "Hosts"
+      families: [hosts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_activities
+      type: audit_event
+      title: "Audit Activities"
+      families: [audit_activities]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: fleetdm.hosts
+    schema_ref: fleetdm/hosts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: fleetdm.policies
+    schema_ref: fleetdm/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: fleetdm.audit_activities
+    schema_ref: fleetdm/audit_activities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

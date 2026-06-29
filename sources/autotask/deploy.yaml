@@ -1,0 +1,15 @@
+sourceId: autotask
+secretKeys:
+  - AUTOTASK_PARENTID
+  - AUTOTASK_TOKEN
+runtimes:
+  - localId: field
+    config:
+      parentid: env:AUTOTASK_PARENTID
+      family: field
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /V1.0/DeletedTaskActivityLogs/entityInformation/fields
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:AUTOTASK_TOKEN

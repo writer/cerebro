@@ -1,0 +1,280 @@
+id: clickmeter
+name: "ClickMeter"
+description: "Collects clickstream, group, list, hit, ipblacklist, and conversions hit from ClickMeter and projects them into the Cerebro graph as assets, audit events, and groups for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - clickmeter.clickstream
+  - clickmeter.group
+  - clickmeter.list
+  - clickmeter.hit
+  - clickmeter.ipblacklist
+  - clickmeter.conversions_hit
+  - clickmeter.datapoints_hit
+  - clickmeter.groups_hit
+  - clickmeter.tags_group
+  - clickmeter.summary_group
+  - clickmeter.datapoint
+  - clickmeter.aggregated_list
+kind_lifecycle:
+  - kind: clickmeter.clickstream
+    status: active
+  - kind: clickmeter.group
+    status: active
+  - kind: clickmeter.list
+    status: active
+  - kind: clickmeter.hit
+    status: active
+  - kind: clickmeter.ipblacklist
+    status: active
+  - kind: clickmeter.conversions_hit
+    status: active
+  - kind: clickmeter.datapoints_hit
+    status: active
+  - kind: clickmeter.groups_hit
+    status: active
+  - kind: clickmeter.tags_group
+    status: active
+  - kind: clickmeter.summary_group
+    status: active
+  - kind: clickmeter.datapoint
+    status: active
+  - kind: clickmeter.aggregated_list
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: clickmeter
+  dimensions:
+    - id: clickstream
+      type: audit_event
+      title: "Clickstream"
+      families: [clickstream]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: list
+      type: entity_family
+      title: "List"
+      families: [list]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: hit
+      type: audit_event
+      title: "Hit"
+      families: [hit]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ipblacklist
+      type: audit_event
+      title: "Ipblacklist"
+      families: [ipblacklist]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: conversions_hit
+      type: audit_event
+      title: "Conversions Hit"
+      families: [conversions_hit]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datapoints_hit
+      type: audit_event
+      title: "Datapoints Hit"
+      families: [datapoints_hit]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups_hit
+      type: audit_event
+      title: "Groups Hit"
+      families: [groups_hit]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: tags_group
+      type: entity_family
+      title: "Tags Group"
+      families: [tags_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: summary_group
+      type: entity_family
+      title: "Summary Group"
+      families: [summary_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datapoint
+      type: entity_family
+      title: "Datapoint"
+      families: [datapoint]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: aggregated_list
+      type: entity_family
+      title: "Aggregated List"
+      families: [aggregated_list]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: clickmeter.clickstream
+    schema_ref: clickmeter/clickstream/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accessTime
+  - kind: clickmeter.group
+    schema_ref: clickmeter/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: clickmeter.list
+    schema_ref: clickmeter/list/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - activityDay
+  - kind: clickmeter.hit
+    schema_ref: clickmeter/hit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accessTime
+  - kind: clickmeter.ipblacklist
+    schema_ref: clickmeter/ipblacklist/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: clickmeter.conversions_hit
+    schema_ref: clickmeter/conversions_hit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accessTime
+  - kind: clickmeter.datapoints_hit
+    schema_ref: clickmeter/datapoints_hit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accessTime
+  - kind: clickmeter.groups_hit
+    schema_ref: clickmeter/groups_hit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - accessTime
+  - kind: clickmeter.tags_group
+    schema_ref: clickmeter/tags_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: clickmeter.summary_group
+    schema_ref: clickmeter/summary_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - activityDay
+  - kind: clickmeter.datapoint
+    schema_ref: clickmeter/datapoint/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: clickmeter.aggregated_list
+    schema_ref: clickmeter/aggregated_list/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - activityDay

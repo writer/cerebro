@@ -1,0 +1,107 @@
+id: netlicensing
+name: "Labs64 NetLicensing"
+description: "Collects token, license, licensee, and licensetemplate from Labs64 NetLicensing and projects them into the Cerebro graph as secrets and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - netlicensing.token
+  - netlicensing.license
+  - netlicensing.licensee
+  - netlicensing.licensetemplate
+kind_lifecycle:
+  - kind: netlicensing.token
+    status: active
+  - kind: netlicensing.license
+    status: active
+  - kind: netlicensing.licensee
+    status: active
+  - kind: netlicensing.licensetemplate
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: netlicensing
+  dimensions:
+    - id: token
+      type: entity_family
+      title: "Token"
+      families: [token]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: license
+      type: entity_family
+      title: "License"
+      families: [license]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: licensee
+      type: entity_family
+      title: "Licensee"
+      families: [licensee]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: licensetemplate
+      type: entity_family
+      title: "Licensetemplate"
+      families: [licensetemplate]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: netlicensing.token
+    schema_ref: netlicensing/token/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - infos
+  - kind: netlicensing.license
+    schema_ref: netlicensing/license/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - infos
+  - kind: netlicensing.licensee
+    schema_ref: netlicensing/licensee/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - infos
+  - kind: netlicensing.licensetemplate
+    schema_ref: netlicensing/licensetemplate/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - infos

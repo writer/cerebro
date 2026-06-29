@@ -1,0 +1,129 @@
+id: microsoft_foundry
+name: "Microsoft Foundry"
+description: "Collects agents, datasets, indexes, evaluations, and connections from Microsoft Foundry and projects them into the Cerebro graph as assets, audit events, and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - microsoft_foundry.agents
+  - microsoft_foundry.datasets
+  - microsoft_foundry.indexes
+  - microsoft_foundry.evaluations
+  - microsoft_foundry.connections
+kind_lifecycle:
+  - kind: microsoft_foundry.agents
+    status: active
+  - kind: microsoft_foundry.datasets
+    status: active
+  - kind: microsoft_foundry.indexes
+    status: active
+  - kind: microsoft_foundry.evaluations
+    status: active
+  - kind: microsoft_foundry.connections
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: microsoft_foundry
+  dimensions:
+    - id: agents
+      type: entity_family
+      title: "Agents"
+      families: [agents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: datasets
+      type: entity_family
+      title: "Datasets"
+      families: [datasets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: indexes
+      type: entity_family
+      title: "Indexes"
+      families: [indexes]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: evaluations
+      type: audit_event
+      title: "Evaluations"
+      families: [evaluations]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: connections
+      type: entity_family
+      title: "Connections"
+      families: [connections]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: microsoft_foundry.agents
+    schema_ref: microsoft_foundry/agents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: microsoft_foundry.datasets
+    schema_ref: microsoft_foundry/datasets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: microsoft_foundry.indexes
+    schema_ref: microsoft_foundry/indexes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: microsoft_foundry.evaluations
+    schema_ref: microsoft_foundry/evaluations/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: microsoft_foundry.connections
+    schema_ref: microsoft_foundry/connections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

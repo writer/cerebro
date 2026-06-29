@@ -1,0 +1,15 @@
+sourceId: signl4
+secretKeys:
+  - SIGNL4_TEAMID
+  - SIGNL4_TOKEN
+runtimes:
+  - localId: team
+    config:
+      teamid: env:SIGNL4_TEAMID
+      family: team
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /teams
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SIGNL4_TOKEN

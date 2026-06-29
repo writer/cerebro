@@ -1,0 +1,276 @@
+id: gsmtasks
+name: "GSMTasks"
+description: "Collects task event, account, client role, formrule, notification, and device from GSMTasks and projects them into the Cerebro graph as alerts, assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - gsmtasks.task_event
+  - gsmtasks.account
+  - gsmtasks.client_role
+  - gsmtasks.formrule
+  - gsmtasks.notification
+  - gsmtasks.device
+  - gsmtasks.task_event_track
+  - gsmtasks.users_on_duty_log
+  - gsmtasks.account_role
+  - gsmtasks.email
+  - gsmtasks.user
+  - gsmtasks.notification_template
+kind_lifecycle:
+  - kind: gsmtasks.task_event
+    status: active
+  - kind: gsmtasks.account
+    status: active
+  - kind: gsmtasks.client_role
+    status: active
+  - kind: gsmtasks.formrule
+    status: active
+  - kind: gsmtasks.notification
+    status: active
+  - kind: gsmtasks.device
+    status: active
+  - kind: gsmtasks.task_event_track
+    status: active
+  - kind: gsmtasks.users_on_duty_log
+    status: active
+  - kind: gsmtasks.account_role
+    status: active
+  - kind: gsmtasks.email
+    status: active
+  - kind: gsmtasks.user
+    status: active
+  - kind: gsmtasks.notification_template
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: gsmtasks
+  dimensions:
+    - id: task_event
+      type: audit_event
+      title: "Task Event"
+      families: [task_event]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: client_role
+      type: entity_family
+      title: "Client Role"
+      families: [client_role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: formrule
+      type: entity_family
+      title: "Formrule"
+      families: [formrule]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification
+      type: entity_family
+      title: "Notification"
+      families: [notification]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: device
+      type: entity_family
+      title: "Device"
+      families: [device]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: task_event_track
+      type: audit_event
+      title: "Task Event Track"
+      families: [task_event_track]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: users_on_duty_log
+      type: audit_event
+      title: "Users On Duty Log"
+      families: [users_on_duty_log]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account_role
+      type: entity_family
+      title: "Account Role"
+      families: [account_role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: email
+      type: entity_family
+      title: "Email"
+      families: [email]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification_template
+      type: entity_family
+      title: "Notification Template"
+      families: [notification_template]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: gsmtasks.task_event
+    schema_ref: gsmtasks/task_event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.account
+    schema_ref: gsmtasks/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.client_role
+    schema_ref: gsmtasks/client_role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.formrule
+    schema_ref: gsmtasks/formrule/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.notification
+    schema_ref: gsmtasks/notification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.device
+    schema_ref: gsmtasks/device/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.task_event_track
+    schema_ref: gsmtasks/task_event_track/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.users_on_duty_log
+    schema_ref: gsmtasks/users_on_duty_log/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - account
+  - kind: gsmtasks.account_role
+    schema_ref: gsmtasks/account_role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.email
+    schema_ref: gsmtasks/email/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.user
+    schema_ref: gsmtasks/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: gsmtasks.notification_template
+    schema_ref: gsmtasks/notification_template/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id

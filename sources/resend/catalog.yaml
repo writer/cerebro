@@ -1,0 +1,83 @@
+id: resend
+name: "Resend"
+description: "Collects domains, API keys, and audit events from Resend and projects them into the Cerebro graph as assets, secrets, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - resend.domains
+  - resend.api_keys
+  - resend.audit_events
+kind_lifecycle:
+  - kind: resend.domains
+    status: active
+  - kind: resend.api_keys
+    status: active
+  - kind: resend.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: resend
+  dimensions:
+    - id: domains
+      type: entity_family
+      title: "Domains"
+      families: [domains]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: resend.domains
+    schema_ref: resend/domains/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: resend.api_keys
+    schema_ref: resend/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: resend.audit_events
+    schema_ref: resend/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

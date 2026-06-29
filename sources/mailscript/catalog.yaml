@@ -1,0 +1,267 @@
+id: mailscript
+name: "Mailscript"
+description: "Collects workspace, workflow, key, action, addresses, and domain from Mailscript and projects them into the Cerebro graph as assets and groups for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - mailscript.workspace
+  - mailscript.workflow
+  - mailscript.key
+  - mailscript.action
+  - mailscript.addresses
+  - mailscript.domain
+  - mailscript.input
+  - mailscript.integration
+  - mailscript.trigger
+  - mailscript.verification
+  - mailscript.verify
+kind_lifecycle:
+  - kind: mailscript.workspace
+    status: active
+  - kind: mailscript.workflow
+    status: active
+  - kind: mailscript.key
+    status: active
+  - kind: mailscript.action
+    status: active
+  - kind: mailscript.addresses
+    status: active
+  - kind: mailscript.domain
+    status: active
+  - kind: mailscript.input
+    status: active
+  - kind: mailscript.integration
+    status: active
+  - kind: mailscript.trigger
+    status: active
+  - kind: mailscript.verification
+    status: active
+  - kind: mailscript.verify
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: mailscript
+  dimensions:
+    - id: workspace
+      type: entity_family
+      title: "Workspace"
+      families: [workspace]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workflow
+      type: entity_family
+      title: "Workflow"
+      families: [workflow]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: key
+      type: entity_family
+      title: "Key"
+      families: [key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: action
+      type: entity_family
+      title: "Action"
+      families: [action]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: addresses
+      type: entity_family
+      title: "Addresses"
+      families: [addresses]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: domain
+      type: entity_family
+      title: "Domain"
+      families: [domain]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: input
+      type: entity_family
+      title: "Input"
+      families: [input]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: integration
+      type: entity_family
+      title: "Integration"
+      families: [integration]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: trigger
+      type: entity_family
+      title: "Trigger"
+      families: [trigger]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: verification
+      type: entity_family
+      title: "Verification"
+      families: [verification]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: verify
+      type: entity_family
+      title: "Verify"
+      families: [verify]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: mailscript.workspace
+    schema_ref: mailscript/workspace/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.workflow
+    schema_ref: mailscript/workflow/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.key
+    schema_ref: mailscript/key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.action
+    schema_ref: mailscript/action/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.addresses
+    schema_ref: mailscript/addresses/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.domain
+    schema_ref: mailscript/domain/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.input
+    schema_ref: mailscript/input/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.integration
+    schema_ref: mailscript/integration/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.trigger
+    schema_ref: mailscript/trigger/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.verification
+    schema_ref: mailscript/verification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mailscript.verify
+    schema_ref: mailscript/verify/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

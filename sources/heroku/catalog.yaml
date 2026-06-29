@@ -1,0 +1,82 @@
+id: heroku
+name: "Heroku"
+description: "Collects apps, collaborators, and audit events from Heroku and projects them into the Cerebro graph as assets, users, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - heroku.apps
+  - heroku.collaborators
+  - heroku.audit_events
+kind_lifecycle:
+  - kind: heroku.apps
+    status: active
+  - kind: heroku.collaborators
+    status: active
+  - kind: heroku.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: heroku
+  dimensions:
+    - id: apps
+      type: entity_family
+      title: "Apps"
+      families: [apps]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: collaborators
+      type: entity_family
+      title: "Collaborators"
+      families: [collaborators]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: heroku.apps
+    schema_ref: heroku/apps/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: heroku.collaborators
+    schema_ref: heroku/collaborators/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: heroku.audit_events
+    schema_ref: heroku/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

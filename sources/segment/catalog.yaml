@@ -1,0 +1,83 @@
+id: segment
+name: "Segment"
+description: "Collects workspaces, IAM users, and sources from Segment and projects them into the Cerebro graph as assets and users for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - segment.workspaces
+  - segment.users
+  - segment.sources
+kind_lifecycle:
+  - kind: segment.workspaces
+    status: active
+  - kind: segment.users
+    status: active
+  - kind: segment.sources
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: segment
+  dimensions:
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: sources
+      type: entity_family
+      title: "Sources"
+      families: [sources]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: segment.workspaces
+    schema_ref: segment/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: segment.users
+    schema_ref: segment/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: segment.sources
+    schema_ref: segment/sources/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

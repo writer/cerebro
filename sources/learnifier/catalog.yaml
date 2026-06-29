@@ -1,0 +1,255 @@
+id: learnifier
+name: "Learnifier"
+description: "Collects globalusergroup, coursedesign, user, member, usergroup, and usergroups member from Learnifier and projects them into the Cerebro graph as assets and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - learnifier.globalusergroup
+  - learnifier.coursedesign
+  - learnifier.user
+  - learnifier.member
+  - learnifier.usergroup
+  - learnifier.usergroups_member
+  - learnifier.teammember
+  - learnifier.orgunits_usergroup
+  - learnifier.orgunit
+  - learnifier.project
+  - learnifier.participant
+kind_lifecycle:
+  - kind: learnifier.globalusergroup
+    status: active
+  - kind: learnifier.coursedesign
+    status: active
+  - kind: learnifier.user
+    status: active
+  - kind: learnifier.member
+    status: active
+  - kind: learnifier.usergroup
+    status: active
+  - kind: learnifier.usergroups_member
+    status: active
+  - kind: learnifier.teammember
+    status: active
+  - kind: learnifier.orgunits_usergroup
+    status: active
+  - kind: learnifier.orgunit
+    status: active
+  - kind: learnifier.project
+    status: active
+  - kind: learnifier.participant
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: learnifier
+  dimensions:
+    - id: globalusergroup
+      type: entity_family
+      title: "Globalusergroup"
+      families: [globalusergroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: coursedesign
+      type: entity_family
+      title: "Coursedesign"
+      families: [coursedesign]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: member
+      type: entity_family
+      title: "Member"
+      families: [member]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usergroup
+      type: entity_family
+      title: "Usergroup"
+      families: [usergroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usergroups_member
+      type: entity_family
+      title: "Usergroups Member"
+      families: [usergroups_member]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: teammember
+      type: entity_family
+      title: "Teammember"
+      families: [teammember]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: orgunits_usergroup
+      type: entity_family
+      title: "Orgunits Usergroup"
+      families: [orgunits_usergroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: orgunit
+      type: entity_family
+      title: "Orgunit"
+      families: [orgunit]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: project
+      type: entity_family
+      title: "Project"
+      families: [project]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: participant
+      type: entity_family
+      title: "Participant"
+      families: [participant]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: learnifier.globalusergroup
+    schema_ref: learnifier/globalusergroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.coursedesign
+    schema_ref: learnifier/coursedesign/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: learnifier.user
+    schema_ref: learnifier/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.member
+    schema_ref: learnifier/member/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.usergroup
+    schema_ref: learnifier/usergroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: learnifier.usergroups_member
+    schema_ref: learnifier/usergroups_member/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.teammember
+    schema_ref: learnifier/teammember/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - roles
+  - kind: learnifier.orgunits_usergroup
+    schema_ref: learnifier/orgunits_usergroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: learnifier.orgunit
+    schema_ref: learnifier/orgunit/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.project
+    schema_ref: learnifier/project/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: learnifier.participant
+    schema_ref: learnifier/participant/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

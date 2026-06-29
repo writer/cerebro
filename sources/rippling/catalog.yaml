@@ -1,0 +1,82 @@
+id: rippling
+name: "Rippling"
+description: "Collects workers, devices, and background checks from Rippling and projects them into the Cerebro graph as users, devices, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - rippling.users
+  - rippling.devices
+  - rippling.background_checks
+kind_lifecycle:
+  - kind: rippling.users
+    status: active
+  - kind: rippling.devices
+    status: active
+  - kind: rippling.background_checks
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: rippling
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: devices
+      type: entity_family
+      title: "Devices"
+      families: [devices]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: background_checks
+      type: audit_event
+      title: "Background Checks"
+      families: [background_checks]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: rippling.users
+    schema_ref: rippling/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: rippling.devices
+    schema_ref: rippling/devices/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: rippling.background_checks
+    schema_ref: rippling/background_checks/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

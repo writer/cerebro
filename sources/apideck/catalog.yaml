@@ -1,0 +1,106 @@
+id: apideck
+name: "Apideck"
+description: "Collects ledger account, bill, credit note, and customer from Apideck and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - apideck.ledger_account
+  - apideck.bill
+  - apideck.credit_note
+  - apideck.customer
+kind_lifecycle:
+  - kind: apideck.ledger_account
+    status: active
+  - kind: apideck.bill
+    status: active
+  - kind: apideck.credit_note
+    status: active
+  - kind: apideck.customer
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: apideck
+  dimensions:
+    - id: ledger_account
+      type: entity_family
+      title: "Ledger Account"
+      families: [ledger_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bill
+      type: entity_family
+      title: "Bill"
+      families: [bill]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: credit_note
+      type: entity_family
+      title: "Credit Note"
+      families: [credit_note]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customer
+      type: entity_family
+      title: "Customer"
+      families: [customer]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: apideck.ledger_account
+    schema_ref: apideck/ledger_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apideck.bill
+    schema_ref: apideck/bill/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: apideck.credit_note
+    schema_ref: apideck/credit_note/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: apideck.customer
+    schema_ref: apideck/customer/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

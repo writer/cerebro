@@ -1,0 +1,102 @@
+id: whatsapp
+name: "WhatsApp Business"
+description: "Collects group, user, invite, and group 2 from WhatsApp Business and projects them into the Cerebro graph as groups, users, and assets for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - whatsapp.group
+  - whatsapp.user
+  - whatsapp.invite
+  - whatsapp.group_2
+kind_lifecycle:
+  - kind: whatsapp.group
+    status: active
+  - kind: whatsapp.user
+    status: active
+  - kind: whatsapp.invite
+    status: active
+  - kind: whatsapp.group_2
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: whatsapp
+  dimensions:
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: invite
+      type: entity_family
+      title: "Invite"
+      families: [invite]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group_2
+      type: entity_family
+      title: "Group 2"
+      families: [group_2]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: whatsapp.group
+    schema_ref: whatsapp/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - code
+  - kind: whatsapp.user
+    schema_ref: whatsapp/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - code
+  - kind: whatsapp.invite
+    schema_ref: whatsapp/invite/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - code
+  - kind: whatsapp.group_2
+    schema_ref: whatsapp/group_2/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - code

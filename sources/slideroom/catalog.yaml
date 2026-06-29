@@ -1,0 +1,85 @@
+id: slideroom
+name: "SlideRoom"
+description: "Collects name, attributes name, and export from SlideRoom and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - slideroom.name
+  - slideroom.attributes_name
+  - slideroom.export
+kind_lifecycle:
+  - kind: slideroom.name
+    status: active
+  - kind: slideroom.attributes_name
+    status: active
+  - kind: slideroom.export
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: slideroom
+  dimensions:
+    - id: name
+      type: entity_family
+      title: "Name"
+      families: [name]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: attributes_name
+      type: entity_family
+      title: "Attributes Name"
+      families: [attributes_name]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: export
+      type: entity_family
+      title: "Export"
+      families: [export]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: slideroom.name
+    schema_ref: slideroom/name/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: slideroom.attributes_name
+    schema_ref: slideroom/attributes_name/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: slideroom.export
+    schema_ref: slideroom/export/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

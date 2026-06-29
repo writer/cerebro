@@ -1,0 +1,128 @@
+id: aws_bedrock
+name: "AWS Bedrock"
+description: "Collects foundation models, custom models, provisioned model throughputs, model customization jobs, and guardrails from AWS Bedrock and projects them into the Cerebro graph as assets, deployments, and policies for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - aws_bedrock.foundation_models
+  - aws_bedrock.custom_models
+  - aws_bedrock.provisioned_model_throughputs
+  - aws_bedrock.model_customization_jobs
+  - aws_bedrock.guardrails
+kind_lifecycle:
+  - kind: aws_bedrock.foundation_models
+    status: active
+  - kind: aws_bedrock.custom_models
+    status: active
+  - kind: aws_bedrock.provisioned_model_throughputs
+    status: active
+  - kind: aws_bedrock.model_customization_jobs
+    status: active
+  - kind: aws_bedrock.guardrails
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: aws_bedrock
+  dimensions:
+    - id: foundation_models
+      type: entity_family
+      title: "Foundation Models"
+      families: [foundation_models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: custom_models
+      type: entity_family
+      title: "Custom Models"
+      families: [custom_models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: provisioned_model_throughputs
+      type: entity_family
+      title: "Provisioned Model Throughputs"
+      families: [provisioned_model_throughputs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: model_customization_jobs
+      type: entity_family
+      title: "Model Customization Jobs"
+      families: [model_customization_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: guardrails
+      type: entity_family
+      title: "Guardrails"
+      families: [guardrails]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: aws_bedrock.foundation_models
+    schema_ref: aws_bedrock/foundation_models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - modelId
+  - kind: aws_bedrock.custom_models
+    schema_ref: aws_bedrock/custom_models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - modelArn
+  - kind: aws_bedrock.provisioned_model_throughputs
+    schema_ref: aws_bedrock/provisioned_model_throughputs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - provisionedModelArn
+  - kind: aws_bedrock.model_customization_jobs
+    schema_ref: aws_bedrock/model_customization_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - jobArn
+  - kind: aws_bedrock.guardrails
+    schema_ref: aws_bedrock/guardrails/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id

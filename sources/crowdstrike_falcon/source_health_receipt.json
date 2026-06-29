@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/oauth2/token",
+  "auth_model": "oauth_client_credentials",
+  "evidence_cas_reference_kind": "crowdstrike_falcon.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=crowdstrike_falcon",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "crowdstrike_falcon",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

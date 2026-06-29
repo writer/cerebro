@@ -1,0 +1,81 @@
+id: cyberark_pam
+name: "CyberArk PAM"
+description: "Collects users, secrets, and audit events from CyberArk PAM and projects them into the Cerebro graph as users, secrets, and audit events for identity, access, device, and secret context."
+emitted_kinds:
+  - cyberark_pam.users
+  - cyberark_pam.secrets
+  - cyberark_pam.audit_events
+kind_lifecycle:
+  - kind: cyberark_pam.users
+    status: active
+  - kind: cyberark_pam.secrets
+    status: active
+  - kind: cyberark_pam.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cyberark_pam
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: secrets
+      type: entity_family
+      title: "Secrets"
+      families: [secrets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cyberark_pam.users
+    schema_ref: cyberark_pam/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: cyberark_pam.secrets
+    schema_ref: cyberark_pam/secrets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: cyberark_pam.audit_events
+    schema_ref: cyberark_pam/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,127 @@
+id: mulesoft_anypoint
+name: "Mulesoft Anypoint"
+description: "Collects users, projects, repositories, deployments, and audit events from Mulesoft Anypoint and projects them into the Cerebro graph as users, assets, repositories, deployments, and audit events for repository, build, deployment, and release context."
+emitted_kinds:
+  - mulesoft_anypoint.users
+  - mulesoft_anypoint.projects
+  - mulesoft_anypoint.repositories
+  - mulesoft_anypoint.deployments
+  - mulesoft_anypoint.audit_events
+kind_lifecycle:
+  - kind: mulesoft_anypoint.users
+    status: active
+  - kind: mulesoft_anypoint.projects
+    status: active
+  - kind: mulesoft_anypoint.repositories
+    status: active
+  - kind: mulesoft_anypoint.deployments
+    status: active
+  - kind: mulesoft_anypoint.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: mulesoft_anypoint
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: repositories
+      type: entity_family
+      title: "Repositories"
+      families: [repositories]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: entity_family
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: mulesoft_anypoint.users
+    schema_ref: mulesoft_anypoint/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: mulesoft_anypoint.projects
+    schema_ref: mulesoft_anypoint/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mulesoft_anypoint.repositories
+    schema_ref: mulesoft_anypoint/repositories/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: mulesoft_anypoint.deployments
+    schema_ref: mulesoft_anypoint/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: mulesoft_anypoint.audit_events
+    schema_ref: mulesoft_anypoint/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

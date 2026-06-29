@@ -1,0 +1,282 @@
+id: illumidesk
+name: "IllumiDesk"
+description: "Collects team, email, notification, deployment, application, and group from IllumiDesk and projects them into the Cerebro graph as alerts, assets, deployments, groups, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - illumidesk.team
+  - illumidesk.email
+  - illumidesk.notification
+  - illumidesk.deployment
+  - illumidesk.application
+  - illumidesk.group
+  - illumidesk.entity
+  - illumidesk.setting
+  - illumidesk.profile
+  - illumidesk.server_size
+  - illumidesk.card
+  - illumidesk.invoice
+kind_lifecycle:
+  - kind: illumidesk.team
+    status: active
+  - kind: illumidesk.email
+    status: active
+  - kind: illumidesk.notification
+    status: active
+  - kind: illumidesk.deployment
+    status: active
+  - kind: illumidesk.application
+    status: active
+  - kind: illumidesk.group
+    status: active
+  - kind: illumidesk.entity
+    status: active
+  - kind: illumidesk.setting
+    status: active
+  - kind: illumidesk.profile
+    status: active
+  - kind: illumidesk.server_size
+    status: active
+  - kind: illumidesk.card
+    status: active
+  - kind: illumidesk.invoice
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: illumidesk
+  dimensions:
+    - id: team
+      type: entity_family
+      title: "Team"
+      families: [team]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: email
+      type: entity_family
+      title: "Email"
+      families: [email]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: notification
+      type: entity_family
+      title: "Notification"
+      families: [notification]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployment
+      type: entity_family
+      title: "Deployment"
+      families: [deployment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: application
+      type: entity_family
+      title: "Application"
+      families: [application]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: group
+      type: entity_family
+      title: "Group"
+      families: [group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: entity
+      type: entity_family
+      title: "Entity"
+      families: [entity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: setting
+      type: entity_family
+      title: "Setting"
+      families: [setting]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: profile
+      type: entity_family
+      title: "Profile"
+      families: [profile]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: server_size
+      type: entity_family
+      title: "Server Size"
+      families: [server_size]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: card
+      type: entity_family
+      title: "Card"
+      families: [card]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: invoice
+      type: entity_family
+      title: "Invoice"
+      families: [invoice]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: illumidesk.team
+    schema_ref: illumidesk/team/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.email
+    schema_ref: illumidesk/email/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.notification
+    schema_ref: illumidesk/notification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: illumidesk.deployment
+    schema_ref: illumidesk/deployment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: illumidesk.application
+    schema_ref: illumidesk/application/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.group
+    schema_ref: illumidesk/group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.entity
+    schema_ref: illumidesk/entity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: illumidesk.setting
+    schema_ref: illumidesk/setting/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: illumidesk.profile
+    schema_ref: illumidesk/profile/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.server_size
+    schema_ref: illumidesk/server_size/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.card
+    schema_ref: illumidesk/card/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: illumidesk.invoice
+    schema_ref: illumidesk/invoice/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

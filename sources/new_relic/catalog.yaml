@@ -1,0 +1,85 @@
+id: new_relic
+name: "New Relic"
+description: "Collects monitored assets, alerts, and audit events from New Relic and projects them into the Cerebro graph as assets, findings, and audit events for alert, incident, service health, and response context."
+emitted_kinds:
+  - new_relic.assets
+  - new_relic.findings
+  - new_relic.audit_events
+kind_lifecycle:
+  - kind: new_relic.assets
+    status: active
+  - kind: new_relic.findings
+    status: active
+  - kind: new_relic.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: new_relic
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: new_relic.assets
+    schema_ref: new_relic/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: new_relic.findings
+    schema_ref: new_relic/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: new_relic.audit_events
+    schema_ref: new_relic/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

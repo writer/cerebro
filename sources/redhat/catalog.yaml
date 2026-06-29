@@ -1,0 +1,110 @@
+id: redhat
+name: "Red Hat Patchman"
+description: "Collects advisory, package, systems advisory, and v1 package from Red Hat Patchman and projects them into the Cerebro graph as findings and assets for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - redhat.advisory
+  - redhat.package
+  - redhat.systems_advisory
+  - redhat.v1_package
+kind_lifecycle:
+  - kind: redhat.advisory
+    status: active
+  - kind: redhat.package
+    status: active
+  - kind: redhat.systems_advisory
+    status: active
+  - kind: redhat.v1_package
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: redhat
+  dimensions:
+    - id: advisory
+      type: entity_family
+      title: "Advisory"
+      families: [advisory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: package
+      type: entity_family
+      title: "Package"
+      families: [package]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: systems_advisory
+      type: entity_family
+      title: "Systems Advisory"
+      families: [systems_advisory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: v1_package
+      type: entity_family
+      title: "V1 Package"
+      families: [v1_package]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: redhat.advisory
+    schema_ref: redhat/advisory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: redhat.package
+    schema_ref: redhat/package/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: redhat.systems_advisory
+    schema_ref: redhat/systems_advisory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: redhat.v1_package
+    schema_ref: redhat/v1_package/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

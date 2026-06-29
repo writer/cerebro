@@ -1,0 +1,273 @@
+id: apacta
+name: "Apacta"
+description: "Collects activity, mass messages user, role, city, event, and changelog from Apacta and projects them into the Cerebro graph as assets, audit events, groups, and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - apacta.activity
+  - apacta.mass_messages_user
+  - apacta.role
+  - apacta.city
+  - apacta.event
+  - apacta.changelog
+  - apacta.time_entry_rule_group
+  - apacta.user
+  - apacta.user_custom_field_attribute
+  - apacta.contact_person
+  - apacta.projects_user
+  - apacta.user_custom_field_value
+kind_lifecycle:
+  - kind: apacta.activity
+    status: active
+  - kind: apacta.mass_messages_user
+    status: active
+  - kind: apacta.role
+    status: active
+  - kind: apacta.city
+    status: active
+  - kind: apacta.event
+    status: active
+  - kind: apacta.changelog
+    status: active
+  - kind: apacta.time_entry_rule_group
+    status: active
+  - kind: apacta.user
+    status: active
+  - kind: apacta.user_custom_field_attribute
+    status: active
+  - kind: apacta.contact_person
+    status: active
+  - kind: apacta.projects_user
+    status: active
+  - kind: apacta.user_custom_field_value
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: apacta
+  dimensions:
+    - id: activity
+      type: audit_event
+      title: "Activity"
+      families: [activity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: mass_messages_user
+      type: entity_family
+      title: "Mass Messages User"
+      families: [mass_messages_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: role
+      type: entity_family
+      title: "Role"
+      families: [role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: city
+      type: entity_family
+      title: "City"
+      families: [city]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: event
+      type: audit_event
+      title: "Event"
+      families: [event]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: changelog
+      type: audit_event
+      title: "Changelog"
+      families: [changelog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: time_entry_rule_group
+      type: entity_family
+      title: "Time Entry Rule Group"
+      families: [time_entry_rule_group]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_custom_field_attribute
+      type: entity_family
+      title: "User Custom Field Attribute"
+      families: [user_custom_field_attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: contact_person
+      type: entity_family
+      title: "Contact Person"
+      families: [contact_person]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: projects_user
+      type: entity_family
+      title: "Projects User"
+      families: [projects_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user_custom_field_value
+      type: entity_family
+      title: "User Custom Field Value"
+      families: [user_custom_field_value]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: apacta.activity
+    schema_ref: apacta/activity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: apacta.mass_messages_user
+    schema_ref: apacta/mass_messages_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apacta.role
+    schema_ref: apacta/role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: apacta.city
+    schema_ref: apacta/city/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: apacta.event
+    schema_ref: apacta/event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: apacta.changelog
+    schema_ref: apacta/changelog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: apacta.time_entry_rule_group
+    schema_ref: apacta/time_entry_rule_group/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: apacta.user
+    schema_ref: apacta/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apacta.user_custom_field_attribute
+    schema_ref: apacta/user_custom_field_attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apacta.contact_person
+    schema_ref: apacta/contact_person/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apacta.projects_user
+    schema_ref: apacta/projects_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: apacta.user_custom_field_value
+    schema_ref: apacta/user_custom_field_value/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

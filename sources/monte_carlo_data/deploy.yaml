@@ -1,0 +1,15 @@
+sourceId: monte_carlo_data
+secretKeys:
+  - MONTE_CARLO_DATA_BASE_URL
+  - MONTE_CARLO_DATA_TOKEN
+runtimes:
+  - localId: users
+    config:
+      base_url: env:MONTE_CARLO_DATA_BASE_URL
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:MONTE_CARLO_DATA_TOKEN

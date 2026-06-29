@@ -1,0 +1,127 @@
+id: catalyst
+name: "Catalyst"
+description: "Collects users, accounts, records, policies, and audit events from Catalyst and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - catalyst.users
+  - catalyst.accounts
+  - catalyst.records
+  - catalyst.policies
+  - catalyst.audit_events
+kind_lifecycle:
+  - kind: catalyst.users
+    status: active
+  - kind: catalyst.accounts
+    status: active
+  - kind: catalyst.records
+    status: active
+  - kind: catalyst.policies
+    status: active
+  - kind: catalyst.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: catalyst
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: accounts
+      type: entity_family
+      title: "Accounts"
+      families: [accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: records
+      type: entity_family
+      title: "Records"
+      families: [records]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: catalyst.users
+    schema_ref: catalyst/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: catalyst.accounts
+    schema_ref: catalyst/accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: catalyst.records
+    schema_ref: catalyst/records/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: catalyst.policies
+    schema_ref: catalyst/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: catalyst.audit_events
+    schema_ref: catalyst/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

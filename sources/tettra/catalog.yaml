@@ -1,0 +1,126 @@
+id: tettra
+name: "Tettra"
+description: "Collects users, groups, workspaces, documents, and audit events from Tettra and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - tettra.users
+  - tettra.groups
+  - tettra.workspaces
+  - tettra.documents
+  - tettra.audit_events
+kind_lifecycle:
+  - kind: tettra.users
+    status: active
+  - kind: tettra.groups
+    status: active
+  - kind: tettra.workspaces
+    status: active
+  - kind: tettra.documents
+    status: active
+  - kind: tettra.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: tettra
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: documents
+      type: entity_family
+      title: "Documents"
+      families: [documents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: tettra.users
+    schema_ref: tettra/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: tettra.groups
+    schema_ref: tettra/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: tettra.workspaces
+    schema_ref: tettra/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: tettra.documents
+    schema_ref: tettra/documents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: tettra.audit_events
+    schema_ref: tettra/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

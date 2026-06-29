@@ -1,0 +1,131 @@
+id: eclypsium
+name: "Eclypsium"
+description: "Collects assets, findings, vulnerabilities, policies, and audit events from Eclypsium and projects them into the Cerebro graph as assets, findings, vulnerabilities, policies, and audit events for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - eclypsium.assets
+  - eclypsium.findings
+  - eclypsium.vulnerabilities
+  - eclypsium.policies
+  - eclypsium.audit_events
+kind_lifecycle:
+  - kind: eclypsium.assets
+    status: active
+  - kind: eclypsium.findings
+    status: active
+  - kind: eclypsium.vulnerabilities
+    status: active
+  - kind: eclypsium.policies
+    status: active
+  - kind: eclypsium.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: eclypsium
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: entity_family
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: policies
+      type: entity_family
+      title: "Policies"
+      families: [policies]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: eclypsium.assets
+    schema_ref: eclypsium/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: eclypsium.findings
+    schema_ref: eclypsium/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: eclypsium.vulnerabilities
+    schema_ref: eclypsium/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id
+  - kind: eclypsium.policies
+    schema_ref: eclypsium/policies/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: eclypsium.audit_events
+    schema_ref: eclypsium/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

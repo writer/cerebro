@@ -1,0 +1,125 @@
+id: bitwarden
+name: "Bitwarden"
+description: "Collects users, groups, roles, applications, and audit events from Bitwarden and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+emitted_kinds:
+  - bitwarden.users
+  - bitwarden.groups
+  - bitwarden.roles
+  - bitwarden.applications
+  - bitwarden.audit_events
+kind_lifecycle:
+  - kind: bitwarden.users
+    status: active
+  - kind: bitwarden.groups
+    status: active
+  - kind: bitwarden.roles
+    status: active
+  - kind: bitwarden.applications
+    status: active
+  - kind: bitwarden.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bitwarden
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: applications
+      type: entity_family
+      title: "Applications"
+      families: [applications]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bitwarden.users
+    schema_ref: bitwarden/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: bitwarden.groups
+    schema_ref: bitwarden/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: bitwarden.roles
+    schema_ref: bitwarden/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: bitwarden.applications
+    schema_ref: bitwarden/applications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bitwarden.audit_events
+    schema_ref: bitwarden/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

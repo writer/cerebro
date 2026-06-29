@@ -1,0 +1,19 @@
+sourceId: runscope
+secretKeys:
+  - RUNSCOPE_BUCKETKEY
+  - RUNSCOPE_TEAMID
+  - RUNSCOPE_TESTID
+  - RUNSCOPE_TOKEN
+runtimes:
+  - localId: people
+    config:
+      bucketkey: env:RUNSCOPE_BUCKETKEY
+      teamid: env:RUNSCOPE_TEAMID
+      testid: env:RUNSCOPE_TESTID
+      family: people
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /teams/${config.teamid}/people
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:RUNSCOPE_TOKEN

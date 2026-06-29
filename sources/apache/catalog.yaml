@@ -1,0 +1,103 @@
+id: apache
+name: "Apache Airflow"
+description: "Collects eventlog, role, user, and permission from Apache Airflow and projects them into the Cerebro graph as audit events, groups, users, and assets for repository, build, deployment, and release context."
+emitted_kinds:
+  - apache.eventlog
+  - apache.role
+  - apache.user
+  - apache.permission
+kind_lifecycle:
+  - kind: apache.eventlog
+    status: active
+  - kind: apache.role
+    status: active
+  - kind: apache.user
+    status: active
+  - kind: apache.permission
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: apache
+  dimensions:
+    - id: eventlog
+      type: audit_event
+      title: "Eventlog"
+      families: [eventlog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: role
+      type: entity_family
+      title: "Role"
+      families: [role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: permission
+      type: entity_family
+      title: "Permission"
+      families: [permission]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: apache.eventlog
+    schema_ref: apache/eventlog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - dag_id
+  - kind: apache.role
+    schema_ref: apache/role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - name
+  - kind: apache.user
+    schema_ref: apache/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - email
+  - kind: apache.permission
+    schema_ref: apache/permission/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name

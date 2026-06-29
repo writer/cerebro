@@ -1,0 +1,102 @@
+id: bigredcloud
+name: "Big Red Cloud"
+description: "Collects account, ownertypegroup, analysiscategory, and bankaccount from Big Red Cloud and projects them into the Cerebro graph as users, groups, and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - bigredcloud.account
+  - bigredcloud.ownertypegroup
+  - bigredcloud.analysiscategory
+  - bigredcloud.bankaccount
+kind_lifecycle:
+  - kind: bigredcloud.account
+    status: active
+  - kind: bigredcloud.ownertypegroup
+    status: active
+  - kind: bigredcloud.analysiscategory
+    status: active
+  - kind: bigredcloud.bankaccount
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: bigredcloud
+  dimensions:
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: ownertypegroup
+      type: entity_family
+      title: "Ownertypegroup"
+      families: [ownertypegroup]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: analysiscategory
+      type: entity_family
+      title: "Analysiscategory"
+      families: [analysiscategory]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bankaccount
+      type: entity_family
+      title: "Bankaccount"
+      families: [bankaccount]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: bigredcloud.account
+    schema_ref: bigredcloud/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: bigredcloud.ownertypegroup
+    schema_ref: bigredcloud/ownertypegroup/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: bigredcloud.analysiscategory
+    schema_ref: bigredcloud/analysiscategory/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: bigredcloud.bankaccount
+    schema_ref: bigredcloud/bankaccount/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,17 @@
+sourceId: snowflake
+secretKeys:
+  - SNOWFLAKE_ACCOUNT
+  - SNOWFLAKE_CLIENT_ID
+  - SNOWFLAKE_CLIENT_SECRET
+runtimes:
+  - localId: assets
+    config:
+      account: env:SNOWFLAKE_ACCOUNT
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/v2/databases
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:SNOWFLAKE_CLIENT_ID
+      client_secret: env:SNOWFLAKE_CLIENT_SECRET

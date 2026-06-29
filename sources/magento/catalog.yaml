@@ -1,0 +1,103 @@
+id: magento
+name: "Magento"
+description: "Collects attribute, role, search, and coupons search from Magento and projects them into the Cerebro graph as audit events, groups, alerts, and policies for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - magento.attribute
+  - magento.role
+  - magento.search
+  - magento.coupons_search
+kind_lifecycle:
+  - kind: magento.attribute
+    status: active
+  - kind: magento.role
+    status: active
+  - kind: magento.search
+    status: active
+  - kind: magento.coupons_search
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: magento
+  dimensions:
+    - id: attribute
+      type: audit_event
+      title: "Attribute"
+      families: [attribute]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: role
+      type: entity_family
+      title: "Role"
+      families: [role]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: search
+      type: entity_family
+      title: "Search"
+      families: [search]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: coupons_search
+      type: entity_family
+      title: "Coupons Search"
+      families: [coupons_search]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: magento.attribute
+    schema_ref: magento/attribute/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - apply_to
+  - kind: magento.role
+    schema_ref: magento/role/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: magento.search
+    schema_ref: magento/search/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id
+  - kind: magento.coupons_search
+    schema_ref: magento/coupons_search/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - code

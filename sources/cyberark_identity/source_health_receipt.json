@@ -1,0 +1,17 @@
+{
+  "adapter_health_path": "/Security/Whoami",
+  "auth_model": "oauth_client_credentials",
+  "evidence_cas_reference_kind": "cyberark_identity.evidence_cas_reference",
+  "expected_cadence_seconds": 86400,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=cyberark_identity",
+  "receipt_kind": "source_health.receipt",
+  "source_id": "cyberark_identity",
+  "source_type": "json_api",
+  "stale_after_seconds": 86400
+}

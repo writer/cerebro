@@ -1,0 +1,106 @@
+id: openpolicy
+name: "Open Policy Agent"
+description: "Collects policy, query, and v1 policy from Open Policy Agent and projects them into the Cerebro graph as policies and assets for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - openpolicy.policy
+  - openpolicy.query
+  - openpolicy.v1_policy
+  - openpolicy.data
+kind_lifecycle:
+  - kind: openpolicy.policy
+    status: active
+  - kind: openpolicy.query
+    status: active
+  - kind: openpolicy.v1_policy
+    status: active
+  - kind: openpolicy.data
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: openpolicy
+  dimensions:
+    - id: policy
+      type: entity_family
+      title: "Policy"
+      families: [policy]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: query
+      type: entity_family
+      title: "Query"
+      families: [query]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: v1_policy
+      type: entity_family
+      title: "V1 Policy"
+      families: [v1_policy]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: data
+      type: entity_family
+      title: "Data"
+      families: [data]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: openpolicy.policy
+    schema_ref: openpolicy/policy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: openpolicy.query
+    schema_ref: openpolicy/query/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: openpolicy.v1_policy
+    schema_ref: openpolicy/v1_policy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: openpolicy.data
+    schema_ref: openpolicy/data/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

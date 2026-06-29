@@ -1,0 +1,21 @@
+sourceId: apacta
+secretKeys:
+  - APACTA_CONTACT_ID
+  - APACTA_OFFER_ID
+  - APACTA_PROJECT_ID
+  - APACTA_USER_ID
+  - APACTA_API_TOKEN
+runtimes:
+  - localId: activity
+    config:
+      contact_id: env:APACTA_CONTACT_ID
+      offer_id: env:APACTA_OFFER_ID
+      project_id: env:APACTA_PROJECT_ID
+      user_id: env:APACTA_USER_ID
+      family: activity
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /activities
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:APACTA_API_TOKEN

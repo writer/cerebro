@@ -1,0 +1,60 @@
+id: api2cart
+name: "API2Cart"
+description: "Collects attribute group list json and attribute attributeset list json from API2Cart and projects them into the Cerebro graph as groups and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - api2cart.attribute_group_list_json
+  - api2cart.attribute_attributeset_list_json
+kind_lifecycle:
+  - kind: api2cart.attribute_group_list_json
+    status: active
+  - kind: api2cart.attribute_attributeset_list_json
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: api2cart
+  dimensions:
+    - id: attribute_group_list_json
+      type: entity_family
+      title: "Attribute Group List Json"
+      families: [attribute_group_list_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: attribute_attributeset_list_json
+      type: entity_family
+      title: "Attribute Attributeset List Json"
+      families: [attribute_attributeset_list_json]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: api2cart.attribute_group_list_json
+    schema_ref: api2cart/attribute_group_list_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: api2cart.attribute_attributeset_list_json
+    schema_ref: api2cart/attribute_attributeset_list_json/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

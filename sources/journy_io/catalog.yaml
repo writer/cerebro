@@ -1,0 +1,122 @@
+id: journy_io
+name: "Journy.io"
+description: "Collects event, account, segments account, user, and segments user from Journy.io and projects them into the Cerebro graph as audit events and users for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - journy_io.event
+  - journy_io.account
+  - journy_io.segments_account
+  - journy_io.user
+  - journy_io.segments_user
+kind_lifecycle:
+  - kind: journy_io.event
+    status: active
+  - kind: journy_io.account
+    status: active
+  - kind: journy_io.segments_account
+    status: active
+  - kind: journy_io.user
+    status: active
+  - kind: journy_io.segments_user
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: journy_io
+  dimensions:
+    - id: event
+      type: audit_event
+      title: "Event"
+      families: [event]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: segments_account
+      type: entity_family
+      title: "Segments Account"
+      families: [segments_account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: user
+      type: entity_family
+      title: "User"
+      families: [user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: segments_user
+      type: entity_family
+      title: "Segments User"
+      families: [segments_user]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: journy_io.event
+    schema_ref: journy_io/event/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: journy_io.account
+    schema_ref: journy_io/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: journy_io.segments_account
+    schema_ref: journy_io/segments_account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: journy_io.user
+    schema_ref: journy_io/user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: journy_io.segments_user
+    schema_ref: journy_io/segments_user/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id

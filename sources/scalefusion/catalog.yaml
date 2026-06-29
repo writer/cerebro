@@ -1,0 +1,125 @@
+id: scalefusion
+name: "Scalefusion"
+description: "Collects users, groups, roles, applications, and audit events from Scalefusion and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+emitted_kinds:
+  - scalefusion.users
+  - scalefusion.groups
+  - scalefusion.roles
+  - scalefusion.applications
+  - scalefusion.audit_events
+kind_lifecycle:
+  - kind: scalefusion.users
+    status: active
+  - kind: scalefusion.groups
+    status: active
+  - kind: scalefusion.roles
+    status: active
+  - kind: scalefusion.applications
+    status: active
+  - kind: scalefusion.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: scalefusion
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: roles
+      type: entity_family
+      title: "Roles"
+      families: [roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: applications
+      type: entity_family
+      title: "Applications"
+      families: [applications]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: scalefusion.users
+    schema_ref: scalefusion/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: scalefusion.groups
+    schema_ref: scalefusion/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: scalefusion.roles
+    schema_ref: scalefusion/roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+    required_payload_fields:
+      - id
+  - kind: scalefusion.applications
+    schema_ref: scalefusion/applications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: scalefusion.audit_events
+    schema_ref: scalefusion/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

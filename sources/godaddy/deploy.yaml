@@ -1,0 +1,15 @@
+sourceId: godaddy
+secretKeys:
+  - GODADDY_CUSTOMERID
+  - GODADDY_API_TOKEN
+runtimes:
+  - localId: optin
+    config:
+      customerid: env:GODADDY_CUSTOMERID
+      family: optin
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/customers/${config.customerid}/domains/notifications/optIn
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:GODADDY_API_TOKEN

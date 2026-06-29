@@ -1,0 +1,15 @@
+sourceId: beezup
+secretKeys:
+  - BEEZUP_STOREID
+  - BEEZUP_API_TOKEN
+runtimes:
+  - localId: channelcatalog
+    config:
+      storeid: env:BEEZUP_STOREID
+      family: channelcatalog
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v2/user/marketplaces/channelcatalogs/
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:BEEZUP_API_TOKEN

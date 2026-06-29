@@ -1,0 +1,13 @@
+sourceId: harness
+secretKeys:
+  - HARNESS_API_TOKEN
+runtimes:
+  - localId: pipelines
+    config:
+      family: pipelines
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /gateway/ng/api/user/currentUser
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:HARNESS_API_TOKEN

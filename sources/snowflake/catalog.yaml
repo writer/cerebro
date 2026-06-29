@@ -1,0 +1,108 @@
+id: snowflake
+name: "Snowflake"
+description: "Collects data assets, cortex search services, audit events, and vulnerabilities from Snowflake and projects them into the Cerebro graph as assets, audit events, and vulnerabilities for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - snowflake.assets
+  - snowflake.cortex_search_services
+  - snowflake.audit_events
+  - snowflake.vulnerabilities
+kind_lifecycle:
+  - kind: snowflake.assets
+    status: active
+  - kind: snowflake.cortex_search_services
+    status: active
+  - kind: snowflake.audit_events
+    status: active
+  - kind: snowflake.vulnerabilities
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: snowflake
+  dimensions:
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: cortex_search_services
+      type: entity_family
+      title: "Cortex Search Services"
+      families: [cortex_search_services]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vulnerabilities
+      type: entity_family
+      title: "Vulnerabilities"
+      families: [vulnerabilities]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: snowflake.assets
+    schema_ref: snowflake/assets/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: snowflake.cortex_search_services
+    schema_ref: snowflake/cortex_search_services/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: snowflake.audit_events
+    schema_ref: snowflake/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: snowflake.vulnerabilities
+    schema_ref: snowflake/vulnerabilities/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

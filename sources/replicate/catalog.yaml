@@ -1,0 +1,106 @@
+id: replicate
+name: "Replicate"
+description: "Collects models, deployments, collections, and predictions from Replicate and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - replicate.models
+  - replicate.deployments
+  - replicate.collections
+  - replicate.predictions
+kind_lifecycle:
+  - kind: replicate.models
+    status: active
+  - kind: replicate.deployments
+    status: active
+  - kind: replicate.collections
+    status: active
+  - kind: replicate.predictions
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: replicate
+  dimensions:
+    - id: models
+      type: entity_family
+      title: "Models"
+      families: [models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: entity_family
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: collections
+      type: entity_family
+      title: "Collections"
+      families: [collections]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: predictions
+      type: entity_family
+      title: "Predictions"
+      families: [predictions]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: replicate.models
+    schema_ref: replicate/models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: replicate.deployments
+    schema_ref: replicate/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: replicate.collections
+    schema_ref: replicate/collections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - slug
+  - kind: replicate.predictions
+    schema_ref: replicate/predictions/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id

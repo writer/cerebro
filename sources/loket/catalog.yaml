@@ -1,0 +1,102 @@
+id: loket
+name: "Loket"
+description: "Collects integration, actualorganizationalentity, emailidentity, and customnotification from Loket and projects them into the Cerebro graph as audit events, groups, users, and alerts for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - loket.integration
+  - loket.actualorganizationalentity
+  - loket.emailidentity
+  - loket.customnotification
+kind_lifecycle:
+  - kind: loket.integration
+    status: active
+  - kind: loket.actualorganizationalentity
+    status: active
+  - kind: loket.emailidentity
+    status: active
+  - kind: loket.customnotification
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: loket
+  dimensions:
+    - id: integration
+      type: audit_event
+      title: "Integration"
+      families: [integration]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: actualorganizationalentity
+      type: entity_family
+      title: "Actualorganizationalentity"
+      families: [actualorganizationalentity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: emailidentity
+      type: entity_family
+      title: "Emailidentity"
+      families: [emailidentity]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: customnotification
+      type: entity_family
+      title: "Customnotification"
+      families: [customnotification]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: loket.integration
+    schema_ref: loket/integration/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: loket.actualorganizationalentity
+    schema_ref: loket/actualorganizationalentity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: loket.emailidentity
+    schema_ref: loket/emailidentity/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: loket.customnotification
+    schema_ref: loket/customnotification/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id

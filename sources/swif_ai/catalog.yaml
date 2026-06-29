@@ -1,0 +1,84 @@
+id: swif_ai
+name: "Swif.ai"
+description: "Collects users, devices, and device compliance from Swif.ai and projects them into the Cerebro graph as users, devices, and findings for asset exposure, vulnerability, finding, and remediation context."
+emitted_kinds:
+  - swif_ai.users
+  - swif_ai.devices
+  - swif_ai.device_compliance
+kind_lifecycle:
+  - kind: swif_ai.users
+    status: active
+  - kind: swif_ai.devices
+    status: active
+  - kind: swif_ai.device_compliance
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: swif_ai
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: devices
+      type: entity_family
+      title: "Devices"
+      families: [devices]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: device_compliance
+      type: entity_family
+      title: "Device Compliance"
+      families: [device_compliance]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: swif_ai.users
+    schema_ref: swif_ai/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: swif_ai.devices
+    schema_ref: swif_ai/devices/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: swif_ai.device_compliance
+    schema_ref: swif_ai/device_compliance/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

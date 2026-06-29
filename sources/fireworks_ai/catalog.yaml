@@ -1,0 +1,104 @@
+id: fireworks_ai
+name: "Fireworks AI"
+description: "Collects model deployments, service accounts, audit logs, and billing metrics from Fireworks AI and projects them into the Cerebro graph as deployments, users, audit events, and assets for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - fireworks_ai.model_deployments
+  - fireworks_ai.service_accounts
+  - fireworks_ai.audit_logs
+  - fireworks_ai.billing_metrics
+kind_lifecycle:
+  - kind: fireworks_ai.model_deployments
+    status: active
+  - kind: fireworks_ai.service_accounts
+    status: active
+  - kind: fireworks_ai.audit_logs
+    status: active
+  - kind: fireworks_ai.billing_metrics
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: fireworks_ai
+  dimensions:
+    - id: model_deployments
+      type: entity_family
+      title: "Model Deployments"
+      families: [model_deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: service_accounts
+      type: entity_family
+      title: "Service Accounts"
+      families: [service_accounts]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_logs
+      type: audit_event
+      title: "Audit Logs"
+      families: [audit_logs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: billing_metrics
+      type: entity_family
+      title: "Billing Metrics"
+      families: [billing_metrics]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: fireworks_ai.model_deployments
+    schema_ref: fireworks_ai/model_deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id
+  - kind: fireworks_ai.service_accounts
+    schema_ref: fireworks_ai/service_accounts/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: fireworks_ai.audit_logs
+    schema_ref: fireworks_ai/audit_logs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: fireworks_ai.billing_metrics
+    schema_ref: fireworks_ai/billing_metrics/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

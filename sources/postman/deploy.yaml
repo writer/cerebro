@@ -1,0 +1,13 @@
+sourceId: postman
+secretKeys:
+  - POSTMAN_API_TOKEN
+runtimes:
+  - localId: collections
+    config:
+      family: collections
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:POSTMAN_API_TOKEN

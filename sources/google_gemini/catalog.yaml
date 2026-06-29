@@ -1,0 +1,129 @@
+id: google_gemini
+name: "Google Gemini"
+description: "Collects model catalog, tuned models, files, cached contents, and batch jobs from Google Gemini and projects them into the Cerebro graph as assets and deployments for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - google_gemini.model_catalog
+  - google_gemini.tuned_models
+  - google_gemini.files
+  - google_gemini.cached_contents
+  - google_gemini.batch_jobs
+kind_lifecycle:
+  - kind: google_gemini.model_catalog
+    status: active
+  - kind: google_gemini.tuned_models
+    status: active
+  - kind: google_gemini.files
+    status: active
+  - kind: google_gemini.cached_contents
+    status: active
+  - kind: google_gemini.batch_jobs
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: google_gemini
+  dimensions:
+    - id: model_catalog
+      type: entity_family
+      title: "Model Catalog"
+      families: [model_catalog]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: tuned_models
+      type: entity_family
+      title: "Tuned Models"
+      families: [tuned_models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: files
+      type: entity_family
+      title: "Files"
+      families: [files]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: cached_contents
+      type: entity_family
+      title: "Cached Contents"
+      families: [cached_contents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: batch_jobs
+      type: entity_family
+      title: "Batch Jobs"
+      families: [batch_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: google_gemini.model_catalog
+    schema_ref: google_gemini/model_catalog/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: google_gemini.tuned_models
+    schema_ref: google_gemini/tuned_models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name
+  - kind: google_gemini.files
+    schema_ref: google_gemini/files/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: google_gemini.cached_contents
+    schema_ref: google_gemini/cached_contents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - name
+  - kind: google_gemini.batch_jobs
+    schema_ref: google_gemini/batch_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - name

@@ -1,0 +1,106 @@
+id: xai
+name: "xAI"
+description: "Collects API keys, audit logs, usage reports, and model access from xAI and projects them into the Cerebro graph as secrets, audit events, and assets for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - xai.api_keys
+  - xai.audit_logs
+  - xai.usage_reports
+  - xai.model_access
+kind_lifecycle:
+  - kind: xai.api_keys
+    status: active
+  - kind: xai.audit_logs
+    status: active
+  - kind: xai.usage_reports
+    status: active
+  - kind: xai.model_access
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: xai
+  dimensions:
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_logs
+      type: audit_event
+      title: "Audit Logs"
+      families: [audit_logs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usage_reports
+      type: entity_family
+      title: "Usage Reports"
+      families: [usage_reports]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: model_access
+      type: entity_family
+      title: "Model Access"
+      families: [model_access]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: xai.api_keys
+    schema_ref: xai/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: xai.audit_logs
+    schema_ref: xai/audit_logs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: xai.usage_reports
+    schema_ref: xai/usage_reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: xai.model_access
+    schema_ref: xai/model_access/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

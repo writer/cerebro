@@ -1,0 +1,106 @@
+id: openfintech
+name: "OpenFinTech"
+description: "Collects organization, bank, country, and currency from OpenFinTech and projects them into the Cerebro graph as groups and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - openfintech.organization
+  - openfintech.bank
+  - openfintech.country
+  - openfintech.currency
+kind_lifecycle:
+  - kind: openfintech.organization
+    status: active
+  - kind: openfintech.bank
+    status: active
+  - kind: openfintech.country
+    status: active
+  - kind: openfintech.currency
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: openfintech
+  dimensions:
+    - id: organization
+      type: entity_family
+      title: "Organization"
+      families: [organization]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: bank
+      type: entity_family
+      title: "Bank"
+      families: [bank]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: country
+      type: entity_family
+      title: "Country"
+      families: [country]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: currency
+      type: entity_family
+      title: "Currency"
+      families: [currency]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: openfintech.organization
+    schema_ref: openfintech/organization/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: openfintech.bank
+    schema_ref: openfintech/bank/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: openfintech.country
+    schema_ref: openfintech/country/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: openfintech.currency
+    schema_ref: openfintech/currency/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

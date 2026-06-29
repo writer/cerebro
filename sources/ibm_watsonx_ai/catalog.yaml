@@ -1,0 +1,129 @@
+id: ibm_watsonx_ai
+name: "IBM watsonx.ai"
+description: "IBM watsonx.ai connector definition for foundation model specs, foundation model tasks, project custom models, project deployments, and project training jobs."
+emitted_kinds:
+  - ibm_watsonx_ai.foundation_model_specs
+  - ibm_watsonx_ai.foundation_model_tasks
+  - ibm_watsonx_ai.custom_models
+  - ibm_watsonx_ai.deployments
+  - ibm_watsonx_ai.training_jobs
+kind_lifecycle:
+  - kind: ibm_watsonx_ai.foundation_model_specs
+    status: active
+  - kind: ibm_watsonx_ai.foundation_model_tasks
+    status: active
+  - kind: ibm_watsonx_ai.custom_models
+    status: active
+  - kind: ibm_watsonx_ai.deployments
+    status: active
+  - kind: ibm_watsonx_ai.training_jobs
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: ibm_watsonx_ai
+  dimensions:
+    - id: foundation_model_specs
+      type: entity_family
+      title: "Foundation Model Specs"
+      families: [foundation_model_specs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: foundation_model_tasks
+      type: entity_family
+      title: "Foundation Model Tasks"
+      families: [foundation_model_tasks]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: custom_models
+      type: entity_family
+      title: "Custom Models"
+      families: [custom_models]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: deployments
+      type: entity_family
+      title: "Deployments"
+      families: [deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: training_jobs
+      type: entity_family
+      title: "Training Jobs"
+      families: [training_jobs]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: ibm_watsonx_ai.foundation_model_specs
+    schema_ref: ibm_watsonx_ai/foundation_model_specs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - model_id
+  - kind: ibm_watsonx_ai.foundation_model_tasks
+    schema_ref: ibm_watsonx_ai/foundation_model_tasks/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - task_id
+  - kind: ibm_watsonx_ai.custom_models
+    schema_ref: ibm_watsonx_ai/custom_models/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - metadata.id
+  - kind: ibm_watsonx_ai.deployments
+    schema_ref: ibm_watsonx_ai/deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - metadata.id
+  - kind: ibm_watsonx_ai.training_jobs
+    schema_ref: ibm_watsonx_ai/training_jobs/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - metadata.id

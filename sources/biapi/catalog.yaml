@@ -1,0 +1,104 @@
+id: biapi
+name: "Powens (Budgea)"
+description: "Collects logo, account, add to data, and alert from Powens (Budgea) and projects them into the Cerebro graph as audit events, users, assets, and alerts for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - biapi.logo
+  - biapi.account
+  - biapi.add_to_data
+  - biapi.alert
+kind_lifecycle:
+  - kind: biapi.logo
+    status: active
+  - kind: biapi.account
+    status: active
+  - kind: biapi.add_to_data
+    status: active
+  - kind: biapi.alert
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: biapi
+  dimensions:
+    - id: logo
+      type: audit_event
+      title: "Logo"
+      families: [logo]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: add_to_data
+      type: entity_family
+      title: "Add To Data"
+      families: [add_to_data]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: alert
+      type: entity_family
+      title: "Alert"
+      families: [alert]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: biapi.logo
+    schema_ref: biapi/logo/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id
+  - kind: biapi.account
+    schema_ref: biapi/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: biapi.add_to_data
+    schema_ref: biapi/add_to_data/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: biapi.alert
+    schema_ref: biapi/alert/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - id

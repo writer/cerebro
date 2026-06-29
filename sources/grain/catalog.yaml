@@ -1,0 +1,126 @@
+id: grain
+name: "Grain"
+description: "Collects users, groups, workspaces, documents, and audit events from Grain and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - grain.users
+  - grain.groups
+  - grain.workspaces
+  - grain.documents
+  - grain.audit_events
+kind_lifecycle:
+  - kind: grain.users
+    status: active
+  - kind: grain.groups
+    status: active
+  - kind: grain.workspaces
+    status: active
+  - kind: grain.documents
+    status: active
+  - kind: grain.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: grain
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: documents
+      type: entity_family
+      title: "Documents"
+      families: [documents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: grain.users
+    schema_ref: grain/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: grain.groups
+    schema_ref: grain/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: grain.workspaces
+    schema_ref: grain/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: grain.documents
+    schema_ref: grain/documents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: grain.audit_events
+    schema_ref: grain/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,15 @@
+sourceId: microsoft_teams
+secretKeys:
+  - MICROSOFT_TEAMS_CLIENT_ID
+  - MICROSOFT_TEAMS_CLIENT_SECRET
+runtimes:
+  - localId: users
+    config:
+      family: users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1.0/teams
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:MICROSOFT_TEAMS_CLIENT_ID
+      client_secret: env:MICROSOFT_TEAMS_CLIENT_SECRET

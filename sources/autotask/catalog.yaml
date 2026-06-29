@@ -1,0 +1,102 @@
+id: autotask
+name: "Datto Autotask PSA"
+description: "Collects field, userdefinedfield, excludedrole, and entityinformation field from Datto Autotask PSA and projects them into the Cerebro graph as audit events, users, groups, and alerts for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - autotask.field
+  - autotask.userdefinedfield
+  - autotask.excludedrole
+  - autotask.entityinformation_field
+kind_lifecycle:
+  - kind: autotask.field
+    status: active
+  - kind: autotask.userdefinedfield
+    status: active
+  - kind: autotask.excludedrole
+    status: active
+  - kind: autotask.entityinformation_field
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: autotask
+  dimensions:
+    - id: field
+      type: audit_event
+      title: "Field"
+      families: [field]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: userdefinedfield
+      type: entity_family
+      title: "Userdefinedfield"
+      families: [userdefinedfield]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: excludedrole
+      type: entity_family
+      title: "Excludedrole"
+      families: [excludedrole]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: entityinformation_field
+      type: entity_family
+      title: "Entityinformation Field"
+      families: [entityinformation_field]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: autotask.field
+    schema_ref: autotask/field/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - name
+  - kind: autotask.userdefinedfield
+    schema_ref: autotask/userdefinedfield/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - name
+  - kind: autotask.excludedrole
+    schema_ref: autotask/excludedrole/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: autotask.entityinformation_field
+    schema_ref: autotask/entityinformation_field/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - alert_id
+      - alert_severity
+    required_payload_fields:
+      - name

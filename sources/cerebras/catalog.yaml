@@ -1,0 +1,106 @@
+id: cerebras
+name: "Cerebras"
+description: "Collects projects, API keys, usage reports, and model deployments from Cerebras and projects them into the Cerebro graph as assets, secrets, and deployments for model access, API key, usage, and workspace governance context."
+emitted_kinds:
+  - cerebras.projects
+  - cerebras.api_keys
+  - cerebras.usage_reports
+  - cerebras.model_deployments
+kind_lifecycle:
+  - kind: cerebras.projects
+    status: active
+  - kind: cerebras.api_keys
+    status: active
+  - kind: cerebras.usage_reports
+    status: active
+  - kind: cerebras.model_deployments
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: cerebras
+  dimensions:
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api_keys
+      type: entity_family
+      title: "Api Keys"
+      families: [api_keys]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: usage_reports
+      type: entity_family
+      title: "Usage Reports"
+      families: [usage_reports]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: model_deployments
+      type: entity_family
+      title: "Model Deployments"
+      families: [model_deployments]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: cerebras.projects
+    schema_ref: cerebras/projects/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cerebras.api_keys
+    schema_ref: cerebras/api_keys/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - secret_id
+      - secret_name
+    required_payload_fields:
+      - id
+  - kind: cerebras.usage_reports
+    schema_ref: cerebras/usage_reports/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: cerebras.model_deployments
+    schema_ref: cerebras/model_deployments/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - deployment_id
+      - deployment_name
+    required_payload_fields:
+      - id

@@ -1,0 +1,84 @@
+id: auditboard
+name: "AuditBoard"
+description: "Collects users, controls, and findings from AuditBoard and projects them into the Cerebro graph as users, assets, and findings for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - auditboard.users
+  - auditboard.controls
+  - auditboard.findings
+kind_lifecycle:
+  - kind: auditboard.users
+    status: active
+  - kind: auditboard.controls
+    status: active
+  - kind: auditboard.findings
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: auditboard
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: controls
+      type: entity_family
+      title: "Controls"
+      families: [controls]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: auditboard.users
+    schema_ref: auditboard/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: auditboard.controls
+    schema_ref: auditboard/controls/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: auditboard.findings
+    schema_ref: auditboard/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

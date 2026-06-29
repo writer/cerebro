@@ -1,0 +1,13 @@
+sourceId: jfrog_artifactory_xray
+secretKeys:
+  - JFROG_ARTIFACTORY_XRAY_TOKEN
+runtimes:
+  - localId: assets
+    config:
+      family: assets
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /xray/api/v1/system/ping
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:JFROG_ARTIFACTORY_XRAY_TOKEN

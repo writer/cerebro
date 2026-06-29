@@ -1,0 +1,13 @@
+sourceId: elastic_security
+secretKeys:
+  - ELASTIC_SECURITY_API_TOKEN
+runtimes:
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api/status
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:ELASTIC_SECURITY_API_TOKEN

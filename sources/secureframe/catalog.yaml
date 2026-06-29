@@ -1,0 +1,84 @@
+id: secureframe
+name: "Secureframe"
+description: "Collects users, controls, and findings from Secureframe and projects them into the Cerebro graph as users, assets, and findings for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - secureframe.users
+  - secureframe.controls
+  - secureframe.findings
+kind_lifecycle:
+  - kind: secureframe.users
+    status: active
+  - kind: secureframe.controls
+    status: active
+  - kind: secureframe.findings
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: secureframe
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: controls
+      type: entity_family
+      title: "Controls"
+      families: [controls]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: findings
+      type: entity_family
+      title: "Findings"
+      families: [findings]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: secureframe.users
+    schema_ref: secureframe/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: secureframe.controls
+    schema_ref: secureframe/controls/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: secureframe.findings
+    schema_ref: secureframe/findings/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - finding_id
+      - resource_urn
+      - severity
+      - status
+    required_payload_fields:
+      - id

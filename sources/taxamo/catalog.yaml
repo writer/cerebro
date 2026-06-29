@@ -1,0 +1,108 @@
+id: taxamo
+name: "Taxamo"
+description: "Collects payment, refund, transaction, and vy from Taxamo and projects them into the Cerebro graph as assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - taxamo.payment
+  - taxamo.refund
+  - taxamo.transaction
+  - taxamo.vy
+kind_lifecycle:
+  - kind: taxamo.payment
+    status: active
+  - kind: taxamo.refund
+    status: active
+  - kind: taxamo.transaction
+    status: active
+  - kind: taxamo.vy
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: taxamo
+  dimensions:
+    - id: payment
+      type: entity_family
+      title: "Payment"
+      families: [payment]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: refund
+      type: entity_family
+      title: "Refund"
+      families: [refund]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: transaction
+      type: entity_family
+      title: "Transaction"
+      families: [transaction]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: vy
+      type: entity_family
+      title: "Vy"
+      families: [vy]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: taxamo.payment
+    schema_ref: taxamo/payment/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - amount
+  - kind: taxamo.refund
+    schema_ref: taxamo/refund/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - amount
+  - kind: taxamo.transaction
+    schema_ref: taxamo/transaction/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - key
+  - kind: taxamo.vy
+    schema_ref: taxamo/vy/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - amount

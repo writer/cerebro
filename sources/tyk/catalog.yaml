@@ -1,0 +1,85 @@
+id: tyk
+name: "Tyk"
+description: "Collects key, api, and client from Tyk and projects them into the Cerebro graph as assets for inventory, access review, audit, risk, and operational context."
+emitted_kinds:
+  - tyk.key
+  - tyk.api
+  - tyk.client
+kind_lifecycle:
+  - kind: tyk.key
+    status: active
+  - kind: tyk.api
+    status: active
+  - kind: tyk.client
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: tyk
+  dimensions:
+    - id: key
+      type: entity_family
+      title: "Key"
+      families: [key]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: api
+      type: entity_family
+      title: "Api"
+      families: [api]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: client
+      type: entity_family
+      title: "Client"
+      families: [client]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: tyk.key
+    schema_ref: tyk/key/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: tyk.api
+    schema_ref: tyk/api/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: tyk.client
+    schema_ref: tyk/client/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - client_id

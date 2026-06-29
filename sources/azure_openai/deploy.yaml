@@ -1,0 +1,21 @@
+sourceId: azure_openai
+secretKeys:
+  - AZURE_OPENAI_ACCOUNT_NAME
+  - AZURE_OPENAI_LOCATION
+  - AZURE_OPENAI_RESOURCE_GROUP
+  - AZURE_OPENAI_SUBSCRIPTION_ID
+  - AZURE_OPENAI_TOKEN
+runtimes:
+  - localId: deployments
+    config:
+      account_name: env:AZURE_OPENAI_ACCOUNT_NAME
+      location: env:AZURE_OPENAI_LOCATION
+      resource_group: env:AZURE_OPENAI_RESOURCE_GROUP
+      subscription_id: env:AZURE_OPENAI_SUBSCRIPTION_ID
+      family: deployments
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/deployments?api-version=2024-10-01
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:AZURE_OPENAI_TOKEN

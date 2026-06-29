@@ -1,0 +1,126 @@
+id: talkdesk
+name: "Talkdesk"
+description: "Collects users, groups, workspaces, documents, and audit events from Talkdesk and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context."
+emitted_kinds:
+  - talkdesk.users
+  - talkdesk.groups
+  - talkdesk.workspaces
+  - talkdesk.documents
+  - talkdesk.audit_events
+kind_lifecycle:
+  - kind: talkdesk.users
+    status: active
+  - kind: talkdesk.groups
+    status: active
+  - kind: talkdesk.workspaces
+    status: active
+  - kind: talkdesk.documents
+    status: active
+  - kind: talkdesk.audit_events
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: talkdesk
+  dimensions:
+    - id: users
+      type: entity_family
+      title: "Users"
+      families: [users]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: workspaces
+      type: entity_family
+      title: "Workspaces"
+      families: [workspaces]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: documents
+      type: entity_family
+      title: "Documents"
+      families: [documents]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: audit_events
+      type: audit_event
+      title: "Audit Events"
+      families: [audit_events]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: talkdesk.users
+    schema_ref: talkdesk/users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: talkdesk.groups
+    schema_ref: talkdesk/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: talkdesk.workspaces
+    schema_ref: talkdesk/workspaces/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: talkdesk.documents
+    schema_ref: talkdesk/documents/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: talkdesk.audit_events
+    schema_ref: talkdesk/audit_events/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - event_type
+      - actor_id
+    required_payload_fields:
+      - id

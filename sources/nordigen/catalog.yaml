@@ -1,0 +1,104 @@
+id: nordigen
+name: "Nordigen"
+description: "Collects account, creditor, enduser, and institution from Nordigen and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+emitted_kinds:
+  - nordigen.account
+  - nordigen.creditor
+  - nordigen.enduser
+  - nordigen.institution
+kind_lifecycle:
+  - kind: nordigen.account
+    status: active
+  - kind: nordigen.creditor
+    status: active
+  - kind: nordigen.enduser
+    status: active
+  - kind: nordigen.institution
+    status: active
+coverage_contract:
+  owner_domain: source_runtime
+  authority_domain: nordigen
+  dimensions:
+    - id: account
+      type: entity_family
+      title: "Account"
+      families: [account]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: creditor
+      type: entity_family
+      title: "Creditor"
+      families: [creditor]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: enduser
+      type: entity_family
+      title: "Enduser"
+      families: [enduser]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: institution
+      type: entity_family
+      title: "Institution"
+      families: [institution]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      support: planned
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+event_contracts:
+  - kind: nordigen.account
+    schema_ref: nordigen/account/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: nordigen.creditor
+    schema_ref: nordigen/creditor/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id
+  - kind: nordigen.enduser
+    schema_ref: nordigen/enduser/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - user_id
+    required_payload_fields:
+      - id
+  - kind: nordigen.institution
+    schema_ref: nordigen/institution/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - resource_urn
+      - resource_type
+      - resource_id
+    required_payload_fields:
+      - id

@@ -1,0 +1,15 @@
+sourceId: osisoft
+secretKeys:
+  - OSISOFT_WEBID
+  - OSISOFT_TOKEN
+runtimes:
+  - localId: search
+    config:
+      webid: env:OSISOFT_WEBID
+      family: search
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /eventframes/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:OSISOFT_TOKEN

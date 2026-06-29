@@ -1,0 +1,25 @@
+sourceId: botify
+secretKeys:
+  - BOTIFY_ANALYSIS_SLUG
+  - BOTIFY_LIST_TYPE
+  - BOTIFY_MEDIUM
+  - BOTIFY_PROJECT_SLUG
+  - BOTIFY_SOURCE
+  - BOTIFY_USERNAME
+  - BOTIFY_API_TOKEN
+runtimes:
+  - localId: filter
+    config:
+      analysis_slug: env:BOTIFY_ANALYSIS_SLUG
+      list_type: env:BOTIFY_LIST_TYPE
+      medium: env:BOTIFY_MEDIUM
+      project_slug: env:BOTIFY_PROJECT_SLUG
+      source: env:BOTIFY_SOURCE
+      username: env:BOTIFY_USERNAME
+      family: filter
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /projects/${config.username}/${config.project_slug}/filters
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:BOTIFY_API_TOKEN

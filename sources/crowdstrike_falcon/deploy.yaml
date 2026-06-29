@@ -1,0 +1,15 @@
+sourceId: crowdstrike_falcon
+secretKeys:
+  - CROWDSTRIKE_FALCON_CLIENT_ID
+  - CROWDSTRIKE_FALCON_CLIENT_SECRET
+runtimes:
+  - localId: endpoint-devices
+    config:
+      family: endpoint_devices
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /oauth2/token
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:CROWDSTRIKE_FALCON_CLIENT_ID
+      client_secret: env:CROWDSTRIKE_FALCON_CLIENT_SECRET

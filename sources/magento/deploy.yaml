@@ -1,0 +1,13 @@
+sourceId: magento
+secretKeys:
+  - MAGENTO_TOKEN
+runtimes:
+  - localId: attribute
+    config:
+      family: attribute
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /V1/categories/attributes
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:MAGENTO_TOKEN
