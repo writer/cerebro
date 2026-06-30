@@ -530,6 +530,9 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"support.status",
 		"evidence.status",
 		"source.last_sync_at",
+		"coalesce(control.attributes_json, '') +",
+		"coalesce(support.attributes_json, '') +",
+		"coalesce(evidence.attributes_json, '')) AS qauto_match_text",
 		"OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportEvidenceRel",
 		"OPTIONAL MATCH (control:Entity {tenant_id: $tenant_id})-[controlEvidenceRel",
 		"OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[findingRel",
@@ -589,7 +592,7 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: "qauto_match_text CONTAINS 'mfa'"},
 		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: "qauto_match_text CONTAINS 'access'"},
 		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: "qauto_match_text CONTAINS 'lifecycle'"},
-		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy'"},
+		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy_document'"},
 		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: "qauto_match_text CONTAINS 'coverage'"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -619,6 +622,68 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 			} {
 				if strings.Contains(result.Cypher, forbidden) {
 					t.Fatalf("questionnaire cypher contains forbidden raw/suppressing fragment %q:\n%s", forbidden, result.Cypher)
+				}
+			}
+		})
+	}
+}
+
+func TestQuestionnaireTopicPredicatesAvoidRawJSONKeyCollisions(t *testing.T) {
+	tests := []struct {
+		name       string
+		question   string
+		forbidden  []string
+		want       []string
+		wantFilter string
+	}{
+		{
+			name:       "policy documents",
+			question:   "Answer this policy document questionnaire item",
+			wantFilter: "policy_documents",
+			forbidden: []string{
+				"qauto_match_text CONTAINS 'policy' OR",
+				"coalesce(control.attributes_json, '') +",
+				"coalesce(support.attributes_json, '') +",
+				"coalesce(evidence.attributes_json, '')) AS qauto_match_text",
+			},
+			want: []string{
+				"qauto_match_text CONTAINS 'policy document'",
+				"qauto_match_text CONTAINS 'policy_document'",
+				"qauto_match_text CONTAINS 'document'",
+			},
+		},
+		{
+			name:       "control coverage",
+			question:   "Show control coverage evidence gaps",
+			wantFilter: "control_coverage",
+			forbidden: []string{
+				"qauto_match_text CONTAINS 'control'",
+				"coalesce(control.attributes_json, '') +",
+				"coalesce(support.attributes_json, '') +",
+				"coalesce(evidence.attributes_json, '')) AS qauto_match_text",
+			},
+			want: []string{
+				"qauto_match_text CONTAINS 'coverage'",
+				"qauto_match_text CONTAINS 'evidence'",
+				"qauto_match_text CONTAINS 'gap'",
+				"qauto_match_text CONTAINS 'missing'",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: tt.question}, true)
+			if !ok || result.Plan.Filters["topic"] != tt.wantFilter {
+				t.Fatalf("deterministicFastPathConversion() = %#v, %v; want topic %q", result, ok, tt.wantFilter)
+			}
+			for _, forbidden := range tt.forbidden {
+				if strings.Contains(result.Cypher, forbidden) {
+					t.Fatalf("questionnaire cypher contains collision-prone predicate %q:\n%s", forbidden, result.Cypher)
+				}
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(result.Cypher, want) {
+					t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)
 				}
 			}
 		})

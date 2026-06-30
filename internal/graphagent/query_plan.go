@@ -636,6 +636,7 @@ WITH control, control_ref, support, supportRel, supportEvidence, supportEvidence
 WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
      toLower(coalesce(control.label, '') + ' ' +
              coalesce(control.source_id, '') + ' ' +
+             coalesce(control_ref, '') + ' ' +
              control_match_attributes + ' ' +
              coalesce(support.label, '') + ' ' +
              coalesce(support.entity_type, '') + ' ' +
@@ -781,9 +782,9 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
         ELSE false
       END`
 	case "policy_documents":
-		return "WHERE qauto_match_text CONTAINS 'policy' OR qauto_match_text CONTAINS 'document'"
+		return "WHERE qauto_match_text CONTAINS 'policy document' OR qauto_match_text CONTAINS 'policy_document' OR qauto_match_text CONTAINS 'document'"
 	case "control_coverage":
-		return "WHERE qauto_match_text CONTAINS 'control' OR qauto_match_text CONTAINS 'coverage' OR qauto_match_text CONTAINS 'evidence'"
+		return "WHERE qauto_match_text CONTAINS 'coverage' OR qauto_match_text CONTAINS 'evidence' OR qauto_match_text CONTAINS 'gap' OR qauto_match_text CONTAINS 'missing'"
 	default:
 		return ""
 	}
