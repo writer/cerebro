@@ -96,13 +96,13 @@ func TestSourceReadsRuntimeFamiliesFromProviderShapedResponses(t *testing.T) {
 			fixture: "api_service_account_api_keys.json",
 			kind:    "elevenlabs.service_account_api_keys",
 			attributes: map[string]string{
-				"source_event_id": "key_01J6QAE9S8R8Y9V0J6Q",
-				"secret_id":       "key_01J6QAE9S8R8Y9V0J6Q",
+				"source_event_id": "fixture-service-account-key-1",
+				"secret_id":       "fixture-service-account-key-1",
 				"secret_name":     "prod-sync-key",
-				"resource_id":     "key_01J6QAE9S8R8Y9V0J6Q",
+				"resource_id":     "fixture-service-account-key-1",
 				"record_class":    "secret",
 			},
-			payload: map[string]string{"key_id": "key_01J6QAE9S8R8Y9V0J6Q"},
+			payload: map[string]string{"key_id": "fixture-service-account-key-1"},
 		},
 		{
 			name:    "webhooks",
