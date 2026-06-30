@@ -29,20 +29,32 @@ def load_weights(path: str) -> dict[str, float]:
     return weights
 
 
-def select_weighted_packages(packages: list[str], total: int, index: int, weights: dict[str, float]) -> list[str]:
+def select_weighted_packages(
+    packages: list[str],
+    total: int,
+    index: int,
+    weights: dict[str, float],
+    default_weight: float = 1.0,
+) -> list[str]:
     bins: list[tuple[float, list[str]]] = [(0.0, []) for _ in range(total)]
-    ordered = sorted(packages, key=lambda package: (-weights.get(package, 1.0), package))
+    ordered = sorted(packages, key=lambda package: (-weights.get(package, default_weight), package))
     for package in ordered:
         bin_index = min(range(total), key=lambda candidate: (bins[candidate][0], len(bins[candidate][1]), candidate))
         weight, selected = bins[bin_index]
         selected.append(package)
-        bins[bin_index] = (weight + weights.get(package, 1.0), selected)
+        bins[bin_index] = (weight + weights.get(package, default_weight), selected)
     return sorted(bins[index][1])
 
 
-def select_packages(packages: list[str], total: int, index: int, weights: dict[str, float] | None = None) -> list[str]:
+def select_packages(
+    packages: list[str],
+    total: int,
+    index: int,
+    weights: dict[str, float] | None = None,
+    default_weight: float = 1.0,
+) -> list[str]:
     if weights:
-        return select_weighted_packages(packages, total, index, weights)
+        return select_weighted_packages(packages, total, index, weights, default_weight)
     return [package for package in packages if package_shard(package, total) == index]
 
 
@@ -51,12 +63,20 @@ def main() -> int:
     parser.add_argument("--total", type=int, required=True, help="Total number of shards.")
     parser.add_argument("--index", type=int, required=True, help="Zero-based shard index to print.")
     parser.add_argument("--weights", help="Optional JSON map of package import path to relative runtime weight.")
+    parser.add_argument(
+        "--default-weight",
+        type=float,
+        default=1.0,
+        help="Weight to assign packages that are not present in --weights.",
+    )
     args = parser.parse_args()
 
     if args.total <= 0:
         parser.error("--total must be positive")
     if args.index < 0 or args.index >= args.total:
         parser.error("--index must be between 0 and --total - 1")
+    if args.default_weight <= 0:
+        parser.error("--default-weight must be positive")
 
     weights = None
     if args.weights:
@@ -66,7 +86,7 @@ def main() -> int:
             parser.error(f"--weights: {exc}")
 
     packages = sorted(line.strip() for line in sys.stdin if line.strip())
-    for package in select_packages(packages, args.total, args.index, weights):
+    for package in select_packages(packages, args.total, args.index, weights, args.default_weight):
         print(package)
     return 0
 
