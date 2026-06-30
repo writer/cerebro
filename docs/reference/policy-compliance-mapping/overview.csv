@@ -11,7 +11,7 @@ public detections,1595
 non-policy detections,86
 finding-control rows,10234
 finding-tag rows,38601
-source-coverage rows,4620
+source-coverage rows,4626
 finding compliance review rows,1595
 unique finding review tags,1575
 detections missing catalog tags,0
