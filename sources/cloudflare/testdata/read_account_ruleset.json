@@ -1,1 +1,47 @@
-[{"id":"cloudflare-account-ruleset-ruleset-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.account_ruleset","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/account_ruleset/v1","payload":{"id":"ruleset-1","name":"Account WAF","kind":"root","phase":"http_request_firewall_custom"},"attributes":{"account_id":"acct-1","ruleset_id":"ruleset-1","name":"Account WAF","kind":"root","phase":"http_request_firewall_custom","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "external_id": "ruleset-account-1",
+      "family": "account_ruleset",
+      "kind": "root",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "name": "Account WAF",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "phase": "http_request_firewall_custom",
+      "resource_id": "ruleset-account-1",
+      "resource_name": "Account WAF",
+      "resource_type": "account_ruleset",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account_ruleset:ruleset-account-1",
+      "rules": "[{\"id\":\"rule-block-bots\",\"action\":\"block\"}]",
+      "ruleset_id": "ruleset-account-1",
+      "source_event_id": "ruleset-account-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "version": "7"
+    },
+    "id": "cloudflare-account_ruleset-event-1",
+    "kind": "cloudflare.account_ruleset",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "ruleset-account-1",
+      "name": "Account WAF",
+      "kind": "root",
+      "phase": "http_request_firewall_custom",
+      "version": "7",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "rules": [
+        {
+          "id": "rule-block-bots",
+          "action": "block",
+          "expression": "cf.bot_management.score lt 10"
+        }
+      ]
+    },
+    "schema_ref": "cloudflare/account_ruleset/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

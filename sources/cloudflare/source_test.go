@@ -21,6 +21,53 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range cloudflareFamilies() {
+		familyConfigs[family.Name] = sourcecdk.NewConfig(map[string]string{
+			"account_id": "account-1",
+			"family":     family.Name,
+			"tenant_id":  "tenant",
+			"zone_id":    "zone-1",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"errors":[{"message":"service unavailable"}]}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    "account",
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "cloudflare API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func TestReadMemberUsesAccountPathParamAndResultList(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.EscapedPath(); got != "/accounts/account-1/members" {

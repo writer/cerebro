@@ -1,1 +1,3 @@
-["urn:cerebro:writer:cloudflare_zone_access_group:zone-1%7Cgroup-1"]
+[
+  "urn:cerebro:tenant:cloudflare_zone_access_group:zone-group-1"
+]

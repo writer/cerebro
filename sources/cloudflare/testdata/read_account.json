@@ -1,1 +1,35 @@
-[{"id":"cloudflare-account-acct-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.account","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/account/v1","payload":{"id":"acct-1","name":"Writer","type":"enterprise"},"attributes":{"account_id":"acct-1","name":"Writer","type":"enterprise","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "external_id": "account-1",
+      "family": "account",
+      "name": "Example Account",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "account-1",
+      "resource_name": "Example Account",
+      "resource_type": "account",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account:account-1",
+      "source_event_id": "account-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "type": "enterprise"
+    },
+    "id": "cloudflare-account-event-1",
+    "kind": "cloudflare.account",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "account-1",
+      "name": "Example Account",
+      "type": "enterprise",
+      "settings": {
+        "enforce_twofactor": true
+      }
+    },
+    "schema_ref": "cloudflare/account/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

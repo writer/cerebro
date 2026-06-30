@@ -1,1 +1,49 @@
-[{"id":"cloudflare-access-group-group-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.access_group","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/access_group/v1","payload":{"id":"group-1","name":"Employees","include":[{"email_domain":{"domain":"example.com"}}]},"attributes":{"account_id":"acct-1","group_id":"group-1","name":"Employees","include":"[{\"email_domain\":{\"domain\":\"example.com\"}}]","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "exclude": "[]",
+      "external_id": "group-1",
+      "family": "access_group",
+      "group_id": "group-1",
+      "include": "[{\"email_domain\":{\"domain\":\"example.com\"}}]",
+      "name": "Employees",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "require": "[{\"group\":{\"id\":\"idp-group-1\"}}]",
+      "resource_id": "group-1",
+      "resource_name": "Employees",
+      "resource_type": "access_group",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_access_group:group-1",
+      "source_event_id": "group-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-access_group-event-1",
+    "kind": "cloudflare.access_group",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "group-1",
+      "name": "Employees",
+      "include": [
+        {
+          "email_domain": {
+            "domain": "example.com"
+          }
+        }
+      ],
+      "exclude": [],
+      "require": [
+        {
+          "group": {
+            "id": "idp-group-1"
+          }
+        }
+      ]
+    },
+    "schema_ref": "cloudflare/access_group/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,1 +1,52 @@
-[{"id":"cloudflare-access-application-app-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.access_application","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/access_application/v1","payload":{"id":"app-1","name":"Admin App","domain":"admin.example.com","type":"self_hosted"},"attributes":{"account_id":"acct-1","application_id":"app-1","name":"Admin App","domain":"admin.example.com","type":"self_hosted","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "allowed_idps": "[\"idp-1\"]",
+      "application_id": "app-1",
+      "aud": "aud-app-1",
+      "auto_redirect_to_identity": "true",
+      "domain": "admin.example.com",
+      "external_id": "app-1",
+      "family": "access_application",
+      "name": "Admin Console",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policies": "[{\"id\":\"policy-1\",\"decision\":\"allow\"}]",
+      "resource_id": "app-1",
+      "resource_name": "Admin Console",
+      "resource_type": "access_application",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_access_application:app-1",
+      "session_duration": "24h",
+      "source_event_id": "app-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "type": "self_hosted"
+    },
+    "id": "cloudflare-access_application-event-1",
+    "kind": "cloudflare.access_application",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "app-1",
+      "name": "Admin Console",
+      "domain": "admin.example.com",
+      "type": "self_hosted",
+      "aud": "aud-app-1",
+      "session_duration": "24h",
+      "policies": [
+        {
+          "id": "policy-1",
+          "decision": "allow"
+        }
+      ],
+      "allowed_idps": [
+        "idp-1"
+      ],
+      "auto_redirect_to_identity": true
+    },
+    "schema_ref": "cloudflare/access_application/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]
