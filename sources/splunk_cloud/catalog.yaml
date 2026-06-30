@@ -5,6 +5,10 @@ emitted_kinds:
   - splunk_cloud.audit_events
   - splunk_cloud.findings
   - splunk_cloud.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: splunk_cloud.audit_events
     status: active

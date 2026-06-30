@@ -6,6 +6,11 @@ emitted_kinds:
   - shipengine.package
   - shipengine.track
   - shipengine.webhook
+runtime_families:
+  - package
+  - track
+  - tracking
+  - webhook
 kind_lifecycle:
   - kind: shipengine.tracking
     status: active

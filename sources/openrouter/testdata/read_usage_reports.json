@@ -1,0 +1,61 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/usage",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-openrouter-usage_reports-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-openrouter-usage_reports-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/openrouter/usage_reports/source-openrouter-usage_reports-1",
+      "external_id": "source-openrouter-usage_reports-1",
+      "family": "usage_reports",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "openrouter",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-openrouter-usage_reports-1",
+      "resource_name": "Openrouter Usage Reports Fixture",
+      "resource_type": "usage_reports",
+      "resource_urn": "urn:cerebro:tenant:openrouter_usage_reports:source-openrouter-usage_reports-1",
+      "schema": "usage_reports",
+      "source_event_id": "source-openrouter-usage_reports-1",
+      "source_provider": "openrouter",
+      "source_system": "openrouter",
+      "tenant_id": "tenant"
+    },
+    "id": "source-openrouter-usage_reports-event-1",
+    "kind": "openrouter.usage_reports",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/usage",
+      "event_id": "source-openrouter-usage_reports-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-openrouter-usage_reports-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-openrouter-usage_reports-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openrouter/usage_reports/source-openrouter-usage_reports-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/openrouter/usage_reports/source-openrouter-usage_reports-1",
+      "family": "usage_reports",
+      "id": "source-openrouter-usage_reports-1",
+      "name": "Openrouter Usage Reports Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-openrouter-usage_reports-1",
+      "resource_type": "usage_reports",
+      "resource_urn": "urn:cerebro:tenant:openrouter_usage_reports:source-openrouter-usage_reports-1",
+      "schema_ref": "openrouter/usage_reports/v1",
+      "source_id": "openrouter",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "openrouter/usage_reports/v1",
+    "source_id": "openrouter",
+    "tenant_id": "tenant"
+  }
+]

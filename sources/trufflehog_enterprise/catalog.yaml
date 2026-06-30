@@ -7,6 +7,12 @@ emitted_kinds:
   - trufflehog_enterprise.vulnerabilities
   - trufflehog_enterprise.policies
   - trufflehog_enterprise.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: trufflehog_enterprise.assets
     status: active

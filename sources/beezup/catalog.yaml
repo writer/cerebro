@@ -14,6 +14,19 @@ emitted_kinds:
   - beezup.beezupcolumn
   - beezup.filteroperator
   - beezup.autoimport
+runtime_families:
+  - alert
+  - autoimport
+  - beezupcolumn
+  - catalogcolumn
+  - category
+  - channelcatalog
+  - customcolumn
+  - filter
+  - filteroperator
+  - offer
+  - random
+  - rule
 kind_lifecycle:
   - kind: beezup.channelcatalog
     status: active

@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@loket.example.test",
+      "actor_id": "loket-users-1",
+      "actor_name": "actor-name-source-loket-integration-1",
+      "api_method": "GET",
+      "api_path": "/users/integrations",
+      "event_type": "loket.integration.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-loket-integration-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-loket-integration-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/loket/integration/source-loket-integration-1",
+      "external_id": "source-loket-integration-1",
+      "family": "integration",
+      "id": "source-loket-integration-1",
+      "name": "Loket Integration Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "loket",
+      "provider_id": "provider-id-source-loket-integration-1",
+      "record_class": "audit_event",
+      "record_selector": "$.messages[*]",
+      "resource_email": "resource@loket.example.test",
+      "resource_id": "source-loket-integration-1",
+      "resource_name": "Loket Integration Fixture",
+      "resource_type": "integration",
+      "resource_urn": "urn:cerebro:tenant:loket_integration:source-loket-integration-1",
+      "schema": "integration",
+      "source_event_id": "source-loket-integration-1",
+      "source_provider": "loket",
+      "source_system": "loket",
+      "tenant_id": "tenant"
+    },
+    "id": "source-loket-integration-event-1",
+    "kind": "loket.integration",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@loket.example.test",
+      "actor_id": "loket-users-1",
+      "actor_name": "actor-name-source-loket-integration-1",
+      "api_method": "GET",
+      "api_path": "/users/integrations",
+      "description": "Loket Integration Fixture",
+      "event_id": "source-loket-integration-1",
+      "event_type": "loket.integration.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-loket-integration-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-loket-integration-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/loket/integration/source-loket-integration-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/loket/integration/source-loket-integration-1",
+      "family": "integration",
+      "id": "source-loket-integration-1",
+      "name": "Loket Integration Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.messages[*]",
+      "resource_email": "resource@loket.example.test",
+      "resource_id": "source-loket-integration-1",
+      "resource_name": "Loket Integration Fixture",
+      "resource_type": "integration",
+      "resource_urn": "urn:cerebro:tenant:loket_integration:source-loket-integration-1",
+      "schema_ref": "loket/integration/v1",
+      "source_id": "loket",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "loket/integration/v1",
+    "source_id": "loket",
+    "tenant_id": "tenant"
+  }
+]

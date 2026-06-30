@@ -7,6 +7,12 @@ emitted_kinds:
   - authentik_cloud.roles
   - authentik_cloud.applications
   - authentik_cloud.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: authentik_cloud.users
     status: active

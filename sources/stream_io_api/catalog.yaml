@@ -6,6 +6,11 @@ emitted_kinds:
   - stream_io_api.role
   - stream_io_api.device
   - stream_io_api.query_banned_user
+runtime_families:
+  - device
+  - member
+  - query_banned_user
+  - role
 kind_lifecycle:
   - kind: stream_io_api.member
     status: active

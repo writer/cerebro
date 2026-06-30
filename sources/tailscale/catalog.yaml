@@ -9,6 +9,14 @@ emitted_kinds:
   - tailscale.tag
   - tailscale.service
   - tailscale.grant
+runtime_families:
+  - device
+  - grant
+  - group
+  - service
+  - tag
+  - tailnet
+  - user
 coverage_contract:
   owner_domain: network
   authority_domain: tailscale

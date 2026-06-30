@@ -1,14 +1,77 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@threatjammer.example.test",
+      "actor_id": "threatjammer-users-1",
+      "actor_name": "actor-name-source-threatjammer-activity-1",
+      "api_method": "GET",
+      "api_path": "/v1/token/activity",
+      "event_type": "threatjammer.activity.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-threatjammer-activity-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-threatjammer-activity-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/threatjammer/activity/source-threatjammer-activity-1",
+      "external_id": "source-threatjammer-activity-1",
+      "family": "activity",
+      "id": "source-threatjammer-activity-1",
+      "name": "Threatjammer Activity Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "threatjammer",
+      "provider_id": "provider-id-source-threatjammer-activity-1",
+      "record_class": "audit_event",
+      "record_selector": "$.activities[*]",
+      "resource_email": "resource@threatjammer.example.test",
+      "resource_id": "source-threatjammer-activity-1",
+      "resource_name": "Threatjammer Activity Fixture",
+      "resource_type": "activity",
+      "resource_urn": "urn:cerebro:tenant:threatjammer_activity:source-threatjammer-activity-1",
+      "schema": "activity",
+      "source_event_id": "source-threatjammer-activity-1",
+      "source_provider": "threatjammer",
+      "source_system": "threatjammer",
+      "tenant_id": "tenant"
+    },
+    "id": "source-threatjammer-activity-event-1",
+    "kind": "threatjammer.activity",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@threatjammer.example.test",
+      "actor_id": "threatjammer-users-1",
+      "actor_name": "actor-name-source-threatjammer-activity-1",
+      "api_method": "GET",
+      "api_path": "/v1/token/activity",
+      "description": "Threatjammer Activity Fixture",
+      "event_id": "source-threatjammer-activity-1",
+      "event_type": "threatjammer.activity.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-threatjammer-activity-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-threatjammer-activity-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/threatjammer/activity/source-threatjammer-activity-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/threatjammer/activity/source-threatjammer-activity-1",
+      "family": "activity",
+      "id": "source-threatjammer-activity-1",
+      "name": "Threatjammer Activity Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.activities[*]",
+      "resource_email": "resource@threatjammer.example.test",
+      "resource_id": "source-threatjammer-activity-1",
+      "resource_name": "Threatjammer Activity Fixture",
+      "resource_type": "activity",
+      "resource_urn": "urn:cerebro:tenant:threatjammer_activity:source-threatjammer-activity-1",
+      "schema_ref": "threatjammer/activity/v1",
+      "self": "source-threatjammer-activity-1",
+      "source_id": "threatjammer",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "threatjammer/activity/v1",
+    "source_id": "threatjammer",
+    "tenant_id": "tenant"
+  }
+]

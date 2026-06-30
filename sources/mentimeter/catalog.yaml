@@ -7,6 +7,12 @@ emitted_kinds:
   - mentimeter.workspaces
   - mentimeter.documents
   - mentimeter.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: mentimeter.users
     status: active

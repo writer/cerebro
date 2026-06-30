@@ -6,6 +6,11 @@ emitted_kinds:
   - combell.ssh
   - combell.user
   - combell.account_2
+runtime_families:
+  - account
+  - account_2
+  - ssh
+  - user
 kind_lifecycle:
   - kind: combell.account
     status: active

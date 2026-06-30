@@ -7,6 +7,12 @@ emitted_kinds:
   - holm_security.vulnerabilities
   - holm_security.policies
   - holm_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: holm_security.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - journy_io.segments_account
   - journy_io.user
   - journy_io.segments_user
+runtime_families:
+  - account
+  - event
+  - segments_account
+  - segments_user
+  - user
 kind_lifecycle:
   - kind: journy_io.event
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - evernote_teams.workspaces
   - evernote_teams.documents
   - evernote_teams.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: evernote_teams.users
     status: active

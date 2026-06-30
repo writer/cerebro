@@ -7,6 +7,12 @@ emitted_kinds:
   - eclypsium.vulnerabilities
   - eclypsium.policies
   - eclypsium.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: eclypsium.assets
     status: active

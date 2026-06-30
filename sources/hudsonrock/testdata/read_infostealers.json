@@ -1,14 +1,71 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/infostealers",
+      "description": "Hudsonrock Infostealers Fixture finding",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-hudsonrock-infostealers-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-hudsonrock-infostealers-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/hudsonrock/infostealers/source-hudsonrock-infostealers-1",
+      "external_id": "source-hudsonrock-infostealers-1",
+      "family": "infostealers",
+      "finding_id": "source-hudsonrock-infostealers-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "hudsonrock",
+      "record_class": "finding",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-hudsonrock-infostealers-1",
+      "resource_name": "Hudsonrock Infostealers Fixture",
+      "resource_type": "infostealers",
+      "resource_urn": "urn:cerebro:tenant:hudsonrock_infostealers:source-hudsonrock-infostealers-1",
+      "schema": "infostealers",
+      "severity": "high",
+      "source_event_id": "source-hudsonrock-infostealers-1",
+      "source_provider": "hudsonrock",
+      "source_system": "hudsonrock",
+      "status": "open",
+      "tenant_id": "tenant",
+      "title": "Hudsonrock Infostealers Fixture"
+    },
+    "id": "source-hudsonrock-infostealers-event-1",
+    "kind": "hudsonrock.infostealers",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/infostealers",
+      "description": "Hudsonrock Infostealers Fixture finding",
+      "event_id": "source-hudsonrock-infostealers-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-hudsonrock-infostealers-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-hudsonrock-infostealers-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/hudsonrock/infostealers/source-hudsonrock-infostealers-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/hudsonrock/infostealers/source-hudsonrock-infostealers-1",
+      "family": "infostealers",
+      "finding_id": "source-hudsonrock-infostealers-1",
+      "id": "source-hudsonrock-infostealers-1",
+      "name": "Hudsonrock Infostealers Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "finding",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-hudsonrock-infostealers-1",
+      "resource_type": "infostealers",
+      "resource_urn": "urn:cerebro:tenant:hudsonrock_infostealers:source-hudsonrock-infostealers-1",
+      "schema_ref": "hudsonrock/infostealers/v1",
+      "severity": "high",
+      "source_id": "hudsonrock",
+      "status": "open",
+      "tenant_id": "tenant",
+      "title": "Hudsonrock Infostealers Fixture",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "hudsonrock/infostealers/v1",
+    "source_id": "hudsonrock",
+    "tenant_id": "tenant"
+  }
+]

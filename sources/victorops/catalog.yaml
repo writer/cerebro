@@ -6,6 +6,11 @@ emitted_kinds:
   - victorops.team
   - victorops.user
   - victorops.incident
+runtime_families:
+  - incident
+  - log
+  - team
+  - user
 kind_lifecycle:
   - kind: victorops.log
     status: active

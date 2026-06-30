@@ -7,6 +7,12 @@ emitted_kinds:
   - genesys_cloud.records
   - genesys_cloud.policies
   - genesys_cloud.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: genesys_cloud.users
     status: active

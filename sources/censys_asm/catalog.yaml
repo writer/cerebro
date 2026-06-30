@@ -5,6 +5,10 @@ emitted_kinds:
   - censys_asm.assets
   - censys_asm.findings
   - censys_asm.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: censys_asm.assets
     status: active

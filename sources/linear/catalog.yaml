@@ -5,6 +5,10 @@ emitted_kinds:
   - linear.users
   - linear.projects
   - linear.audit_events
+runtime_families:
+  - audit_events
+  - projects
+  - users
 kind_lifecycle:
   - kind: linear.users
     status: active

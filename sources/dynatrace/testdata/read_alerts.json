@@ -1,14 +1,81 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "alert_description": "Dynatrace Alerts Fixture alert",
+      "alert_fired_at": "2026-06-01T00:00:00Z",
+      "alert_id": "source-dynatrace-alerts-1",
+      "alert_name": "Dynatrace Alerts Fixture",
+      "alert_resolved_at": "2026-06-01T00:00:00Z",
+      "alert_severity": "critical",
+      "alert_source": "dynatrace",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-dynatrace-alerts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dynatrace-alerts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/dynatrace/alerts/source-dynatrace-alerts-1",
+      "external_id": "source-dynatrace-alerts-1",
+      "family": "alerts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "dynatrace",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-dynatrace-alerts-1",
+      "resource_name": "Dynatrace Alerts Fixture",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:dynatrace_alerts:source-dynatrace-alerts-1",
+      "schema": "alerts",
+      "source_event_id": "source-dynatrace-alerts-1",
+      "source_provider": "dynatrace",
+      "source_system": "dynatrace",
+      "tenant_id": "tenant"
+    },
+    "id": "source-dynatrace-alerts-event-1",
+    "kind": "dynatrace.alerts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "alert_id": "source-dynatrace-alerts-1",
+      "alert_name": "Dynatrace Alerts Fixture",
+      "alert_severity": "critical",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "description": "Dynatrace Alerts Fixture alert",
+      "event_id": "source-dynatrace-alerts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-dynatrace-alerts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-dynatrace-alerts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/dynatrace/alerts/source-dynatrace-alerts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/dynatrace/alerts/source-dynatrace-alerts-1",
+      "family": "alerts",
+      "fired_at": "2026-06-01T00:00:00Z",
+      "id": "source-dynatrace-alerts-1",
+      "name": "Dynatrace Alerts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-dynatrace-alerts-1",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:dynatrace_alerts:source-dynatrace-alerts-1",
+      "schema_ref": "dynatrace/alerts/v1",
+      "severity": "critical",
+      "source": "dynatrace",
+      "source_id": "dynatrace",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "dynatrace/alerts/v1",
+    "source_id": "dynatrace",
+    "tenant_id": "tenant"
+  }
+]

@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_defender_for_endpoint.endpoint_devices
   - microsoft_defender_for_endpoint.findings
   - microsoft_defender_for_endpoint.vulnerabilities
+runtime_families:
+  - endpoint_devices
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: microsoft_defender_for_endpoint.endpoint_devices
     status: active

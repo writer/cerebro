@@ -7,6 +7,12 @@ emitted_kinds:
   - mosyle.roles
   - mosyle.applications
   - mosyle.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: mosyle.users
     status: active

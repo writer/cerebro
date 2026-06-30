@@ -14,6 +14,19 @@ emitted_kinds:
   - sinao.person
   - sinao.invite
   - sinao.apps_organization
+runtime_families:
+  - access
+  - account
+  - accountcategory
+  - accounting_entry
+  - apps_organization
+  - invite
+  - organization
+  - person
+  - product
+  - productcategory
+  - productstock
+  - rule
 kind_lifecycle:
   - kind: sinao.product
     status: active

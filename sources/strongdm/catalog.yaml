@@ -5,6 +5,10 @@ emitted_kinds:
   - strongdm.users
   - strongdm.groups
   - strongdm.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: strongdm.users
     status: active

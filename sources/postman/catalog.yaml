@@ -5,6 +5,10 @@ emitted_kinds:
   - postman.collections
   - postman.environments
   - postman.audit_events
+runtime_families:
+  - audit_events
+  - collections
+  - environments
 kind_lifecycle:
   - kind: postman.collections
     status: active

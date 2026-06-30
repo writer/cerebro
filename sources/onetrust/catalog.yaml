@@ -5,6 +5,10 @@ emitted_kinds:
   - onetrust.users
   - onetrust.controls
   - onetrust.findings
+runtime_families:
+  - controls
+  - findings
+  - users
 kind_lifecycle:
   - kind: onetrust.users
     status: active

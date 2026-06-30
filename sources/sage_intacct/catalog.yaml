@@ -7,6 +7,12 @@ emitted_kinds:
   - sage_intacct.records
   - sage_intacct.policies
   - sage_intacct.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: sage_intacct.users
     status: active

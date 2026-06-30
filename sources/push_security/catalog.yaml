@@ -7,6 +7,12 @@ emitted_kinds:
   - push_security.roles
   - push_security.applications
   - push_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: push_security.users
     status: active

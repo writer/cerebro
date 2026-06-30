@@ -7,6 +7,12 @@ emitted_kinds:
   - astrix_security.vulnerabilities
   - astrix_security.policies
   - astrix_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: astrix_security.assets
     status: active

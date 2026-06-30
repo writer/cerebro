@@ -1,0 +1,81 @@
+[
+  {
+    "attributes": {
+      "api_key_id": "api-key-id-source-openai-project_api_key-1",
+      "api_method": "GET",
+      "api_path": "/organization/projects/{project_id}/api_keys",
+      "created_at": "2026-06-01T00:00:00Z",
+      "display_name": "Openai Project Api Key Fixture",
+      "email": "user@example.test",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/openai/project_api_key/source-openai-project_api_key-1",
+      "external_id": "source-openai-project_api_key-1",
+      "family": "project_api_key",
+      "last_used_at": "2026-06-01T00:00:00Z",
+      "name": "Openai Project Api Key Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "owner_service_account_id": "owner-service-account-id-source-openai-project_api_key-1",
+      "owner_type": "owner-type-source-openai-project_api_key-1",
+      "owner_user_id": "owner-user-id-source-openai-project_api_key-1",
+      "project_id": "project-id-source-openai-project_api_key-1",
+      "provider": "openai",
+      "resource_id": "source-openai-project_api_key-1",
+      "resource_name": "Openai Project Api Key Fixture",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:openai_project_api_key:source-openai-project_api_key-1",
+      "source_event_id": "source-openai-project_api_key-1",
+      "source_product": "openai",
+      "source_provider": "openai",
+      "source_system": "openai",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_id": "source-openai-user-1"
+    },
+    "id": "source-openai-project_api_key-event-1",
+    "kind": "openai.project_api_key",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/organization/projects/{project_id}/api_keys",
+      "created_at": "2026-06-01T00:00:00Z",
+      "display_name": "Openai Project Api Key Fixture",
+      "email": "user@example.test",
+      "event_id": "source-openai-project_api_key-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openai/project_api_key/source-openai-project_api_key-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/openai/project_api_key/source-openai-project_api_key-1",
+      "family": "project_api_key",
+      "id": "api-key-id-source-openai-project_api_key-1",
+      "last_used_at": "2026-06-01T00:00:00Z",
+      "name": "Openai Project Api Key Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "owner": {
+        "service_account": {
+          "id": "owner-service-account-id-source-openai-project_api_key-1"
+        },
+        "type": "owner-type-source-openai-project_api_key-1",
+        "user": {
+          "id": "owner-user-id-source-openai-project_api_key-1"
+        }
+      },
+      "project_id": "project-id-source-openai-project_api_key-1",
+      "resource_id": "source-openai-project_api_key-1",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:openai_project_api_key:source-openai-project_api_key-1",
+      "schema_ref": "openai/project_api_key/v1",
+      "source_id": "openai",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-openai-user-1"
+    },
+    "schema_ref": "openai/project_api_key/v1",
+    "source_id": "openai",
+    "tenant_id": "tenant"
+  }
+]

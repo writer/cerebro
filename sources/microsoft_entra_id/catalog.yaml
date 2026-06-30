@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_entra_id.users
   - microsoft_entra_id.groups
   - microsoft_entra_id.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: microsoft_entra_id.users
     status: active

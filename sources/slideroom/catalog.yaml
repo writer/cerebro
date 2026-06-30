@@ -5,6 +5,10 @@ emitted_kinds:
   - slideroom.name
   - slideroom.attributes_name
   - slideroom.export
+runtime_families:
+  - attributes_name
+  - export
+  - name
 kind_lifecycle:
   - kind: slideroom.name
     status: active

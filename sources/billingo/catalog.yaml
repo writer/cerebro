@@ -6,6 +6,11 @@ emitted_kinds:
   - billingo.document
   - billingo.document_block
   - billingo.partner
+runtime_families:
+  - bank_account
+  - document
+  - document_block
+  - partner
 kind_lifecycle:
   - kind: billingo.bank_account
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - contrast_security.vulnerabilities
   - contrast_security.policies
   - contrast_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: contrast_security.assets
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - exavault.notification
   - exavault.session
   - exavault.ssh_key
+runtime_families:
+  - email_list
+  - notification
+  - session
+  - ssh_key
 kind_lifecycle:
   - kind: exavault.email_list
     status: active

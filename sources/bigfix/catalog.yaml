@@ -5,6 +5,10 @@ emitted_kinds:
   - bigfix.computers
   - bigfix.sites
   - bigfix.analyses
+runtime_families:
+  - analyses
+  - computers
+  - sites
 kind_lifecycle:
   - kind: bigfix.computers
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - google_play_console.repositories
   - google_play_console.deployments
   - google_play_console.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: google_play_console.users
     status: active

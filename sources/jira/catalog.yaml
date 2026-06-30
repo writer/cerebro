@@ -5,6 +5,10 @@ emitted_kinds:
   - jira.users
   - jira.projects
   - jira.audit_events
+runtime_families:
+  - audit_events
+  - projects
+  - users
 kind_lifecycle:
   - kind: jira.users
     status: active

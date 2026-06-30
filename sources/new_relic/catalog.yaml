@@ -5,6 +5,10 @@ emitted_kinds:
   - new_relic.assets
   - new_relic.findings
   - new_relic.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: new_relic.assets
     status: active

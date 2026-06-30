@@ -6,6 +6,11 @@ emitted_kinds:
   - openpolicy.query
   - openpolicy.v1_policy
   - openpolicy.data
+runtime_families:
+  - data
+  - policy
+  - query
+  - v1_policy
 kind_lifecycle:
   - kind: openpolicy.policy
     status: active

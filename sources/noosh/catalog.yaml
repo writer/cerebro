@@ -14,6 +14,19 @@ emitted_kinds:
   - noosh.teammembersofclientproject
   - noosh.memberrole
   - noosh.billingrecipient
+runtime_families:
+  - automaticinvitation
+  - billingrecipient
+  - clientworkgroup
+  - clientworkgroups_projecthomeuserfield
+  - memberrole
+  - projecthomeuserfield
+  - supplierworkgroup
+  - teammember
+  - teammembersofclientproject
+  - teamtemplate
+  - workgroup
+  - workgroupmember
 kind_lifecycle:
   - kind: noosh.workgroup
     status: active

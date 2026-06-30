@@ -14,6 +14,19 @@ emitted_kinds:
   - kubernetes.service_account
   - kubernetes.workload
   - kubernetes.workload_identity_binding
+runtime_families:
+  - cluster
+  - container
+  - ingress
+  - namespace
+  - node
+  - pod
+  - rbac_binding
+  - rbac_role
+  - service
+  - service_account
+  - workload
+  - workload_identity_binding
 event_contracts:
   - kind: kubernetes.cluster
     schema_ref: kubernetes/cluster/v1

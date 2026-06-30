@@ -7,6 +7,12 @@ emitted_kinds:
   - travis_ci.repositories
   - travis_ci.deployments
   - travis_ci.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: travis_ci.users
     status: active

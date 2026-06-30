@@ -7,6 +7,12 @@ emitted_kinds:
   - campaign_monitor.records
   - campaign_monitor.policies
   - campaign_monitor.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: campaign_monitor.users
     status: active

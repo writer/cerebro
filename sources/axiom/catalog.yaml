@@ -7,6 +7,12 @@ emitted_kinds:
   - axiom.monitors
   - axiom.dashboards
   - axiom.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: axiom.alerts
     status: active

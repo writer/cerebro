@@ -6,6 +6,11 @@ emitted_kinds:
   - bunq.user
   - bunq.credential_password_ip
   - bunq.notification_filter_push
+runtime_families:
+  - credential_password_ip
+  - event
+  - notification_filter_push
+  - user
 kind_lifecycle:
   - kind: bunq.event
     status: active

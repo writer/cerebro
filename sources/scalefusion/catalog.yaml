@@ -7,6 +7,12 @@ emitted_kinds:
   - scalefusion.roles
   - scalefusion.applications
   - scalefusion.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: scalefusion.users
     status: active

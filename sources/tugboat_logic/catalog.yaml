@@ -7,6 +7,12 @@ emitted_kinds:
   - tugboat_logic.vulnerabilities
   - tugboat_logic.policies
   - tugboat_logic.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: tugboat_logic.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - fusionauth.roles
   - fusionauth.applications
   - fusionauth.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: fusionauth.users
     status: active

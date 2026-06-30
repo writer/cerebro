@@ -6,6 +6,11 @@ emitted_kinds:
   - discourse.user_actions_json
   - discourse.notifications_json
   - discourse.backups_json
+runtime_families:
+  - backups_json
+  - groups_json
+  - notifications_json
+  - user_actions_json
 kind_lifecycle:
   - kind: discourse.groups_json
     status: active

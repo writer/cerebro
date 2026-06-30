@@ -5,6 +5,10 @@ emitted_kinds:
   - sentry.assets
   - sentry.findings
   - sentry.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: sentry.assets
     status: active

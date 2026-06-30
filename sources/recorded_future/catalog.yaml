@@ -5,6 +5,10 @@ emitted_kinds:
   - recorded_future.assets
   - recorded_future.findings
   - recorded_future.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: recorded_future.assets
     status: active

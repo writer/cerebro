@@ -14,6 +14,19 @@ emitted_kinds:
   - xtrf_eu.providers_id
   - xtrf_eu.id_2
   - xtrf_eu.quotes_id
+runtime_families:
+  - active
+  - all
+  - customer
+  - customers_id
+  - id
+  - id_2
+  - invoices_id
+  - persons_id
+  - projects_id
+  - providers_id
+  - quotes_id
+  - user
 kind_lifecycle:
   - kind: xtrf_eu.user
     status: active

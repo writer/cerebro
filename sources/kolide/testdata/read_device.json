@@ -1,0 +1,100 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/devices",
+      "compliance_status": "compliance-status-source-kolide-device-1",
+      "device_id": "device-id-source-kolide-device-1",
+      "device_name": "Kolide Device Fixture",
+      "device_uuid": "device-uuid-source-kolide-device-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/kolide/device/source-kolide-device-1",
+      "external_id": "source-kolide-device-1",
+      "failure_count": "failure-count-source-kolide-device-1",
+      "family": "device",
+      "hardware_serial": "hardware-serial-source-kolide-device-1",
+      "hostname": "Kolide Device Fixture",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "mdm_enabled": "true",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "os": "os-source-kolide-device-1",
+      "os_name": "os-name-source-kolide-device-1",
+      "os_version": "os-version-source-kolide-device-1",
+      "owner_email": "owner@kolide.example.test",
+      "platform": "platform-source-kolide-device-1",
+      "primary_email": "primary-email-source-kolide-device-1",
+      "provider": "kolide",
+      "registered": "registered-source-kolide-device-1",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-kolide-device-1",
+      "resource_name": "Kolide Device Fixture",
+      "resource_type": "device",
+      "resource_urn": "urn:cerebro:tenant:kolide_device:source-kolide-device-1",
+      "serial_number": "serial-number-source-kolide-device-1",
+      "source_event_id": "source-kolide-device-1",
+      "source_product": "kolide",
+      "source_provider": "kolide",
+      "source_system": "kolide",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_email": "user@kolide.example.test"
+    },
+    "id": "source-kolide-device-event-1",
+    "kind": "kolide.device",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/devices",
+      "compliance_status": "compliance-status-source-kolide-device-1",
+      "event_id": "source-kolide-device-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/kolide/device/source-kolide-device-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/kolide/device/source-kolide-device-1",
+      "failure_count": "failure-count-source-kolide-device-1",
+      "family": "device",
+      "hardware": {
+        "serial": "hardware-serial-source-kolide-device-1"
+      },
+      "hostname": "Kolide Device Fixture",
+      "id": "device-id-source-kolide-device-1",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "mdm": {
+        "enabled": "true"
+      },
+      "name": "Kolide Device Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "os": {
+        "name": "os-name-source-kolide-device-1",
+        "version": "os-version-source-kolide-device-1"
+      },
+      "owner": {
+        "email": "owner@kolide.example.test"
+      },
+      "platform": "platform-source-kolide-device-1",
+      "primary_email": "primary-email-source-kolide-device-1",
+      "registered": "registered-source-kolide-device-1",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-kolide-device-1",
+      "resource_type": "device",
+      "resource_urn": "urn:cerebro:tenant:kolide_device:source-kolide-device-1",
+      "schema_ref": "kolide/device/v1",
+      "serial_number": "serial-number-source-kolide-device-1",
+      "source_id": "kolide",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user": {
+        "email": "user@kolide.example.test"
+      },
+      "uuid": "device-uuid-source-kolide-device-1"
+    },
+    "schema_ref": "kolide/device/v1",
+    "source_id": "kolide",
+    "tenant_id": "tenant"
+  }
+]

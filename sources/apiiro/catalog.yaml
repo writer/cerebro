@@ -7,6 +7,12 @@ emitted_kinds:
   - apiiro.vulnerabilities
   - apiiro.policies
   - apiiro.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: apiiro.assets
     status: active

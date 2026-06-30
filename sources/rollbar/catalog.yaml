@@ -7,6 +7,12 @@ emitted_kinds:
   - rollbar.monitors
   - rollbar.dashboards
   - rollbar.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: rollbar.alerts
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - degreed.records
   - degreed.policies
   - degreed.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: degreed.users
     status: active

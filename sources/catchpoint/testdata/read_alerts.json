@@ -1,14 +1,81 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "alert_description": "Catchpoint Alerts Fixture alert",
+      "alert_fired_at": "2026-06-01T00:00:00Z",
+      "alert_id": "source-catchpoint-alerts-1",
+      "alert_name": "Catchpoint Alerts Fixture",
+      "alert_resolved_at": "2026-06-01T00:00:00Z",
+      "alert_severity": "critical",
+      "alert_source": "catchpoint",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-catchpoint-alerts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-catchpoint-alerts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/catchpoint/alerts/source-catchpoint-alerts-1",
+      "external_id": "source-catchpoint-alerts-1",
+      "family": "alerts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "catchpoint",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-catchpoint-alerts-1",
+      "resource_name": "Catchpoint Alerts Fixture",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:catchpoint_alerts:source-catchpoint-alerts-1",
+      "schema": "alerts",
+      "source_event_id": "source-catchpoint-alerts-1",
+      "source_provider": "catchpoint",
+      "source_system": "catchpoint",
+      "tenant_id": "tenant"
+    },
+    "id": "source-catchpoint-alerts-event-1",
+    "kind": "catchpoint.alerts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "alert_id": "source-catchpoint-alerts-1",
+      "alert_name": "Catchpoint Alerts Fixture",
+      "alert_severity": "critical",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "description": "Catchpoint Alerts Fixture alert",
+      "event_id": "source-catchpoint-alerts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-catchpoint-alerts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-catchpoint-alerts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/catchpoint/alerts/source-catchpoint-alerts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/catchpoint/alerts/source-catchpoint-alerts-1",
+      "family": "alerts",
+      "fired_at": "2026-06-01T00:00:00Z",
+      "id": "source-catchpoint-alerts-1",
+      "name": "Catchpoint Alerts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-catchpoint-alerts-1",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:catchpoint_alerts:source-catchpoint-alerts-1",
+      "schema_ref": "catchpoint/alerts/v1",
+      "severity": "critical",
+      "source": "catchpoint",
+      "source_id": "catchpoint",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "catchpoint/alerts/v1",
+    "source_id": "catchpoint",
+    "tenant_id": "tenant"
+  }
+]

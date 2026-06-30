@@ -6,6 +6,11 @@ emitted_kinds:
   - twitter.member
   - twitter.job
   - twitter.dm_event
+runtime_families:
+  - dm_event
+  - job
+  - list_membership
+  - member
 kind_lifecycle:
   - kind: twitter.list_membership
     status: active

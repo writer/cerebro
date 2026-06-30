@@ -7,6 +7,12 @@ emitted_kinds:
   - tanium_cloud.vulnerabilities
   - tanium_cloud.policies
   - tanium_cloud.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: tanium_cloud.assets
     status: active
