@@ -1,0 +1,20 @@
+{
+  "family": "policies",
+  "items": [
+    {
+      "description": "Default branch protection is required for production repositories.",
+      "evidence_cas_digest": "sha256:policy",
+      "evidence_cas_uri": "cas://cases/policy-1",
+      "id": "policy-1",
+      "policy_name": "Require branch protection",
+      "policy_severity": "high",
+      "policy_status": "enabled",
+      "policy_type": "repository_control",
+      "resource_id": "payment-service",
+      "resource_name": "payment-service",
+      "resource_type": "repository",
+      "resource_urn": "urn:cerebro:tenant:runtime_repository:payment-service",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

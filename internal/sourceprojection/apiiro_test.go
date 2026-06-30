@@ -37,6 +37,23 @@ func TestApiiroFindingProjection(t *testing.T) {
 	}
 }
 
+func TestApiiroVulnerabilityProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apiiro", Kind: "apiiro.vulnerabilities", Attributes: map[string]string{"finding_id": "vuln-1", "title": "Dependency with exploitable CVE", "severity": "critical", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_repository:payment-service", "evidence_id": "evidence-vuln-1"}}
+	entities, links, err := apiiroVulnerabilitiesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected projected vulnerability finding")
+	}
+	if len(links) == 0 {
+		t.Fatal("expected projected vulnerability links")
+	}
+	if !hasProjectedEntityType(entities, "runtime_evidence") {
+		t.Fatal("expected projected runtime evidence entity")
+	}
+}
+
 func TestApiiroPolicyProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "apiiro", Kind: "apiiro.policies", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
 	entities, links, err := apiiroPoliciesProjections(event)

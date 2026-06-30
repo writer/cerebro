@@ -1,0 +1,17 @@
+{
+  "family": "audit_events",
+  "items": [
+    {
+      "actor_email": "security@example.test",
+      "actor_id": "user-1",
+      "actor_name": "Security Reviewer",
+      "event_type": "finding.dismissed",
+      "id": "audit-1",
+      "resource_id": "finding-1",
+      "resource_name": "Secret committed to repository",
+      "resource_type": "finding",
+      "resource_urn": "urn:cerebro:tenant:finding:finding-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

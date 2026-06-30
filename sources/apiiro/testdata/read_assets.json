@@ -1,4 +1,5 @@
 {
+  "family": "assets",
   "items": [
     {
       "evidence_cas_digest": "sha256:test",

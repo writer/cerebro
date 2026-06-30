@@ -26,5 +26,6 @@ Generated Source Runtime SDK scaffold for `apiiro`.
 
 ## Tests
 
+- Fixture pairs cover discover and read payloads for `assets`, `findings`, `vulnerabilities`, `policies`, and `audit_events`.
 - `go test ./sources/apiiro ./internal/sourceprojection -count=1`
 - `make catalog-check`

@@ -1,0 +1,19 @@
+{
+  "family": "vulnerabilities",
+  "items": [
+    {
+      "description": "A reachable dependency version is affected by an exploitable vulnerability.",
+      "evidence_cas_digest": "sha256:vulnerability",
+      "evidence_cas_uri": "cas://cases/vuln-1",
+      "id": "vuln-1",
+      "resource_id": "payment-service",
+      "resource_name": "payment-service",
+      "resource_type": "repository",
+      "resource_urn": "urn:cerebro:tenant:runtime_repository:payment-service",
+      "severity": "critical",
+      "status": "open",
+      "title": "Dependency with exploitable CVE",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

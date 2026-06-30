@@ -1,0 +1,13 @@
+{
+  "family": "audit_events",
+  "items": [
+    {
+      "actor_id": "user-1",
+      "event_type": "finding.dismissed",
+      "id": "audit-1",
+      "occurred_at": "2026-06-01T00:00:00Z",
+      "resource_id": "finding-1",
+      "sync_operation": "discover"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "family": "vulnerabilities",
+  "items": [
+    {
+      "id": "vuln-1",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "resource_urn": "urn:cerebro:tenant:runtime_repository:payment-service",
+      "severity": "critical",
+      "status": "open",
+      "sync_operation": "discover",
+      "title": "Dependency with exploitable CVE"
+    }
+  ]
+}

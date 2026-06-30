@@ -1,0 +1,12 @@
+{
+  "family": "assets",
+  "items": [
+    {
+      "id": "asset-1",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "name": "payment-service",
+      "resource_type": "repository",
+      "sync_operation": "discover"
+    }
+  ]
+}

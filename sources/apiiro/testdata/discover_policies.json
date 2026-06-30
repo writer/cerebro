@@ -1,0 +1,12 @@
+{
+  "family": "policies",
+  "items": [
+    {
+      "id": "policy-1",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "name": "Require branch protection",
+      "policy_status": "enabled",
+      "sync_operation": "discover"
+    }
+  ]
+}
