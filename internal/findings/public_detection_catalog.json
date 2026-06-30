@@ -14550,6 +14550,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "cohere",
+          "dimension_id": "datasets",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "datasets"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -25828,6 +25850,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "google_gemini",
+          "dimension_id": "files",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "files"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -25960,6 +26004,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "google_gemini",
+          "dimension_id": "files",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "files"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -52115,6 +52181,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "openrouter",
+          "dimension_id": "api_keys",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "api_keys"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
         }
       ]
     },
@@ -67776,6 +67864,28 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-3"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "google_gemini",
+          "dimension_id": "files",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "files"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -88043,6 +88153,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "openrouter",
+          "dimension_id": "api_keys",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "api_keys"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
         }
       ]
     },
@@ -96535,6 +96667,33 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -96934,6 +97093,29 @@
               "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -101115,6 +101297,29 @@
               "control_id": "6"
             }
           ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -101713,29 +101918,26 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "support_access_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "audit",
-            "impersonation",
-            "session",
-            "support",
-            "support_access",
-            "support_session"
+            "service_accounts"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "logging_configuration"
+            "source_snapshot"
           ],
           "control_domains": [
-            "identity_access",
-            "logging_monitoring"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -105878,6 +106080,29 @@
             {
               "framework_name": "CIS Controls v8",
               "control_id": "6"
+            }
+          ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -185640,6 +185865,29 @@
               "control_id": "6"
             }
           ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -234756,6 +235004,29 @@
               "control_id": "6"
             }
           ]
+        },
+        {
+          "source_id": "elevenlabs",
+          "dimension_id": "service_accounts",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -252506,6 +252777,28 @@
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "openrouter",
+          "dimension_id": "api_keys",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "api_keys"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
