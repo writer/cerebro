@@ -296,7 +296,7 @@ func compileAnswer(record ports.QuestionnaireRunRecord, question ports.Questionn
 	answer.Conflicts = conflictsFromEvidenceAnswer(question.ID, *evidenceAnswer)
 	answer.Confidence = evidenceAnswer.Confidence.Level
 	answer.ConfidenceScore = evidenceAnswer.Confidence.Score
-	answer.DraftAnswer = draftAnswer(question, *evidenceAnswer, answer.Citations)
+	answer.DraftAnswer = draftAnswer(*evidenceAnswer, answer.Citations)
 	answer.AnswerState, answer.ReviewState = answerStatesFromEvidence(*evidenceAnswer, answer.EvidenceSlots, answer.MissingEvidence, answer.Conflicts, answer.Freshness)
 	if answer.AnswerState == ports.QuestionnaireAnswerNotApplicable {
 		answer.EvidenceSlots = nil
@@ -526,7 +526,7 @@ func freshnessFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) por
 	}
 }
 
-func draftAnswer(question ports.QuestionnaireQuestion, answer evidencepackets.QuestionnaireAnswer, citations []ports.QuestionnaireCitation) string {
+func draftAnswer(answer evidencepackets.QuestionnaireAnswer, citations []ports.QuestionnaireCitation) string {
 	if text := strings.TrimSpace(answer.Answer); text != "" {
 		return text
 	}
@@ -766,7 +766,7 @@ func normalizedTerms(value string) map[string]struct{} {
 func termList(value string) []string {
 	value = strings.ToLower(strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(value))
 	parts := strings.FieldsFunc(value, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 	})
 	terms := make([]string, 0, len(parts))
 	for _, part := range parts {
