@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@ethena.example.test",
+      "actor_email": "actor@ethena.example.test",
       "actor_id": "ethena-users-1",
       "actor_name": "actor-name-source-ethena-training_statuses-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "ethena.training_statuses",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@ethena.example.test",
+      "actor_email": "actor@ethena.example.test",
       "actor_id": "ethena-users-1",
       "actor_name": "actor-name-source-ethena-training_statuses-1",
       "api_method": "GET",

@@ -6,7 +6,7 @@
       "actor_admin_api_key_id": "actor-admin-api-key-id-source-anthropic-compliance_activity-1",
       "actor_api_key_id": "actor-api-key-id-source-anthropic-compliance_activity-1",
       "actor_directory_id": "actor-directory-id-source-anthropic-compliance_activity-1",
-      "actor_email": "email@anthropic.example.test",
+      "actor_email": "actor@anthropic.example.test",
       "actor_id": "source-anthropic-user-1",
       "actor_idp_connection_type": "actor-idp-connection-type-source-anthropic-compliance_activity-1",
       "actor_ip_address": "actor-ip-address-source-anthropic-compliance_activity-1",

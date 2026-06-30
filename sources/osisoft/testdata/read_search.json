@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@osisoft.example.test",
+      "actor_email": "actor@osisoft.example.test",
       "actor_id": "osisoft-users-1",
       "actor_name": "actor-name-source-osisoft-search-1",
       "api_method": "GET",
@@ -38,7 +38,7 @@
     "payload": {
       "Id": "Id-source-osisoft-search-1",
       "Name": "Osisoft Search Fixture",
-      "actor_email": "email@osisoft.example.test",
+      "actor_email": "actor@osisoft.example.test",
       "actor_id": "osisoft-users-1",
       "actor_name": "actor-name-source-osisoft-search-1",
       "api_method": "GET",

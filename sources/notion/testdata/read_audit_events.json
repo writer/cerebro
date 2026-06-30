@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@notion.example.test",
+      "actor_email": "actor@notion.example.test",
       "actor_id": "notion-users-1",
       "actor_name": "actor-name-source-notion-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "notion.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@notion.example.test",
+      "actor_email": "actor@notion.example.test",
       "actor_id": "notion-users-1",
       "actor_name": "actor-name-source-notion-audit_events-1",
       "api_method": "GET",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@evisort.example.test",
+      "actor_email": "actor@evisort.example.test",
       "actor_id": "evisort-users-1",
       "actor_name": "actor-name-source-evisort-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "evisort.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@evisort.example.test",
+      "actor_email": "actor@evisort.example.test",
       "actor_id": "evisort-users-1",
       "actor_name": "actor-name-source-evisort-audit_events-1",
       "api_method": "GET",

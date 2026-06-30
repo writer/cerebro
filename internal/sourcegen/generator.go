@@ -1808,7 +1808,7 @@ func fixtureAttributeValue(request normalizedRequest, attr string, family family
 	case "resource_name", "alert_name", "deployment_name", "display_name", "group_name", "member_name", "name", "policy_name", "secret_name", "title":
 		return fixtureDisplayName(request, family)
 	case "email", "primary_email", "login", "actor_email", "group_email", "member_email", "resource_email":
-		return fixtureEmail(request, strings.TrimSuffix(strings.TrimPrefix(attr, "actor_"), "_email"))
+		return fixtureEmail(request, fixtureEmailLocalPart(attr))
 	case "severity":
 		return "high"
 	case "alert_severity":
@@ -1861,12 +1861,23 @@ func fixtureEmailLocalPartForPayloadPath(rawPath string) (string, bool) {
 		}
 		field := strings.TrimSpace(parts[len(parts)-1])
 		switch field {
-		case "email", "primary_email", "login", "actor_email", "group_email", "member_email", "resource_email":
-			local := strings.TrimSuffix(strings.TrimPrefix(field, "actor_"), "_email")
-			return local, true
+		case "email":
+			if len(parts) > 1 {
+				switch parent := strings.TrimSpace(parts[len(parts)-2]); parent {
+				case "actor", "group", "member", "resource", "user":
+					return parent, true
+				}
+			}
+			return "email", true
+		case "primary_email", "login", "actor_email", "group_email", "member_email", "resource_email":
+			return fixtureEmailLocalPart(field), true
 		}
 	}
 	return "", false
+}
+
+func fixtureEmailLocalPart(field string) string {
+	return strings.TrimPrefix(strings.TrimSuffix(field, "_email"), "actor_")
 }
 
 func fixtureLiteralResourceType(rawPath string) string {

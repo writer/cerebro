@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@google-drive.example.test",
+      "actor_email": "actor@google-drive.example.test",
       "actor_id": "google_drive-users-1",
       "actor_name": "actor-name-source-google_drive-changes-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "google_drive.changes",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@google-drive.example.test",
+      "actor_email": "actor@google-drive.example.test",
       "actor_id": "google_drive-users-1",
       "actor_name": "actor-name-source-google_drive-changes-1",
       "api_method": "GET",

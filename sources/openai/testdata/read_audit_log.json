@@ -4,7 +4,7 @@
       "actor_api_key_id": "actor-api-key-id-source-openai-audit_log-1",
       "actor_city": "actor-city-source-openai-audit_log-1",
       "actor_country": "actor-country-source-openai-audit_log-1",
-      "actor_email": "email@openai.example.test",
+      "actor_email": "actor@openai.example.test",
       "actor_id": "actor-id-source-openai-audit_log-1",
       "actor_ip_address": "actor-ip-address-source-openai-audit_log-1",
       "actor_region": "actor-region-source-openai-audit_log-1",

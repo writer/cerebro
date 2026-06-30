@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@bitwarden-enterprise.example.test",
+      "actor_email": "actor@bitwarden-enterprise.example.test",
       "actor_id": "bitwarden_enterprise-users-1",
       "actor_name": "actor-name-source-bitwarden_enterprise-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "bitwarden_enterprise.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@bitwarden-enterprise.example.test",
+      "actor_email": "actor@bitwarden-enterprise.example.test",
       "actor_id": "bitwarden_enterprise-users-1",
       "actor_name": "actor-name-source-bitwarden_enterprise-audit_events-1",
       "api_method": "GET",

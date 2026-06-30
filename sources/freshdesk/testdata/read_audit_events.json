@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@freshdesk.example.test",
+      "actor_email": "actor@freshdesk.example.test",
       "actor_id": "freshdesk-users-1",
       "actor_name": "actor-name-source-freshdesk-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "freshdesk.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@freshdesk.example.test",
+      "actor_email": "actor@freshdesk.example.test",
       "actor_id": "freshdesk-users-1",
       "actor_name": "actor-name-source-freshdesk-audit_events-1",
       "api_method": "GET",

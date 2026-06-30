@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@rapid7-insightidr.example.test",
+      "actor_email": "actor@rapid7-insightidr.example.test",
       "actor_id": "rapid7_insightidr-users-1",
       "actor_name": "actor-name-source-rapid7_insightidr-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "rapid7_insightidr.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@rapid7-insightidr.example.test",
+      "actor_email": "actor@rapid7-insightidr.example.test",
       "actor_id": "rapid7_insightidr-users-1",
       "actor_name": "actor-name-source-rapid7_insightidr-audit_events-1",
       "api_method": "GET",

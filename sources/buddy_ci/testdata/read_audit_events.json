@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@buddy-ci.example.test",
+      "actor_email": "actor@buddy-ci.example.test",
       "actor_id": "buddy_ci-users-1",
       "actor_name": "actor-name-source-buddy_ci-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "buddy_ci.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@buddy-ci.example.test",
+      "actor_email": "actor@buddy-ci.example.test",
       "actor_id": "buddy_ci-users-1",
       "actor_name": "actor-name-source-buddy_ci-audit_events-1",
       "api_method": "GET",

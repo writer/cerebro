@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@salesloft.example.test",
+      "actor_email": "actor@salesloft.example.test",
       "actor_id": "salesloft-users-1",
       "actor_name": "actor-name-source-salesloft-crm_activity_fields_json-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "salesloft.crm_activity_fields_json",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@salesloft.example.test",
+      "actor_email": "actor@salesloft.example.test",
       "actor_id": "salesloft-users-1",
       "actor_name": "actor-name-source-salesloft-crm_activity_fields_json-1",
       "api_method": "GET",

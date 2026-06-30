@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@velopayments.example.test",
+      "actor_email": "actor@velopayments.example.test",
       "actor_id": "velopayments-users-1",
       "actor_name": "actor-name-source-velopayments-delta-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "velopayments.delta",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@velopayments.example.test",
+      "actor_email": "actor@velopayments.example.test",
       "actor_id": "velopayments-users-1",
       "actor_name": "actor-name-source-velopayments-delta-1",
       "api_method": "GET",

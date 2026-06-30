@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@paychex-flex.example.test",
+      "actor_email": "actor@paychex-flex.example.test",
       "actor_id": "paychex_flex-users-1",
       "actor_name": "actor-name-source-paychex_flex-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "paychex_flex.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@paychex-flex.example.test",
+      "actor_email": "actor@paychex-flex.example.test",
       "actor_id": "paychex_flex-users-1",
       "actor_name": "actor-name-source-paychex_flex-audit_events-1",
       "api_method": "GET",

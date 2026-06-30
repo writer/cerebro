@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@increase.example.test",
+      "actor_email": "actor@increase.example.test",
       "actor_id": "increase-users-1",
       "actor_name": "actor-name-source-increase-event_subscription-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "increase.event_subscription",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@increase.example.test",
+      "actor_email": "actor@increase.example.test",
       "actor_id": "increase-users-1",
       "actor_name": "actor-name-source-increase-event_subscription-1",
       "api_method": "GET",

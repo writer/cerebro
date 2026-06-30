@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@bitrise.example.test",
+      "actor_email": "actor@bitrise.example.test",
       "actor_id": "bitrise-users-1",
       "actor_name": "actor-name-source-bitrise-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "bitrise.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@bitrise.example.test",
+      "actor_email": "actor@bitrise.example.test",
       "actor_id": "bitrise-users-1",
       "actor_name": "actor-name-source-bitrise-audit_events-1",
       "api_method": "GET",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@google-secops-chronicle.example.test",
+      "actor_email": "actor@google-secops-chronicle.example.test",
       "actor_id": "google_secops_chronicle-users-1",
       "actor_name": "actor-name-source-google_secops_chronicle-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "google_secops_chronicle.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@google-secops-chronicle.example.test",
+      "actor_email": "actor@google-secops-chronicle.example.test",
       "actor_id": "google_secops_chronicle-users-1",
       "actor_name": "actor-name-source-google_secops_chronicle-audit_events-1",
       "api_method": "GET",

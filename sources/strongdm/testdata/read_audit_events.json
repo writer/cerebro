@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@strongdm.example.test",
+      "actor_email": "actor@strongdm.example.test",
       "actor_id": "strongdm-users-1",
       "actor_name": "actor-name-source-strongdm-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "strongdm.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@strongdm.example.test",
+      "actor_email": "actor@strongdm.example.test",
       "actor_id": "strongdm-users-1",
       "actor_name": "actor-name-source-strongdm-audit_events-1",
       "api_method": "GET",

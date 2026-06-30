@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@gitea.example.test",
+      "actor_email": "actor@gitea.example.test",
       "actor_id": "gitea-users-1",
       "actor_name": "actor-name-source-gitea-timeline-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "gitea.timeline",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@gitea.example.test",
+      "actor_email": "actor@gitea.example.test",
       "actor_id": "gitea-users-1",
       "actor_name": "actor-name-source-gitea-timeline-1",
       "api_method": "GET",

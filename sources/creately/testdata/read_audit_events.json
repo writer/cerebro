@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@creately.example.test",
+      "actor_email": "actor@creately.example.test",
       "actor_id": "creately-users-1",
       "actor_name": "actor-name-source-creately-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "creately.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@creately.example.test",
+      "actor_email": "actor@creately.example.test",
       "actor_id": "creately-users-1",
       "actor_name": "actor-name-source-creately-audit_events-1",
       "api_method": "GET",

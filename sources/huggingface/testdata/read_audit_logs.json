@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@huggingface.example.test",
+      "actor_email": "actor@huggingface.example.test",
       "actor_id": "huggingface-users-1",
       "actor_name": "actor-name-source-huggingface-audit_logs-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "huggingface.audit_logs",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@huggingface.example.test",
+      "actor_email": "actor@huggingface.example.test",
       "actor_id": "huggingface-users-1",
       "actor_name": "actor-name-source-huggingface-audit_logs-1",
       "api_method": "GET",

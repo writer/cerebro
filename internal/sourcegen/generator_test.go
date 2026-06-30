@@ -248,6 +248,35 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 }
 
+func TestFixtureEmailLocalPartForPayloadPath(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{path: "email", want: "email"},
+		{path: "primary_email", want: "primary"},
+		{path: "login", want: "login"},
+		{path: "actor_email", want: "actor"},
+		{path: "actor.email", want: "actor"},
+		{path: "group.email", want: "group"},
+		{path: "member.email", want: "member"},
+		{path: "resource.email", want: "resource"},
+		{path: "user.email", want: "user"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			got, ok := fixtureEmailLocalPartForPayloadPath(tc.path)
+			if !ok || got != tc.want {
+				t.Fatalf("fixtureEmailLocalPartForPayloadPath(%q) = %q, %v; want %q, true", tc.path, got, ok, tc.want)
+			}
+		})
+	}
+
+	request := normalizedRequest{Request: Request{SourceID: "example_idp"}}
+	if got, want := fixtureAttributeValue(request, "actor_email", familyData{}), "actor@example-idp.example.test"; got != want {
+		t.Fatalf("fixtureAttributeValue(actor_email) = %q, want %q", got, want)
+	}
+}
+
 func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
 		Definition: connectordefinitions.Definition{

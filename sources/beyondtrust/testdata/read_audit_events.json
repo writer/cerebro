@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@beyondtrust.example.test",
+      "actor_email": "actor@beyondtrust.example.test",
       "actor_id": "beyondtrust-users-1",
       "actor_name": "actor-name-source-beyondtrust-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "beyondtrust.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@beyondtrust.example.test",
+      "actor_email": "actor@beyondtrust.example.test",
       "actor_id": "beyondtrust-users-1",
       "actor_name": "actor-name-source-beyondtrust-audit_events-1",
       "api_method": "GET",

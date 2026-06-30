@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@microsoft-foundry.example.test",
+      "actor_email": "actor@microsoft-foundry.example.test",
       "actor_id": "microsoft_foundry-users-1",
       "actor_name": "actor-name-source-microsoft_foundry-evaluations-1",
       "api_method": "GET",
@@ -35,7 +35,7 @@
     "kind": "microsoft_foundry.evaluations",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@microsoft-foundry.example.test",
+      "actor_email": "actor@microsoft-foundry.example.test",
       "actor_id": "microsoft_foundry-users-1",
       "actor_name": "actor-name-source-microsoft_foundry-evaluations-1",
       "api_method": "GET",

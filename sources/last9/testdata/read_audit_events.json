@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@last9.example.test",
+      "actor_email": "actor@last9.example.test",
       "actor_id": "last9-users-1",
       "actor_name": "actor-name-source-last9-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "last9.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@last9.example.test",
+      "actor_email": "actor@last9.example.test",
       "actor_id": "last9-users-1",
       "actor_name": "actor-name-source-last9-audit_events-1",
       "api_method": "GET",

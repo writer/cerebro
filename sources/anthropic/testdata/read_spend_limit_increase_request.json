@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@anthropic.example.test",
+      "actor_email": "actor@anthropic.example.test",
       "amount": "1",
       "api_method": "GET",
       "api_path": "/organizations/spend_limit_increase_requests",

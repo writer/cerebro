@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@moogsoft.example.test",
+      "actor_email": "actor@moogsoft.example.test",
       "actor_id": "moogsoft-users-1",
       "actor_name": "actor-name-source-moogsoft-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "moogsoft.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@moogsoft.example.test",
+      "actor_email": "actor@moogsoft.example.test",
       "actor_id": "moogsoft-users-1",
       "actor_name": "actor-name-source-moogsoft-audit_events-1",
       "api_method": "GET",

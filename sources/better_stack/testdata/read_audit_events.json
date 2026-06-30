@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@better-stack.example.test",
+      "actor_email": "actor@better-stack.example.test",
       "actor_id": "better_stack-users-1",
       "actor_name": "actor-name-source-better_stack-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "better_stack.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@better-stack.example.test",
+      "actor_email": "actor@better-stack.example.test",
       "actor_id": "better_stack-users-1",
       "actor_name": "actor-name-source-better_stack-audit_events-1",
       "api_method": "GET",

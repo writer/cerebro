@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@autotask.example.test",
+      "actor_email": "actor@autotask.example.test",
       "actor_id": "autotask-users-1",
       "actor_name": "actor-name-source-autotask-field-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "autotask.field",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@autotask.example.test",
+      "actor_email": "actor@autotask.example.test",
       "actor_id": "autotask-users-1",
       "actor_name": "actor-name-source-autotask-field-1",
       "api_method": "GET",

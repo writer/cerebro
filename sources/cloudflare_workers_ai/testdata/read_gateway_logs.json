@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@cloudflare-workers-ai.example.test",
+      "actor_email": "actor@cloudflare-workers-ai.example.test",
       "actor_id": "cloudflare_workers_ai-users-1",
       "actor_name": "actor-name-source-cloudflare_workers_ai-gateway_logs-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "cloudflare_workers_ai.gateway_logs",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@cloudflare-workers-ai.example.test",
+      "actor_email": "actor@cloudflare-workers-ai.example.test",
       "actor_id": "cloudflare_workers_ai-users-1",
       "actor_name": "actor-name-source-cloudflare_workers_ai-gateway_logs-1",
       "api_method": "GET",

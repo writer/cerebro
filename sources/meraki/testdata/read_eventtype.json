@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@meraki.example.test",
+      "actor_email": "actor@meraki.example.test",
       "actor_id": "meraki-users-1",
       "actor_name": "actor-name-source-meraki-eventtype-1",
       "api_method": "GET",
@@ -35,7 +35,7 @@
     "kind": "meraki.eventtype",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@meraki.example.test",
+      "actor_email": "actor@meraki.example.test",
       "actor_id": "meraki-users-1",
       "actor_name": "actor-name-source-meraki-eventtype-1",
       "api_method": "GET",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@workos.example.test",
+      "actor_email": "actor@workos.example.test",
       "actor_id": "workos-users-1",
       "actor_name": "actor-name-source-workos-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "workos.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@workos.example.test",
+      "actor_email": "actor@workos.example.test",
       "actor_id": "workos-users-1",
       "actor_name": "actor-name-source-workos-audit_events-1",
       "api_method": "GET",

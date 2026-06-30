@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@configcat.example.test",
+      "actor_email": "actor@configcat.example.test",
       "actor_id": "configcat-users-1",
       "actor_name": "actor-name-source-configcat-auditlog-1",
       "api_method": "GET",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actionTarget": "actionTarget-source-configcat-auditlog-1",
-      "actor_email": "email@configcat.example.test",
+      "actor_email": "actor@configcat.example.test",
       "actor_id": "configcat-users-1",
       "actor_name": "actor-name-source-configcat-auditlog-1",
       "api_method": "GET",

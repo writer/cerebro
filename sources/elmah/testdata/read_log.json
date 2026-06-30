@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@elmah.example.test",
+      "actor_email": "actor@elmah.example.test",
       "actor_id": "elmah-users-1",
       "actor_name": "actor-name-source-elmah-log-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "elmah.log",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@elmah.example.test",
+      "actor_email": "actor@elmah.example.test",
       "actor_id": "elmah-users-1",
       "actor_name": "actor-name-source-elmah-log-1",
       "api_method": "GET",

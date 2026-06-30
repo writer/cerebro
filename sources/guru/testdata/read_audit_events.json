@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@guru.example.test",
+      "actor_email": "actor@guru.example.test",
       "actor_id": "guru-users-1",
       "actor_name": "actor-name-source-guru-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "guru.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@guru.example.test",
+      "actor_email": "actor@guru.example.test",
       "actor_id": "guru-users-1",
       "actor_name": "actor-name-source-guru-audit_events-1",
       "api_method": "GET",

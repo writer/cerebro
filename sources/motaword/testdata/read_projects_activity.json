@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@motaword.example.test",
+      "actor_email": "actor@motaword.example.test",
       "actor_id": "motaword-users-1",
       "actor_name": "actor-name-source-motaword-projects_activity-1",
       "api_method": "GET",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "activity_at": "Motaword Projects Activity Fixture",
-      "actor_email": "email@motaword.example.test",
+      "actor_email": "actor@motaword.example.test",
       "actor_id": "motaword-users-1",
       "actor_name": "actor-name-source-motaword-projects_activity-1",
       "api_method": "GET",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@dynamics-365-sales.example.test",
+      "actor_email": "actor@dynamics-365-sales.example.test",
       "actor_id": "dynamics_365_sales-users-1",
       "actor_name": "actor-name-source-dynamics_365_sales-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "dynamics_365_sales.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@dynamics-365-sales.example.test",
+      "actor_email": "actor@dynamics-365-sales.example.test",
       "actor_id": "dynamics_365_sales-users-1",
       "actor_name": "actor-name-source-dynamics_365_sales-audit_events-1",
       "api_method": "GET",

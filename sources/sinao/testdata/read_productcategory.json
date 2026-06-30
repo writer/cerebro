@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@sinao.example.test",
+      "actor_email": "actor@sinao.example.test",
       "actor_id": "sinao-users-1",
       "actor_name": "actor-name-source-sinao-productcategory-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "sinao.productcategory",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@sinao.example.test",
+      "actor_email": "actor@sinao.example.test",
       "actor_id": "sinao-users-1",
       "actor_name": "actor-name-source-sinao-productcategory-1",
       "api_method": "GET",

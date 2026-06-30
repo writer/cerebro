@@ -3,7 +3,7 @@
     "attributes": {
       "account_id": "account-id-source-cloudflare-audit_log-1",
       "action": "action-source-cloudflare-audit_log-1",
-      "actor_email": "email@cloudflare.example.test",
+      "actor_email": "actor@cloudflare.example.test",
       "actor_id": "source-cloudflare-user-1",
       "actor_ip": "actor-ip-source-cloudflare-audit_log-1",
       "api_method": "GET",
@@ -41,7 +41,7 @@
         "type": "action-source-cloudflare-audit_log-1"
       },
       "actor": {
-        "email": "email@cloudflare.example.test",
+        "email": "actor@cloudflare.example.test",
         "ip": "actor-ip-source-cloudflare-audit_log-1"
       },
       "actor_id": "source-cloudflare-user-1",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@stigg.example.test",
+      "actor_email": "actor@stigg.example.test",
       "actor_id": "stigg-users-1",
       "actor_name": "actor-name-source-stigg-audit_events-1",
       "api_method": "GET",
@@ -34,7 +34,7 @@
     "kind": "stigg.audit_events",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@stigg.example.test",
+      "actor_email": "actor@stigg.example.test",
       "actor_id": "stigg-users-1",
       "actor_name": "actor-name-source-stigg-audit_events-1",
       "api_method": "GET",

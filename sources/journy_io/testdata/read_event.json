@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "actor_email": "email@journy-io.example.test",
+      "actor_email": "actor@journy-io.example.test",
       "actor_id": "journy_io-users-1",
       "actor_name": "actor-name-source-journy_io-event-1",
       "api_method": "GET",
@@ -36,7 +36,7 @@
     "kind": "journy_io.event",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_email": "email@journy-io.example.test",
+      "actor_email": "actor@journy-io.example.test",
       "actor_id": "journy_io-users-1",
       "actor_name": "actor-name-source-journy_io-event-1",
       "api_method": "GET",
