@@ -506,7 +506,7 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"relation: 'supports'",
 		"relation: 'has_evidence'",
 		"qauto_match_text CONTAINS 'okta'",
-		"qauto_match_text CONTAINS 'mfa'",
+		`qauto_match_text =~ '(?s).*\\bmfa\\b.*'`,
 		"OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})",
 		"OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})",
 		"WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel",
@@ -575,10 +575,33 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 		"Show the evidence packet export status",
 		"List all policy documents",
 		"Show policy doc count",
+		"Answer this security questionnaire item",
+		"Is data encrypted at rest in S3?",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
 		}
+	}
+}
+
+func TestQuestionnaireFastPathRequiresResolvedTopic(t *testing.T) {
+	for _, question := range []string{
+		"Answer this security questionnaire item",
+		"Can we answer this qauto item?",
+	} {
+		if result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: question}, true); ok {
+			t.Fatalf("deterministicFastPathConversion(%q) = %#v, want LLM planning fallback", question, result)
+		}
+	}
+}
+
+func TestQuestionnaireTemplateRequiresTopicFilter(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Answer this security questionnaire item",
+	}, &DraftResponse{Plan: &AskQueryPlan{Intent: IntentQuestionnaireEvidence, Limit: 25}})
+	if result.Cypher != "" || result.Source != "conversion_refusal" {
+		t.Fatalf("conversion result = %#v, want refusal without questionnaire topic", result)
 	}
 }
 
@@ -589,11 +612,13 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 		wantTopic   string
 		wantSnippet string
 	}{
-		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: "qauto_match_text CONTAINS 'mfa'"},
-		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: "qauto_match_text CONTAINS 'access'"},
-		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: "qauto_match_text CONTAINS 'lifecycle'"},
+		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: `qauto_match_text =~ '(?s).*\\bmfa\\b.*'`},
+		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: `qauto_match_text =~ '(?s).*\\baccess\\b.*'`},
+		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: `qauto_match_text =~ '(?s).*\\blifecycle\\b.*'`},
 		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy_document'"},
-		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: "qauto_match_text CONTAINS 'coverage'"},
+		{name: "hyphenated policy docs", question: "Answer this policy-document questionnaire item", wantTopic: "policy_documents", wantSnippet: "qauto_match_text CONTAINS 'policy_document'"},
+		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: `qauto_match_text =~ '(?s).*\\bcoverage\\b.*'`},
+		{name: "hyphenated coverage gap", question: "Show control-coverage evidence-gaps", wantTopic: "control_coverage", wantSnippet: `qauto_match_text =~ '(?s).*\\bcoverage\\b.*'`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: tt.question}, true)
@@ -649,7 +674,7 @@ func TestQuestionnaireTopicPredicatesAvoidRawJSONKeyCollisions(t *testing.T) {
 			want: []string{
 				"qauto_match_text CONTAINS 'policy document'",
 				"qauto_match_text CONTAINS 'policy_document'",
-				"qauto_match_text CONTAINS 'document'",
+				`qauto_match_text =~ '(?s).*\\bdocument\\b.*'`,
 			},
 		},
 		{
@@ -658,15 +683,16 @@ func TestQuestionnaireTopicPredicatesAvoidRawJSONKeyCollisions(t *testing.T) {
 			wantFilter: "control_coverage",
 			forbidden: []string{
 				"qauto_match_text CONTAINS 'control'",
+				"qauto_match_text CONTAINS 'evidence'",
 				"coalesce(control.attributes_json, '') +",
 				"coalesce(support.attributes_json, '') +",
 				"coalesce(evidence.attributes_json, '')) AS qauto_match_text",
 			},
 			want: []string{
-				"qauto_match_text CONTAINS 'coverage'",
-				"qauto_match_text CONTAINS 'evidence'",
-				"qauto_match_text CONTAINS 'gap'",
-				"qauto_match_text CONTAINS 'missing'",
+				`qauto_match_text =~ '(?s).*\\bcoverage\\b.*'`,
+				"qauto_match_text CONTAINS 'coverage_gap'",
+				`qauto_match_text =~ '(?s).*\\bgap\\b.*'`,
+				`qauto_match_text =~ '(?s).*\\bmissing\\b.*'`,
 			},
 		},
 	}
@@ -723,9 +749,10 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 
 func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		intent string
-		scope  string
+		name    string
+		intent  string
+		scope   string
+		filters map[string]string
 	}{
 		{name: "source aggregation", intent: IntentAggregateFindingsBySource, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "top risk", intent: IntentTopRiskFindings, scope: "urn:cerebro:writer:asset:alpha"},
@@ -733,14 +760,14 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		{name: "explain finding", intent: IntentExplainFinding, scope: "urn:cerebro:writer:finding:alpha"},
 		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
 		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},
-		{name: "questionnaire evidence", intent: IntentQuestionnaireEvidence, scope: "urn:cerebro:writer:policy:control:ac-1"},
+		{name: "questionnaire evidence", intent: IntentQuestionnaireEvidence, scope: "urn:cerebro:writer:policy:control:ac-1", filters: map[string]string{"topic": "okta_mfa"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertDraftToQuery(AskRequest{
 				TenantID: "writer",
 				Question: tt.name,
 				ScopeURN: tt.scope,
-			}, &DraftResponse{Plan: &AskQueryPlan{Intent: tt.intent, Limit: 25}})
+			}, &DraftResponse{Plan: &AskQueryPlan{Intent: tt.intent, Limit: 25, Filters: tt.filters}})
 			if !result.Deterministic {
 				t.Fatalf("conversion result = %#v, want deterministic template", result)
 			}

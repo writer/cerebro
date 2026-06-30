@@ -19,6 +19,16 @@ import (
 
 const ContractVersion = "2026-06-29"
 
+const (
+	questionnaireConfidenceSupported   = 90
+	questionnaireConfidenceReview      = 60
+	questionnaireConfidencePartial     = 50
+	questionnaireConfidenceGap         = 25
+	questionnaireConfidenceUnavailable = 20
+	questionnaireConfidenceMissing     = 10
+	questionnaireConfidenceNotRequired = 0
+)
+
 type Response struct {
 	Version     string               `json:"version"`
 	GeneratedAt time.Time            `json:"generated_at"`
@@ -400,12 +410,6 @@ type EvidenceExportArtifact struct {
 	Path        string `json:"path,omitempty"`
 	ContentHash string `json:"content_hash"`
 	Included    bool   `json:"included"`
-}
-
-type EvidenceExportRecords struct {
-	Artifacts []EvidenceExportArtifact `json:"export_artifacts"`
-	Export    EvidenceExport           `json:"export"`
-	Snapshot  AuditSnapshot            `json:"snapshot"`
 }
 
 type QuestionnaireAnswer struct {
@@ -1465,21 +1469,21 @@ func answerReviewState(request EvidenceRequest, packets []EvidencePacket, gaps [
 func answerConfidence(request EvidenceRequest, packets []EvidencePacket, gaps []QuestionnaireEvidenceGap, state string) QuestionnaireAnswerConfidence {
 	switch state {
 	case "supported":
-		return QuestionnaireAnswerConfidence{Level: "high", Score: 90, Reason: "Required evidence is present, fresh, and mapped to the control."}
+		return QuestionnaireAnswerConfidence{Level: "high", Score: questionnaireConfidenceSupported, Reason: "Required evidence is present, fresh, and mapped to the control."}
 	case "manual_review":
-		return QuestionnaireAnswerConfidence{Level: "medium", Score: 60, Reason: "Evidence is present, but a reviewer must confirm it before reliance."}
+		return QuestionnaireAnswerConfidence{Level: "medium", Score: questionnaireConfidenceReview, Reason: "Evidence is present, but a reviewer must confirm it before reliance."}
 	case "partial":
-		return QuestionnaireAnswerConfidence{Level: "medium", Score: 50, Reason: "Some evidence is present, but gaps or freshness issues remain."}
+		return QuestionnaireAnswerConfidence{Level: "medium", Score: questionnaireConfidencePartial, Reason: "Some evidence is present, but gaps or freshness issues remain."}
 	case "not_required":
-		return QuestionnaireAnswerConfidence{Level: "low", Score: 0, Reason: "The packet marks this request as optional."}
+		return QuestionnaireAnswerConfidence{Level: "low", Score: questionnaireConfidenceNotRequired, Reason: "The packet marks this request as optional."}
 	}
 	if request.Required && len(packets) == 0 {
-		return QuestionnaireAnswerConfidence{Level: "low", Score: 10, Reason: "Required evidence has not been collected."}
+		return QuestionnaireAnswerConfidence{Level: "low", Score: questionnaireConfidenceMissing, Reason: "Required evidence has not been collected."}
 	}
 	if len(gaps) != 0 {
-		return QuestionnaireAnswerConfidence{Level: "low", Score: 25, Reason: "Evidence gaps prevent a supported answer."}
+		return QuestionnaireAnswerConfidence{Level: "low", Score: questionnaireConfidenceGap, Reason: "Evidence gaps prevent a supported answer."}
 	}
-	return QuestionnaireAnswerConfidence{Level: "low", Score: 20, Reason: "No supported answer is available from the current packet."}
+	return QuestionnaireAnswerConfidence{Level: "low", Score: questionnaireConfidenceUnavailable, Reason: "No supported answer is available from the current packet."}
 }
 
 func answerFreshness(request EvidenceRequest, packets []EvidencePacket) EvidenceFreshness {
@@ -1884,10 +1888,18 @@ func resourceKind(urn string) string {
 }
 
 func maxTimeString(a string, b string) string {
+	a, aTime, aOK := normalizedTimeString(a)
+	b, bTime, bOK := normalizedTimeString(b)
 	if a == "" {
 		return b
 	}
 	if b == "" {
+		return a
+	}
+	if aOK && bOK {
+		if bTime.After(aTime) {
+			return b
+		}
 		return a
 	}
 	if b > a {
@@ -1897,16 +1909,37 @@ func maxTimeString(a string, b string) string {
 }
 
 func minTimeString(a string, b string) string {
+	a, aTime, aOK := normalizedTimeString(a)
+	b, bTime, bOK := normalizedTimeString(b)
 	if a == "" {
 		return b
 	}
 	if b == "" {
 		return a
 	}
+	if aOK && bOK {
+		if bTime.Before(aTime) {
+			return b
+		}
+		return a
+	}
 	if b < a {
 		return b
 	}
 	return a
+}
+
+func normalizedTimeString(value string) (string, time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return value, time.Time{}, false
+	}
+	parsed = parsed.UTC()
+	return parsed.Format(time.RFC3339), parsed, true
 }
 
 func protoTime(value *timestamppb.Timestamp) string {
@@ -1924,15 +1957,7 @@ func formatTimePtr(value *time.Time) string {
 }
 
 func uniqueSortedStrings(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" && !seen[value] {
-			seen[value] = true
-			out = append(out, value)
-		}
-	}
+	out := uniqueStrings(values)
 	sort.Strings(out)
 	return out
 }
@@ -2016,7 +2041,7 @@ func formatTime(value time.Time) string {
 	if value.IsZero() {
 		return ""
 	}
-	return value.Format(time.RFC3339)
+	return value.UTC().Format(time.RFC3339)
 }
 
 func nonEmptyStrings(values ...string) []string {

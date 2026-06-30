@@ -20,7 +20,7 @@ const (
 	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
 
 	postProcessingCandidateRowLimit        = ports.MaxCypherQueryRows
-	questionnaireEvidenceCandidateRowLimit = 500
+	questionnaireEvidenceCandidateRowLimit = postProcessingCandidateRowLimit
 	confidentPlanThreshold                 = 0.70
 )
 
@@ -216,6 +216,9 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 		plan.Filters = map[string]string{}
 	case IntentQuestionnaireEvidence:
 		plan.Filters = fastPathQuestionnaireEvidenceFilters(question)
+		if planFilterValue(plan.Filters, "topic") == "" {
+			return AskQueryPlan{}, false
+		}
 	case IntentExplainFinding:
 		if plan.ScopeURN == "" {
 			return AskQueryPlan{}, false
@@ -255,81 +258,52 @@ func fastPathTopRiskFilters(question string) map[string]string {
 }
 
 func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
-	trimmed := strings.TrimSpace(haystack)
-	if strings.Contains(haystack, "qauto") || strings.Contains(haystack, "questionnaire") || strings.Contains(haystack, "security questionnaire") {
-		return true
-	}
-	if strings.Contains(haystack, "evidence packet") && evidencePacketQuestionnaireContext(haystack) {
-		return true
-	}
-	if (strings.Contains(haystack, "control coverage") ||
-		strings.Contains(haystack, "coverage gap") ||
-		strings.Contains(haystack, "evidence gap") ||
-		strings.Contains(haystack, "mapped control")) &&
-		(strings.Contains(haystack, "answer") ||
-			strings.Contains(haystack, "audit") ||
-			strings.Contains(haystack, "compliance") ||
-			strings.Contains(haystack, "question") ||
-			strings.Contains(haystack, "show")) {
-		return true
-	}
-	if (strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document")) &&
-		(strings.Contains(haystack, "answer") ||
-			strings.Contains(haystack, "audit") ||
-			strings.Contains(haystack, "compliance") ||
-			strings.Contains(haystack, "question") ||
-			strings.Contains(haystack, "questionnaire")) {
-		return true
-	}
-	if strings.Contains(haystack, "okta") &&
-		(strings.Contains(haystack, "mfa") || strings.Contains(haystack, "access") || strings.Contains(haystack, "lifecycle")) &&
-		(strings.Contains(haystack, "answer") ||
-			strings.Contains(haystack, "evidence") ||
-			strings.Contains(haystack, "question") ||
-			strings.Contains(haystack, "questionnaire") ||
-			strings.HasPrefix(trimmed, "does ") ||
-			strings.HasPrefix(trimmed, "can ")) {
-		return true
-	}
-	return false
-}
-
-func evidencePacketQuestionnaireContext(haystack string) bool {
-	for _, phrase := range []string{
-		"questionnaire",
-		"qauto",
-		"control",
-		"controls",
-		"coverage",
-		"compliance",
-		"audit",
-		"okta",
-		"mfa",
-		"lifecycle",
-	} {
-		if strings.Contains(haystack, phrase) {
-			return true
-		}
-	}
-	return false
+	return planFilterValue(fastPathQuestionnaireEvidenceFilters(haystack), "topic") != ""
 }
 
 func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
-	lower := strings.ToLower(question)
 	filters := map[string]string{"answer_mode": "bounded_graph_evidence"}
-	switch {
-	case strings.Contains(lower, "okta") && strings.Contains(lower, "mfa"):
-		filters["topic"] = "okta_mfa"
-	case strings.Contains(lower, "okta") && strings.Contains(lower, "lifecycle"):
-		filters["topic"] = "okta_lifecycle"
-	case strings.Contains(lower, "okta") && strings.Contains(lower, "access"):
-		filters["topic"] = "okta_access"
-	case strings.Contains(lower, "policy doc") || strings.Contains(lower, "policy document"):
-		filters["topic"] = "policy_documents"
-	case strings.Contains(lower, "control coverage") || strings.Contains(lower, "coverage gap") || strings.Contains(lower, "evidence gap") || strings.Contains(lower, "evidence packet") || strings.Contains(lower, "mapped control"):
-		filters["topic"] = "control_coverage"
+	if topic := questionnaireEvidenceTopic(question); topic != "" {
+		filters["topic"] = topic
 	}
 	return filters
+}
+
+func questionnaireEvidenceTopic(question string) string {
+	lower := strings.ToLower(strings.ReplaceAll(question, "-", " "))
+	trimmed := strings.TrimSpace(lower)
+	oktaContext := questionnaireAnswerContext(lower) ||
+		strings.Contains(lower, "evidence") ||
+		strings.HasPrefix(trimmed, "does ") ||
+		strings.HasPrefix(trimmed, "can ")
+	evidencePacketCoverageContext := strings.Contains(lower, "evidence packet") &&
+		(strings.Contains(lower, "coverage") || strings.Contains(lower, "gap") || strings.Contains(lower, "control"))
+	switch {
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "mfa") && oktaContext:
+		return "okta_mfa"
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "lifecycle") && oktaContext:
+		return "okta_lifecycle"
+	case strings.Contains(lower, "okta") && strings.Contains(lower, "access") && oktaContext:
+		return "okta_access"
+	case (strings.Contains(lower, "policy doc") || strings.Contains(lower, "policy document")) && questionnaireAnswerContext(lower):
+		return "policy_documents"
+	case (strings.Contains(lower, "control coverage") ||
+		strings.Contains(lower, "coverage gap") ||
+		strings.Contains(lower, "evidence gap") ||
+		evidencePacketCoverageContext ||
+		strings.Contains(lower, "mapped control")) &&
+		(questionnaireAnswerContext(lower) || strings.Contains(lower, "show")):
+		return "control_coverage"
+	default:
+		return ""
+	}
+}
+
+func questionnaireAnswerContext(haystack string) bool {
+	return strings.Contains(haystack, "answer") ||
+		strings.Contains(haystack, "audit") ||
+		strings.Contains(haystack, "compliance") ||
+		strings.Contains(haystack, "question")
 }
 
 func containsWord(haystack string, needle string) bool {
@@ -594,10 +568,20 @@ ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
 	case IntentQuestionnaireEvidence:
 		topicPredicate := questionnaireEvidenceTopicPredicate(plan.Filters)
-		return fmt.Sprintf(`MATCH (control:Entity {tenant_id: $tenant_id, entity_type: 'policy'})
+		if topicPredicate == "" {
+			return "", false
+		}
+		return renderQuestionnaireEvidenceQuery(topicPredicate), true
+	default:
+		return "", false
+	}
+}
+
+func renderQuestionnaireEvidenceQuery(topicPredicate string) string {
+	template := `MATCH (control:Entity {tenant_id: $tenant_id, entity_type: 'policy'})
 WITH control,
-     coalesce(%s, '') AS control_policy_type,
-     coalesce(%s, '') AS control_ref
+     coalesce(__CONTROL_POLICY_TYPE__, '') AS control_policy_type,
+     coalesce(__CONTROL_REF__, '') AS control_ref
 WHERE control_policy_type = 'control'
   AND CASE
         WHEN $scope_urn = '' THEN true
@@ -629,10 +613,10 @@ OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION
 WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
 WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel
 WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
-     coalesce(%s, '') AS control_match_attributes,
-     coalesce(%s, '') AS support_match_attributes,
-     coalesce(%s, '') AS evidence_match_attributes,
-     coalesce(%s, '') AS direct_evidence_match_attributes
+     coalesce(__CONTROL_MATCH_ATTRIBUTES__, '') AS control_match_attributes,
+     coalesce(__SUPPORT_MATCH_ATTRIBUTES__, '') AS support_match_attributes,
+     coalesce(__EVIDENCE_MATCH_ATTRIBUTES__, '') AS evidence_match_attributes,
+     coalesce(__DIRECT_EVIDENCE_MATCH_ATTRIBUTES__, '') AS direct_evidence_match_attributes
 WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
      toLower(coalesce(control.label, '') + ' ' +
              coalesce(control.source_id, '') + ' ' +
@@ -651,7 +635,7 @@ WITH control, control_ref, support, supportRel, supportEvidence, supportEvidence
              coalesce(controlEvidence.source_id, '') + ' ' +
              direct_evidence_match_attributes) AS qauto_match_text,
      coalesce(evidence.source_id, support.source_id, control.source_id, '') AS evidence_source_id
-%s
+__TOPIC_PREDICATE__
 OPTIONAL MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
 WHERE evidence_source_id <> '' AND source.source_id = evidence_source_id
 RETURN DISTINCT control.urn AS control_urn,
@@ -689,10 +673,17 @@ RETURN DISTINCT control.urn AS control_urn,
        coalesce(source.label, source.urn) AS source_label,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY control_label, support_label, evidence_label
-LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), cypherJSONStringAttributes("support.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), cypherJSONStringAttributes("evidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), cypherJSONStringAttributes("controlEvidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), topicPredicate, questionnaireEvidenceCandidateRowLimit), true
-	default:
-		return "", false
-	}
+LIMIT __CANDIDATE_LIMIT__`
+	return strings.NewReplacer(
+		"__CONTROL_POLICY_TYPE__", cypherJSONStringAttributes("control.attributes_json", "policy_type"),
+		"__CONTROL_REF__", cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"),
+		"__CONTROL_MATCH_ATTRIBUTES__", cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"),
+		"__SUPPORT_MATCH_ATTRIBUTES__", cypherJSONStringAttributes("support.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__EVIDENCE_MATCH_ATTRIBUTES__", cypherJSONStringAttributes("evidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__DIRECT_EVIDENCE_MATCH_ATTRIBUTES__", cypherJSONStringAttributes("controlEvidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__TOPIC_PREDICATE__", topicPredicate,
+		"__CANDIDATE_LIMIT__", fmt.Sprint(questionnaireEvidenceCandidateRowLimit),
+	).Replace(template)
 }
 
 func cypherJSONStringAttributes(expression string, keys ...string) string {
@@ -760,34 +751,38 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
 	case "okta_mfa":
 		return `WHERE CASE
         WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
-        WHEN qauto_match_text CONTAINS 'mfa' THEN true
+        WHEN ` + qautoMatchWordPredicate("mfa") + ` THEN true
         WHEN qauto_match_text CONTAINS 'multi-factor' THEN true
-        WHEN qauto_match_text CONTAINS 'multifactor' THEN true
+        WHEN ` + qautoMatchWordPredicate("multifactor") + ` THEN true
         ELSE false
       END`
 	case "okta_lifecycle":
 		return `WHERE CASE
         WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
-        WHEN qauto_match_text CONTAINS 'lifecycle' THEN true
-        WHEN qauto_match_text CONTAINS 'deprovision' THEN true
-        WHEN qauto_match_text CONTAINS 'provision' THEN true
+        WHEN ` + qautoMatchWordPredicate("lifecycle") + ` THEN true
+        WHEN ` + qautoMatchWordPredicate("deprovision") + ` THEN true
+        WHEN ` + qautoMatchWordPredicate("provision") + ` THEN true
         ELSE false
       END`
 	case "okta_access":
 		return `WHERE CASE
         WHEN NOT qauto_match_text CONTAINS 'okta' THEN false
-        WHEN qauto_match_text CONTAINS 'access' THEN true
-        WHEN qauto_match_text CONTAINS 'sso' THEN true
-        WHEN qauto_match_text CONTAINS 'group' THEN true
+        WHEN ` + qautoMatchWordPredicate("access") + ` THEN true
+        WHEN ` + qautoMatchWordPredicate("sso") + ` THEN true
+        WHEN ` + qautoMatchWordPredicate("group") + ` THEN true
         ELSE false
       END`
 	case "policy_documents":
-		return "WHERE qauto_match_text CONTAINS 'policy document' OR qauto_match_text CONTAINS 'policy_document' OR qauto_match_text CONTAINS 'document'"
+		return "WHERE qauto_match_text CONTAINS 'policy document' OR qauto_match_text CONTAINS 'policy_document' OR " + qautoMatchWordPredicate("document")
 	case "control_coverage":
-		return "WHERE qauto_match_text CONTAINS 'coverage' OR qauto_match_text CONTAINS 'evidence' OR qauto_match_text CONTAINS 'gap' OR qauto_match_text CONTAINS 'missing'"
+		return "WHERE " + qautoMatchWordPredicate("coverage") + " OR qauto_match_text CONTAINS 'coverage_gap' OR " + qautoMatchWordPredicate("gap") + " OR " + qautoMatchWordPredicate("missing")
 	default:
 		return ""
 	}
+}
+
+func qautoMatchWordPredicate(word string) string {
+	return "qauto_match_text =~ '(?s).*\\\\b" + regexp.QuoteMeta(strings.ToLower(word)) + "\\\\b.*'"
 }
 
 func planFilterValue(filters map[string]string, key string) string {

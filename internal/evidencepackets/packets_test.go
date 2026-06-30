@@ -363,6 +363,18 @@ func TestBuildAddsEvidenceBackedQuestionnaireAnswers(t *testing.T) {
 	}
 }
 
+func TestTimeStringAggregationComparesRFC3339Instants(t *testing.T) {
+	earlierWithOffset := "2026-01-01T23:00:00+09:00"
+	laterUTC := "2026-01-01T15:00:00Z"
+
+	if got, want := minTimeString(laterUTC, earlierWithOffset), "2026-01-01T14:00:00Z"; got != want {
+		t.Fatalf("minTimeString() = %q, want chronological earliest %q", got, want)
+	}
+	if got, want := maxTimeString(earlierWithOffset, laterUTC), laterUTC; got != want {
+		t.Fatalf("maxTimeString() = %q, want chronological latest %q", got, want)
+	}
+}
+
 func TestEvidencePacketPolicyDocumentClassificationUsesEvidenceType(t *testing.T) {
 	for _, evidenceType := range []string{"policy_document", "policy.document", "assurance-document", "procedure document"} {
 		if !evidencePacketIsPolicyDocument(EvidencePacket{EvidenceType: evidenceType}) {

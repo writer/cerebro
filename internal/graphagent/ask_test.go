@@ -201,6 +201,8 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	for field, want := range map[string]any{
 		"control_status":                "monitored",
 		"support_status":                "active",
+		"evidence_type":                 "runtime_evidence",
+		"evidence_evidence_type":        "okta_policy",
 		"evidence_status":               "ready",
 		"direct_evidence_status":        "reviewed",
 		"direct_evidence_evidence_type": "okta_control",

@@ -1038,6 +1038,12 @@ func mergeInternalAttributesWithPrefix(row map[string]any, key string, prefix st
 	}
 	for _, field := range fields {
 		outputField := prefixedAttributeField(prefix, field)
+		if !rowValueEmpty(row[outputField]) && strings.TrimSpace(prefix) != "" {
+			collisionField := strings.TrimSpace(prefix) + strings.TrimSpace(field)
+			if collisionField != outputField {
+				outputField = collisionField
+			}
+		}
 		if !rowValueEmpty(row[outputField]) {
 			continue
 		}
