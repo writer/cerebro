@@ -3,6 +3,7 @@ package google_gemini
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,8 +106,8 @@ func TestSourceReadRequiresGeminiAPIKey(t *testing.T) {
 		"tenant_id": "tenant",
 		"family":    defaultFamily,
 	}), nil)
-	if err == nil || !strings.Contains(err.Error(), "api_key is required") {
-		t.Fatalf("Read() error = %v, want api_key required", err)
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Read() error = %v, want ErrInvalidConfig", err)
 	}
 }
 

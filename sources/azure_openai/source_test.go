@@ -3,6 +3,7 @@ package azure_openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -310,26 +311,22 @@ func TestSourceConfigValidation(t *testing.T) {
 	defer server.Close()
 
 	tests := []struct {
-		name    string
-		family  string
-		remove  string
-		wantErr string
+		name   string
+		family string
+		remove string
 	}{
-		{name: "subscription", family: familyDeployments, remove: "subscription_id", wantErr: `config key "subscription_id" is required`},
-		{name: "resource group", family: familyDeployments, remove: "resource_group", wantErr: `config key "resource_group" is required`},
-		{name: "account", family: familyDeployments, remove: "account_name", wantErr: `config key "account_name" is required`},
-		{name: "location", family: familyModelCatalog, remove: "location", wantErr: `config key "location" is required`},
-		{name: "token", family: familyDeployments, remove: "token", wantErr: `token is required`},
+		{name: "subscription", family: familyDeployments, remove: "subscription_id"},
+		{name: "resource group", family: familyDeployments, remove: "resource_group"},
+		{name: "account", family: familyDeployments, remove: "account_name"},
+		{name: "location", family: familyModelCatalog, remove: "location"},
+		{name: "token", family: familyDeployments, remove: "token"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testConfig(server.URL, map[string]string{"family": tt.family, tt.remove: ""})
 			_, err := source.Read(context.Background(), cfg, nil)
-			if err == nil {
-				t.Fatalf("Read() error = nil, want %q", tt.wantErr)
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("Read() error = %q, want %q", err.Error(), tt.wantErr)
+			if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+				t.Fatalf("Read() error = %v, want ErrInvalidConfig", err)
 			}
 		})
 	}

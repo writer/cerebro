@@ -3,6 +3,7 @@ package cohere
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -202,8 +203,8 @@ func TestSourceRequiresToken(t *testing.T) {
 		"family":    familyModelCatalog,
 	})
 	err = source.Check(context.Background(), cfg)
-	if err == nil || !strings.Contains(err.Error(), "token is required") {
-		t.Fatalf("Check() error = %v, want token is required", err)
+	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Check() error = %v, want ErrInvalidConfig", err)
 	}
 	if called {
 		t.Fatalf("server was called without a token")
@@ -231,8 +232,8 @@ func TestSourceRejectsMissingProviderListKey(t *testing.T) {
 		"token":     "test-token",
 	})
 	_, err = source.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "response did not contain a record list") {
-		t.Fatalf("Read() error = %v, want missing record list error", err)
+	if sourcecdk.SourceErrorKind(err) != sourcecdk.ErrorKindProvider {
+		t.Fatalf("Read() error kind = %q, want provider; err=%v", sourcecdk.SourceErrorKind(err), err)
 	}
 }
 

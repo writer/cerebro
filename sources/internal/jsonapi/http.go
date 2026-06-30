@@ -855,6 +855,12 @@ type responseError struct {
 }
 
 func (e *responseError) Error() string { return e.message }
+func (e *responseError) StatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return e.statusCode
+}
 
 type pathParamError struct {
 	sourceID string

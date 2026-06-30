@@ -146,6 +146,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
+	if strings.TrimSpace(sourcecdk.ConfigValue(cfg, "token")) == "" {
+		return sourcecdk.Config{}, fmt.Errorf("%w: %s token is required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 

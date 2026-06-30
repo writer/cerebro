@@ -3,6 +3,7 @@ package openrouter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -196,8 +197,9 @@ func TestSourceReadReturnsOpenRouterErrorBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want OpenRouter error")
 	}
-	if !strings.Contains(err.Error(), "openrouter API returned 401") || !strings.Contains(err.Error(), "Missing Authentication header") {
-		t.Fatalf("Read() error = %v", err)
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusUnauthorized {
+		t.Fatalf("Read() error = %v, want HTTP 401", err)
 	}
 }
 

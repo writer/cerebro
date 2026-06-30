@@ -120,7 +120,7 @@ event_contracts:
       - deployment_id
       - deployment_name
     required_payload_fields:
-      - model
+      - name
   - kind: azure_openai.model_catalog
     schema_ref: azure_openai/model_catalog/v1
     required_attributes:
@@ -130,7 +130,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - name
+      - model
   - kind: azure_openai.rai_policies
     schema_ref: azure_openai/rai_policies/v1
     required_attributes:
