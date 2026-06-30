@@ -28,14 +28,19 @@ type issue struct {
 
 type repositoryCheckOptions struct {
 	requireSourcegenReady bool
+	runtimeDepthMaxQueued int
 }
 
 func main() {
 	root := flag.String("root", ".", "repository root")
 	summary := flag.Bool("summary", true, "print connector definition catalog summary")
 	requireSourcegenReady := flag.Bool("require-sourcegen-ready", false, "fail when any connector definition is not sourcegen-ready")
+	runtimeDepthMaxQueued := flag.Int("runtime-depth-max-queued", -1, "fail when runtime-backed connector definitions below the reference runtime bar exceed this budget; negative disables the ratchet")
 	flag.Parse()
-	issues, err := checkRepositoryWithOptions(*root, repositoryCheckOptions{requireSourcegenReady: *requireSourcegenReady})
+	issues, err := checkRepositoryWithOptions(*root, repositoryCheckOptions{
+		requireSourcegenReady: *requireSourcegenReady,
+		runtimeDepthMaxQueued: *runtimeDepthMaxQueued,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
 		os.Exit(1)
@@ -169,7 +174,40 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 			})
 		}
 	}
+	if options.runtimeDepthMaxQueued >= 0 {
+		runtimeInventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		if err != nil {
+			return nil, fmt.Errorf("discover runtime depth: %w", err)
+		}
+		queued, examples := runtimeBackedDepthQueue(analysis, runtimeInventory)
+		if queued > options.runtimeDepthMaxQueued {
+			message := fmt.Sprintf("connector runtime-depth queue has %d runtime-backed source(s), budget is %d", queued, options.runtimeDepthMaxQueued)
+			if len(examples) > 0 {
+				message += ": " + strings.Join(examples, ", ")
+			}
+			issues = append(issues, issue{
+				path:    "internal/connectorcatalog/catalog",
+				message: message,
+			})
+		}
+	}
 	return issues, nil
+}
+
+func runtimeBackedDepthQueue(analysis connectorcatalog.Analysis, runtimeInventory connectorcatalog.RuntimeDepthInventory) (int, []string) {
+	report := connectorcatalog.ReviewAnalysisWithRuntimeDepth(analysis, runtimeInventory)
+	examples := make([]string, 0, 5)
+	queued := 0
+	for _, candidate := range report.RuntimeDepthQueue {
+		if strings.TrimSpace(candidate.PackagePath) == "" {
+			continue
+		}
+		queued++
+		if len(examples) < 5 {
+			examples = append(examples, candidate.SourceID)
+		}
+	}
+	return queued, examples
 }
 
 func printConnectorDefinitionCatalogSummary(root string) error {

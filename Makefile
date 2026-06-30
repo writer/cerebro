@@ -112,6 +112,7 @@ CONNECTOR_CATALOG_REVIEW_MD ?= tmp/connector-catalog-review.md
 CONNECTOR_CATALOG_REVIEW_JSON ?= tmp/connector-catalog-review.json
 CONNECTOR_CATALOG_REVIEW_MAX_ITEMS ?= 80
 CONNECTOR_CATALOG_FIDELITY_JSON ?= tmp/connector-catalog-fidelity.json
+CONNECTOR_CATALOG_RUNTIME_DEPTH_MAX_QUEUED ?= 786
 DROID_CONTEXT_OUT ?= tmp/droid-review-context.md
 DROID_CONTEXT_JSON_OUT ?= tmp/droid-review-context.json
 DROID_POST_MERGE_OUT ?= tmp/droid-post-merge-health.md
@@ -301,7 +302,7 @@ openapi-sync: ## Update OpenAPI route parity metadata.
 	go run ./scripts/openapi_route_parity.go --write
 
 catalog-check: ## Verify source, connector, and compliance catalogs are current.
-	go run ./tools/catalogcheck
+	go run ./tools/catalogcheck -runtime-depth-max-queued "$(CONNECTOR_CATALOG_RUNTIME_DEPTH_MAX_QUEUED)"
 	go run ./tools/controlindex --check
 
 control-index-generate: ## Regenerate compliance control coverage index.

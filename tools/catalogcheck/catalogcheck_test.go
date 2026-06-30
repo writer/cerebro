@@ -176,6 +176,50 @@ entries:
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogEnforcesRuntimeDepthBudget(t *testing.T) {
+	root := t.TempDir()
+	writeGenerateableConnectorDefinition(t, root, "example_idp")
+	writeRuntimeBackedSource(t, root, "example_idp", []string{"users", "groups"}, []string{"example_idp.user", "example_idp.group"})
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 0})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if !issueMessagesContain(issues, "connector runtime-depth queue has 1 runtime-backed source(s), budget is 0") {
+		t.Fatalf("issues = %#v, want runtime-depth budget issue", issues)
+	}
+	if !issueMessagesContain(issues, "example_idp") {
+		t.Fatalf("issues = %#v, want queued source example", issues)
+	}
+}
+
+func TestCheckConnectorDefinitionCatalogAllowsRuntimeDepthAtBudget(t *testing.T) {
+	root := t.TempDir()
+	writeGenerateableConnectorDefinition(t, root, "example_idp")
+	writeRuntimeBackedSource(t, root, "example_idp", []string{"users", "groups"}, []string{"example_idp.user", "example_idp.group"})
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 1})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if issueMessagesContain(issues, "runtime-depth queue") {
+		t.Fatalf("issues = %#v, want runtime-depth queue within budget", issues)
+	}
+}
+
+func TestCheckConnectorDefinitionCatalogIgnoresCatalogOnlyRuntimeBacklog(t *testing.T) {
+	root := t.TempDir()
+	writeGenerateableConnectorDefinition(t, root, "catalog_only")
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 0})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if issueMessagesContain(issues, "runtime-depth queue") {
+		t.Fatalf("issues = %#v, want catalog-only source outside runtime-depth budget", issues)
+	}
+}
+
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/github/test.yaml", policyDSL("github-test", "github::repository"))
@@ -930,6 +974,74 @@ func writeFile(t *testing.T, root string, rel string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func writeGenerateableConnectorDefinition(t *testing.T, root string, sourceID string) {
+	t.Helper()
+	writeFile(t, root, "internal/connectorcatalog/catalog/identity/"+sourceID+".yaml", fmt.Sprintf(`
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-%[1]s
+      tenant_id: builtin_catalog
+      source_id: %[1]s
+      display_name: Example IDP
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /v1/me
+      resource_families:
+        - id: users
+          path: /v1/users
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: %[1]s.user, schema_ref: %[1]s/user/v1}
+          projection: {template: identity_user}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: groups
+          path: /v1/groups
+          record_selector: $.data[*]
+          id_field: id
+          event: {kind: %[1]s.group, schema_ref: %[1]s/group/v1}
+          projection: {template: identity_group}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+`, sourceID))
+}
+
+func writeRuntimeBackedSource(t *testing.T, root string, sourceID string, families []string, kinds []string) {
+	t.Helper()
+	var catalog strings.Builder
+	fmt.Fprintf(&catalog, "id: %s\nname: Example IDP\nemitted_kinds:\n", sourceID)
+	for _, kind := range kinds {
+		fmt.Fprintf(&catalog, "  - %s\n", kind)
+	}
+	fmt.Fprintf(&catalog, "families:\n")
+	for _, family := range families {
+		fmt.Fprintf(&catalog, "  - id: %s\n", family)
+	}
+	fmt.Fprintf(&catalog, "coverage_contract:\n  dimensions:\n")
+	for _, family := range families {
+		fmt.Fprintf(&catalog, "    - id: %s\n      type: entity_family\n      families: [%s]\n      support: partial\n", family, family)
+	}
+	fmt.Fprintf(&catalog, "event_contracts:\n")
+	for _, kind := range kinds {
+		fmt.Fprintf(&catalog, "  - kind: %s\n    schema_ref: %s/v1\n", kind, strings.ReplaceAll(kind, ".", "/"))
+	}
+
+	writeFile(t, root, "sources/"+sourceID+"/catalog.yaml", catalog.String())
+	writeFile(t, root, "sources/"+sourceID+"/source.go", "package "+sourceID+"\n")
+	writeFile(t, root, "sources/"+sourceID+"/source_test.go", "package "+sourceID+"\n")
+	writeFile(t, root, "sources/"+sourceID+"/deploy.yaml", "sourceId: "+sourceID+"\n")
+	writeFile(t, root, "sources/"+sourceID+"/testdata/read_users.json", "[]\n")
 }
 
 func policyDSL(id string, resource string) string {
