@@ -36,8 +36,13 @@ coverage_contract:
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses Azure AI Services account management deployment list records under the ARM `value` key.
     - id: model_catalog
       type: entity_family
       title: "Model Catalog"
@@ -46,8 +51,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses Azure AI Services location model list records under the ARM `value` key.
     - id: rai_policies
       type: lifecycle_state
       title: "Rai Policies"
@@ -56,8 +64,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses Azure AI Services RAI policy list records under the ARM `value` key.
     - id: rai_blocklists
       type: lifecycle_state
       title: "Rai Blocklists"
@@ -66,8 +81,15 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.8
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses Azure AI Services RAI blocklist records under the ARM `value` key.
     - id: private_endpoint_connections
       type: entity_family
       title: "Private Endpoint Connections"
@@ -75,9 +97,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, network_security]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Uses Azure AI Services private endpoint connection list records under the ARM `value` key.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -93,7 +120,7 @@ event_contracts:
       - deployment_id
       - deployment_name
     required_payload_fields:
-      - name
+      - model
   - kind: azure_openai.model_catalog
     schema_ref: azure_openai/model_catalog/v1
     required_attributes:

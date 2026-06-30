@@ -1,9 +1,9 @@
 ## Summary
 
-- Adds the `cohere` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Updates the `cohere` Source Runtime SDK with documented model, connector, dataset, and fine-tuned model APIs.
+- Includes runtime adapter mappings, health checks, provider-shaped fixtures, tests, and a source-health receipt.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
@@ -12,5 +12,4 @@
 
 ## Tests
 
-- `go test ./sources/cohere ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/cohere -count=1`

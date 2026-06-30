@@ -5,11 +5,56 @@ secretKeys:
 runtimes:
   - localId: model-catalog
     config:
-      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
       family: model_catalog
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /v1/models
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      api_token: env:ELEVENLABS_API_TOKEN
+  - localId: voices
+    config:
+      family: voices
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
       per_page: "100"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      api_token: env:ELEVENLABS_API_TOKEN
+  - localId: service-accounts
+    config:
+      family: service_accounts
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      api_token: env:ELEVENLABS_API_TOKEN
+  - localId: service-account-api-keys
+    config:
+      family: service_account_api_keys
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      api_token: env:ELEVENLABS_API_TOKEN
+  - localId: webhooks
+    config:
+      family: webhooks
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
+      api_token: env:ELEVENLABS_API_TOKEN
+  - localId: auth-connections
+    config:
+      family: auth_connections
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      service_account_user_id: env:ELEVENLABS_SERVICE_ACCOUNT_USER_ID
       api_token: env:ELEVENLABS_API_TOKEN

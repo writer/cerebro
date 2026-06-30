@@ -32,8 +32,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by the documented OpenRouter GET /api/v1/organization/members management endpoint; pagination is not yet implemented in this source.
     - id: api_keys
       type: entity_family
       title: "Api Keys"
@@ -42,8 +49,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by the documented OpenRouter GET /api/v1/keys management endpoint; pagination and optional workspace filters are not yet implemented in this source.
     - id: provider_keys
       type: entity_family
       title: "Provider Keys"
@@ -52,18 +64,28 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by the documented OpenRouter GET /api/v1/byok management endpoint for BYOK provider credentials; optional workspace and provider filters are not yet implemented in this source.
     - id: usage_reports
       type: entity_family
       title: "Usage Reports"
       families: [usage_reports]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [logging_configuration, source_snapshot]
+      control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by the documented OpenRouter GET /api/v1/activity management endpoint for the last 30 completed UTC days; this is activity grouped by endpoint, not an unrestricted usage export.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -87,7 +109,7 @@ event_contracts:
       - secret_id
       - secret_name
     required_payload_fields:
-      - id
+      - hash
   - kind: openrouter.provider_keys
     schema_ref: openrouter/provider_keys/v1
     required_attributes:
@@ -102,8 +124,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - endpoint_id

@@ -1,6 +1,6 @@
 # Azure OpenAI
 
-Generated Source Runtime SDK scaffold for `azure_openai`.
+Source Runtime SDK implementation for `azure_openai`.
 
 ## Runtime input
 
@@ -26,5 +26,4 @@ Generated Source Runtime SDK scaffold for `azure_openai`.
 
 ## Tests
 
-- `go test ./sources/azure_openai ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/azure_openai -count=1`

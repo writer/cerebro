@@ -1,6 +1,6 @@
 # ElevenLabs
 
-Generated Source Runtime SDK scaffold for `elevenlabs`.
+Source Runtime SDK implementation for `elevenlabs`.
 
 ## Runtime input
 
@@ -27,5 +27,4 @@ Generated Source Runtime SDK scaffold for `elevenlabs`.
 
 ## Tests
 
-- `go test ./sources/elevenlabs ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/elevenlabs -count=1`
