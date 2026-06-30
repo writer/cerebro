@@ -186,6 +186,11 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 			if got := event.Attributes["resource_urn"]; got != tt.urn {
 				t.Fatalf("resource_urn = %q, want %q", got, tt.urn)
 			}
+			if tt.family == familyApiKeys || tt.family == familyProviderKeys {
+				if got := event.Attributes["secret_status"]; got == "true" || got == "false" {
+					t.Fatalf("secret_status = %q, want status text or empty value", got)
+				}
+			}
 		})
 	}
 }
