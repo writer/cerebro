@@ -614,28 +614,41 @@ WHERE CASE
 OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
 WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel
 OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
-WHERE supportEvidence IS NULL
 WITH DISTINCT control, control_ref, support, supportRel,
+     supportEvidence,
+     supportEvidenceRel,
+     controlEvidence,
+     controlEvidenceRel,
      coalesce(supportEvidence, controlEvidence) AS evidence,
      coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel
+WHERE evidence IS NOT NULL OR support IS NOT NULL
 OPTIONAL MATCH (support)-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
-WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel
 OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control)
 WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
-WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel
-WITH control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel
+WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
+     coalesce(%s, '') AS control_match_attributes,
+     coalesce(%s, '') AS support_match_attributes,
+     coalesce(%s, '') AS evidence_match_attributes,
+     coalesce(%s, '') AS direct_evidence_match_attributes
+WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
      toLower(coalesce(control.label, '') + ' ' +
              coalesce(control.source_id, '') + ' ' +
-             coalesce(control.attributes_json, '') + ' ' +
+             control_match_attributes + ' ' +
              coalesce(support.label, '') + ' ' +
              coalesce(support.entity_type, '') + ' ' +
              coalesce(support.source_id, '') + ' ' +
-             coalesce(support.attributes_json, '') + ' ' +
+             support_match_attributes + ' ' +
              coalesce(evidence.label, '') + ' ' +
              coalesce(evidence.entity_type, '') + ' ' +
              coalesce(evidence.source_id, '') + ' ' +
-             coalesce(evidence.attributes_json, '')) AS qauto_match_text,
+             evidence_match_attributes + ' ' +
+             coalesce(controlEvidence.label, '') + ' ' +
+             coalesce(controlEvidence.entity_type, '') + ' ' +
+             coalesce(controlEvidence.source_id, '') + ' ' +
+             direct_evidence_match_attributes) AS qauto_match_text,
      coalesce(evidence.source_id, support.source_id, control.source_id, '') AS evidence_source_id
 %s
 OPTIONAL MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
@@ -656,6 +669,12 @@ RETURN DISTINCT control.urn AS control_urn,
        evidence_source_id,
        evidenceRel.relation AS evidence_relation,
        coalesce(evidence.attributes_json, '') AS evidence_attributes_json_internal,
+       controlEvidence.urn AS direct_evidence_urn,
+       coalesce(controlEvidence.label, controlEvidence.urn) AS direct_evidence_label,
+       controlEvidence.entity_type AS direct_evidence_type,
+       controlEvidence.source_id AS direct_evidence_source_id,
+       controlEvidenceRel.relation AS direct_evidence_relation,
+       coalesce(controlEvidence.attributes_json, '') AS direct_evidence_attributes_json_internal,
        finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        findingRel.relation AS finding_relation,
@@ -669,7 +688,7 @@ RETURN DISTINCT control.urn AS control_urn,
        coalesce(source.label, source.urn) AS source_label,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY control_label, support_label, evidence_label
-LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), topicPredicate, questionnaireEvidenceCandidateRowLimit), true
+LIMIT %d`, cypherJSONStringAttributes("control.attributes_json", "policy_type"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"), cypherJSONStringAttributes("support.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), cypherJSONStringAttributes("evidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), cypherJSONStringAttributes("controlEvidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"), topicPredicate, questionnaireEvidenceCandidateRowLimit), true
 	default:
 		return "", false
 	}

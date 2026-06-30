@@ -510,10 +510,10 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 		"OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})",
 		"OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})",
 		"WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel",
-		"WHERE supportEvidence IS NULL",
 		"coalesce(supportEvidence, controlEvidence) AS evidence",
 		"coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel",
-		"WITH DISTINCT control, control_ref, support, supportRel, evidence, evidenceRel, finding, findingRel",
+		"controlEvidence.urn AS direct_evidence_urn",
+		"direct_evidence_attributes_json_internal",
 		"RETURN DISTINCT control.urn AS control_urn",
 		"evidence_source_id,",
 		"source_attributes_json_internal",
@@ -603,11 +603,22 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 			for _, want := range []string{
 				"relation: 'supports'",
 				"relation: 'has_evidence'",
+				"controlEvidence.urn AS direct_evidence_urn",
 				"source_attributes_json_internal",
 				tt.wantSnippet,
 			} {
 				if !strings.Contains(result.Cypher, want) {
 					t.Fatalf("questionnaire cypher missing %q:\n%s", want, result.Cypher)
+				}
+			}
+			for _, forbidden := range []string{
+				"WHERE supportEvidence IS NULL",
+				"coalesce(control.attributes_json, '') +",
+				"coalesce(support.attributes_json, '') +",
+				"coalesce(evidence.attributes_json, '') +",
+			} {
+				if strings.Contains(result.Cypher, forbidden) {
+					t.Fatalf("questionnaire cypher contains forbidden raw/suppressing fragment %q:\n%s", forbidden, result.Cypher)
 				}
 			}
 		})
