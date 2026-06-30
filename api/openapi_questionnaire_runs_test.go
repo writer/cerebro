@@ -18,6 +18,7 @@ func TestQuestionnaireRunRoutesDocumentUnifiedQueueContract(t *testing.T) {
 		"/grc/questionnaire-runs/{runID}/process",
 		"/grc/questionnaire-runs/{runID}/assignments",
 		"/grc/questionnaire-runs/{runID}/decisions",
+		"/grc/questionnaire-runs/{runID}/comments",
 	} {
 		if !strings.Contains(doc, "  "+path+":") {
 			t.Fatalf("OpenAPI missing path %s", path)
