@@ -1,0 +1,1 @@
+[{"id":"cloudflare-account-acct-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.account","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/account/v1","payload":{"id":"acct-1","name":"Writer","type":"enterprise"},"attributes":{"account_id":"acct-1","name":"Writer","type":"enterprise","source_product":"cloudflare"}}]
