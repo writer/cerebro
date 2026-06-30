@@ -86,7 +86,14 @@ func TestBuildQuestionnaireReviewEnrichmentUsesVendorEvidence(t *testing.T) {
 	if got := enriched.Attributes["llm_summary"]; got != "Conditional approval needs legal follow-up." {
 		t.Fatalf("llm_summary = %q", got)
 	}
-	for _, want := range []string{"questionnaire", "questionnaire:linked-questionnaire", "assurance:soc2", "review:review-1", "evidence:evidence-1", "finding:finding-1"} {
+	for _, want := range []string{
+		"questionnaire",
+		"questionnaire:urn:cerebro:writer:security_questionnaire:vrm:linked-questionnaire",
+		"assurance:urn:cerebro:writer:assurance_document:vrm:soc2",
+		"review:urn:cerebro:writer:security_review:vrm:review-1",
+		"evidence:evidence-1",
+		"finding:finding-1",
+	} {
 		if !hasQuestionnaireEvidence(enriched.EvidenceMatches, want) {
 			t.Fatalf("evidence matches missing %q: %#v", want, enriched.EvidenceMatches)
 		}
@@ -107,6 +114,29 @@ func TestBuildQuestionnaireReviewEnrichmentUsesVendorEvidence(t *testing.T) {
 	}
 	if len(enriched.Timeline) < 2 || enriched.Timeline[len(enriched.Timeline)-1].EventType != ports.GRCVendorQuestionnaireEventProcessed {
 		t.Fatalf("timeline = %#v", enriched.Timeline)
+	}
+}
+
+func TestQuestionnaireEvidenceMatchesPreserveRelationshipURNIdentity(t *testing.T) {
+	relationships := VendorRelationships{
+		SecurityQuestionnaires: []RelatedRecord{
+			{URN: "urn:cerebro:writer:security_questionnaire:vrm:sig-2026", Label: "Imported SIG"},
+			{URN: "urn:cerebro:writer:security_questionnaire:manual:sig-2026", Label: "Manual SIG"},
+		},
+	}
+
+	matches := questionnaireEvidenceMatches(ports.GRCVendorQuestionnaireReviewRecord{}, Vendor{}, relationships, nil, nil)
+
+	for _, want := range []string{
+		"questionnaire:urn:cerebro:writer:security_questionnaire:vrm:sig-2026",
+		"questionnaire:urn:cerebro:writer:security_questionnaire:manual:sig-2026",
+	} {
+		if !hasQuestionnaireEvidence(matches, want) {
+			t.Fatalf("evidence matches missing %q: %#v", want, matches)
+		}
+	}
+	if len(matches) != 2 {
+		t.Fatalf("matches = %#v", matches)
 	}
 }
 
@@ -142,20 +172,6 @@ func TestBuildQuestionnaireReviewEnrichmentClearsStaleLLMSummary(t *testing.T) {
 	}
 	if enriched.Status == ports.GRCVendorQuestionnaireStatusProcessing {
 		t.Fatalf("status = %q", enriched.Status)
-	}
-}
-
-func TestSummarizeQuestionnaireReviewsCountsWorkflowStates(t *testing.T) {
-	records := []*ports.GRCVendorQuestionnaireReviewRecord{
-		{GRCVendorQuestionnaireReviewWorkflow: ports.GRCVendorQuestionnaireReviewWorkflow{Status: ports.GRCVendorQuestionnaireStatusNeedsInput}},
-		{GRCVendorQuestionnaireReviewWorkflow: ports.GRCVendorQuestionnaireReviewWorkflow{Status: ports.GRCVendorQuestionnaireStatusReadyForApproval}},
-		{GRCVendorQuestionnaireReviewWorkflow: ports.GRCVendorQuestionnaireReviewWorkflow{Status: ports.GRCVendorQuestionnaireStatusApproved}},
-		{GRCVendorQuestionnaireReviewWorkflow: ports.GRCVendorQuestionnaireReviewWorkflow{Status: ports.GRCVendorQuestionnaireStatusConditional}},
-		{GRCVendorQuestionnaireReviewWorkflow: ports.GRCVendorQuestionnaireReviewWorkflow{Status: ports.GRCVendorQuestionnaireStatusRejected}},
-	}
-	summary := SummarizeQuestionnaireReviews(records)
-	if summary.TotalReviews != 5 || summary.NeedsInput != 1 || summary.ReadyForApproval != 1 || summary.Approved != 2 || summary.Rejected != 1 {
-		t.Fatalf("summary = %#v", summary)
 	}
 }
 

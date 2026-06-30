@@ -30,14 +30,6 @@ type QuestionnaireEvidenceSignal struct {
 	State     string
 }
 
-type QuestionnaireReviewSummary struct {
-	TotalReviews     int `json:"total_reviews"`
-	NeedsInput       int `json:"needs_input"`
-	ReadyForApproval int `json:"ready_for_approval"`
-	Approved         int `json:"approved"`
-	Rejected         int `json:"rejected"`
-}
-
 type NewQuestionnaireReviewRequest struct {
 	TenantID           string
 	VendorURN          string
@@ -128,27 +120,6 @@ func BuildQuestionnaireReviewEnrichment(record ports.GRCVendorQuestionnaireRevie
 	return record
 }
 
-func SummarizeQuestionnaireReviews(records []*ports.GRCVendorQuestionnaireReviewRecord) QuestionnaireReviewSummary {
-	var summary QuestionnaireReviewSummary
-	summary.TotalReviews = len(records)
-	for _, record := range records {
-		if record == nil {
-			continue
-		}
-		switch record.Status {
-		case ports.GRCVendorQuestionnaireStatusNeedsInput:
-			summary.NeedsInput++
-		case ports.GRCVendorQuestionnaireStatusReadyForApproval:
-			summary.ReadyForApproval++
-		case ports.GRCVendorQuestionnaireStatusApproved, ports.GRCVendorQuestionnaireStatusConditional:
-			summary.Approved++
-		case ports.GRCVendorQuestionnaireStatusRejected:
-			summary.Rejected++
-		}
-	}
-	return summary
-}
-
 func QuestionnaireTimeline(eventType string, actorID string, summary string, attrs map[string]string, at time.Time) ports.GRCVendorQuestionnaireTimeline {
 	at = normalizedNow(at)
 	return ports.GRCVendorQuestionnaireTimeline{
@@ -192,13 +163,13 @@ func questionnaireEvidenceMatches(record ports.GRCVendorQuestionnaireReviewRecor
 		add(ports.GRCVendorQuestionnaireEvidence{ID: "questionnaire", Label: firstNonEmpty(record.Title, "Security questionnaire"), Source: "questionnaire", URN: record.QuestionnaireURN, Confidence: "high", Reason: "Uploaded questionnaire artifact"})
 	}
 	for _, related := range relationships.SecurityQuestionnaires {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "questionnaire:" + urnTail(related.URN), Label: firstNonEmpty(related.Label, "Security questionnaire"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked questionnaire"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: "questionnaire:" + related.URN, Label: firstNonEmpty(related.Label, "Security questionnaire"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked questionnaire"})
 	}
 	for _, related := range relationships.AssuranceDocuments {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "assurance:" + urnTail(related.URN), Label: firstNonEmpty(related.Label, "Assurance document"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked assurance document"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: "assurance:" + related.URN, Label: firstNonEmpty(related.Label, "Assurance document"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked assurance document"})
 	}
 	for _, related := range relationships.SecurityReviews {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "review:" + urnTail(related.URN), Label: firstNonEmpty(related.Label, "Security review"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked security review"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: "review:" + related.URN, Label: firstNonEmpty(related.Label, "Security review"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked security review"})
 	}
 	for _, item := range evidence {
 		add(ports.GRCVendorQuestionnaireEvidence{ID: "evidence:" + item.ID, Label: firstNonEmpty(item.Title, item.ID), Source: firstNonEmpty(item.SourceID, "finding_evidence"), ControlID: item.ControlID, Confidence: confidenceFromEvidenceState(item.State), Reason: firstNonEmpty(item.State, item.Type)})
