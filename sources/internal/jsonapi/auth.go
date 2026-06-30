@@ -3,8 +3,8 @@ package jsonapi
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -48,9 +48,11 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 	case "legacy_token":
 		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), settings.token, s.options.SourceID)
 	case "bearer_token":
-		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), settings.token, s.options.SourceID)
 	case "api_key", "api_token":
 		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Token"), settings.token, s.options.SourceID)
+	case "raw_token":
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), "", settings.token, s.options.SourceID)
 	case "basic":
 		if settings.authPrincipal != "" || settings.authSecret != "" {
 			if settings.authPrincipal == "" || settings.authSecret == "" {
@@ -62,6 +64,8 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
 	case "duo_hmac":
 		return setDuoHMACAuth(req, settings, s.options.SourceID)
+	case "duo_hmac_v5":
+		return setDuoHMACV5Auth(req, settings, s.options.SourceID)
 	case "oauth_client_credentials":
 		token := settings.token
 		if token == "" {
@@ -71,7 +75,7 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 				return err
 			}
 		}
-		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), token, s.options.SourceID)
 	case "oauth_authorization_code":
 		token := settings.token
 		if token == "" && settings.refreshToken != "" {
@@ -81,7 +85,7 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 				return err
 			}
 		}
-		return setTokenHeader(req, "Authorization", "Bearer", token, s.options.SourceID)
+		return setTokenHeader(req, firstNonEmpty(s.options.TokenHeader, "Authorization"), firstNonEmpty(s.options.TokenScheme, "Bearer"), token, s.options.SourceID)
 	case "jwt":
 		return setTokenHeader(req, "Authorization", "Bearer", settings.token, s.options.SourceID)
 	case "signature":
@@ -114,11 +118,45 @@ func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error
 		req.URL.EscapedPath(),
 		req.URL.Query().Encode(),
 	}, "\n")
-	mac := hmac.New(sha1.New, []byte(secretKey))
+	mac := hmac.New(sha512.New, []byte(secretKey))
 	_, _ = mac.Write([]byte(canonical))
 	signature := hex.EncodeToString(mac.Sum(nil))
 	req.SetBasicAuth(integrationKey, signature)
 	return nil
+}
+
+func setDuoHMACV5Auth(req *http.Request, settings settings, sourceID string) error {
+	integrationKey := firstNonEmpty(settings.clientID, settings.authPrincipal)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.authSecret)
+	if integrationKey == "" || secretKey == "" {
+		return fmt.Errorf("%s client_id and client_secret are required for Duo HMAC v5 auth", sourceID)
+	}
+	date := time.Now().UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", date)
+	body := ""
+	if req.Body != nil {
+		return fmt.Errorf("%s Duo HMAC v5 request bodies are not supported by jsonapi", sourceID)
+	}
+	canonical := strings.Join([]string{
+		date,
+		strings.ToUpper(req.Method),
+		strings.ToLower(req.URL.Host),
+		req.URL.EscapedPath(),
+		req.URL.Query().Encode(),
+		hashSHA512Hex(body),
+		hashSHA512Hex(""),
+	}, "\n")
+	mac := hmac.New(sha512.New, []byte(secretKey))
+	_, _ = mac.Write([]byte(canonical))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.SetBasicAuth(integrationKey, signature)
+	return nil
+}
+
+func hashSHA512Hex(value string) string {
+	hash := sha512.New()
+	_, _ = hash.Write([]byte(value))
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // setAWSSigV4Auth signs the request with AWS Signature Version 4.
@@ -234,7 +272,7 @@ func setTokenHeader(req *http.Request, header string, scheme string, token strin
 			return nil
 		}
 		separator := " "
-		if strings.HasSuffix(scheme, "=") {
+		if strings.HasSuffix(scheme, "=") || strings.HasSuffix(scheme, ":") {
 			separator = ""
 		}
 		req.Header.Set(header, scheme+separator+token)
@@ -313,6 +351,10 @@ func (s *Source) exchangeOAuthToken(ctx context.Context, settings settings, gran
 			form.Set("client_id", settings.clientID)
 			setFormRequestBody(req, form.Encode())
 		}
+	case "onelogin_client_credentials":
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "client_id:"+settings.clientID+", client_secret:"+settings.clientSecret)
+		setFormRequestBody(req, `{"grant_type":"client_credentials"}`)
 	default:
 		return "", "", time.Time{}, fmt.Errorf("%s token_request_auth_method %q is not supported", s.options.SourceID, settings.oauthTokenRequestMethod)
 	}
@@ -395,7 +437,7 @@ func normalizedAuthModel(value string) string {
 		return "bearer_token"
 	case "api_key", "api_token":
 		return "api_key"
-	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none", "aws_sigv4", "two_step":
+	case "basic", "raw_token", "duo_hmac", "duo_hmac_v5", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none", "aws_sigv4", "two_step":
 		return value
 	default:
 		return value

@@ -19,6 +19,7 @@ type Family struct {
 	DetailPath            string
 	AllowBareDetailRecord bool
 	PathParams            []string
+	AuthModel             string
 	CursorParam           string
 	NextCursorKeys        []string
 	HasMoreKey            string
@@ -43,14 +44,21 @@ type Family struct {
 // FamilyConfig groups request and event bindings that are derived from family
 // configuration rather than directly from provider records.
 type FamilyConfig struct {
-	StaticQuery      map[string]string
-	ConfigQuery      map[string]string
-	ConfigAttributes map[string]string
-	EncodeURNID      bool
-	ResourceURNKind  string
-	TotalKeys        []string
-	OffsetKeys       []string
-	LimitKeys        []string
+	StaticQuery         map[string]string
+	ConfigQuery         map[string]string
+	StaticJSONBody      map[string]any
+	ConfigJSONBody      map[string]string
+	JSONBodyCursorField string
+	JSONBodyLimitField  string
+	ConfigAttributes    map[string]string
+	EncodeURNID         bool
+	ResourceURNKind     string
+	TotalKeys           []string
+	OffsetKeys          []string
+	LimitKeys           []string
+	HeaderCursor        string
+	HeaderResultCount   string
+	HeaderLimit         string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while
@@ -149,7 +157,7 @@ func (s *Source) CheckPath(ctx context.Context, cfg sourcecdk.Config, path strin
 	if err != nil {
 		return err
 	}
-	_, err = s.doRequest(ctx, settings, normalizedPath, query, nil, expectStatuses)
+	_, err = s.doRequest(ctx, settings, normalizedPath, query, nil, nil, expectStatuses)
 	return err
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -44,26 +45,34 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Add(key, value)
 		}
 	}
-	if !family.DisablePageSize {
+	if !family.DisablePageSize && strings.TrimSpace(family.Config.JSONBodyLimitField) == "" {
 		for _, param := range pageSizeParams(family) {
 			query.Set(param, strconv.Itoa(pageSize))
 		}
 	}
+	jsonBody := requestJSONBody(family, settings, pageSize)
 	pageCursor := strings.TrimSpace(cursor)
 	if pageCursor == "" {
 		pageCursor = strings.TrimSpace(family.PageFirstCursor)
 	}
 	useNextURL := isAbsoluteHTTPURL(pageCursor)
 	if pageCursor != "" && !useNextURL {
-		query.Set(cursorParam(family), pageCursor)
+		if strings.TrimSpace(family.Config.JSONBodyCursorField) != "" {
+			setJSONBodyCursor(jsonBody, family.Config.JSONBodyCursorField, pageCursor)
+		} else {
+			query.Set(cursorParam(family), pageCursor)
+		}
+	}
+	rawBody, err := encodeJSONBody(jsonBody)
+	if err != nil {
+		return nil, "", err
 	}
 	var body json.RawMessage
 	var headers http.Header
-	var err error
 	if useNextURL {
-		headers, err = s.doRequest(ctx, settings, pageCursor, nil, &body, nil)
+		headers, err = s.doRequest(ctx, settings, pageCursor, nil, nil, &body, nil)
 	} else {
-		headers, err = s.getJSONWithHeader(ctx, settings, query, &body)
+		headers, err = s.doRequest(ctx, settings, settings.path, query, rawBody, &body, nil)
 	}
 	if err != nil {
 		return nil, "", err
@@ -74,6 +83,9 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	if next == "" {
 		next = linkHeaderCursor(family, headers)
+	}
+	if next == "" {
+		next = headerCursor(family, headers)
 	}
 	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	records := make([]record, 0, len(items))
@@ -181,7 +193,7 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 
 func synthesizedPageCursorStep(family Family, pageSize int) int {
 	switch cursorParam(family) {
-	case "offset", "start":
+	case "offset", "skip", "start", "startAt", "start_at":
 		return pageSize
 	default:
 		return 1
@@ -232,10 +244,10 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 }
 
 func (s *Source) getJSONWithHeader(ctx context.Context, settings settings, query url.Values, target any) (http.Header, error) {
-	return s.doRequest(ctx, settings, settings.path, query, target, nil)
+	return s.doRequest(ctx, settings, settings.path, query, nil, target, nil)
 }
 
-func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, target any, expectStatuses []int) (http.Header, error) {
+func (s *Source) doRequest(ctx context.Context, settings settings, path string, query url.Values, body []byte, target any, expectStatuses []int) (http.Header, error) {
 	endpoint, err := requestEndpoint(s.options.SourceID, settings.baseURL, settings.path, path)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
@@ -247,11 +259,18 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if familyMethod := strings.TrimSpace(settings.familyMethod); familyMethod != "" {
 		method = familyMethod
 	}
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
+	var bodyReader io.Reader
+	if len(body) != 0 {
+		bodyReader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", s.options.SourceID, err)
 	}
 	req.Header.Set("Accept", "application/json")
+	if len(body) != 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	for key, value := range s.options.StaticHeaders {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
 			req.Header.Set(strings.TrimSpace(key), strings.TrimSpace(value))
@@ -335,7 +354,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		return []json.RawMessage{item}, responseCursor(family, object), nil
 	}
 	for _, key := range responseListKeys(family) {
-		if value, ok := object[key]; ok {
+		if value, ok := rawAtPath(object, key); ok {
 			if err := json.Unmarshal(value, &items); err == nil {
 				return items, responseCursor(family, object), nil
 			}
@@ -364,6 +383,67 @@ func responseListKeys(family Family) []string {
 	compact := strings.ReplaceAll(normalized, "_", "")
 	keys = append(keys, "data", "items", "results", "records", normalized, normalized+"s", compact, compact+"s")
 	return keys
+}
+
+func requestJSONBody(family Family, settings settings, pageSize int) map[string]any {
+	body := cloneJSONBody(family.Config.StaticJSONBody)
+	for key, value := range settings.request.jsonBody {
+		if strings.TrimSpace(key) != "" && valueString(value) != "" {
+			body[strings.TrimSpace(key)] = value
+		}
+	}
+	if !family.DisablePageSize {
+		if field := strings.TrimSpace(family.Config.JSONBodyLimitField); field != "" && pageSize > 0 {
+			body[field] = pageSize
+		}
+	}
+	if len(body) == 0 {
+		return nil
+	}
+	return body
+}
+
+func cloneJSONBody(body map[string]any) map[string]any {
+	if len(body) == 0 {
+		return map[string]any{}
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return map[string]any{}
+	}
+	cloned := map[string]any{}
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return map[string]any{}
+	}
+	return cloned
+}
+
+func setJSONBodyCursor(body map[string]any, field string, cursor string) {
+	if body == nil {
+		return
+	}
+	field = strings.TrimSpace(field)
+	cursor = strings.TrimSpace(cursor)
+	if field == "" || cursor == "" {
+		return
+	}
+	var value any
+	if err := json.Unmarshal([]byte(cursor), &value); err == nil {
+		body[field] = value
+		return
+	}
+	body[field] = cursor
+}
+
+func encodeJSONBody(body map[string]any) ([]byte, error) {
+	if len(body) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode JSON request body: %w", err)
+	}
+	return raw, nil
 }
 
 func recordsFromObjectMap(raw json.RawMessage, valueKey string) ([]json.RawMessage, error) {
@@ -415,7 +495,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 	}
 	for _, key := range responseCursorKeys(family) {
 		if value := rawStringAtPath(object, key); value != "" {
-			return value
+			return responseCursorValue(family, value)
 		}
 	}
 	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "result_info", "resultInfo"} {
@@ -425,7 +505,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		}
 		for _, nestedKey := range responseCursorKeys(family) {
 			if value := valueString(nested[nestedKey]); value != "" {
-				return value
+				return responseCursorValue(family, value)
 			}
 		}
 		if value := nextPageCursor(nested); value != "" {
@@ -435,35 +515,59 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 	return ""
 }
 
+func responseCursorValue(family Family, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || isAbsoluteHTTPURL(value) {
+		return value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+	if cursor := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); cursor != "" {
+		return cursor
+	}
+	return value
+}
+
 func rawStringAtPath(object map[string]json.RawMessage, path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
+	value, ok := rawAtPath(object, path)
+	if !ok {
 		return ""
 	}
+	return rawString(value)
+}
+
+func rawAtPath(object map[string]json.RawMessage, path string) (json.RawMessage, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false
+	}
 	if !strings.Contains(path, ".") {
-		return rawString(object[path])
+		value := object[path]
+		return value, len(value) != 0
 	}
 	parts := strings.Split(path, ".")
 	current := object
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return ""
+			return nil, false
 		}
 		raw := current[part]
 		if len(raw) == 0 {
-			return ""
+			return nil, false
 		}
 		if i == len(parts)-1 {
-			return rawString(raw)
+			return raw, true
 		}
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &nested); err != nil {
-			return ""
+			return nil, false
 		}
 		current = nested
 	}
-	return ""
+	return nil, false
 }
 
 func linkHeaderCursor(family Family, headers http.Header) string {
@@ -489,11 +593,35 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 		if err != nil {
 			continue
 		}
+		if strings.TrimSpace(family.CursorParam) == "" {
+			return strings.TrimSpace(part[start+1 : end])
+		}
 		if value := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); value != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+func headerCursor(family Family, headers http.Header) string {
+	headerName := strings.TrimSpace(family.Config.HeaderCursor)
+	if headerName == "" {
+		return ""
+	}
+	raw := strings.TrimSpace(headers.Get(headerName))
+	if raw == "" {
+		return ""
+	}
+	resultHeader := strings.TrimSpace(family.Config.HeaderResultCount)
+	limitHeader := strings.TrimSpace(family.Config.HeaderLimit)
+	if resultHeader != "" && limitHeader != "" {
+		resultCount, resultErr := strconv.Atoi(strings.TrimSpace(headers.Get(resultHeader)))
+		limit, limitErr := strconv.Atoi(strings.TrimSpace(headers.Get(limitHeader)))
+		if resultErr != nil || limitErr != nil || limit <= 0 || resultCount < limit {
+			return ""
+		}
+	}
+	return raw
 }
 
 func offsetResponseCursor(family Family, object map[string]json.RawMessage) string {

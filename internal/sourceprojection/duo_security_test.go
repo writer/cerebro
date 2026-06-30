@@ -56,6 +56,50 @@ func TestDuoSecurityIdentityGroupProjection(t *testing.T) {
 	}
 }
 
+func TestDuoSecurityPhoneProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "duo_security", Kind: "duo_security.phones", Attributes: map[string]string{"phone_id": "phone-1", "name": "Alice phone", "platform": "Apple iOS", "user_id": "user-1"}}
+	entities, links, err := duoSecurityPhonesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want phone factor projection", len(entities), len(links))
+	}
+}
+
+func TestDuoSecurityHardwareTokenProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "duo_security", Kind: "duo_security.hardware_tokens", Attributes: map[string]string{"token_id": "token-1", "serial": "123456", "type": "h6", "user_id": "user-1"}}
+	entities, links, err := duoSecurityHardwareTokensProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want hardware token projection", len(entities), len(links))
+	}
+}
+
+func TestDuoSecurityWebAuthnProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "duo_security", Kind: "duo_security.webauthn_credentials", Attributes: map[string]string{"credential_id": "cred-1", "label": "YubiKey", "user_id": "user-1"}}
+	entities, links, err := duoSecurityWebAuthnCredentialsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want WebAuthn credential projection", len(entities), len(links))
+	}
+}
+
+func TestDuoSecurityEndpointProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "duo_security", Kind: "duo_security.endpoints", Attributes: map[string]string{"endpoint_id": "endpoint-1", "hostname": "macbook-1", "os": "macOS"}}
+	entities, _, err := duoSecurityEndpointsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 {
+		t.Fatal("expected endpoint projection")
+	}
+}
+
 func TestDuoSecurityAuditProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "duo_security", Kind: "duo_security.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
 	entities, links, err := duoSecurityAuditEventsProjections(event)

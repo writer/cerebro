@@ -1,0 +1,33 @@
+[
+  {
+    "id": "duo_security-hardware-token-DTOKEN1",
+    "tenant_id": "tenant",
+    "source_id": "duo_security",
+    "kind": "duo_security.hardware_tokens",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "duo_security/hardware_tokens/v1",
+    "payload": {
+      "token_id": "DTOKEN1",
+      "serial": "123456",
+      "type": "h6",
+      "user_id": "DUUSER1"
+    },
+    "attributes": {
+      "external_id": "DTOKEN1",
+      "factor_type": "hardware_token",
+      "family": "hardware_tokens",
+      "provider": "duo_security",
+      "record_class": "mfa_factor",
+      "resource_type": "hardware_token",
+      "schema": "hardware_tokens",
+      "serial": "123456",
+      "source_event_id": "DTOKEN1",
+      "source_provider": "duo_security",
+      "source_system": "duo_security",
+      "tenant_id": "tenant",
+      "token_id": "DTOKEN1",
+      "type": "h6",
+      "user_id": "DUUSER1"
+    }
+  }
+]

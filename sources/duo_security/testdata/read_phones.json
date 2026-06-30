@@ -1,0 +1,45 @@
+[
+  {
+    "id": "duo_security-phone-DPHONE1",
+    "tenant_id": "tenant",
+    "source_id": "duo_security",
+    "kind": "duo_security.phones",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "duo_security/phones/v1",
+    "payload": {
+      "phone_id": "DPHONE1",
+      "name": "Alice phone",
+      "number": "+15550100",
+      "platform": "Apple iOS",
+      "model": "iPhone",
+      "activated": true,
+      "encrypted": true,
+      "screenlock": "locked",
+      "tampered": "not_tampered",
+      "user_id": "DUUSER1"
+    },
+    "attributes": {
+      "activated": "true",
+      "encrypted": "true",
+      "external_id": "DPHONE1",
+      "factor_type": "phone",
+      "family": "phones",
+      "model": "iPhone",
+      "name": "Alice phone",
+      "number": "+15550100",
+      "phone_id": "DPHONE1",
+      "platform": "Apple iOS",
+      "provider": "duo_security",
+      "record_class": "mfa_factor",
+      "resource_type": "phone",
+      "schema": "phones",
+      "screenlock": "locked",
+      "source_event_id": "DPHONE1",
+      "source_provider": "duo_security",
+      "source_system": "duo_security",
+      "tampered": "not_tampered",
+      "tenant_id": "tenant",
+      "user_id": "DUUSER1"
+    }
+  }
+]

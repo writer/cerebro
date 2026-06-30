@@ -1,28 +1,103 @@
 id: duo_security
 name: "Duo Security"
-description: "Collects users, groups, roles, applications, and audit events from Duo Security and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+description: "Collects Duo users, groups, administrators, MFA factors, endpoints, applications, roles, activity logs, and authentication logs for identity review, MFA posture, device posture, and access audit."
+provider_api:
+  status: verified
+  transport: rest
+  auth: duo_signed_admin_api
+  base_url: https://api-XXXXXXXX.duosecurity.com
+  references:
+    - https://duo.com/docs/adminapi
+    - https://github.com/duosecurity/duo_api_golang/blob/master/duoapi.go
+    - https://github.com/duosecurity/duo_api_golang/blob/master/admin/admin.go
+    - https://github.com/duosecurity/duo_api_golang/blob/master/admin/logs.go
+  families:
+    - id: users
+      method: GET
+      path: /admin/v1/users
+    - id: groups
+      method: GET
+      path: /admin/v1/groups
+    - id: administrators
+      method: GET
+      path: /admin/v1/admins
+    - id: phones
+      method: GET
+      path: /admin/v1/phones
+    - id: hardware_tokens
+      method: GET
+      path: /admin/v1/tokens
+    - id: webauthn_credentials
+      method: GET
+      path: /admin/v1/webauthncredentials
+    - id: bypass_codes
+      method: GET
+      path: /admin/v1/bypass_codes
+    - id: endpoints
+      method: GET
+      path: /admin/v1/endpoints
+    - id: roles
+      method: GET
+      path: /admin/v1/admin_roles
+    - id: applications
+      method: GET
+      path: /admin/v3/integrations
+    - id: audit_events
+      method: GET
+      path: /admin/v2/logs/activity
+    - id: authentication_logs
+      method: GET
+      path: /admin/v2/logs/authentication
 emitted_kinds:
   - duo_security.users
   - duo_security.groups
+  - duo_security.administrators
+  - duo_security.phones
+  - duo_security.hardware_tokens
+  - duo_security.webauthn_credentials
+  - duo_security.bypass_codes
+  - duo_security.endpoints
   - duo_security.roles
   - duo_security.applications
   - duo_security.audit_events
+  - duo_security.authentication_logs
 runtime_families:
+  - users
+  - groups
+  - administrators
+  - phones
+  - hardware_tokens
+  - webauthn_credentials
+  - bypass_codes
+  - endpoints
+  - roles
   - applications
   - audit_events
-  - groups
-  - roles
-  - users
+  - authentication_logs
 kind_lifecycle:
   - kind: duo_security.users
     status: active
   - kind: duo_security.groups
+    status: active
+  - kind: duo_security.administrators
+    status: active
+  - kind: duo_security.phones
+    status: active
+  - kind: duo_security.hardware_tokens
+    status: active
+  - kind: duo_security.webauthn_credentials
+    status: active
+  - kind: duo_security.bypass_codes
+    status: active
+  - kind: duo_security.endpoints
     status: active
   - kind: duo_security.roles
     status: active
   - kind: duo_security.applications
     status: active
   - kind: duo_security.audit_events
+    status: active
+  - kind: duo_security.authentication_logs
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -32,100 +107,133 @@ coverage_contract:
       type: entity_family
       title: "Users"
       families: [users]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, access_review]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Duo Admin API users with offset pagination.
     - id: groups
       type: entity_family
       title: "Groups"
       families: [groups]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, access_review]
+    - id: administrators
+      type: entity_family
+      title: "Administrators"
+      families: [administrators]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, access_review]
+    - id: mfa_factors
+      type: entity_family
+      title: "MFA Factors"
+      families: [phones, hardware_tokens, webauthn_credentials, bypass_codes]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, access_review]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads phones, hardware tokens, WebAuthn credentials, and bypass code metadata.
+    - id: endpoints
+      type: entity_family
+      title: "Endpoints"
+      families: [endpoints]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [device_posture, asset_inventory]
     - id: roles
       type: lifecycle_state
       title: "Roles"
       families: [roles]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_domains: [security_operations, identity_access]
     - id: applications
       type: entity_family
       title: "Applications"
       families: [applications]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_domains: [asset_inventory, identity_access]
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Activity Logs"
       families: [audit_events]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+    - id: authentication_logs
+      type: audit_event
+      title: "Authentication Logs"
+      families: [authentication_logs]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, groups, administrators, phones, hardware_tokens, webauthn_credentials, bypass_codes, endpoints, applications, audit_events, authentication_logs]
+      support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - Uses Duo offset and next_offset metadata cursors. Log families require mintime and maxtime query windows.
 event_contracts:
   - kind: duo_security.users
     schema_ref: duo_security/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, user_id]
+    required_payload_fields: [user_id]
   - kind: duo_security.groups
     schema_ref: duo_security/groups/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, group_id]
+    required_payload_fields: [group_id]
+  - kind: duo_security.administrators
+    schema_ref: duo_security/administrators/v1
+    required_attributes: [tenant_id, source_event_id, user_id]
+    required_payload_fields: [admin_id]
+  - kind: duo_security.phones
+    schema_ref: duo_security/phones/v1
+    required_attributes: [tenant_id, source_event_id, phone_id]
+    required_payload_fields: [phone_id]
+  - kind: duo_security.hardware_tokens
+    schema_ref: duo_security/hardware_tokens/v1
+    required_attributes: [tenant_id, source_event_id, token_id]
+    required_payload_fields: [token_id]
+  - kind: duo_security.webauthn_credentials
+    schema_ref: duo_security/webauthn_credentials/v1
+    required_attributes: [tenant_id, source_event_id, credential_id]
+    required_payload_fields: [webauthnkey]
+  - kind: duo_security.bypass_codes
+    schema_ref: duo_security/bypass_codes/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, user_id]
+    required_payload_fields: [user_id]
+  - kind: duo_security.endpoints
+    schema_ref: duo_security/endpoints/v1
+    required_attributes: [tenant_id, source_event_id, endpoint_id]
+    required_payload_fields: [epkey]
   - kind: duo_security.roles
     schema_ref: duo_security/roles/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, policy_id, policy_name]
+    required_payload_fields: [role_id]
   - kind: duo_security.applications
     schema_ref: duo_security/applications/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, resource_urn, resource_type, resource_id]
+    required_payload_fields: [integration_key]
   - kind: duo_security.audit_events
     schema_ref: duo_security/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, event_type, actor_id]
+    required_payload_fields: [txid]
+  - kind: duo_security.authentication_logs
+    schema_ref: duo_security/authentication_logs/v1
+    required_attributes: [tenant_id, source_event_id, event_type, actor_id]
+    required_payload_fields: [txid]

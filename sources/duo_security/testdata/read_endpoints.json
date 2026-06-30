@@ -1,0 +1,36 @@
+[
+  {
+    "id": "duo_security-endpoint-DENDPOINT1",
+    "tenant_id": "tenant",
+    "source_id": "duo_security",
+    "kind": "duo_security.endpoints",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "duo_security/endpoints/v1",
+    "payload": {
+      "epkey": "DENDPOINT1",
+      "hostname": "macbook-1",
+      "os": "macOS",
+      "os_version": "15.0",
+      "browser": "Chrome",
+      "disk_encryption_status": "encrypted"
+    },
+    "attributes": {
+      "browser": "Chrome",
+      "disk_encryption_status": "encrypted",
+      "endpoint_id": "DENDPOINT1",
+      "external_id": "DENDPOINT1",
+      "family": "endpoints",
+      "hostname": "macbook-1",
+      "os": "macOS",
+      "os_version": "15.0",
+      "provider": "duo_security",
+      "record_class": "endpoint_device",
+      "resource_type": "endpoint",
+      "schema": "endpoints",
+      "source_event_id": "DENDPOINT1",
+      "source_provider": "duo_security",
+      "source_system": "duo_security",
+      "tenant_id": "tenant"
+    }
+  }
+]

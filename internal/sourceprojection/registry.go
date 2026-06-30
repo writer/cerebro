@@ -2418,11 +2418,18 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"dropbox_sign.workspaces":   dropboxSignWorkspacesProjections,
 
 	// duo_security generated projectors (sourcegen promotion)
-	"duo_security.applications": duoSecurityApplicationsProjections,
-	"duo_security.audit_events": duoSecurityAuditEventsProjections,
-	"duo_security.groups":       duoSecurityGroupsProjections,
-	"duo_security.roles":        duoSecurityRolesProjections,
-	"duo_security.users":        duoSecurityUsersProjections,
+	"duo_security.applications":         duoSecurityApplicationsProjections,
+	"duo_security.administrators":       duoSecurityAdministratorsProjections,
+	"duo_security.authentication_logs":  duoSecurityAuthenticationLogsProjections,
+	"duo_security.audit_events":         duoSecurityAuditEventsProjections,
+	"duo_security.bypass_codes":         duoSecurityBypassCodesProjections,
+	"duo_security.endpoints":            duoSecurityEndpointsProjections,
+	"duo_security.groups":               duoSecurityGroupsProjections,
+	"duo_security.hardware_tokens":      duoSecurityHardwareTokensProjections,
+	"duo_security.phones":               duoSecurityPhonesProjections,
+	"duo_security.roles":                duoSecurityRolesProjections,
+	"duo_security.users":                duoSecurityUsersProjections,
+	"duo_security.webauthn_credentials": duoSecurityWebAuthnCredentialsProjections,
 
 	// dynamics_365_sales generated projectors (sourcegen promotion)
 	"dynamics_365_sales.accounts":     dynamics365SalesAccountsProjections,

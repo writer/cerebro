@@ -1,0 +1,44 @@
+[
+  {
+    "id": "duo_security-authentication-auth-tx-1",
+    "tenant_id": "tenant",
+    "source_id": "duo_security",
+    "kind": "duo_security.authentication_logs",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "duo_security/authentication_logs/v1",
+    "payload": {
+      "txid": "auth-tx-1",
+      "event_type": "authentication",
+      "factor": "duo_push",
+      "result": "SUCCESS",
+      "isotimestamp": "2026-06-01T00:00:00Z",
+      "username": "user@example.test",
+      "email": "user@example.test",
+      "application": {
+        "key": "DIAPP1",
+        "name": "Admin API",
+        "type": "adminapi"
+      }
+    },
+    "attributes": {
+      "actor_email": "user@example.test",
+      "actor_id": "user@example.test",
+      "actor_name": "user@example.test",
+      "event_type": "authentication",
+      "external_id": "auth-tx-1",
+      "family": "authentication_logs",
+      "id": "auth-tx-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "duo_security",
+      "record_class": "audit_event",
+      "resource_id": "DIAPP1",
+      "resource_name": "Admin API",
+      "resource_type": "adminapi",
+      "schema": "authentication_logs",
+      "source_event_id": "auth-tx-1",
+      "source_provider": "duo_security",
+      "source_system": "duo_security",
+      "tenant_id": "tenant"
+    }
+  }
+]

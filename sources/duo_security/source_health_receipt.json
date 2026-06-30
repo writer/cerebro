@@ -1,6 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
+  "adapter_health_path": "/admin/v1/users",
+  "auth_model": "duo_hmac",
   "evidence_cas_reference_kind": "duo_security.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

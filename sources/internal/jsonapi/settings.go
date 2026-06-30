@@ -47,6 +47,7 @@ type requestSettings struct {
 	headers          map[string]string
 	configAttributes map[string]string
 	query            url.Values
+	jsonBody         map[string]any
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -78,7 +79,8 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
 	}
-	if rawAuthModel := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "auth_model")); rawAuthModel != "" {
+	rawAuthModel := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "auth_model"))
+	if rawAuthModel != "" {
 		authModel := normalizedAuthModel(rawAuthModel)
 		if !authModelAllowed(authModel, s.options.ConfigurableAuthModels) {
 			return resolved, fmt.Errorf("%s auth_model %q is not supported", s.options.SourceID, rawAuthModel)
@@ -88,6 +90,11 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	family, ok := familyByName(s.options, resolved.family)
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
+	}
+	if rawAuthModel == "" {
+		if familyAuthModel := normalizedAuthModel(family.AuthModel); familyAuthModel != "" {
+			resolved.authModel = familyAuthModel
+		}
 	}
 	resolved.familyMethod = strings.TrimSpace(family.Method)
 	if s.options.RequireTenantID && resolved.tenantID == "" {
@@ -170,6 +177,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	resolved.request.configAttributes = attributesFromConfig(cfg, family.Config.ConfigAttributes)
 	resolved.request.query = queryFromConfig(cfg, family.Config.ConfigQuery)
+	resolved.request.jsonBody = jsonBodyFromConfig(cfg, family.Config.ConfigJSONBody)
 	return resolved, nil
 }
 
@@ -213,6 +221,27 @@ func attributesFromConfig(cfg sourcecdk.Config, configAttributes map[string]stri
 		return nil
 	}
 	return attrs
+}
+
+func jsonBodyFromConfig(cfg sourcecdk.Config, configBody map[string]string) map[string]any {
+	if len(configBody) == 0 {
+		return nil
+	}
+	body := map[string]any{}
+	for field, configKey := range configBody {
+		field = strings.TrimSpace(field)
+		configKey = strings.TrimSpace(configKey)
+		if field == "" || configKey == "" {
+			continue
+		}
+		if value := strings.TrimSpace(sourcecdk.ConfigValue(cfg, configKey)); value != "" {
+			body[field] = value
+		}
+	}
+	if len(body) == 0 {
+		return nil
+	}
+	return body
 }
 
 func cloneStrings(values []string) []string {

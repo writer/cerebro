@@ -3,12 +3,13 @@ package jsonapi
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -436,6 +437,28 @@ func TestReadUsesBasicAuth(t *testing.T) {
 	}
 }
 
+func TestReadUsesRawTokenAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "api-token-1" {
+			t.Fatalf("Authorization = %q, want raw token", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
+	}))
+	defer server.Close()
+
+	source := newCustomAuthTestSource(t, server.URL, "raw_token")
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"api_token": "api-token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+}
+
 func TestDuoHMACAuthLowercasesCanonicalHost(t *testing.T) {
 	request, err := http.NewRequest(http.MethodGet, "https://API-ABC.DUOSECURITY.COM/admin/v1/users?limit=1", nil)
 	if err != nil {
@@ -473,10 +496,151 @@ func TestDuoHMACAuthLowercasesCanonicalHost(t *testing.T) {
 		"/admin/v1/users",
 		"limit=1",
 	}, "\n")
-	mac := hmac.New(sha1.New, []byte("deadbeefsecret"))
+	mac := hmac.New(sha512.New, []byte("deadbeefsecret"))
 	_, _ = mac.Write([]byte(canonical))
 	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
 		t.Fatalf("Duo HMAC signature = %q, want %q", signature, want)
+	}
+}
+
+func TestDuoHMACV5AuthIncludesBodyAndAdditionalHeaderHashes(t *testing.T) {
+	request, err := http.NewRequest(http.MethodGet, "https://api-abc.duosecurity.com/admin/v3/integrations?limit=1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	err = setDuoHMACV5Auth(request, settings{
+		clientID:     "DIXXXXXXXXXXXXXXXXXX",
+		clientSecret: "deadbeefsecret",
+	}, "duo")
+	if err != nil {
+		t.Fatalf("setDuoHMACV5Auth: %v", err)
+	}
+	date := request.Header.Get("Date")
+	if date == "" {
+		t.Fatal("Date header is empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(request.Header.Get("Authorization"), "Basic "))
+	if err != nil {
+		t.Fatalf("decode Authorization: %v", err)
+	}
+	_, signature, ok := strings.Cut(string(decoded), ":")
+	if !ok {
+		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
+	}
+	canonical := strings.Join([]string{
+		date,
+		http.MethodGet,
+		"api-abc.duosecurity.com",
+		"/admin/v3/integrations",
+		"limit=1",
+		hashSHA512Hex(""),
+		hashSHA512Hex(""),
+	}, "\n")
+	mac := hmac.New(sha512.New, []byte("deadbeefsecret"))
+	_, _ = mac.Write([]byte(canonical))
+	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
+		t.Fatalf("Duo HMAC v5 signature = %q, want %q", signature, want)
+	}
+}
+
+func TestParseListResponseSupportsNestedListKey(t *testing.T) {
+	items, next, err := parseListResponse(Family{
+		Name:           "audit_events",
+		ListKeys:       []string{"response.items"},
+		CursorParam:    "next_offset",
+		NextCursorKeys: []string{"response.metadata.next_offset"},
+	}, json.RawMessage(`{"response":{"items":[{"id":"event-1"}],"metadata":{"next_offset":["123","txid"]}}}`))
+	if err != nil {
+		t.Fatalf("parseListResponse() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1", len(items))
+	}
+	if next != "123,txid" {
+		t.Fatalf("next = %q, want 123,txid", next)
+	}
+}
+
+func TestReadPostsConfiguredJSONBodyAndHeaderCursor(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("Content-Type = %q, want application/json", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if got := fmt.Sprint(body["start_time"]); got != "2026-06-01T00:00:00Z" {
+			t.Fatalf("start_time = %q", got)
+		}
+		if got := fmt.Sprint(body["limit"]); got != "1" {
+			t.Fatalf("limit = %q", got)
+		}
+		switch requests {
+		case 1:
+			if _, ok := body["search_after"]; ok {
+				t.Fatalf("first request search_after = %#v", body["search_after"])
+			}
+			w.Header().Set("X-Result-Count", "1")
+			w.Header().Set("X-Limit", "1")
+			w.Header().Set("X-Search_after", `[123,"event-1"]`)
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "event-1"}})
+		case 2:
+			got, _ := json.Marshal(body["search_after"])
+			if string(got) != `[123,"event-1"]` {
+				t.Fatalf("second request search_after = %s", got)
+			}
+			w.Header().Set("X-Result-Count", "1")
+			w.Header().Set("X-Limit", "2")
+			w.Header().Set("X-Search_after", `[456,"event-2"]`)
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "event-2"}})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "events",
+		Path:           "/events",
+		Method:         http.MethodPost,
+		URNKind:        "runtime_events",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"limit"},
+		Config: FamilyConfig{
+			StaticJSONBody:      map[string]any{"service": []string{"all"}},
+			ConfigJSONBody:      map[string]string{"start_time": "start_time"},
+			JSONBodyLimitField:  "limit",
+			JSONBodyCursorField: "search_after",
+			HeaderCursor:        "X-Search_after",
+			HeaderResultCount:   "X-Result-Count",
+			HeaderLimit:         "X-Limit",
+		},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"start_time": "2026-06-01T00:00:00Z",
+		"per_page":   "1",
+		"token":      "token-1",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != `[123,"event-1"]` {
+		t.Fatalf("first cursor = %q", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second cursor = %q, want nil", second.NextCursor.GetOpaque())
 	}
 }
 
@@ -1170,6 +1334,56 @@ func TestReadUsesLinkHeaderCursor(t *testing.T) {
 	}
 }
 
+func TestReadUsesFullLinkHeaderNextURLWhenCursorParamUnset(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		switch r.URL.Query().Get("id_after") {
+		case "":
+			w.Header().Set("Link", `<http://`+r.Host+`/items?id_after=100&per_page=1&pagination=keyset>; rel="next"`)
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-1"}})
+		case "100":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-2"}})
+		default:
+			t.Fatalf("id_after = %q, want empty or 100", r.URL.Query().Get("id_after"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "item",
+		Path:           "/items",
+		LinkHeader:     "Link",
+		URNKind:        "item",
+		IDKeys:         []string{"id"},
+		PageSizeParams: []string{"per_page"},
+		Config:         FamilyConfig{StaticQuery: map[string]string{"pagination": "keyset"}},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	wantNext := "http://" + requests[0].Host + "/items?id_after=100&per_page=1&pagination=keyset"
+	if first.NextCursor.GetOpaque() != wantNext {
+		t.Fatalf("first NextCursor = %q, want %q", first.NextCursor.GetOpaque(), wantNext)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "1",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("id_after") != "100" || requests[1].URL.Query().Get("pagination") != "keyset" {
+		t.Fatalf("requests = %#v, want second request to follow full Link URL", requests)
+	}
+}
+
 func TestReadUsesNextURLCursor(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1523,19 +1737,15 @@ func TestReadKeepsSameRecordIDDifferentDevices(t *testing.T) {
 	}
 }
 
-func TestConfigurableBearerAuthUsesAuthorizationHeader(t *testing.T) {
+func TestConfigurableBearerAuthUsesConfiguredTokenHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Header.Get("Authorization") {
-		case "":
-			if got := r.Header.Get("x-api-key"); got != "admin-key" {
-				t.Fatalf("x-api-key = %q, want admin-key", got)
-			}
-		case "Bearer oauth-value":
-			if got := r.Header.Get("x-api-key"); got != "" {
-				t.Fatalf("x-api-key = %q, want empty for bearer auth", got)
-			}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want empty with configured token header", got)
+		}
+		switch r.Header.Get("x-api-key") {
+		case "admin-key", "oauth-value":
 		default:
-			t.Fatalf("Authorization = %q, want empty or Bearer oauth-value", r.Header.Get("Authorization"))
+			t.Fatalf("x-api-key = %q, want admin-key or oauth-value", r.Header.Get("x-api-key"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "device-1"}}})
 	}))

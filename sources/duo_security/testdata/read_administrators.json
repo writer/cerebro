@@ -1,0 +1,37 @@
+[
+  {
+    "id": "duo_security-administrator-DADMIN1",
+    "tenant_id": "tenant",
+    "source_id": "duo_security",
+    "kind": "duo_security.administrators",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "duo_security/administrators/v1",
+    "payload": {
+      "admin_id": "DADMIN1",
+      "name": "Admin One",
+      "email": "admin@example.test",
+      "role": "Owner",
+      "status": "active"
+    },
+    "attributes": {
+      "display_name": "Admin One",
+      "email": "admin@example.test",
+      "external_id": "DADMIN1",
+      "family": "administrators",
+      "login": "admin@example.test",
+      "provider": "duo_security",
+      "record_class": "identity_user",
+      "resource_id": "DADMIN1",
+      "resource_name": "Admin One",
+      "resource_type": "duo_administrator",
+      "role": "Owner",
+      "schema": "administrators",
+      "source_event_id": "DADMIN1",
+      "source_provider": "duo_security",
+      "source_system": "duo_security",
+      "status": "active",
+      "tenant_id": "tenant",
+      "user_id": "DADMIN1"
+    }
+  }
+]

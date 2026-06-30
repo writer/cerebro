@@ -15,6 +15,30 @@ func duoSecurityGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return identityGroupProjections(event, identityProjectionProfile{Provider: "duo_security"})
 }
 
+func duoSecurityAdministratorsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, identityProjectionProfile{Provider: "duo_security"})
+}
+
+func duoSecurityPhonesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return duoPhoneProjections(event)
+}
+
+func duoSecurityHardwareTokensProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return duoTokenProjections(event)
+}
+
+func duoSecurityWebAuthnCredentialsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return duoWebAuthnCredentialProjections(event)
+}
+
+func duoSecurityBypassCodesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return duoSecurityGenericAssetProjections(event)
+}
+
+func duoSecurityEndpointsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return duoEndpointProjections(event)
+}
+
 func duoSecurityRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return duoSecurityGenericPolicyProjections(event)
 }
@@ -24,6 +48,10 @@ func duoSecurityApplicationsProjections(event *cerebrov1.EventEnvelope) ([]*port
 }
 
 func duoSecurityAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "duo_security"})
+}
+
+func duoSecurityAuthenticationLogsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAuditProjections(event, identityProjectionProfile{Provider: "duo_security"})
 }
 
