@@ -1192,6 +1192,98 @@ export type FindingRiskFactor = {
   weight?: number;
 };
 
+export type GRCAccessEvidenceConfidence = {
+  level?: string;
+  reasons?: string[];
+  [key: string]: unknown;
+};
+
+export type GRCAccessEvidenceItem = {
+  access_target_label?: string;
+  access_target_type?: string;
+  access_target_urn?: string;
+  assignment_kind?: string;
+  attributes?: Record<string, string>;
+  capability_label?: string;
+  capability_type?: string;
+  capability_urn?: string;
+  changed_during_period?: boolean;
+  classification?: string[];
+  entitlement_label?: string;
+  entitlement_type?: string;
+  entitlement_urn?: string;
+  event_ids?: string[];
+  evidence_use?: string;
+  graph_path_ids?: string[];
+  graph_root_urns?: string[];
+  id?: string;
+  mediator_label?: string;
+  mediator_type?: string;
+  mediator_urn?: string;
+  privileged?: boolean;
+  runtime_ids?: string[];
+  sensitive?: boolean;
+  source_citations?: GRCAccessSourceCitation[];
+  source_ids?: string[];
+  [key: string]: unknown;
+};
+
+export type GRCAccessEvidenceSubject = {
+  access_items?: GRCAccessEvidenceItem[];
+  account_status?: string;
+  change_summary?: string[];
+  citations?: GRCEvidenceCitations;
+  confidence?: GRCAccessEvidenceConfidence;
+  evidence_use?: string;
+  exception_state?: string;
+  freshness?: GRCAccessSourceFreshness[];
+  id?: string;
+  included_because?: string[];
+  lifecycle_state?: string;
+  manual_review_only_item_ids?: string[];
+  manual_review_state?: string;
+  mfa_posture?: string;
+  missing_facts?: string[];
+  operating_effectiveness_item_ids?: string[];
+  overclaim_guards?: string[];
+  owner_urn?: string;
+  period_end?: string;
+  period_start?: string;
+  policy_citations?: string[];
+  principal_label?: string;
+  principal_type?: string;
+  principal_urn?: string;
+  review_context_item_ids?: string[];
+  reviewer_urn?: string;
+  risk_signals?: string[];
+  source_citations?: GRCAccessSourceCitation[];
+  source_freshness?: GRCAccessSourceFreshness[];
+  subject_label?: string;
+  subject_type?: string;
+  subject_urn?: string;
+  supported_controls?: string[];
+  tenant_id?: string;
+  unsupported_claims?: string[];
+  [key: string]: unknown;
+};
+
+export type GRCAccessSourceCitation = {
+  event_id?: string;
+  graph_path_id?: string;
+  observed_at?: string;
+  runtime_id?: string;
+  source_id?: string;
+  [key: string]: unknown;
+};
+
+export type GRCAccessSourceFreshness = {
+  observed_at?: string;
+  runtime_id?: string;
+  source_id?: string;
+  status?: string;
+  [key: string]: unknown;
+};
+
 export type GRCAskRequest = {
   history?: { content?: string; role?: "user" | "assistant" }[];
   model?: string;
@@ -1463,6 +1555,7 @@ export type GRCEvidencePacket = {
 };
 
 export type GRCEvidencePacketsResponse = {
+  access_evidence_subjects?: GRCAccessEvidenceSubject[];
   activity?: GRCEvidenceActivity[];
   assessment_scope?: GRCAssessmentScope;
   claim_records?: GRCClaimRecord[];
@@ -1485,9 +1578,25 @@ export type GRCEvidencePacketsResponse = {
   metadata?: GRCReportMetadata;
   program?: GRCAuditProgram;
   questionnaire_answers?: GRCQuestionnaireAnswer[];
+  reasoning_tasks?: GRCEvidenceReasoningTask[];
   resource_subjects?: GRCResourceSubject[];
   snapshot?: GRCAuditSnapshot;
   version?: string;
+  [key: string]: unknown;
+};
+
+export type GRCEvidenceReasoningTask = {
+  answer_scope?: string;
+  attributes?: Record<string, string>;
+  citation_event_ids?: string[];
+  citation_graph_path_ids?: string[];
+  citation_graph_root_urns?: string[];
+  control_ids?: string[];
+  guards?: string[];
+  id?: string;
+  policy_citations?: string[];
+  question?: string;
+  subject_id?: string;
   [key: string]: unknown;
 };
 

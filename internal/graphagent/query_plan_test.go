@@ -568,6 +568,7 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing.T) {
 	for _, question := range []string{
 		"Show source evidence for access control findings",
+		"Show source evidence for Okta access findings",
 		"What evidence supports this control gap?",
 		"Do we have control evidence for access management?",
 		"List controls with evidence attached",
@@ -588,6 +589,7 @@ func TestQuestionnaireFastPathRequiresResolvedTopic(t *testing.T) {
 	for _, question := range []string{
 		"Answer this security questionnaire item",
 		"Can we answer this qauto item?",
+		"Show source evidence for Okta access findings",
 	} {
 		if result, _, ok := deterministicFastPathConversion(AskRequest{TenantID: "writer", Question: question}, true); ok {
 			t.Fatalf("deterministicFastPathConversion(%q) = %#v, want LLM planning fallback", question, result)

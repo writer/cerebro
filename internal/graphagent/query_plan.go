@@ -272,6 +272,9 @@ func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
 func questionnaireEvidenceTopic(question string) string {
 	lower := strings.ToLower(strings.ReplaceAll(question, "-", " "))
 	trimmed := strings.TrimSpace(lower)
+	if (containsWord(lower, "finding") || containsWord(lower, "findings")) && !questionnaireAnswerContext(lower) {
+		return ""
+	}
 	oktaContext := questionnaireAnswerContext(lower) ||
 		strings.Contains(lower, "evidence") ||
 		strings.HasPrefix(trimmed, "does ") ||
