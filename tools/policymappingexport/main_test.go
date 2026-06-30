@@ -457,7 +457,7 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	files := repoGeneratedFiles(t)
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4422")
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4423")
 	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "346")
 	assertOverviewMetric(t, overviewRows, "detections source-backed", "419")
 	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "830")
