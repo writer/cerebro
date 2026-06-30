@@ -205666,6 +205666,75 @@
         },
         {
           "source_id": "okta",
+          "dimension_id": "access_review_operations",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "access_certification",
+            "access_review",
+            "exception",
+            "reviewer_decision"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "dormant_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "reviewer_decision",
+            "stale_login"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -205751,6 +205820,41 @@
           "evidence_types": [
             "access_review",
             "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "external_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "external_user",
+            "partner_access",
+            "reviewer_decision",
+            "sponsor",
+            "third_party_access"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
           ],
           "control_domains": [
             "identity_access"
@@ -205865,119 +205969,6 @@
             "account",
             "active_account",
             "email",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "dormant_user",
-            "employee_record",
-            "last_seen",
-            "never_logged_in",
-            "personal_email",
-            "privileged_user",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
             "personal_email",
             "user"
           ],
@@ -206509,6 +206500,45 @@
           "evidence_types": [
             "access_review",
             "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "external_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "external_user",
+            "partner_access",
+            "reviewer_decision",
+            "sponsor",
+            "third_party_access"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
           ],
           "control_domains": [
             "identity_access"
@@ -207326,6 +207356,32 @@
       "source_coverage_refs": [
         {
           "source_id": "okta",
+          "dimension_id": "access_review_operations",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "access_certification",
+            "access_review",
+            "exception",
+            "reviewer_decision"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "applications",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -207566,21 +207622,21 @@
           ]
         },
         {
-          "source_id": "azure",
-          "dimension_id": "group_membership",
+          "source_id": "okta",
+          "dimension_id": "dormant_account_reviews",
           "dimension_type": "relationship",
-          "support_level": "supported",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "external_member",
-            "group_member",
-            "group_membership",
-            "membership"
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "reviewer_decision",
+            "stale_login"
           ],
           "evidence_types": [
             "access_review",
-            "identity_configuration",
-            "relationship_evidence"
+            "reviewer_attestation"
           ],
           "control_domains": [
             "identity_access"
@@ -207593,47 +207649,21 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "group_memberships",
+          "source_id": "okta",
+          "dimension_id": "external_account_reviews",
           "dimension_type": "relationship",
-          "support_level": "supported",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "external_member",
-            "group_member",
-            "membership",
-            "orphaned_membership"
+            "external_user",
+            "partner_access",
+            "reviewer_decision",
+            "sponsor",
+            "third_party_access"
           ],
           "evidence_types": [
             "access_review",
-            "identity_configuration",
-            "relationship_evidence"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "groups",
-          "dimension_type": "relationship",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "acl_group",
-            "group",
-            "membership"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "relationship_evidence"
+            "reviewer_attestation"
           ],
           "control_domains": [
             "identity_access"
@@ -211817,6 +211847,36 @@
         },
         {
           "source_id": "okta",
+          "dimension_id": "access_review_operations",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "access_certification",
+            "access_review",
+            "exception",
+            "reviewer_decision"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -211993,6 +212053,68 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "dormant_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "reviewer_decision",
+            "stale_login"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "external_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "external_user",
+            "partner_access",
+            "reviewer_decision",
+            "sponsor",
+            "third_party_access"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -212056,108 +212178,6 @@
             "identity_configuration"
           ],
           "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "google_workspace",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "email",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "dormant_user",
-            "employee_record",
-            "last_seen",
-            "never_logged_in",
-            "personal_email",
-            "privileged_user",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -212479,6 +212499,67 @@
         },
         {
           "source_id": "okta",
+          "dimension_id": "access_review_operations",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "access_certification",
+            "access_review",
+            "exception",
+            "reviewer_decision"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "dormant_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "reviewer_decision",
+            "stale_login"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -212646,6 +212727,37 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "external_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "external_user",
+            "partner_access",
+            "reviewer_decision",
+            "sponsor",
+            "third_party_access"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "group_membership",
           "dimension_type": "relationship",
@@ -212661,114 +212773,6 @@
             "access_review",
             "identity_configuration",
             "relationship_evidence"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "azure",
-          "dimension_id": "user",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "azure_ad_user",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "personal_email",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "cloud_configuration",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "google_workspace",
-          "dimension_id": "group_memberships",
-          "dimension_type": "relationship",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "external_member",
-            "group_member",
-            "membership",
-            "orphaned_membership"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "relationship_evidence"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "google_workspace",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "archived",
-            "dormant_user",
-            "employee_record",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
           ],
           "control_domains": [
             "identity_access"
