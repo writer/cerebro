@@ -155,6 +155,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/process", routeSurfacePlatformHTTP, questionnaireRuns.ProcessRun)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/assignments", routeSurfacePlatformHTTP, questionnaireRuns.AssignRun)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/questions", routeSurfacePlatformHTTP, questionnaireRuns.UpdateQuestion)
+	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/vendor-link", routeSurfacePlatformHTTP, questionnaireRuns.LinkVendor)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/decisions", routeSurfacePlatformHTTP, questionnaireRuns.DecideRun)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/comments", routeSurfacePlatformHTTP, questionnaireRuns.CommentRun)
 	registerHTTPRoute(mux, "GET /grc/inventory/categories", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.categories", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory), app.handleGRCInventoryCategories))

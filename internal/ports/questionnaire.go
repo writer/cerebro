@@ -35,12 +35,13 @@ const (
 	QuestionnaireDecisionRejected               = "rejected"
 	QuestionnaireDecisionNeedsInput             = "needs_input"
 
-	QuestionnaireEventCreated   = "created"
-	QuestionnaireEventProcessed = "processed"
-	QuestionnaireEventAssigned  = "assigned"
-	QuestionnaireEventUpdated   = "updated"
-	QuestionnaireEventDecided   = "decision_recorded"
-	QuestionnaireEventCommented = "commented"
+	QuestionnaireEventCreated      = "created"
+	QuestionnaireEventProcessed    = "processed"
+	QuestionnaireEventAssigned     = "assigned"
+	QuestionnaireEventUpdated      = "updated"
+	QuestionnaireEventDecided      = "decision_recorded"
+	QuestionnaireEventCommented    = "commented"
+	QuestionnaireEventVendorLinked = "vendor_linked"
 )
 
 var ErrQuestionnaireRunNotFound = errors.New("questionnaire run not found")

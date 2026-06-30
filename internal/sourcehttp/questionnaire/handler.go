@@ -232,6 +232,14 @@ type questionUpdateRequest struct {
 	ClearOwner     bool                         `json:"clear_owner,omitempty"`
 }
 
+type vendorLinkRequest struct {
+	TenantID  string `json:"tenant_id,omitempty"`
+	VendorURN string `json:"vendor_urn,omitempty"`
+	VendorID  string `json:"vendor_id,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Unlink    bool   `json:"unlink,omitempty"`
+}
+
 type processRequest struct {
 	TenantID string `json:"tenant_id,omitempty"`
 }
@@ -481,6 +489,49 @@ func (h *Handler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
 		ClearOwner:     request.ClearOwner,
 	}, now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventUpdated, h.actorID(r.Context()), "Questionnaire question updated", map[string]string{"question_id": strings.TrimSpace(request.QuestionID)}, now)
+	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.bumpReviewCache(r.Context(), saved.TenantID)
+	writeJSON(w, http.StatusOK, runResponse{Run: runViewFromRecord(saved, false), GeneratedAt: now})
+}
+
+func (h *Handler) LinkVendor(w http.ResponseWriter, r *http.Request) {
+	var request vendorLinkRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	record, _, err := h.runFromRequest(r.Context(), requestWithTenant(r, request.TenantID), request.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if !request.Unlink && strings.TrimSpace(request.VendorURN) == "" {
+		h.writeError(w, fmt.Errorf("%w: vendor_urn is required", ErrInvalidRequest))
+		return
+	}
+	now := time.Now().UTC()
+	actorID := h.actorID(r.Context())
+	updated := questionnairedomain.LinkVendor(*record, questionnairedomain.LinkVendorRequest{
+		VendorURN: request.VendorURN,
+		VendorID:  request.VendorID,
+		Reason:    request.Reason,
+		ActorID:   actorID,
+		Unlink:    request.Unlink,
+	}, now)
+	summary := "Questionnaire linked to vendor"
+	if request.Unlink {
+		summary = "Questionnaire vendor link removed"
+	}
+	event := questionnairedomain.Event(updated, ports.QuestionnaireEventVendorLinked, actorID, summary, map[string]string{
+		"vendor_urn": strings.TrimSpace(request.VendorURN),
+		"vendor_id":  strings.TrimSpace(request.VendorID),
+		"reason":     strings.TrimSpace(request.Reason),
+		"unlink":     strconv.FormatBool(request.Unlink),
+	}, now)
 	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
 	if err != nil {
 		h.writeError(w, err)

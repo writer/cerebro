@@ -2579,6 +2579,14 @@ export type GRCQuestionnaireTimelineEvent = {
   summary?: string;
 };
 
+export type GRCQuestionnaireVendorLinkRequest = {
+  reason?: string;
+  tenant_id?: string;
+  unlink?: boolean;
+  vendor_id?: string;
+  vendor_urn?: string;
+};
+
 export type GRCReportMetadata = Record<string, unknown>;
 
 export type GRCResourceSubject = {

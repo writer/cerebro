@@ -46,6 +46,14 @@ type UpdateQuestionRequest struct {
 	ClearControls  bool
 }
 
+type LinkVendorRequest struct {
+	VendorURN string
+	VendorID  string
+	Reason    string
+	ActorID   string
+	Unlink    bool
+}
+
 func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	direction := strings.TrimSpace(request.Direction)
@@ -95,6 +103,51 @@ func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRe
 		},
 	}
 	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventCreated, firstNonEmpty(record.OwnerID, record.AssignedTeam), "Questionnaire run created", nil, now))
+	return SummarizeRun(record)
+}
+
+func LinkVendor(record ports.QuestionnaireRunRecord, request LinkVendorRequest, now time.Time) ports.QuestionnaireRunRecord {
+	now = normalizeNow(now)
+	record.UpdatedAt = now
+	record.Attributes = copyStringMap(record.Attributes)
+	if record.Attributes == nil {
+		record.Attributes = map[string]string{}
+	}
+	attrs := map[string]string{
+		"reason": strings.TrimSpace(request.Reason),
+	}
+	if request.Unlink {
+		attrs["previous_vendor_urn"] = record.VendorURN
+		attrs["previous_vendor_id"] = record.VendorID
+		record.VendorURN = ""
+		record.VendorID = ""
+		delete(record.Attributes, "linked_vendor_urn")
+		delete(record.Attributes, "linked_vendor_id")
+		record.Attributes["vendor_link_status"] = "unlinked"
+		if reason := strings.TrimSpace(request.Reason); reason != "" {
+			record.Attributes["vendor_link_reason"] = reason
+		}
+		record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventVendorLinked, request.ActorID, "Vendor link removed", attrs, now))
+		return SummarizeRun(record)
+	}
+	vendorURN := strings.TrimSpace(request.VendorURN)
+	vendorID := strings.TrimSpace(request.VendorID)
+	record.Direction = ports.QuestionnaireDirectionVendorReview
+	record.VendorURN = vendorURN
+	record.VendorID = vendorID
+	record.Attributes["linked_vendor_urn"] = vendorURN
+	if vendorID != "" {
+		record.Attributes["linked_vendor_id"] = vendorID
+	} else {
+		delete(record.Attributes, "linked_vendor_id")
+	}
+	record.Attributes["vendor_link_status"] = "linked"
+	if reason := strings.TrimSpace(request.Reason); reason != "" {
+		record.Attributes["vendor_link_reason"] = reason
+	}
+	attrs["vendor_urn"] = vendorURN
+	attrs["vendor_id"] = vendorID
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventVendorLinked, request.ActorID, "Vendor linked", attrs, now))
 	return SummarizeRun(record)
 }
 

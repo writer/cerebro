@@ -3183,6 +3183,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
+  /grc/questionnaire-runs/{runID}/vendor-link:
+    post:
+      summary: Link questionnaire vendor
+      tags:
+        - GRC
+      parameters:
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCQuestionnaireVendorLinkRequest'
+      responses:
+        '200':
+          description: Vendor link updated on the questionnaire run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
   /grc/questionnaire-runs/{runID}/decisions:
     post:
       summary: Record questionnaire decision
@@ -12213,6 +12238,19 @@ components:
       properties:
         tenant_id:
           type: string
+    GRCQuestionnaireVendorLinkRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        vendor_urn:
+          type: string
+        vendor_id:
+          type: string
+        reason:
+          type: string
+        unlink:
+          type: boolean
     GRCQuestionnaireAssignmentRequest:
       type: object
       properties:
