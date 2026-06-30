@@ -126,7 +126,7 @@ func (s *Store) ListAppendLogDeadLetters(ctx context.Context, filter ports.Appen
 	if err != nil {
 		return nil, fmt.Errorf("list append log dead letters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var records []ports.AppendLogDeadLetter
 	for rows.Next() {
 		record, err := scanAppendLogDeadLetter(rows)
