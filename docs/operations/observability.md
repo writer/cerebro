@@ -138,6 +138,13 @@ safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
 | `cerebro.source_projection.duration` | `s` | `source_id`, `event_kind`, `status` | Projection latency distribution |
 | `cerebro.source_projection.records` | `{record}` | `source_id`, `event_kind`, `status`, `record.kind` | Graph/current-state records projected or deleted |
 | `cerebro.graph_action.recorded` | `{action}` | `provider`, `action`, `status`, `external_status`, `dry_run` | Provider-backed graph actions successfully recorded into the workflow/event path |
+| `cerebro.jetstream.publish.requests` | `{request}` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Append-log publish success and failure counts by bounded subject and error category |
+| `cerebro.jetstream.publish.retries` | `{retry}` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Publish retry attempts by bounded subject and error category |
+| `cerebro.jetstream.publish.duration` | `s` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Publish ACK latency by bounded subject and outcome |
+| `cerebro.jetstream.publish.max_attempts_exhausted` | `{request}` | `subject`, `operation`, `status`, `error_category`, `max_attempts_exhausted` | Publish requests that used every configured attempt |
+| `cerebro.jetstream.replay.requests` | `{request}` | `strategy`, `status`, `error_category`, `subject_filter_present` | Append-log replay request count by scan strategy and outcome |
+| `cerebro.jetstream.replay.duration` | `s` | `strategy`, `status`, `error_category`, `subject_filter_present` | Append-log replay latency by scan strategy and outcome |
+| `cerebro.jetstream.replay.records` | `{record}` | `strategy`, `status`, `error_category`, `subject_filter_present`, `record.kind` | Replay records scanned, decoded, matched, missing, or returned |
 
 Metric attributes deliberately exclude `tenant_id`, `runtime_id`, `resource_urn`,
 `evidence_id`, `request_id`, and `trace_id`. Those identifiers remain available
@@ -151,6 +158,15 @@ telemetry on `name="source_runtime.sync"`, `name="source_projection.project"`,
 or workflow `graph_action.recorded` events. Those diagnostic events carry
 `tenant_id`, `runtime_id`, finding IDs, and namespaced source/action fields for
 per-tenant triage without turning tenant IDs into metric dimensions.
+
+For JetStream append incidents, alert on `cerebro.jetstream.publish.requests`,
+`cerebro.jetstream.publish.retries`, and
+`cerebro.jetstream.publish.max_attempts_exhausted` grouped by `subject` and
+`error_category`. Then pivot to `name="jetstream.append"` or
+`name="jetstream.publish.retry_exhausted"` telemetry for `tenant_id`,
+`runtime_id`, phase, retry count, and trace context. The checked-in alert
+templates in [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql)
+include the dedicated `sec.findings.v1.recorded` + `no_response` page.
 
 ## Error Contract
 

@@ -269,6 +269,22 @@ ORDER BY P99(duration_ms) DESC
 ```
 
 ```sql
+-- Which append-log subjects are failing publish or exhausting retries?
+SELECT COUNT(*), MAX(messaging.jetstream.publish.retry_count)
+WHERE name = "jetstream.append" AND event.outcome = "failure"
+GROUP BY messaging.jetstream.subject, messaging.jetstream.error.category, messaging.jetstream.publish.max_attempts_exhausted
+```
+
+```sql
+-- Which job phase produced failed finding-record publishes?
+SELECT COUNT(*), P95(duration_ms)
+WHERE name = "jetstream.append"
+  AND event.outcome = "failure"
+  AND messaging.jetstream.subject = "sec.findings.v1.recorded"
+GROUP BY tenant_id, source_id, runtime_id, phase.last_name, messaging.jetstream.error.category
+```
+
+```sql
 -- Which runtime/source is falling behind?
 SELECT COUNT(*), P95(duration_ms)
 WHERE main = true AND source_runtime.sync.outcome != "success"
@@ -304,8 +320,9 @@ Use this when Cerebro "feels choked": slow requests, readiness flaps, source/run
 4. If graph-ingest-specific, pause broad rebuilds and keep read-only graph health checks running.
 5. If Postgres pool waits are high, reduce app/background concurrency before increasing replicas.
 6. If JetStream lag is growing, identify producers and consumers; scale consumers only if storage and downstream stores have room.
-7. If Redis/Valkey is down, estimate cache miss amplification into Postgres, LLM, or graph queries.
-8. If provider or LLM latency is the cause, reduce concurrency and use configured fallback/provider routing when available.
+7. If JetStream append publish failures are nonzero, group `cerebro.jetstream.publish.requests` by `subject`, `error_category`, and `max_attempts_exhausted`; inspect `jetstream.append` spans for the affected phase/runtime; check pending dead letters for the same subject before retrying broad work.
+8. If Redis/Valkey is down, estimate cache miss amplification into Postgres, LLM, or graph queries.
+9. If provider or LLM latency is the cause, reduce concurrency and use configured fallback/provider routing when available.
 
 ### Mitigation Choices
 
