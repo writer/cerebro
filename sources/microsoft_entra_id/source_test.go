@@ -37,6 +37,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 			if got := r.Form.Get("client_secret"); got != "client-secret" {
 				t.Fatalf("client_secret = %q", got)
 			}
+			if got := r.Form.Get("scope"); got != "https://graph.microsoft.com/.default" {
+				t.Fatalf("scope = %q", got)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
 			return
@@ -48,11 +51,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/v1.0/users" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("$top"); got == "" {
+			t.Fatalf("$top query is empty")
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{"id": "user-1", "displayName": "Record One", "mail": "record@example.test", "userPrincipalName": "record@example.test", "createdDateTime": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token_url": server.URL + "/oauth/token", "client_id": "client-id", "client_secret": "client-secret"}
@@ -74,7 +80,54 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if event.Kind != "microsoft_entra_id.users" {
 		t.Fatalf("kind = %q", event.Kind)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:runtime_users:user-1" {
+		t.Fatalf("resource_urn = %q", got)
+	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+}
+
+func TestNewFixtureReplaysMicrosoftEntraIDFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyUsers, familyGroups, familyAuditEvents} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family          string
+		kind            string
+		wantResourceURN string
+	}{
+		{family: familyUsers, kind: "microsoft_entra_id.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
+		{family: familyGroups, kind: "microsoft_entra_id.groups", wantResourceURN: "urn:cerebro:tenant:runtime_groups:group-1"},
+		{family: familyAuditEvents, kind: "microsoft_entra_id.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes["resource_urn"]; got != tt.wantResourceURN {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.wantResourceURN)
+			}
+		})
 	}
 }

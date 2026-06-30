@@ -1,10 +1,33 @@
 id: gitlab
 name: "GitLab"
 description: "Collects repositories, users, and audit events from GitLab and projects them into the Cerebro graph as repositories, users, and audit events for repository, build, deployment, and release context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://gitlab.com
+  references:
+    - https://github.com/gitlabhq/gitlabhq/blob/master/doc/api/openapi/openapi_v3.yaml
+    - https://docs.gitlab.com/api/rest/
+    - https://docs.gitlab.com/api/rest/authentication/
+  families:
+    - id: repositories
+      method: GET
+      path: /api/v4/projects
+    - id: users
+      method: GET
+      path: /api/v4/users
+    - id: audit_events
+      method: GET
+      path: /api/v4/audit_events
 emitted_kinds:
   - gitlab.repositories
   - gitlab.users
   - gitlab.audit_events
+runtime_families:
+  - repositories
+  - users
+  - audit_events
 kind_lifecycle:
   - kind: gitlab.repositories
     status: active

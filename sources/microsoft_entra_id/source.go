@@ -23,7 +23,7 @@ const (
 	defaultBaseURLTemplate     = "https://graph.microsoft.com"
 	tokenHeader                = ""
 	tokenScheme                = "Bearer"
-	oauthTokenURLTemplate      = "https://graph.microsoft.com/oauth/token" // #nosec G101 -- token endpoint URL template, not credential material.
+	oauthTokenURLTemplate      = "https://login.microsoftonline.com/${config.tenant_id}/oauth2/v2.0/token" // #nosec G101 -- token endpoint URL template, not credential material.
 	oauthScopeSeparator        = " "
 	oauthTokenExpirationBuffer = 60 * time.Second
 	familyUsers                = "users"
@@ -31,9 +31,9 @@ const (
 	familyAuditEvents          = "audit_events"
 )
 
-var templateKeys = []string{"client_id", "client_secret"}
+var templateKeys = []string{"client_id", "client_secret", "tenant_id"}
 
-var oauthScopes = []string{}
+var oauthScopes = []string{"https://graph.microsoft.com/.default"}
 
 var oauthTokenParams = map[string]string{}
 
@@ -66,46 +66,50 @@ func New() (*Source, error) {
 		AuthModel:       "oauth_client_credentials",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
-		OAuthTokenURL:   "https://graph.microsoft.com/oauth/token",
+		OAuthTokenURL:   oauthTokenURLTemplate,
+		OAuthScopes:     oauthScopes,
 		Families: []jsonapi.Family{
 			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "microsoft_entra_id_users",
-				IDKeys:           []string{"id", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "microsoft_entra_id"},
+				Name:                 familyUsers,
+				Path:                 "/v1.0/users",
+				URNKind:              "runtime_users",
+				IDKeys:               []string{"id", "userPrincipalName", "mail"},
+				NextCursorKeys:       []string{"@odata.nextLink"},
+				PageSizeParams:       []string{"$top"},
+				ListKeys:             []string{"value"},
+				TimestampKeys:        []string{"createdDateTime", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:           map[string]string{"created_at": "createdDateTime|created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "displayName|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "mail|userPrincipalName|email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "jobTitle|job_title|title|profile.title", "last_login_at": "signInActivity.lastSignInDateTime|last_login_at|last_login|last_seen_at", "login": "userPrincipalName|mail|login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at|createdDateTime", "primary_email": "mail|userPrincipalName|email|profile.email", "resource_id": "id|resource_id|metadata.resource_id", "resource_name": "displayName|userPrincipalName|mail|name|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "accountEnabled|status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				StaticAttributes:     map[string]string{"record_class": "identity_user", "resource_type": "identity_user", "schema": "users", "source_system": "microsoft_entra_id"},
+				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_users"},
+				IncrementalWatermark: true,
 			},
 			{
-				Name:             familyGroups,
-				Path:             "/v1/groups",
-				URNKind:          "microsoft_entra_id_groups",
-				IDKeys:           []string{"id", "group_id", "group_email", "email"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "groups", "source_system": "microsoft_entra_id"},
+				Name:                 familyGroups,
+				Path:                 "/v1.0/groups",
+				URNKind:              "runtime_groups",
+				IDKeys:               []string{"id", "mail", "displayName"},
+				NextCursorKeys:       []string{"@odata.nextLink"},
+				PageSizeParams:       []string{"$top"},
+				ListKeys:             []string{"value"},
+				TimestampKeys:        []string{"createdDateTime", "renewedDateTime", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:           map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "mail|group_email|email", "group_id": "id", "group_name": "displayName|group_name|name", "observed_at": "observed_at|updated_at|last_seen_at|createdDateTime", "resource_id": "id|resource_id|metadata.resource_id", "resource_name": "displayName|mail|name|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes:     map[string]string{"record_class": "identity_group", "resource_type": "identity_group", "schema": "groups", "source_system": "microsoft_entra_id"},
+				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_groups"},
+				IncrementalWatermark: true,
 			},
 			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit/events",
-				URNKind:          "microsoft_entra_id_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "microsoft_entra_id"},
+				Name:                 familyAuditEvents,
+				Path:                 "/v1.0/auditLogs/directoryAudits",
+				URNKind:              "runtime_audit_events",
+				IDKeys:               []string{"id", "event_id", "uuid", "request_id"},
+				NextCursorKeys:       []string{"@odata.nextLink"},
+				PageSizeParams:       []string{"$top"},
+				ListKeys:             []string{"value"},
+				TimestampKeys:        []string{"activityDateTime", "observed_at", "updated_at", "last_seen_at", "created_at"},
+				Attributes:           map[string]string{"actor_email": "initiatedBy.user.userPrincipalName|initiatedBy.user.email|actor_email|actor.email|email|user.email", "actor_id": "initiatedBy.user.id|initiatedBy.app.appId|actor_id|actor.id|actorId|user_id|user.id", "actor_name": "initiatedBy.user.displayName|initiatedBy.app.displayName|actor_name|actor.name|user.name", "event_type": "activityDisplayName|activity|operationType|category|event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "activityDateTime|observed_at|updated_at|last_seen_at", "resource_email": "targetResources.0.userPrincipalName|targetResources.userPrincipalName|resource_email|target_email|target.email", "resource_id": "targetResources.0.id|targetResources.id|resource_id|target_id|target.id|resource.id|object_id", "resource_name": "targetResources.0.displayName|targetResources.displayName|resource_name|target_name|target.name|resource.name|object_name", "resource_type": "targetResources.0.type|targetResources.type|resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes:     map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "microsoft_entra_id"},
+				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_audit_events"},
+				IncrementalWatermark: true,
 			},
 		},
 	})

@@ -1,9 +1,10 @@
-package okta
+package gitlab
 
 import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -11,14 +12,14 @@ import (
 //go:embed testdata/*.json
 var fixtureFS embed.FS
 
-// NewFixture constructs the deterministic Okta source used by tests.
+// NewFixture constructs the deterministic GitLab source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
 		return nil, err
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{"api_token", "authorization_server", "brand", "device_assurance", "event_hook", "inline_hook", "log_stream", familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyIDP, familyNetworkZone, familyPolicyRule, familyThreatInsight, familyTrustedOrigin, familyUser} {
+	for _, family := range []string{familyRepositories, familyUsers, familyAuditEvents} {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err
@@ -39,14 +40,23 @@ func NewFixture() (sourcecdk.Source, error) {
 }
 
 func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
-	_, err := parseSettings(cfg, false)
-	return err
+	if fixtureTenantID(cfg) == "" {
+		return fmt.Errorf("tenant_id is required")
+	}
+	return nil
 }
 
 func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
-	settings, err := parseSettings(cfg, false)
-	if err != nil {
-		return "", fmt.Errorf("parse okta fixture settings: %w", err)
+	if fixtureTenantID(cfg) == "" {
+		return "", fmt.Errorf("tenant_id is required")
 	}
-	return settings.family, nil
+	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
+	if family == "" {
+		return defaultFamily, nil
+	}
+	return family, nil
+}
+
+func fixtureTenantID(cfg sourcecdk.Config) string {
+	return strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
 }

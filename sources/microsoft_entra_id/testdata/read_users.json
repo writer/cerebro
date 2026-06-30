@@ -1,14 +1,39 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "microsoft-entra-id-user-user-1",
+    "tenant_id": "tenant",
+    "source_id": "microsoft_entra_id",
+    "kind": "microsoft_entra_id.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "microsoft_entra_id/users/v1",
+    "payload": {
+      "id": "user-1",
+      "displayName": "User One",
+      "mail": "user@example.test",
+      "userPrincipalName": "user@example.test",
+      "accountEnabled": true,
+      "createdDateTime": "2026-05-01T00:00:00Z"
+    },
+    "attributes": {
+      "display_name": "User One",
+      "email": "user@example.test",
+      "external_id": "user-1",
+      "family": "users",
+      "login": "user@example.test",
+      "primary_email": "user@example.test",
+      "provider": "microsoft_entra_id",
+      "record_class": "identity_user",
+      "resource_id": "user-1",
+      "resource_name": "User One",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:runtime_users:user-1",
+      "schema": "users",
+      "source_event_id": "user-1",
+      "source_provider": "microsoft_entra_id",
+      "source_system": "microsoft_entra_id",
+      "status": "true",
+      "tenant_id": "tenant",
+      "user_id": "user-1"
     }
-  ]
-}
+  }
+]

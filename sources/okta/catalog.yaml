@@ -1,6 +1,75 @@
 id: okta
 name: Okta
 description: Okta audit log, identity inventory, group, application, assignment, federation, network zone, trusted origin, control-plane asset, and admin role source.
+provider_api:
+  status: verified
+  transport: rest
+  auth: ssws_api_token
+  base_url: https://{yourOktaDomain}
+  references:
+    - https://github.com/okta/okta-management-openapi-spec/blob/master/dist/current/management-minimal.yaml
+    - https://developer.okta.com/docs/api/openapi/okta-management/guides/overview
+  families:
+    - id: audit
+      method: GET
+      path: /api/v1/logs
+    - id: admin_role
+      method: GET
+      path: /api/v1/users/{userId}/roles
+    - id: app_assignment
+      method: GET
+      path: /api/v1/apps/{appId}/users
+    - id: application
+      method: GET
+      path: /api/v1/apps
+    - id: api_token
+      method: GET
+      path: /api/v1/api-tokens
+    - id: authorization_server
+      method: GET
+      path: /api/v1/authorizationServers
+    - id: authenticator
+      method: GET
+      path: /api/v1/authenticators
+    - id: brand
+      method: GET
+      path: /api/v1/brands
+    - id: device_assurance
+      method: GET
+      path: /api/v1/device-assurances
+    - id: event_hook
+      method: GET
+      path: /api/v1/eventHooks
+    - id: group
+      method: GET
+      path: /api/v1/groups
+    - id: group_membership
+      method: GET
+      path: /api/v1/groups/{groupId}/users
+    - id: identity_provider
+      method: GET
+      path: /api/v1/idps
+    - id: inline_hook
+      method: GET
+      path: /api/v1/inlineHooks
+    - id: log_stream
+      method: GET
+      path: /api/v1/logStreams
+    - id: network_zone
+      method: GET
+      path: /api/v1/zones
+    - id: policy_rule
+      method: GET
+      path: /api/v1/policies/{policyId}/rules
+    - id: threat_insight
+      method: GET
+      path: /api/v1/threats/configuration
+    - id: trusted_origin
+      method: GET
+      path: /api/v1/trustedOrigins
+    - id: user
+      method: GET
+      path: /api/v1/users
 emitted_kinds:
   - okta.audit
   - okta.admin_role
@@ -22,6 +91,27 @@ emitted_kinds:
   - okta.threat_insight
   - okta.trusted_origin
   - okta.user
+runtime_families:
+  - audit
+  - admin_role
+  - app_assignment
+  - application
+  - api_token
+  - authorization_server
+  - authenticator
+  - brand
+  - device_assurance
+  - event_hook
+  - group
+  - group_membership
+  - identity_provider
+  - inline_hook
+  - log_stream
+  - network_zone
+  - policy_rule
+  - threat_insight
+  - trusted_origin
+  - user
 event_contracts:
   - kind: okta.audit
     schema_ref: okta/audit/v1
