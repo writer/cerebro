@@ -6,6 +6,11 @@ emitted_kinds:
   - redhat.package
   - redhat.systems_advisory
   - redhat.v1_package
+runtime_families:
+  - advisory
+  - package
+  - systems_advisory
+  - v1_package
 kind_lifecycle:
   - kind: redhat.advisory
     status: active

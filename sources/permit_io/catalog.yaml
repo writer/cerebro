@@ -7,6 +7,12 @@ emitted_kinds:
   - permit_io.roles
   - permit_io.applications
   - permit_io.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: permit_io.users
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - virustotal.assets
   - virustotal.findings
   - virustotal.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: virustotal.assets
     status: active

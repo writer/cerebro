@@ -1,0 +1,40 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "external_id": "external-id-1",
+      "family": "rate_limit",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policy_id": "policy-1",
+      "policy_name": "Policy One",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:runtime_rate_limit:record-1",
+      "source_event_id": "record-1",
+      "status": "active",
+      "tenant_id": "tenant"
+    },
+    "id": "anthropic-rate_limit-record-1",
+    "kind": "anthropic.rate_limit",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "policy_id": "policy-1",
+      "policy_name": "Policy One",
+      "resource_id": "record-1",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:runtime_rate_limit:record-1",
+      "status": "active",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "anthropic/rate_limit/v1",
+    "source_id": "anthropic",
+    "tenant_id": "tenant"
+  }
+]

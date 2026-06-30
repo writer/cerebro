@@ -6,6 +6,11 @@ emitted_kinds:
   - mistral.api_keys
   - mistral.audit_logs
   - mistral.usage_reports
+runtime_families:
+  - api_keys
+  - audit_logs
+  - usage_reports
+  - workspaces
 kind_lifecycle:
   - kind: mistral.workspaces
     status: active

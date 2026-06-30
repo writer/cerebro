@@ -7,6 +7,12 @@ emitted_kinds:
   - thoropass.vulnerabilities
   - thoropass.policies
   - thoropass.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: thoropass.assets
     status: active

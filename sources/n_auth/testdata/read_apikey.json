@@ -1,14 +1,36 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "apikey",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "apikey",
+      "resource_urn": "urn:cerebro:tenant:runtime_apikey:record-1",
+      "secret_id": "secret-id-1",
+      "secret_name": "Secret Name",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "n_auth-apikey-record-1",
+    "kind": "n_auth.apikey",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "apikey": "apikey-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/record-1",
       "id": "record-1",
       "name": "Record One",
       "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "resource_type": "apikey",
+      "resource_urn": "urn:cerebro:tenant:runtime_apikey:record-1",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "n_auth/apikey/v1",
+    "source_id": "n_auth",
+    "tenant_id": "tenant"
+  }
+]

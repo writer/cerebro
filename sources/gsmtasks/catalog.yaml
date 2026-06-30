@@ -14,6 +14,19 @@ emitted_kinds:
   - gsmtasks.email
   - gsmtasks.user
   - gsmtasks.notification_template
+runtime_families:
+  - account
+  - account_role
+  - client_role
+  - device
+  - email
+  - formrule
+  - notification
+  - notification_template
+  - task_event
+  - task_event_track
+  - user
+  - users_on_duty_log
 kind_lifecycle:
   - kind: gsmtasks.task_event
     status: active

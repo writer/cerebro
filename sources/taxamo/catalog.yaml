@@ -6,6 +6,11 @@ emitted_kinds:
   - taxamo.refund
   - taxamo.transaction
   - taxamo.vy
+runtime_families:
+  - payment
+  - refund
+  - transaction
+  - vy
 kind_lifecycle:
   - kind: taxamo.payment
     status: active

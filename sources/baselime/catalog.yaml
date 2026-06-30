@@ -7,6 +7,12 @@ emitted_kinds:
   - baselime.monitors
   - baselime.dashboards
   - baselime.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: baselime.alerts
     status: active

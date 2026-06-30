@@ -7,6 +7,12 @@ emitted_kinds:
   - sync_com.workspaces
   - sync_com.documents
   - sync_com.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: sync_com.users
     status: active

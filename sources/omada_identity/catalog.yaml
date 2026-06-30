@@ -7,6 +7,12 @@ emitted_kinds:
   - omada_identity.roles
   - omada_identity.applications
   - omada_identity.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: omada_identity.users
     status: active

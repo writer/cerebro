@@ -7,6 +7,12 @@ emitted_kinds:
   - dropbox_sign.workspaces
   - dropbox_sign.documents
   - dropbox_sign.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: dropbox_sign.users
     status: active

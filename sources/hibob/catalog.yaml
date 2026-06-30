@@ -7,6 +7,12 @@ emitted_kinds:
   - hibob.records
   - hibob.policies
   - hibob.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: hibob.users
     status: active

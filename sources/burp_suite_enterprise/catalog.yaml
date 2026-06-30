@@ -7,6 +7,12 @@ emitted_kinds:
   - burp_suite_enterprise.vulnerabilities
   - burp_suite_enterprise.policies
   - burp_suite_enterprise.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: burp_suite_enterprise.assets
     status: active

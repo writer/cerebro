@@ -7,6 +7,12 @@ emitted_kinds:
   - namely.records
   - namely.policies
   - namely.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: namely.users
     status: active

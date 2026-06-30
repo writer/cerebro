@@ -5,6 +5,10 @@ emitted_kinds:
   - orca.assets
   - orca.findings
   - orca.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: orca.assets
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - probely.event
   - probely.user
   - probely.framework
+runtime_families:
+  - event
+  - framework
+  - needs_attention_top
+  - user
 kind_lifecycle:
   - kind: probely.needs_attention_top
     status: active

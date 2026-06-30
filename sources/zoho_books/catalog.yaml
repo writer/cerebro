@@ -7,6 +7,12 @@ emitted_kinds:
   - zoho_books.records
   - zoho_books.policies
   - zoho_books.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: zoho_books.users
     status: active

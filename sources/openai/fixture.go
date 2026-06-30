@@ -1,0 +1,67 @@
+package openai
+
+import (
+	"context"
+	"embed"
+	"fmt"
+	"strings"
+
+	"github.com/writer/cerebro/internal/sourcecdk"
+)
+
+//go:embed testdata/*.json
+var fixtureFS embed.FS
+
+// NewFixture constructs the deterministic openai source used by tests.
+func NewFixture() (sourcecdk.Source, error) {
+	catalogBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
+	}
+	families := []sourcecdk.FixtureFamily{}
+	for _, family := range []string{"admin_api_key", "api_key", "audit_log", "certificate", "cost", "data_retention", "group", "group_role", "group_user", "invite", "project", "project_api_key", "project_certificate", "project_data_retention", "project_group", "project_group_role", "project_hosted_tool_permission", "project_model_permission", "project_rate_limit", "project_role", "project_service_account", "project_spend_alert", "project_user", "project_user_role", "role", "service_account", "spend_alert", "usage_audio_speech", "usage_audio_transcription", "usage_code_interpreter_session", "usage_completion", "usage_embedding", "usage_file_search_call", "usage_image", "usage_moderation", "usage_vector_store", "usage_web_search_call", "user", "user_role"} {
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
+		if err != nil {
+			return nil, err
+		}
+		events, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, "testdata/read_"+family+".json", catalog.EventContracts)
+		if err != nil {
+			return nil, err
+		}
+		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
+	}
+	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
+		Spec:          catalog.Spec,
+		Contracts:     catalog.EventContracts,
+		DefaultFamily: "user",
+		Check:         checkFixtureConfig,
+		ResolveFamily: resolveFixtureFamily,
+		Families:      families,
+	})
+}
+
+func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
+	if fixtureTenantID(cfg) == "" {
+		return fmt.Errorf("tenant_id is required")
+	}
+	return nil
+}
+
+func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
+	if fixtureTenantID(cfg) == "" {
+		return "", fmt.Errorf("tenant_id is required")
+	}
+	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
+	if family == "" {
+		return "user", nil
+	}
+	return family, nil
+}
+
+func fixtureTenantID(cfg sourcecdk.Config) string {
+	return strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id"))
+}

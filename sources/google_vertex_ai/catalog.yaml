@@ -8,6 +8,13 @@ emitted_kinds:
   - google_vertex_ai.batch_prediction_jobs
   - google_vertex_ai.indexes
   - google_vertex_ai.reasoning_engines
+runtime_families:
+  - batch_prediction_jobs
+  - custom_jobs
+  - endpoints
+  - indexes
+  - models
+  - reasoning_engines
 kind_lifecycle:
   - kind: google_vertex_ai.models
     status: active

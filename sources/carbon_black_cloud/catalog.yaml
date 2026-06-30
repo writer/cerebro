@@ -7,6 +7,12 @@ emitted_kinds:
   - carbon_black_cloud.vulnerabilities
   - carbon_black_cloud.policies
   - carbon_black_cloud.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: carbon_black_cloud.assets
     status: active

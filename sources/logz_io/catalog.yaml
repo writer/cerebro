@@ -7,6 +7,12 @@ emitted_kinds:
   - logz_io.monitors
   - logz_io.dashboards
   - logz_io.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: logz_io.alerts
     status: active

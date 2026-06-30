@@ -5,6 +5,10 @@ emitted_kinds:
   - hudsonrock.infostealers
   - hudsonrock.domains
   - hudsonrock.audit_events
+runtime_families:
+  - audit_events
+  - domains
+  - infostealers
 kind_lifecycle:
   - kind: hudsonrock.infostealers
     status: active

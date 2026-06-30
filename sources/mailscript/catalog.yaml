@@ -13,6 +13,18 @@ emitted_kinds:
   - mailscript.trigger
   - mailscript.verification
   - mailscript.verify
+runtime_families:
+  - action
+  - addresses
+  - domain
+  - input
+  - integration
+  - key
+  - trigger
+  - verification
+  - verify
+  - workflow
+  - workspace
 kind_lifecycle:
   - kind: mailscript.workspace
     status: active

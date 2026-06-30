@@ -6,6 +6,11 @@ emitted_kinds:
   - netlicensing.license
   - netlicensing.licensee
   - netlicensing.licensetemplate
+runtime_families:
+  - license
+  - licensee
+  - licensetemplate
+  - token
 kind_lifecycle:
   - kind: netlicensing.token
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - defectdojo_cloud.vulnerabilities
   - defectdojo_cloud.policies
   - defectdojo_cloud.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: defectdojo_cloud.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - simplemdm.roles
   - simplemdm.applications
   - simplemdm.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: simplemdm.users
     status: active

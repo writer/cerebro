@@ -6,6 +6,11 @@ emitted_kinds:
   - together_ai.api_keys
   - together_ai.usage_reports
   - together_ai.fine_tuning_jobs
+runtime_families:
+  - api_keys
+  - fine_tuning_jobs
+  - projects
+  - usage_reports
 kind_lifecycle:
   - kind: together_ai.projects
     status: active

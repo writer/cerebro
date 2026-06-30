@@ -6,6 +6,11 @@ emitted_kinds:
   - apache.role
   - apache.user
   - apache.permission
+runtime_families:
+  - eventlog
+  - permission
+  - role
+  - user
 kind_lifecycle:
   - kind: apache.eventlog
     status: active

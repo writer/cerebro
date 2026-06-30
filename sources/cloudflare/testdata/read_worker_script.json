@@ -1,0 +1,35 @@
+[
+  {
+    "attributes": {
+      "account_id": "account-id-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "worker_script",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "worker_script",
+      "resource_urn": "urn:cerebro:tenant:runtime_worker_script:record-1",
+      "script_id": "script-id-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-worker_script-record-1",
+    "kind": "cloudflare.worker_script",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "worker_script",
+      "resource_urn": "urn:cerebro:tenant:runtime_worker_script:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "cloudflare/worker_script/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

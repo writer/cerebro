@@ -5,6 +5,10 @@ emitted_kinds:
   - drata.users
   - drata.controls
   - drata.findings
+runtime_families:
+  - controls
+  - findings
+  - users
 kind_lifecycle:
   - kind: drata.users
     status: active

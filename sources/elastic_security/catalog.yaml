@@ -5,6 +5,10 @@ emitted_kinds:
   - elastic_security.audit_events
   - elastic_security.findings
   - elastic_security.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: elastic_security.audit_events
     status: active

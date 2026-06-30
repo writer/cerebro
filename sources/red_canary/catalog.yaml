@@ -7,6 +7,12 @@ emitted_kinds:
   - red_canary.vulnerabilities
   - red_canary.policies
   - red_canary.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: red_canary.assets
     status: active

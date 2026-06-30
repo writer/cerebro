@@ -5,6 +5,10 @@ emitted_kinds:
   - chargebee.subscriptions
   - chargebee.customers
   - chargebee.audit_events
+runtime_families:
+  - audit_events
+  - customers
+  - subscriptions
 kind_lifecycle:
   - kind: chargebee.subscriptions
     status: active

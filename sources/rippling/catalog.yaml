@@ -5,6 +5,10 @@ emitted_kinds:
   - rippling.users
   - rippling.devices
   - rippling.background_checks
+runtime_families:
+  - background_checks
+  - devices
+  - users
 kind_lifecycle:
   - kind: rippling.users
     status: active

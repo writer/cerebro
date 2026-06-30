@@ -7,6 +7,12 @@ emitted_kinds:
   - rapid7_insightidr.vulnerabilities
   - rapid7_insightidr.policies
   - rapid7_insightidr.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: rapid7_insightidr.assets
     status: active

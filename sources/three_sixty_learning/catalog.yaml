@@ -7,6 +7,12 @@ emitted_kinds:
   - three_sixty_learning.records
   - three_sixty_learning.policies
   - three_sixty_learning.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: three_sixty_learning.users
     status: active

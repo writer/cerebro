@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "networkgroup",
+      "group_id": "group-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "networkgroup",
+      "resource_urn": "urn:cerebro:tenant:runtime_networkgroup:record-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "clever_cloud-networkgroup-record-1",
+    "kind": "clever_cloud.networkgroup",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "networkgroup",
+      "resource_urn": "urn:cerebro:tenant:runtime_networkgroup:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "clever_cloud/networkgroup/v1",
+    "source_id": "clever_cloud",
+    "tenant_id": "tenant"
+  }
+]

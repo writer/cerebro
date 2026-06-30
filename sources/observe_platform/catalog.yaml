@@ -7,6 +7,12 @@ emitted_kinds:
   - observe_platform.monitors
   - observe_platform.dashboards
   - observe_platform.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: observe_platform.alerts
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - qualtrics.records
   - qualtrics.policies
   - qualtrics.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: qualtrics.users
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - svix.endpoint
   - svix.msg_endpoint
   - svix.msg
+runtime_families:
+  - endpoint
+  - event_type
+  - msg
+  - msg_endpoint
 kind_lifecycle:
   - kind: svix.event_type
     status: active

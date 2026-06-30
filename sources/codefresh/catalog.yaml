@@ -5,6 +5,10 @@ emitted_kinds:
   - codefresh.projects
   - codefresh.builds
   - codefresh.audit_events
+runtime_families:
+  - audit_events
+  - builds
+  - projects
 kind_lifecycle:
   - kind: codefresh.projects
     status: active

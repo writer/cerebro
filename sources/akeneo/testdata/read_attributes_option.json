@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "attributes_option",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "attributes_option",
+      "resource_urn": "urn:cerebro:tenant:runtime_attributes_option:record-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "akeneo-attributes_option-record-1",
+    "kind": "akeneo.attributes_option",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "code": "code-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "attributes_option",
+      "resource_urn": "urn:cerebro:tenant:runtime_attributes_option:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "akeneo/attributes_option/v1",
+    "source_id": "akeneo",
+    "tenant_id": "tenant"
+  }
+]

@@ -5,6 +5,10 @@ emitted_kinds:
   - google_secops_chronicle.audit_events
   - google_secops_chronicle.findings
   - google_secops_chronicle.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: google_secops_chronicle.audit_events
     status: active

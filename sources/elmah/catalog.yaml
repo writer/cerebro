@@ -6,6 +6,11 @@ emitted_kinds:
   - elmah.deployment
   - elmah.uptimecheck
   - elmah.message
+runtime_families:
+  - deployment
+  - log
+  - message
+  - uptimecheck
 kind_lifecycle:
   - kind: elmah.log
     status: active

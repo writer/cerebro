@@ -7,6 +7,12 @@ emitted_kinds:
   - runzero.vulnerabilities
   - runzero.policies
   - runzero.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: runzero.assets
     status: active

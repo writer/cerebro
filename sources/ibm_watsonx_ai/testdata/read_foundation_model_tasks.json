@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "foundation_model_tasks",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "foundation_model_tasks",
+      "resource_urn": "urn:cerebro:tenant:runtime_foundation_model_tasks:record-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "ibm_watsonx_ai-foundation_model_tasks-record-1",
+    "kind": "ibm_watsonx_ai.foundation_model_tasks",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "foundation_model_tasks",
+      "resource_urn": "urn:cerebro:tenant:runtime_foundation_model_tasks:record-1",
+      "task_id": "task-id-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "ibm_watsonx_ai/foundation_model_tasks/v1",
+    "source_id": "ibm_watsonx_ai",
+    "tenant_id": "tenant"
+  }
+]

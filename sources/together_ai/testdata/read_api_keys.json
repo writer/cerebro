@@ -1,0 +1,35 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "api_keys",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "api_keys",
+      "resource_urn": "urn:cerebro:tenant:runtime_api_keys:record-1",
+      "secret_id": "secret-id-1",
+      "secret_name": "Secret Name",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "together_ai-api_keys-record-1",
+    "kind": "together_ai.api_keys",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "api_keys",
+      "resource_urn": "urn:cerebro:tenant:runtime_api_keys:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "together_ai/api_keys/v1",
+    "source_id": "together_ai",
+    "tenant_id": "tenant"
+  }
+]

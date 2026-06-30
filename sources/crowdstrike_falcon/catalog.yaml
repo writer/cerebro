@@ -5,6 +5,10 @@ emitted_kinds:
   - crowdstrike_falcon.endpoint_devices
   - crowdstrike_falcon.findings
   - crowdstrike_falcon.vulnerabilities
+runtime_families:
+  - endpoint_devices
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: crowdstrike_falcon.endpoint_devices
     status: active

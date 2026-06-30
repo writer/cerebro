@@ -7,6 +7,12 @@ emitted_kinds:
   - manageengine_endpoint_central.roles
   - manageengine_endpoint_central.applications
   - manageengine_endpoint_central.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: manageengine_endpoint_central.users
     status: active

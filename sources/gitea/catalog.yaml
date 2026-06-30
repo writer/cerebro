@@ -6,6 +6,11 @@ emitted_kinds:
   - gitea.email
   - gitea.team
   - gitea.timeline
+runtime_families:
+  - email
+  - search
+  - team
+  - timeline
 kind_lifecycle:
   - kind: gitea.search
     status: active

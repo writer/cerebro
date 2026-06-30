@@ -7,6 +7,12 @@ emitted_kinds:
   - descope.roles
   - descope.applications
   - descope.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: descope.users
     status: active

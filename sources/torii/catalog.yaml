@@ -7,6 +7,12 @@ emitted_kinds:
   - torii.roles
   - torii.applications
   - torii.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: torii.users
     status: active

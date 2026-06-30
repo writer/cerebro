@@ -6,6 +6,11 @@ emitted_kinds:
   - influxdata.user
   - influxdata.secret
   - influxdata.dbrp
+runtime_families:
+  - dbrp
+  - log
+  - secret
+  - user
 kind_lifecycle:
   - kind: influxdata.log
     status: active

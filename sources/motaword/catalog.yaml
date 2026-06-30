@@ -14,6 +14,19 @@ emitted_kinds:
   - motaword.activities_comment
   - motaword.corporate_user
   - motaword.corporate_user_group
+runtime_families:
+  - activities_comment
+  - activity
+  - blog
+  - comment
+  - corporate_user
+  - corporate_user_group
+  - corporates_user
+  - permission
+  - projects_activity
+  - user
+  - user_group
+  - user_group_2
 kind_lifecycle:
   - kind: motaword.comment
     status: active

@@ -1,0 +1,41 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "findings",
+      "finding_id": "finding-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "finding",
+      "resource_urn": "urn:cerebro:tenant:runtime_findings:record-1",
+      "severity": "high",
+      "source_event_id": "record-1",
+      "status": "open",
+      "tenant_id": "tenant",
+      "title": "Finding One"
+    },
+    "id": "nucleus_security-findings-record-1",
+    "kind": "nucleus_security.findings",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "finding_id": "finding-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "finding",
+      "resource_urn": "urn:cerebro:tenant:runtime_findings:record-1",
+      "severity": "high",
+      "status": "open",
+      "title": "Finding One",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "nucleus_security/findings/v1",
+    "source_id": "nucleus_security",
+    "tenant_id": "tenant"
+  }
+]

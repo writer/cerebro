@@ -1,0 +1,46 @@
+sourceId: tailscale
+secretKeys:
+  - TAILSCALE_TOKEN
+runtimes:
+  - localId: device
+    config:
+      family: device
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: grant
+    config:
+      family: grant
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: group
+    config:
+      family: group
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: service
+    config:
+      family: service
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: tag
+    config:
+      family: tag
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: tailnet
+    config:
+      family: tailnet
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:TAILSCALE_TOKEN

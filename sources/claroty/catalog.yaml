@@ -7,6 +7,12 @@ emitted_kinds:
   - claroty.vulnerabilities
   - claroty.policies
   - claroty.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: claroty.assets
     status: active

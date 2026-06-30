@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "server_size",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "server_size",
+      "resource_urn": "urn:cerebro:tenant:runtime_server_size:record-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "illumidesk-server_size-record-1",
+    "kind": "illumidesk.server_size",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "server_size",
+      "resource_urn": "urn:cerebro:tenant:runtime_server_size:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "illumidesk/server_size/v1",
+    "source_id": "illumidesk",
+    "tenant_id": "tenant"
+  }
+]

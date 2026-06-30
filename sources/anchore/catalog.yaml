@@ -5,6 +5,10 @@ emitted_kinds:
   - anchore.assets
   - anchore.findings
   - anchore.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: anchore.assets
     status: active

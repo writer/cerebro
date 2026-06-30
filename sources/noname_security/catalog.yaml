@@ -7,6 +7,12 @@ emitted_kinds:
   - noname_security.vulnerabilities
   - noname_security.policies
   - noname_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: noname_security.assets
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - meraki.organization
   - meraki.merakiauthuser
   - meraki.accesspolicy
+runtime_families:
+  - accesspolicy
+  - eventtype
+  - merakiauthuser
+  - organization
 kind_lifecycle:
   - kind: meraki.eventtype
     status: active

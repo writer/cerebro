@@ -7,6 +7,12 @@ emitted_kinds:
   - jetbrains_space.repositories
   - jetbrains_space.deployments
   - jetbrains_space.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: jetbrains_space.users
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - cerebras.api_keys
   - cerebras.usage_reports
   - cerebras.model_deployments
+runtime_families:
+  - api_keys
+  - model_deployments
+  - projects
+  - usage_reports
 kind_lifecycle:
   - kind: cerebras.projects
     status: active
