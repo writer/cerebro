@@ -1,0 +1,20 @@
+{
+  "github.com/writer/cerebro/cmd/cerebro": 130,
+  "github.com/writer/cerebro/internal/bootstrap": 98,
+  "github.com/writer/cerebro/internal/compliance": 64,
+  "github.com/writer/cerebro/internal/connectorcatalog": 67,
+  "github.com/writer/cerebro/internal/evidencepackets": 26,
+  "github.com/writer/cerebro/internal/findings": 26,
+  "github.com/writer/cerebro/internal/graphactionapi": 12,
+  "github.com/writer/cerebro/internal/grccontrol": 12,
+  "github.com/writer/cerebro/internal/grcprogram": 11,
+  "github.com/writer/cerebro/internal/reports": 15,
+  "github.com/writer/cerebro/internal/sourceprojection": 43,
+  "github.com/writer/cerebro/internal/sourceregistry": 76,
+  "github.com/writer/cerebro/internal/statestore/postgres": 15,
+  "github.com/writer/cerebro/sources/aws": 14,
+  "github.com/writer/cerebro/sources/github": 10,
+  "github.com/writer/cerebro/tools/archtests": 27,
+  "github.com/writer/cerebro/tools/detectioncatalog": 122,
+  "github.com/writer/cerebro/tools/policymappingexport": 270
+}
