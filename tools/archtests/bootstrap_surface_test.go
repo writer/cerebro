@@ -81,8 +81,13 @@ import (
 // only cache invalidation and job result mapping while rule execution and run
 // state stay in internal/findings. Identity directory routes add only route
 // wiring while HTTP behavior lives in internal/sourcehttp/identitydirectory
-// and storage stays behind the IdentityDirectoryStore port.
-const bootstrapProductionGoLineBudget = 26714
+// and storage stays behind the IdentityDirectoryStore port. GRC vendor
+// questionnaire reviews add route/cache/error wiring plus signal and LLM
+// adapters; HTTP request handling lives in
+// internal/sourcehttp/grcvendorquestionnaire, questionnaire state shaping lives
+// in internal/grcvendor, and storage stays behind the
+// GRCVendorQuestionnaireReviewStore port.
+const bootstrapProductionGoLineBudget = 26878
 
 type bootstrapFileLineCount struct {
 	path  string
