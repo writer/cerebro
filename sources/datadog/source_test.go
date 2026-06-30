@@ -88,6 +88,90 @@ func TestSourceCheckReadAndCursor(t *testing.T) {
 	}
 }
 
+func TestSourceReadWithCheckpointUsesCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("DD-API-KEY"); got != "api-key" {
+			t.Fatalf("DD-API-KEY = %q", got)
+		}
+		if got := r.Header.Get("DD-APPLICATION-KEY"); got != "app-key" {
+			t.Fatalf("DD-APPLICATION-KEY = %q", got)
+		}
+		if r.URL.Path != "/api/v2/users" {
+			t.Fatalf("request path = %q, want /api/v2/users", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("page[size]"); got != "2" {
+			t.Fatalf("page[size] = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("page[cursor]"); got != "cursor-2" {
+			t.Fatalf("page[cursor] = %q, want cursor-2", got)
+		}
+		requests = append(requests, r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":   "user-2",
+				"type": "users",
+				"attributes": map[string]any{
+					"email":       "bob@example.test",
+					"name":        "Bob Example",
+					"created_at":  "2026-06-01T00:00:00Z",
+					"modified_at": "2026-06-02T00:00:00Z",
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.ReadWithCheckpoint(
+		context.Background(),
+		datadogTestConfig(server.URL, familyUsers),
+		&cerebrov1.SourceCursor{Opaque: "cursor-2"},
+		&cerebrov1.SourceCheckpoint{CursorOpaque: "older"},
+	)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["user_id"]; got != "user-2" {
+		t.Fatalf("user_id attribute = %q, want user-2", got)
+	}
+	if len(requests) != 1 || !strings.Contains(requests[0], "page%5Bcursor%5D=cursor-2") {
+		t.Fatalf("requests = %#v, want encoded page cursor", requests)
+	}
+	assertDatadogEventContracts(t, source, pull.Events[0])
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/users" {
+			t.Fatalf("request path = %q, want /api/v2/users", r.URL.Path)
+		}
+		http.Error(w, `{"errors":["service unavailable"]}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), datadogTestConfig(server.URL, familyUsers), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if !strings.Contains(err.Error(), "datadog API returned 503") {
+		t.Fatalf("Read() error = %v, want datadog API returned 503", err)
+	}
+}
+
 func TestSourceMapsRuntimeFamilies(t *testing.T) {
 	source, err := New()
 	if err != nil {

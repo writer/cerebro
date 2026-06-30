@@ -93,6 +93,13 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.inner.Read(ctx, cfg, cursor)
 }
 
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	if err := validateConfig(cfg); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) allowLoopbackForTest() { s.inner.AllowLoopbackBaseURL = true }
 
 func validateConfig(cfg sourcecdk.Config) error {
