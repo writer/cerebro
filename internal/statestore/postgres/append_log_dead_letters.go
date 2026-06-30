@@ -47,6 +47,36 @@ var ensureAppendLogDeadLetterStatements = []string{`CREATE TABLE IF NOT EXISTS a
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS append_log_dead_letters_source_status_idx ON append_log_dead_letters (source_id, status, updated_at ASC)`,
 }
 
+const recordAppendLogDeadLetterSQL = `
+	INSERT INTO append_log_dead_letters (
+	  id, status, subject, operation, event_id, event_kind, tenant_id, source_id,
+	  runtime_id, job_id, error_category, error_message, retry_count, max_attempts,
+	  payload_hash, payload_bytes, event_json
+	)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
+	ON CONFLICT (id)
+	DO UPDATE SET status = EXCLUDED.status,
+	              subject = EXCLUDED.subject,
+	              operation = EXCLUDED.operation,
+	              event_id = EXCLUDED.event_id,
+	              event_kind = EXCLUDED.event_kind,
+	              tenant_id = EXCLUDED.tenant_id,
+	              source_id = EXCLUDED.source_id,
+	              runtime_id = EXCLUDED.runtime_id,
+	              job_id = EXCLUDED.job_id,
+	              error_category = EXCLUDED.error_category,
+	              error_message = EXCLUDED.error_message,
+	              retry_count = EXCLUDED.retry_count,
+	              max_attempts = EXCLUDED.max_attempts,
+	              payload_hash = EXCLUDED.payload_hash,
+	              payload_bytes = EXCLUDED.payload_bytes,
+	              event_json = EXCLUDED.event_json,
+	              updated_at = NOW(),
+	              replayed_at = NULL,
+	              discarded_at = NULL,
+	              discard_reason = ''
+	WHERE append_log_dead_letters.status = 'pending'`
+
 func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.AppendLogDeadLetter) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
@@ -62,34 +92,7 @@ func (s *Store) RecordAppendLogDeadLetter(ctx context.Context, record ports.Appe
 	if err != nil {
 		return fmt.Errorf("marshal append log dead letter event %q: %w", record.EventID, err)
 	}
-	_, err = s.db.ExecContext(ctx, `
-INSERT INTO append_log_dead_letters (
-  id, status, subject, operation, event_id, event_kind, tenant_id, source_id,
-  runtime_id, job_id, error_category, error_message, retry_count, max_attempts,
-  payload_hash, payload_bytes, event_json
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
-ON CONFLICT (id)
-DO UPDATE SET status = EXCLUDED.status,
-              subject = EXCLUDED.subject,
-              operation = EXCLUDED.operation,
-              event_id = EXCLUDED.event_id,
-              event_kind = EXCLUDED.event_kind,
-              tenant_id = EXCLUDED.tenant_id,
-              source_id = EXCLUDED.source_id,
-              runtime_id = EXCLUDED.runtime_id,
-              job_id = EXCLUDED.job_id,
-              error_category = EXCLUDED.error_category,
-              error_message = EXCLUDED.error_message,
-              retry_count = EXCLUDED.retry_count,
-              max_attempts = EXCLUDED.max_attempts,
-              payload_hash = EXCLUDED.payload_hash,
-              payload_bytes = EXCLUDED.payload_bytes,
-              event_json = EXCLUDED.event_json,
-              updated_at = NOW(),
-              replayed_at = NULL,
-              discarded_at = NULL,
-              discard_reason = ''`,
+	_, err = s.db.ExecContext(ctx, recordAppendLogDeadLetterSQL,
 		record.ID,
 		record.Status,
 		record.Subject,
@@ -206,9 +209,28 @@ func (s *Store) updateAppendLogDeadLetterStatus(ctx context.Context, id string, 
 		return fmt.Errorf("update append log dead letter %q rows affected: %w", id, err)
 	}
 	if rows == 0 {
-		return ports.ErrAppendLogDeadLetterNotFound
+		return s.appendLogDeadLetterStatusConflict(ctx, id, status)
 	}
 	return nil
+}
+
+func (s *Store) appendLogDeadLetterStatusConflict(ctx context.Context, id string, targetStatus string) error {
+	var currentStatus string
+	err := s.db.QueryRowContext(ctx, `SELECT status FROM append_log_dead_letters WHERE id = $1`, id).Scan(&currentStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ports.ErrAppendLogDeadLetterNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("query append log dead letter %q status: %w", id, err)
+	}
+	return appendLogDeadLetterTransitionConflictError(id, targetStatus, currentStatus)
+}
+
+func appendLogDeadLetterTransitionConflictError(id string, targetStatus string, currentStatus string) error {
+	if strings.TrimSpace(targetStatus) == ports.AppendLogDeadLetterStatusReplayed && strings.TrimSpace(currentStatus) == ports.AppendLogDeadLetterStatusReplayed {
+		return ports.ErrAppendLogDeadLetterAlreadyReplayed
+	}
+	return fmt.Errorf("append log dead letter %q has status %q", id, currentStatus)
 }
 
 func appendLogDeadLetterSelectSQL() string {

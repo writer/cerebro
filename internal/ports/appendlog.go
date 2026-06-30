@@ -14,6 +14,7 @@ const EventAttributeSourceRuntimeID = "source_runtime_id"
 const EventAttributeJobID = "job_id"
 
 var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
+var ErrAppendLogDeadLetterAlreadyReplayed = errors.New("append log dead letter already replayed")
 
 const (
 	AppendLogDeadLetterStatusPending   = "pending"

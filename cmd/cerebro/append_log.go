@@ -110,6 +110,9 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 		return fmt.Errorf("replay append log dead letter %q: %w", id, err)
 	}
 	if err := store.MarkAppendLogDeadLetterReplayed(ctx, id); err != nil {
+		if errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
+			return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
+		}
 		return err
 	}
 	return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))

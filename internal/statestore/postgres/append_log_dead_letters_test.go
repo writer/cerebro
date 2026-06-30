@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -41,6 +42,31 @@ func TestAppendLogDeadLetterListQueryDefaultsToPending(t *testing.T) {
 	}
 	if len(args) != 2 || args[0] != ports.AppendLogDeadLetterStatusPending || args[1] != int64(appendLogDeadLetterDefaultLimit) {
 		t.Fatalf("query args = %#v, want pending and default limit", args)
+	}
+}
+
+func TestRecordAppendLogDeadLetterUpsertOnlyUpdatesPendingRows(t *testing.T) {
+	for _, fragment := range []string{
+		"ON CONFLICT (id)",
+		"discarded_at = NULL",
+		"discard_reason = ''",
+		"WHERE append_log_dead_letters.status = 'pending'",
+	} {
+		if !strings.Contains(recordAppendLogDeadLetterSQL, fragment) {
+			t.Fatalf("recordAppendLogDeadLetterSQL missing %q:\n%s", fragment, recordAppendLogDeadLetterSQL)
+		}
+	}
+}
+
+func TestAppendLogDeadLetterTransitionConflictAlreadyReplayed(t *testing.T) {
+	err := appendLogDeadLetterTransitionConflictError("apdl_1", ports.AppendLogDeadLetterStatusReplayed, ports.AppendLogDeadLetterStatusReplayed)
+	if !errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
+		t.Fatalf("transition conflict error = %v, want already replayed sentinel", err)
+	}
+
+	err = appendLogDeadLetterTransitionConflictError("apdl_1", ports.AppendLogDeadLetterStatusReplayed, ports.AppendLogDeadLetterStatusDiscarded)
+	if err == nil || errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
+		t.Fatalf("transition conflict error = %v, want status conflict", err)
 	}
 }
 
