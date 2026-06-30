@@ -16,6 +16,7 @@ import (
 
 	"github.com/writer/cerebro/internal/grcvendor"
 	"github.com/writer/cerebro/internal/ports"
+	questionnairedomain "github.com/writer/cerebro/internal/questionnaire"
 )
 
 const maxGRCVendorQuestionnaireBodyBytes = 256 << 10
@@ -51,6 +52,7 @@ type Options struct {
 
 type Handler struct {
 	store     ports.GRCVendorQuestionnaireReviewStore
+	runStore  ports.QuestionnaireRunStore
 	scope     ScopeResolver
 	vendor    VendorResolver
 	signals   SignalsResolver
@@ -64,6 +66,7 @@ type Handler struct {
 func NewHandler(store ports.StateStore, options Options) *Handler {
 	return &Handler{
 		store:     grcVendorQuestionnaireReviewStore(store),
+		runStore:  questionnaireRunStore(store),
 		scope:     options.Scope,
 		vendor:    options.Vendor,
 		signals:   options.Signals,
@@ -395,6 +398,10 @@ func (h *Handler) CreateGRCVendorQuestionnaireReview(w http.ResponseWriter, r *h
 		h.writeError(w, err)
 		return
 	}
+	if err := h.syncVendorQuestionnaireRun(r.Context(), created, ports.QuestionnaireEventCreated, "Questionnaire run created", map[string]string{"legacy_review_id": created.ReviewID}, now); err != nil {
+		h.writeError(w, err)
+		return
+	}
 	h.bumpReviewCache(r.Context(), scope.TenantID)
 	writeJSON(w, http.StatusCreated, grcVendorQuestionnaireReviewResponse{Review: grcVendorQuestionnaireReviewViewFromRecord(created), GeneratedAt: now})
 }
@@ -443,6 +450,10 @@ func (h *Handler) ProcessGRCVendorQuestionnaireReview(w http.ResponseWriter, r *
 	store := h.store
 	saved, err := store.UpsertGRCVendorQuestionnaireReview(r.Context(), updated, event)
 	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if err := h.syncVendorQuestionnaireRun(r.Context(), saved, ports.QuestionnaireEventProcessed, "Questionnaire answers refreshed from vendor evidence", event.Payload, now); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -594,6 +605,10 @@ func (h *Handler) updateGRCVendorQuestionnaireReview(w http.ResponseWriter, r *h
 		h.writeError(w, err)
 		return
 	}
+	if err := h.syncVendorQuestionnaireRun(ctx, saved, vendorReviewRunEventType(eventType), summary, payload, now); err != nil {
+		h.writeError(w, err)
+		return
+	}
 	events, err := store.ListGRCVendorQuestionnaireReviewEvents(ctx, ports.GRCVendorQuestionnaireReviewEventFilter{TenantID: saved.TenantID, ReviewID: saved.ReviewID, Limit: defaultLimit})
 	if err != nil {
 		h.writeError(w, err)
@@ -601,6 +616,526 @@ func (h *Handler) updateGRCVendorQuestionnaireReview(w http.ResponseWriter, r *h
 	}
 	h.bumpReviewCache(ctx, saved.TenantID)
 	writeJSON(w, http.StatusOK, grcVendorQuestionnaireReviewResponse{Review: grcVendorQuestionnaireReviewViewFromRecord(saved), Events: events, GeneratedAt: now})
+}
+
+func (h *Handler) syncVendorQuestionnaireRun(ctx context.Context, record *ports.GRCVendorQuestionnaireReviewRecord, eventType string, summary string, payload map[string]string, now time.Time) error {
+	if h.runStore == nil || record == nil {
+		return nil
+	}
+	run := vendorQuestionnaireRunFromReview(*record, now)
+	event := questionnairedomain.Event(run, eventType, h.actorID(ctx), summary, payload, now)
+	_, err := h.runStore.UpsertQuestionnaireRun(ctx, run, event)
+	return err
+}
+
+func vendorQuestionnaireRunFromReview(record ports.GRCVendorQuestionnaireReviewRecord, now time.Time) ports.QuestionnaireRunRecord {
+	now = now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	createdAt := record.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	updatedAt := record.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = now
+	}
+	attributes := copyGRCStringMap(record.Attributes)
+	attributes["legacy_review_id"] = record.ReviewID
+	if record.QuestionnaireURN != "" {
+		attributes["legacy_questionnaire_urn"] = record.QuestionnaireURN
+	}
+	if record.QuestionnaireType != "" {
+		attributes["legacy_questionnaire_type"] = record.QuestionnaireType
+	}
+	run := ports.QuestionnaireRunRecord{
+		QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{
+			TenantID: record.TenantID,
+			RunID:    vendorQuestionnaireRunID(record),
+			Title:    firstNonEmpty(record.Title, "Vendor questionnaire"),
+		},
+		QuestionnaireRunSource: ports.QuestionnaireRunSource{
+			Direction:      ports.QuestionnaireDirectionVendorReview,
+			Requester:      firstNonEmpty(record.VendorID, record.VendorURN),
+			VendorURN:      record.VendorURN,
+			VendorID:       record.VendorID,
+			SourceID:       record.SourceID,
+			RuntimeID:      record.RuntimeID,
+			UploadID:       record.UploadID,
+			SourceFilename: attributes["source_filename"],
+			SourceFormat:   firstNonEmpty(attributes["source_format"], vendorQuestionnaireSourceFormat(attributes["source_filename"])),
+		},
+		QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
+			Status:         vendorQuestionnaireRunStatus(record.Status),
+			OwnerID:        firstNonEmpty(record.ReviewerUserID, record.CurrentOwnerUserID),
+			AssignedTeam:   firstNonEmpty(record.AssignedTeam, "security"),
+			Decision:       vendorQuestionnaireRunDecision(record.Decision),
+			DecisionReason: record.DecisionReason,
+		},
+		QuestionnaireRunContent: ports.QuestionnaireRunContent{
+			Questions:   vendorQuestionnaireRunQuestions(record),
+			Answers:     vendorQuestionnaireRunAnswers(record),
+			Assignments: vendorQuestionnaireRunAssignments(record),
+			Decisions:   vendorQuestionnaireRunDecisions(record),
+			Comments:    vendorQuestionnaireRunComments(record),
+			Timeline:    vendorQuestionnaireRunTimeline(record),
+		},
+		QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+			Attributes: attributes,
+			DueAt:      vendorQuestionnaireRunDueAt(record.Assignments),
+			CreatedAt:  createdAt.UTC(),
+			UpdatedAt:  updatedAt.UTC(),
+		},
+	}
+	return questionnairedomain.SummarizeRun(run)
+}
+
+func vendorQuestionnaireRunID(record ports.GRCVendorQuestionnaireReviewRecord) string {
+	if record.ReviewID == "" {
+		return "vendor-questionnaire-" + strings.TrimSpace(record.VendorID)
+	}
+	return "vendor-questionnaire-" + strings.TrimSpace(record.ReviewID)
+}
+
+func vendorQuestionnaireRunQuestions(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireQuestion {
+	questions := make([]ports.QuestionnaireQuestion, 0, len(record.AnswerSuggestions)+len(record.MissingQuestions))
+	seen := map[string]struct{}{}
+	add := func(question ports.QuestionnaireQuestion) {
+		if question.ID == "" || question.Question == "" {
+			return
+		}
+		if _, ok := seen[question.ID]; ok {
+			return
+		}
+		seen[question.ID] = struct{}{}
+		questions = append(questions, question)
+	}
+	for _, answer := range record.AnswerSuggestions {
+		state := vendorQuestionnaireAnswerState(answer.State, len(answer.SourceIDs))
+		add(ports.QuestionnaireQuestion{
+			ID:                 vendorQuestionnaireQuestionID(record.ReviewID, answer.ID, answer.Question),
+			Question:           answer.Question,
+			NormalizedQuestion: normalizedGRCQuestion(answer.Question),
+			Section:            answer.ID,
+			RequiredSlots:      vendorQuestionnaireRequiredSlots(answer.ID),
+			MappedControls:     vendorQuestionnaireAnswerControls(answer, record.EvidenceMatches),
+			AnswerState:        state,
+			ReviewState:        vendorQuestionnaireReviewState(state),
+		})
+	}
+	for _, missing := range record.MissingQuestions {
+		add(ports.QuestionnaireQuestion{
+			ID:                 vendorQuestionnaireQuestionID(record.ReviewID, missing.ID, missing.Question),
+			Question:           missing.Question,
+			NormalizedQuestion: normalizedGRCQuestion(missing.Question),
+			Section:            missing.ID,
+			RequiredSlots:      vendorQuestionnaireRequiredSlots(missing.ID),
+			AnswerState:        ports.QuestionnaireAnswerBlocked,
+			ReviewState:        ports.QuestionnaireReviewBlocked,
+		})
+	}
+	return questions
+}
+
+func vendorQuestionnaireRunAnswers(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireRunAnswer {
+	answers := make([]ports.QuestionnaireRunAnswer, 0, len(record.AnswerSuggestions)+len(record.MissingQuestions))
+	for _, answer := range record.AnswerSuggestions {
+		questionID := vendorQuestionnaireQuestionID(record.ReviewID, answer.ID, answer.Question)
+		citations := vendorQuestionnaireRunCitations(answer.SourceIDs, record.EvidenceMatches)
+		state := vendorQuestionnaireAnswerState(answer.State, len(citations))
+		slots := vendorQuestionnaireRunEvidenceSlots(vendorQuestionnaireRequiredSlots(answer.ID), state, citations, answer.Needs)
+		answers = append(answers, ports.QuestionnaireRunAnswer{
+			ID:              vendorQuestionnaireAnswerID(record.ReviewID, answer.ID, answer.Question),
+			QuestionID:      questionID,
+			Question:        answer.Question,
+			DraftAnswer:     answer.Answer,
+			AnswerState:     state,
+			ReviewState:     vendorQuestionnaireReviewState(state),
+			Confidence:      answer.Confidence,
+			Controls:        vendorQuestionnaireAnswerControls(answer, record.EvidenceMatches),
+			EvidenceSlots:   slots,
+			Citations:       citations,
+			MissingEvidence: vendorQuestionnaireRunGaps(questionID, state, answer.Needs),
+			Freshness:       vendorQuestionnaireRunFreshness(state, len(citations)),
+			Attributes:      copyGRCStringMap(answer.Attributes),
+		})
+	}
+	for _, missing := range record.MissingQuestions {
+		questionID := vendorQuestionnaireQuestionID(record.ReviewID, missing.ID, missing.Question)
+		answers = append(answers, ports.QuestionnaireRunAnswer{
+			ID:            vendorQuestionnaireAnswerID(record.ReviewID, missing.ID, missing.Question),
+			QuestionID:    questionID,
+			Question:      missing.Question,
+			DraftAnswer:   "No answer is ready. Required vendor review evidence is missing.",
+			AnswerState:   ports.QuestionnaireAnswerBlocked,
+			ReviewState:   ports.QuestionnaireReviewBlocked,
+			Confidence:    "low",
+			EvidenceSlots: vendorQuestionnaireRunEvidenceSlots(vendorQuestionnaireRequiredSlots(missing.ID), ports.QuestionnaireAnswerBlocked, nil, []string{missing.Reason}),
+			MissingEvidence: []ports.QuestionnaireEvidenceGap{{
+				ID:     grcVendorQuestionnaireMutationID("gap", record.ReviewID, record.UpdatedAt, missing.ID),
+				Code:   "missing_required_evidence",
+				Reason: firstNonEmpty(missing.Reason, missing.Question),
+				SlotID: firstNonEmpty(missing.ID, "vendor_profile"),
+			}},
+			Freshness: ports.QuestionnaireFreshness{Status: "missing"},
+		})
+	}
+	return answers
+}
+
+func vendorQuestionnaireRunAssignments(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireAssignment {
+	assignments := make([]ports.QuestionnaireAssignment, 0, len(record.Assignments))
+	for _, assignment := range record.Assignments {
+		assignments = append(assignments, ports.QuestionnaireAssignment{
+			ID:        firstNonEmpty(assignment.ID, grcVendorQuestionnaireMutationID("assignment", record.ReviewID, record.UpdatedAt, assignment.Team, assignment.OwnerID, assignment.Reason)),
+			Team:      assignment.Team,
+			OwnerID:   assignment.OwnerID,
+			Status:    firstNonEmpty(assignment.Status, "open"),
+			Reason:    assignment.Reason,
+			DueAt:     assignment.DueAt,
+			CreatedAt: assignment.CreatedAt,
+		})
+	}
+	return assignments
+}
+
+func vendorQuestionnaireRunDecisions(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireDecision {
+	decisions := make([]ports.QuestionnaireDecision, 0, len(record.Approvals))
+	for _, approval := range record.Approvals {
+		decision := vendorQuestionnaireRunDecision(approval.Decision)
+		if decision == "" {
+			continue
+		}
+		decisions = append(decisions, ports.QuestionnaireDecision{
+			ID:        firstNonEmpty(approval.ID, grcVendorQuestionnaireMutationID("decision", record.ReviewID, record.UpdatedAt, approval.Decision, approval.ActorID)),
+			ActorID:   approval.ActorID,
+			Decision:  decision,
+			Reason:    approval.Reason,
+			CreatedAt: approval.CreatedAt,
+		})
+	}
+	return decisions
+}
+
+func vendorQuestionnaireRunComments(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireComment {
+	comments := make([]ports.QuestionnaireComment, 0, len(record.Comments))
+	for _, comment := range record.Comments {
+		comments = append(comments, ports.QuestionnaireComment{
+			ID:        firstNonEmpty(comment.ID, grcVendorQuestionnaireMutationID("comment", record.ReviewID, record.UpdatedAt, comment.ActorID, comment.Body)),
+			ActorID:   comment.ActorID,
+			Body:      comment.Body,
+			CreatedAt: comment.CreatedAt,
+		})
+	}
+	return comments
+}
+
+func vendorQuestionnaireRunTimeline(record ports.GRCVendorQuestionnaireReviewRecord) []ports.QuestionnaireTimeline {
+	timeline := make([]ports.QuestionnaireTimeline, 0, len(record.Timeline))
+	for _, event := range record.Timeline {
+		timeline = append(timeline, ports.QuestionnaireTimeline{
+			ID:         firstNonEmpty(event.ID, grcVendorQuestionnaireMutationID("timeline", record.ReviewID, record.UpdatedAt, event.EventType, event.Summary)),
+			EventType:  vendorReviewRunEventType(event.EventType),
+			ActorID:    event.ActorID,
+			Summary:    event.Summary,
+			Attributes: copyGRCStringMap(event.Attributes),
+			CreatedAt:  event.CreatedAt,
+		})
+	}
+	return timeline
+}
+
+func vendorQuestionnaireRunCitations(sourceIDs []string, matches []ports.GRCVendorQuestionnaireEvidence) []ports.QuestionnaireCitation {
+	matchByID := map[string]ports.GRCVendorQuestionnaireEvidence{}
+	for _, match := range matches {
+		matchByID[match.ID] = match
+	}
+	citations := make([]ports.QuestionnaireCitation, 0, len(sourceIDs))
+	seen := map[string]struct{}{}
+	for _, sourceID := range sourceIDs {
+		match, ok := matchByID[sourceID]
+		if !ok {
+			continue
+		}
+		id := firstNonEmpty(match.ID, match.URN)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		citations = append(citations, ports.QuestionnaireCitation{
+			ID:              id,
+			Label:           match.Label,
+			Source:          match.Source,
+			EvidenceID:      firstNonEmpty(match.URN, match.ID),
+			ControlID:       match.ControlID,
+			FreshnessStatus: "current",
+		})
+	}
+	return citations
+}
+
+func vendorQuestionnaireRunEvidenceSlots(required []string, state string, citations []ports.QuestionnaireCitation, needs []string) []ports.QuestionnaireEvidenceSlot {
+	citationIDs := make([]string, 0, len(citations))
+	for _, citation := range citations {
+		citationIDs = append(citationIDs, citation.ID)
+	}
+	slots := make([]ports.QuestionnaireEvidenceSlot, 0, len(required))
+	for _, slotID := range required {
+		slotState := "missing"
+		if len(citationIDs) > 0 {
+			slotState = "satisfied"
+		}
+		if state == ports.QuestionnaireAnswerNeedsReview || state == ports.QuestionnaireAnswerPartial {
+			slotState = "needs_review"
+		}
+		slots = append(slots, ports.QuestionnaireEvidenceSlot{
+			ID:             slotID,
+			Label:          vendorQuestionnaireSlotLabel(slotID),
+			State:          slotState,
+			Required:       true,
+			CitationIDs:    append([]string(nil), citationIDs...),
+			MissingReasons: missingReasonsForSlot(slotState, needs),
+		})
+	}
+	return slots
+}
+
+func vendorQuestionnaireRunGaps(questionID string, state string, needs []string) []ports.QuestionnaireEvidenceGap {
+	if state == ports.QuestionnaireAnswerSupported || state == ports.QuestionnaireAnswerNotApplicable {
+		return nil
+	}
+	if len(needs) == 0 {
+		needs = []string{"Reviewer follow-up is required."}
+	}
+	gaps := make([]ports.QuestionnaireEvidenceGap, 0, len(needs))
+	for _, need := range needs {
+		gaps = append(gaps, ports.QuestionnaireEvidenceGap{
+			ID:     grcVendorQuestionnaireMutationID("gap", questionID, time.Time{}, need),
+			Code:   "manual_review_required",
+			Reason: need,
+		})
+	}
+	return gaps
+}
+
+func vendorQuestionnaireRunFreshness(state string, citationCount int) ports.QuestionnaireFreshness {
+	if citationCount == 0 || state == ports.QuestionnaireAnswerBlocked {
+		return ports.QuestionnaireFreshness{Status: "missing"}
+	}
+	return ports.QuestionnaireFreshness{Status: "current"}
+}
+
+func vendorQuestionnaireAnswerControls(answer ports.GRCVendorQuestionnaireAnswer, matches []ports.GRCVendorQuestionnaireEvidence) []string {
+	sourceIDs := map[string]struct{}{}
+	for _, sourceID := range answer.SourceIDs {
+		sourceIDs[sourceID] = struct{}{}
+	}
+	controls := []string{}
+	for _, match := range matches {
+		if match.ControlID == "" {
+			continue
+		}
+		if len(sourceIDs) > 0 {
+			if _, ok := sourceIDs[match.ID]; !ok {
+				continue
+			}
+		}
+		controls = append(controls, match.ControlID)
+	}
+	return dedupeGRCStrings(controls)
+}
+
+func vendorQuestionnaireAnswerState(state string, citationCount int) string {
+	switch strings.TrimSpace(state) {
+	case ports.QuestionnaireAnswerNotApplicable, "not_required":
+		return ports.QuestionnaireAnswerNotApplicable
+	case ports.QuestionnaireAnswerNeedsReview, "manual_review":
+		return ports.QuestionnaireAnswerNeedsReview
+	case ports.QuestionnaireAnswerPartial:
+		return ports.QuestionnaireAnswerPartial
+	case ports.QuestionnaireAnswerBlocked, "missing":
+		return ports.QuestionnaireAnswerBlocked
+	case ports.QuestionnaireAnswerSupported, "":
+		if citationCount > 0 {
+			return ports.QuestionnaireAnswerSupported
+		}
+		return ports.QuestionnaireAnswerBlocked
+	default:
+		return ports.QuestionnaireAnswerNeedsReview
+	}
+}
+
+func vendorQuestionnaireReviewState(answerState string) string {
+	switch answerState {
+	case ports.QuestionnaireAnswerSupported, ports.QuestionnaireAnswerNotApplicable:
+		return ports.QuestionnaireReviewReady
+	case ports.QuestionnaireAnswerBlocked:
+		return ports.QuestionnaireReviewBlocked
+	default:
+		return ports.QuestionnaireReviewNeedsReview
+	}
+}
+
+func vendorQuestionnaireRunStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case ports.GRCVendorQuestionnaireStatusProcessing:
+		return ports.QuestionnaireStatusProcessing
+	case ports.GRCVendorQuestionnaireStatusNeedsInput:
+		return ports.QuestionnaireStatusNeedsInput
+	case ports.GRCVendorQuestionnaireStatusReadyForApproval:
+		return ports.QuestionnaireStatusReadyForApproval
+	case ports.GRCVendorQuestionnaireStatusApproved, ports.GRCVendorQuestionnaireStatusConditional:
+		return ports.QuestionnaireStatusApproved
+	case ports.GRCVendorQuestionnaireStatusRejected:
+		return ports.QuestionnaireStatusRejected
+	default:
+		return ports.QuestionnaireStatusIntake
+	}
+}
+
+func vendorQuestionnaireRunDecision(decision string) string {
+	switch strings.TrimSpace(decision) {
+	case ports.GRCVendorQuestionnaireDecisionApprove, ports.QuestionnaireDecisionApproved:
+		return ports.QuestionnaireDecisionApproved
+	case ports.GRCVendorQuestionnaireDecisionApproveWithConditions, ports.QuestionnaireDecisionApprovedWithConditions:
+		return ports.QuestionnaireDecisionApprovedWithConditions
+	case ports.GRCVendorQuestionnaireDecisionReject, ports.QuestionnaireDecisionRejected:
+		return ports.QuestionnaireDecisionRejected
+	case ports.GRCVendorQuestionnaireDecisionNeedsReview, ports.QuestionnaireDecisionNeedsInput:
+		return ports.QuestionnaireDecisionNeedsInput
+	default:
+		return ports.QuestionnaireDecisionNeedsInput
+	}
+}
+
+func vendorReviewRunEventType(eventType string) string {
+	switch strings.TrimSpace(eventType) {
+	case ports.GRCVendorQuestionnaireEventCreated:
+		return ports.QuestionnaireEventCreated
+	case ports.GRCVendorQuestionnaireEventProcessed:
+		return ports.QuestionnaireEventProcessed
+	case ports.GRCVendorQuestionnaireEventAssigned:
+		return ports.QuestionnaireEventAssigned
+	case ports.GRCVendorQuestionnaireEventCommented:
+		return ports.QuestionnaireEventCommented
+	case ports.GRCVendorQuestionnaireEventApproved:
+		return ports.QuestionnaireEventDecided
+	default:
+		return eventType
+	}
+}
+
+func vendorQuestionnaireQuestionID(reviewID string, id string, question string) string {
+	if id != "" {
+		return "vendor-question-" + strings.TrimSpace(reviewID) + "-" + strings.TrimSpace(id)
+	}
+	return grcVendorQuestionnaireMutationID("vendor-question", reviewID, time.Time{}, question)
+}
+
+func vendorQuestionnaireAnswerID(reviewID string, id string, question string) string {
+	if id != "" {
+		return "vendor-answer-" + strings.TrimSpace(reviewID) + "-" + strings.TrimSpace(id)
+	}
+	return grcVendorQuestionnaireMutationID("vendor-answer", reviewID, time.Time{}, question)
+}
+
+func vendorQuestionnaireRequiredSlots(answerID string) []string {
+	switch strings.TrimSpace(answerID) {
+	case "access":
+		return []string{"vendor_profile", "access_review"}
+	case "data":
+		return []string{"vendor_profile", "subprocessors"}
+	case "assurance":
+		return []string{"vendor_profile", "audit_report"}
+	case "findings", "monitoring":
+		return []string{"vendor_profile", "control_evidence"}
+	default:
+		return []string{"vendor_profile"}
+	}
+}
+
+func vendorQuestionnaireSlotLabel(slotID string) string {
+	switch slotID {
+	case "access_review":
+		return "Access review evidence"
+	case "subprocessors":
+		return "Subprocessor evidence"
+	case "audit_report":
+		return "Audit report"
+	case "control_evidence":
+		return "Control evidence"
+	default:
+		return "Vendor profile"
+	}
+}
+
+func missingReasonsForSlot(state string, needs []string) []string {
+	if state != "missing" {
+		return nil
+	}
+	if len(needs) == 0 {
+		return []string{"Required evidence is missing."}
+	}
+	return append([]string(nil), needs...)
+}
+
+func vendorQuestionnaireRunDueAt(assignments []ports.GRCVendorQuestionnaireAssignment) *time.Time {
+	var earliest *time.Time
+	for _, assignment := range assignments {
+		if assignment.DueAt == nil {
+			continue
+		}
+		dueAt := assignment.DueAt.UTC()
+		if earliest == nil || dueAt.Before(*earliest) {
+			earliest = &dueAt
+		}
+	}
+	return earliest
+}
+
+func vendorQuestionnaireSourceFormat(filename string) string {
+	filename = strings.ToLower(strings.TrimSpace(filename))
+	for _, suffix := range []string{".csv", ".json", ".xlsx", ".xls", ".pdf"} {
+		if strings.HasSuffix(filename, suffix) {
+			return strings.TrimPrefix(suffix, ".")
+		}
+	}
+	return ""
+}
+
+func normalizedGRCQuestion(value string) string {
+	value = strings.ToLower(strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(value))
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+	terms := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) > 1 {
+			terms = append(terms, part)
+		}
+	}
+	return strings.Join(terms, " ")
+}
+
+func dedupeGRCStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func grcVendorQuestionnaireApprovalDecision(value string) (string, error) {
@@ -758,6 +1293,14 @@ func grcVendorQuestionnaireReviewStore(store ports.StateStore) ports.GRCVendorQu
 		return nil
 	}
 	return reviewStore
+}
+
+func questionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
+	runStore, ok := store.(ports.QuestionnaireRunStore)
+	if !ok || isNilInterface(runStore) {
+		return nil
+	}
+	return runStore
 }
 
 func grcVendorQuestionnaireReviewViews(records []*ports.GRCVendorQuestionnaireReviewRecord) []grcVendorQuestionnaireReviewView {

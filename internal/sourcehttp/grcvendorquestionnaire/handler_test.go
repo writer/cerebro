@@ -97,6 +97,55 @@ func TestGRCVendorQuestionnaireAssignmentViewDoesNotInventQuestionID(t *testing.
 	}
 }
 
+func TestVendorQuestionnaireMutationSyncsUnifiedRunStore(t *testing.T) {
+	store := newFakeGRCVendorQuestionnaireStore()
+	store.record.AnswerSuggestions = []ports.GRCVendorQuestionnaireAnswer{{
+		ID:         "assurance",
+		Question:   "Which assurance artifacts support the review?",
+		Answer:     "SOC 2 evidence is linked for reviewer approval.",
+		State:      "supported",
+		Confidence: "high",
+		SourceIDs:  []string{"assurance:soc2"},
+	}}
+	store.record.EvidenceMatches = []ports.GRCVendorQuestionnaireEvidence{{
+		ID:         "assurance:soc2",
+		Label:      "SOC 2 report",
+		Source:     "graph",
+		URN:        "urn:cerebro:tenant-1:assurance_document:soc2",
+		ControlID:  "AUR-01",
+		Confidence: "high",
+	}}
+	handler := newTestHandler(store)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/grc/vendor/questionnaire/reviews/approve?review_id=review-1", strings.NewReader(`{"state":"approved","team":"security"}`))
+
+	handler.ApproveGRCVendorQuestionnaireReview(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if store.savedRun == nil {
+		t.Fatal("unified questionnaire run was not saved")
+	}
+	run := store.savedRun
+	if run.Direction != ports.QuestionnaireDirectionVendorReview || run.VendorURN != store.record.VendorURN {
+		t.Fatalf("run source = %s/%s", run.Direction, run.VendorURN)
+	}
+	if run.Status != ports.QuestionnaireStatusApproved || run.Decision != ports.QuestionnaireDecisionApproved {
+		t.Fatalf("run workflow = %s/%s", run.Status, run.Decision)
+	}
+	if len(run.Answers) != 1 {
+		t.Fatalf("run answers = %#v", run.Answers)
+	}
+	answer := run.Answers[0]
+	if answer.AnswerState != ports.QuestionnaireAnswerSupported || len(answer.Citations) != 1 {
+		t.Fatalf("answer state/citations = %s/%#v", answer.AnswerState, answer.Citations)
+	}
+	if len(store.runEvents) != 1 || store.runEvents[0].EventType != ports.QuestionnaireEventDecided {
+		t.Fatalf("run events = %#v", store.runEvents)
+	}
+}
+
 func newTestHandler(store *fakeGRCVendorQuestionnaireStore) *Handler {
 	return NewHandler(store, Options{
 		Scope: func(*http.Request) (Scope, error) {
@@ -139,9 +188,11 @@ func newFakeGRCVendorQuestionnaireStore() *fakeGRCVendorQuestionnaireStore {
 }
 
 type fakeGRCVendorQuestionnaireStore struct {
-	record ports.GRCVendorQuestionnaireReviewRecord
-	saved  *ports.GRCVendorQuestionnaireReviewRecord
-	events []*ports.GRCVendorQuestionnaireReviewEventRecord
+	record    ports.GRCVendorQuestionnaireReviewRecord
+	saved     *ports.GRCVendorQuestionnaireReviewRecord
+	events    []*ports.GRCVendorQuestionnaireReviewEventRecord
+	savedRun  *ports.QuestionnaireRunRecord
+	runEvents []*ports.QuestionnaireRunEventRecord
 }
 
 func (s *fakeGRCVendorQuestionnaireStore) Ping(context.Context) error {
@@ -175,4 +226,38 @@ func (s *fakeGRCVendorQuestionnaireStore) ListGRCVendorQuestionnaireReviews(cont
 
 func (s *fakeGRCVendorQuestionnaireStore) ListGRCVendorQuestionnaireReviewEvents(context.Context, ports.GRCVendorQuestionnaireReviewEventFilter) ([]*ports.GRCVendorQuestionnaireReviewEventRecord, error) {
 	return append([]*ports.GRCVendorQuestionnaireReviewEventRecord{}, s.events...), nil
+}
+
+func (s *fakeGRCVendorQuestionnaireStore) UpsertQuestionnaireRun(_ context.Context, record ports.QuestionnaireRunRecord, event ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
+	copied := record
+	s.savedRun = &copied
+	event.Version = len(s.runEvents) + 1
+	s.runEvents = append(s.runEvents, &event)
+	return &copied, nil
+}
+
+func (s *fakeGRCVendorQuestionnaireStore) GetQuestionnaireRun(_ context.Context, filter ports.QuestionnaireRunFilter) (*ports.QuestionnaireRunRecord, error) {
+	if s.savedRun == nil {
+		return nil, ports.ErrQuestionnaireRunNotFound
+	}
+	if filter.TenantID != "" && filter.TenantID != s.savedRun.TenantID {
+		return nil, ports.ErrQuestionnaireRunNotFound
+	}
+	if filter.RunID != "" && filter.RunID != s.savedRun.RunID {
+		return nil, ports.ErrQuestionnaireRunNotFound
+	}
+	copied := *s.savedRun
+	return &copied, nil
+}
+
+func (s *fakeGRCVendorQuestionnaireStore) ListQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) ([]*ports.QuestionnaireRunRecord, error) {
+	if s.savedRun == nil {
+		return nil, nil
+	}
+	copied := *s.savedRun
+	return []*ports.QuestionnaireRunRecord{&copied}, nil
+}
+
+func (s *fakeGRCVendorQuestionnaireStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
+	return append([]*ports.QuestionnaireRunEventRecord{}, s.runEvents...), nil
 }

@@ -553,6 +553,13 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 		"Answer the Okta access control question",
 		"Explain Okta lifecycle evidence for user deprovisioning",
 		"Answer this policy document questionnaire item",
+		"Answer the access review questionnaire item",
+		"Do we encrypt customer data at rest?",
+		"Can you provide incident response evidence?",
+		"Do we maintain a subprocessor list?",
+		"Do we have a current SOC 2 report?",
+		"Do we train AI models on customer data?",
+		"Show vendor due diligence evidence",
 		"Show control coverage evidence gaps",
 		"Show the control evidence packet coverage",
 	} {
@@ -578,10 +585,10 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 		"Show the evidence packet export status",
 		"List all policy documents",
 		"Show policy doc count",
+		"Policy document inventory",
+		"Show Okta findings",
 		"Answer this security questionnaire item",
-		"Is data encrypted at rest in S3?",
 		"Show source evidence for Okta access findings",
-		"Audit answer for access posture",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
@@ -620,8 +627,15 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bmfa\\b.*'`},
 		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: `questionnaire_match_text =~ '(?s).*\\baccess\\b.*'`},
 		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: `questionnaire_match_text =~ '(?s).*\\blifecycle\\b.*'`},
+		{name: "access review", question: "Answer the access review questionnaire item", wantTopic: "access_review", wantSnippet: "questionnaire_match_text CONTAINS 'access review'"},
+		{name: "encryption", question: "Do we encrypt customer data at rest?", wantTopic: "encryption", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bencrypt\\b.*'`},
+		{name: "incident response", question: "Can you provide incident response evidence?", wantTopic: "incident_response", wantSnippet: "questionnaire_match_text CONTAINS 'incident response'"},
+		{name: "subprocessors", question: "Do we maintain a subprocessor list?", wantTopic: "subprocessors", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bsubprocessor\\b.*'`},
+		{name: "audit report", question: "Do we have a current SOC 2 report?", wantTopic: "audit_report", wantSnippet: "questionnaire_match_text CONTAINS 'soc 2'"},
 		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "questionnaire_match_text CONTAINS 'policy_document'"},
 		{name: "hyphenated policy docs", question: "Answer this policy-document questionnaire item", wantTopic: "policy_documents", wantSnippet: "questionnaire_match_text CONTAINS 'policy_document'"},
+		{name: "ai data use", question: "Do we train AI models on customer data?", wantTopic: "ai_data_use", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bai\\b.*'`},
+		{name: "vendor due diligence", question: "Show vendor due diligence evidence", wantTopic: "vendor_due_diligence", wantSnippet: "questionnaire_match_text CONTAINS 'due diligence'"},
 		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bcoverage\\b.*'`},
 		{name: "hyphenated coverage gap", question: "Show control-coverage evidence-gaps", wantTopic: "control_coverage", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bcoverage\\b.*'`},
 	} {
