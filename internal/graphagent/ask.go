@@ -390,6 +390,7 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 			mergeInternalAttributesWithPrefix(row, "control_attributes_json_internal", "control_", []string{"control_id", "control_external_id", "policy_id", "policy_type", "status", "source_system"})
 			mergeInternalAttributesWithPrefix(row, "support_attributes_json_internal", "support_", []string{"evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "status", "source_system"})
 			mergeInternalAttributesWithPrefix(row, "evidence_attributes_json_internal", "evidence_", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "direct_evidence_attributes_json_internal", "direct_evidence_", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
 			mergeInternalAttributesWithPrefix(row, "finding_attributes_json_internal", "finding_", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
 			mergeInternalAttributesWithPrefix(row, "exception_attributes_json_internal", "exception_", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
 			mergeInternalAttributesWithPrefix(row, "source_attributes_json_internal", "source_", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})

@@ -135,25 +135,31 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	store := &askStore{
 		rows: []ports.CypherRow{{
 			Values: map[string]any{
-				"control_urn":                       "urn:cerebro:writer:policy:control:iam-1",
-				"control_label":                     "Access control",
-				"control_ref":                       "IAM-1",
-				"control_attributes_json_internal":  `{"policy_type":"control","control_id":"IAM-1","status":"monitored"}`,
-				"support_urn":                       "urn:cerebro:writer:okta_policy_rule:mfa-global",
-				"support_label":                     "Okta MFA rule",
-				"support_type":                      "okta.policy_rule",
-				"support_source_id":                 "okta",
-				"support_relation":                  "supports",
-				"support_attributes_json_internal":  `{"status":"active","source_system":"okta"}`,
-				"evidence_urn":                      "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot",
-				"evidence_label":                    "Okta MFA snapshot",
-				"evidence_type":                     "runtime_evidence",
-				"evidence_source_id":                "okta",
-				"evidence_relation":                 "has_evidence",
-				"evidence_attributes_json_internal": `{"evidence_type":"okta_policy","status":"ready"}`,
-				"source_urn":                        "urn:cerebro:writer:source:okta",
-				"source_label":                      "Okta",
-				"source_attributes_json_internal":   `{"status":"healthy","last_sync_at":"2026-06-29T12:00:00Z"}`,
+				"control_urn":                              "urn:cerebro:writer:policy:control:iam-1",
+				"control_label":                            "Access control",
+				"control_ref":                              "IAM-1",
+				"control_attributes_json_internal":         `{"policy_type":"control","control_id":"IAM-1","status":"monitored"}`,
+				"support_urn":                              "urn:cerebro:writer:okta_policy_rule:mfa-global",
+				"support_label":                            "Okta MFA rule",
+				"support_type":                             "okta.policy_rule",
+				"support_source_id":                        "okta",
+				"support_relation":                         "supports",
+				"support_attributes_json_internal":         `{"status":"active","source_system":"okta"}`,
+				"evidence_urn":                             "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot",
+				"evidence_label":                           "Okta MFA snapshot",
+				"evidence_type":                            "runtime_evidence",
+				"evidence_source_id":                       "okta",
+				"evidence_relation":                        "has_evidence",
+				"evidence_attributes_json_internal":        `{"evidence_type":"okta_policy","status":"ready"}`,
+				"direct_evidence_urn":                      "urn:cerebro:writer:runtime_evidence:okta-direct-control",
+				"direct_evidence_label":                    "Okta direct control evidence",
+				"direct_evidence_type":                     "runtime_evidence",
+				"direct_evidence_source_id":                "okta",
+				"direct_evidence_relation":                 "has_evidence",
+				"direct_evidence_attributes_json_internal": `{"evidence_type":"okta_control","status":"reviewed","source_system":"okta"}`,
+				"source_urn":                               "urn:cerebro:writer:source:okta",
+				"source_label":                             "Okta",
+				"source_attributes_json_internal":          `{"status":"healthy","last_sync_at":"2026-06-29T12:00:00Z"}`,
 			},
 		}},
 	}
@@ -193,11 +199,14 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	}
 	rowsEvent := events[6].Data.(RowsEvent)
 	for field, want := range map[string]any{
-		"control_status":      "monitored",
-		"support_status":      "active",
-		"evidence_status":     "ready",
-		"source_status":       "healthy",
-		"source_last_sync_at": "2026-06-29T12:00:00Z",
+		"control_status":                "monitored",
+		"support_status":                "active",
+		"evidence_status":               "ready",
+		"direct_evidence_status":        "reviewed",
+		"direct_evidence_evidence_type": "okta_control",
+		"direct_evidence_source_system": "okta",
+		"source_status":                 "healthy",
+		"source_last_sync_at":           "2026-06-29T12:00:00Z",
 	} {
 		if got := rowsEvent.Rows[0][field]; got != want {
 			t.Fatalf("%s = %#v, want %#v in sanitized questionnaire row %#v", field, got, want, rowsEvent.Rows[0])
@@ -208,6 +217,9 @@ func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
 	}
 	if _, leaked := rowsEvent.Rows[0]["source_attributes_json_internal"]; leaked {
 		t.Fatalf("rows leaked raw source attributes: %#v", rowsEvent.Rows[0])
+	}
+	if _, leaked := rowsEvent.Rows[0]["direct_evidence_attributes_json_internal"]; leaked {
+		t.Fatalf("rows leaked raw direct evidence attributes: %#v", rowsEvent.Rows[0])
 	}
 	summaryEvent := events[8].Data.(SummaryEvent)
 	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot" {
