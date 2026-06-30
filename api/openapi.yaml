@@ -12167,10 +12167,22 @@ components:
             $ref: '#/components/schemas/GRCQuestionnaireIntakeRow'
         intake_text:
           type: string
-          description: JSON, CSV, TSV, or one-question-per-line intake content.
+          description: JSON, CSV, TSV, portal capture text, PDF-extracted text, or one-question-per-line intake content.
         intake_format:
           type: string
-          enum: [json, csv, tsv, text]
+          enum: [json, csv, tsv, text, portal, pdf, xlsx, xlsm]
+        intake_file_base64:
+          type: string
+          description: Base64-encoded questionnaire attachment for PDF, XLSX, XLSM, CSV, TSV, JSON, text, or portal capture intake.
+        intake_content_type:
+          type: string
+          description: MIME type for the intake attachment.
+        portal_url:
+          type: string
+          description: Portal URL for questionnaires captured from a customer or vendor portal. Portal intake with a URL can be created before questions are captured.
+        portal_instructions:
+          type: string
+          description: Login, workspace, owner, or handling notes for portal intake.
         attributes:
           type: object
           additionalProperties:
@@ -12203,7 +12215,6 @@ components:
           type: string
     GRCQuestionnaireAssignmentRequest:
       type: object
-      required: [question_id]
       properties:
         tenant_id:
           type: string
@@ -12260,7 +12271,7 @@ components:
           type: string
     GRCQuestionnaireCommentRequest:
       type: object
-      required: [question_id, body]
+      required: [body]
       properties:
         tenant_id:
           type: string
