@@ -114,7 +114,6 @@ type familyData struct {
 	URNKind               string
 	EventKind             string
 	SchemaRef             string
-	IDField               string
 	IDKeys                []string
 	ListKeys              []string
 	Singleton             bool
@@ -673,7 +672,6 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			URNKind:               urnKind,
 			EventKind:             eventKind,
 			SchemaRef:             schemaRef,
-			IDField:               strings.TrimSpace(resource.IDField),
 			IDKeys:                idKeysForResource(resource),
 			ListKeys:              listKeysForResource(resource),
 			Singleton:             resource.Singleton,
@@ -1768,11 +1766,18 @@ func fixturePayloadValue(request normalizedRequest, field string, family familyD
 	case "digest", "evidence_cas_digest":
 		return "sha256:test"
 	default:
-		if field == strings.TrimSpace(family.IDField) && fixtureIDFieldUsesRecordID(field) {
+		if field == familyPrimaryIDField(family) && fixtureIDFieldUsesRecordID(field) {
 			return fixtureRecordID(request, family)
 		}
 		return fixtureAttributeValue(request, field, family)
 	}
+}
+
+func familyPrimaryIDField(family familyData) string {
+	if len(family.IDKeys) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(family.IDKeys[0])
 }
 
 func fixtureIDFieldUsesRecordID(field string) bool {

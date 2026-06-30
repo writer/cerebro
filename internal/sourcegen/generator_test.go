@@ -280,8 +280,8 @@ func TestFixtureEmailLocalPartForPayloadPath(t *testing.T) {
 func TestFixturePayloadValueUsesRecordIDForFamilyIDField(t *testing.T) {
 	request := normalizedRequest{Request: Request{SourceID: "elevenlabs"}}
 	family := familyData{
-		Name:    "service_account_api_keys",
-		IDField: "key_id",
+		Name:   "service_account_api_keys",
+		IDKeys: []string{"key_id", "name"},
 	}
 
 	if got, want := fixturePayloadValue(request, "key_id", family), "source-elevenlabs-service_account_api_keys-1"; got != want {
@@ -292,8 +292,8 @@ func TestFixturePayloadValueUsesRecordIDForFamilyIDField(t *testing.T) {
 	}
 
 	emailFamily := familyData{
-		Name:    "users",
-		IDField: "email",
+		Name:   "users",
+		IDKeys: []string{"email"},
 	}
 	if got, want := fixturePayloadValue(request, "email", emailFamily), "email@elevenlabs.example.test"; got != want {
 		t.Fatalf("fixturePayloadValue(email ID field) = %q, want %q", got, want)
