@@ -21,3 +21,18 @@ func TestIdentityDirectorySchemaCreatesTenantScopedUsersAndOrganizations(t *test
 		}
 	}
 }
+
+func TestIdentitySourceClauseMatchesDisplayDefault(t *testing.T) {
+	clauses := []string{"1=1"}
+	args := []any{}
+
+	addIdentitySourceClause(&clauses, &args, " Identity_Directory ")
+
+	if len(args) != 1 || args[0] != "identity_directory" {
+		t.Fatalf("args = %#v, want normalized identity_directory", args)
+	}
+	want := "LOWER(COALESCE(NULLIF(source, ''), 'identity_directory')) = $1"
+	if len(clauses) != 2 || clauses[1] != want {
+		t.Fatalf("clauses = %#v, want %q", clauses, want)
+	}
+}

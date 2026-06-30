@@ -170,6 +170,61 @@ func TestEffectiveAccessPathCountsSplitRoleAssignments(t *testing.T) {
 	}
 }
 
+func TestEffectiveAccessPathAccessClassification(t *testing.T) {
+	mediator := GraphEntityRef{URN: "urn:cerebro:writer:okta_group:grp-finance", EntityType: "okta.group", Label: "Finance Admins"}
+	path := EffectiveAccessPath{
+		Mediator:       &mediator,
+		AccessTarget:   GraphEntityRef{URN: "urn:cerebro:writer:okta_application:payroll", EntityType: "okta.application", Label: "Payroll"},
+		Entitlement:    GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:admin", EntityType: "okta.entitlement", Label: "Admin"},
+		Capability:     GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:payroll_admin", EntityType: "privileged.capability", Label: "Payroll administrator"},
+		AssignmentKind: "admin_role_assignment",
+		RelationChain:  []string{"member_of", "assigned_to", "can_admin"},
+		Edges: []EffectiveAccessPathEdge{{
+			Relation: "can_admin",
+			Attributes: map[string]string{
+				"data_classification": "sensitive",
+			},
+		}},
+	}
+	if !path.IsPrivileged() {
+		t.Fatalf("IsPrivileged() = false, want true")
+	}
+	if !path.IsSensitive() {
+		t.Fatalf("IsSensitive() = false, want true")
+	}
+	want := []string{"group_mediated", "privileged", "role_based", "sensitive"}
+	if got := path.AccessClassification(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("AccessClassification() = %#v, want %#v", got, want)
+	}
+}
+
+func TestEffectiveAccessPathSupportsOperationProofRequiresChangedPrivilegedOrSensitiveAccess(t *testing.T) {
+	standard := EffectiveAccessPath{
+		AssignmentKind: "direct_app_assignment",
+		AccessTarget:   GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-1", EntityType: "okta.application", Label: "App"},
+		Entitlement:    GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:user", EntityType: "okta.entitlement", Label: "User"},
+		Capability:     GraphEntityRef{URN: "urn:cerebro:writer:capability:standard_access", EntityType: "capability", Label: "Standard access"},
+	}
+	if standard.SupportsOperationProof(true) {
+		t.Fatalf("standard SupportsOperationProof(true) = true, want false")
+	}
+
+	privileged := standard
+	privileged.Capability = GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:admin", EntityType: "privileged.capability", Label: "Administrator"}
+	if privileged.SupportsOperationProof(false) {
+		t.Fatalf("privileged SupportsOperationProof(false) = true, want false")
+	}
+	if !privileged.SupportsOperationProof(true) {
+		t.Fatalf("privileged SupportsOperationProof(true) = false, want true")
+	}
+
+	sensitive := standard
+	sensitive.AccessTarget = GraphEntityRef{URN: "urn:cerebro:writer:okta_application:finance", EntityType: "okta.application", Label: "Finance Reports"}
+	if !sensitive.SupportsOperationProof(true) {
+		t.Fatalf("sensitive SupportsOperationProof(true) = false, want true")
+	}
+}
+
 func effectiveAccessPathTestEdges() []any {
 	return []any{
 		map[string]any{

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
@@ -264,14 +265,28 @@ func nativeRecord(st settings, item map[string]interface{}, kind, schemaRef stri
 		severity := firstString(nestedString(item, "severity", "severity_name"), nativeString(item, "severity"), nativeString(item, "alert_severity_id"))
 		status := firstString(nestedString(item, "status", "status_name"), nativeString(item, "status"), nativeString(item, "alert_status_id"))
 		title := firstString(nativeString(item, "alert_title"), nativeString(item, "title"))
-		occurredAt := firstNativeTime(item, "alert_source_event_time", "alert_creation_time")
-		return canonicalRecord(st, item, kind, schemaRef, "alert-"+alertID, occurredAt, map[string]string{"alert_id": alertID, "severity": severity, "status": status}, map[string]interface{}{"alert_id": alertID, "severity": severity, "status": status, "title": title})
+		occurredAt := firstNativeTime(item, "alert_source_event_time", "alert_creation_time", "observed_at", "created_at")
+		observedAt := firstString(nativeString(item, "observed_at"), nativeString(item, "alert_source_event_time"))
+		createdAt := firstString(nativeString(item, "created_at"), nativeString(item, "alert_creation_time"))
+		updatedAt := firstString(nativeString(item, "updated_at"), nativeString(item, "last_updated_at"), nativeString(item, "modified_at"), nativeString(item, "alert_updated_time"))
+		closedAt := firstString(nativeString(item, "closed_at"), nativeString(item, "close_date"), nativeString(item, "alert_closed_time"))
+		resolvedAt := firstString(nativeString(item, "resolved_at"), nativeString(item, "resolved_date"), nativeString(item, "alert_resolved_time"))
+		caseID := nativeString(item, "case_id")
+		return canonicalRecord(st, item, kind, schemaRef, "alert-"+alertID, occurredAt,
+			map[string]string{"alert_id": alertID, "severity": severity, "status": status, "observed_at": observedAt, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt, "case_id": caseID},
+			map[string]interface{}{"alert_id": alertID, "severity": severity, "status": status, "title": title, "observed_at": observedAt, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt, "case_id": caseID})
 	case kindCase:
 		caseID := nativeString(item, "case_id")
 		status := firstString(nestedString(item, "state", "state_name"), nativeString(item, "status"), nativeString(item, "status_id"))
 		title := firstString(nativeString(item, "case_name"), nativeString(item, "name"))
 		occurredAt := firstNativeTime(item, "initial_date", "open_date", "close_date")
-		return canonicalRecord(st, item, kind, schemaRef, "case-"+caseID, occurredAt, map[string]string{"case_id": caseID, "status": status}, map[string]interface{}{"case_id": caseID, "status": status, "title": title})
+		createdAt := firstString(nativeString(item, "created_at"), nativeString(item, "initial_date"), nativeString(item, "open_date"))
+		updatedAt := firstString(nativeString(item, "updated_at"), nativeString(item, "last_updated_at"), nativeString(item, "modified_at"))
+		closedAt := firstString(nativeString(item, "closed_at"), nativeString(item, "close_date"))
+		resolvedAt := firstString(nativeString(item, "resolved_at"), nativeString(item, "resolved_date"))
+		return canonicalRecord(st, item, kind, schemaRef, "case-"+caseID, occurredAt,
+			map[string]string{"case_id": caseID, "status": status, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt},
+			map[string]interface{}{"case_id": caseID, "status": status, "title": title, "created_at": createdAt, "updated_at": updatedAt, "closed_at": closedAt, "resolved_at": resolvedAt})
 	case kindIOC:
 		iocID := nativeString(item, "ioc_id")
 		iocType := firstString(nestedString(item, "ioc_type", "type_name"), nativeString(item, "ioc_type"), nativeString(item, "ioc_type_id"))
@@ -293,6 +308,7 @@ func canonicalRecord(st settings, item map[string]interface{}, kind, schemaRef, 
 	}
 	if st.runtimeID != "" {
 		attributes["runtime_id"] = st.runtimeID
+		attributes[ports.EventAttributeSourceRuntimeID] = st.runtimeID
 	}
 	return panopticonRecord{ID: id, TenantID: st.tenantID, SourceID: sourceID, Kind: kind, OccurredAt: occurredAt, SchemaRef: schemaRef, Attributes: attributes, Payload: payload}, nil
 }

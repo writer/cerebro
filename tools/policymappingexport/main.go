@@ -136,6 +136,7 @@ type controlEvidenceRequirementCatalog struct {
 type controlEvidenceRequirementDefaults struct {
 	SourceID                 string   `yaml:"source_id"`
 	EntityType               string   `yaml:"entity_type"`
+	EvidenceUse              string   `yaml:"evidence_use"`
 	RequiredFields           []string `yaml:"required_fields"`
 	FreshnessWindow          string   `yaml:"freshness_window"`
 	AssessmentMethods        []string `yaml:"assessment_methods"`
@@ -164,6 +165,7 @@ type controlEvidenceRequirementSelector struct {
 type controlEvidenceSourceRequirement struct {
 	SourceID                 string   `yaml:"source_id"`
 	EntityType               string   `yaml:"entity_type"`
+	EvidenceUse              string   `yaml:"evidence_use"`
 	RequiredFields           []string `yaml:"required_fields"`
 	FreshnessWindow          string   `yaml:"freshness_window"`
 	AssessmentMethods        []string `yaml:"assessment_methods"`
@@ -904,7 +906,7 @@ func frameworkSourceExportCells(index frameworkSourceIndex, framework string) []
 		source.SourceType,
 		source.SourceStatus,
 		source.SourceURL,
-		source.EvidenceModel,
+		abbreviateCSVCell(source.EvidenceModel, 112),
 	}
 }
 
@@ -1091,6 +1093,9 @@ func validateControlEvidenceRequirements(catalog controlEvidenceRequirementCatal
 			if strings.TrimSpace(merged.EntityType) == "" {
 				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing entity_type")
 			}
+			if strings.TrimSpace(merged.EvidenceUse) == "" {
+				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing evidence_use")
+			}
 			if len(trimStrings(merged.RequiredFields)) == 0 {
 				issues = append(issues, controlEvidenceRequirementsPath+": requirement "+label+" missing required_fields")
 			}
@@ -1160,6 +1165,7 @@ func mergeControlEvidenceRequirementDefaults(defaults controlEvidenceRequirement
 	merged := controlEvidenceSourceRequirement{
 		SourceID:                 strings.TrimSpace(defaults.SourceID),
 		EntityType:               strings.TrimSpace(defaults.EntityType),
+		EvidenceUse:              strings.TrimSpace(defaults.EvidenceUse),
 		RequiredFields:           uniqueSorted(defaults.RequiredFields),
 		FreshnessWindow:          strings.TrimSpace(defaults.FreshnessWindow),
 		AssessmentMethods:        uniqueSorted(defaults.AssessmentMethods),
@@ -1175,6 +1181,9 @@ func mergeControlEvidenceRequirementDefaults(defaults controlEvidenceRequirement
 	}
 	if value := strings.TrimSpace(requirement.EntityType); value != "" {
 		merged.EntityType = value
+	}
+	if value := strings.TrimSpace(requirement.EvidenceUse); value != "" {
+		merged.EvidenceUse = value
 	}
 	if values := uniqueSorted(requirement.RequiredFields); len(values) != 0 {
 		merged.RequiredFields = values
@@ -3608,6 +3617,7 @@ func controlEvidenceRequirementRows(items []expandedControlEvidenceRequirement, 
 			item.ProfileName,
 			item.SourceRequirement.SourceID,
 			item.SourceRequirement.EntityType,
+			item.SourceRequirement.EvidenceUse,
 			joinList(item.SourceRequirement.RequiredFields),
 			item.SourceRequirement.FreshnessWindow,
 			joinList(item.SourceRequirement.AssessmentMethods),
@@ -3660,7 +3670,8 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					item.ProfileName,
 					item.SourceRequirement.SourceID,
 					item.SourceRequirement.EntityType,
-					joinList(item.SourceRequirement.RequiredFields),
+					abbreviateCSVCell(joinList(item.SourceRequirement.RequiredFields), 192),
+					item.SourceRequirement.EvidenceUse,
 					item.SourceRequirement.FreshnessWindow,
 					explanation.Freshness.Status,
 					joinList(coverageMissingDimensionLabels(explanation.MissingDimensions)),
@@ -3675,9 +3686,9 @@ func findingEvidenceRequirementRows(catalog publicDetectionCatalog, index contro
 					claimStatus,
 					findingRequirementEvidenceBasis(requirementMatchStatus, complianceReview.ComplianceEvidenceStatus, sourceCapabilityStatus),
 					explanation.EvidencePacketReadiness,
-					explanation.NextAction,
-					item.SourceRequirement.OverclaimGuard,
-					item.SourceRequirement.AdjacentControlRationale,
+					abbreviateCSVCell(explanation.NextAction, 80),
+					abbreviateCSVCell(item.SourceRequirement.OverclaimGuard, 128),
+					abbreviateCSVCell(item.SourceRequirement.AdjacentControlRationale, 128),
 				}
 				row = append(row, frameworkSourceExportCells(sourceIndex, ref.Framework)...)
 				rows = append(rows, row)
@@ -3784,27 +3795,27 @@ func coverageGapExplanationRow(explanation coverageops.CoverageGapExplanation, r
 		requirementMatchStatus,
 		explanation.ComplianceEvidenceStatus,
 		explanation.SourceCapabilityStatus,
-		abbreviateCSVCell(explanation.Explanation, 96),
-		joinLimitedStrings(coverageGraphFactLabels(explanation.GraphEvidence), 3),
-		joinLimitedStrings(coverageEvidenceFactLabels(explanation.BoundedEvidence), 2),
-		joinLimitedStrings(coverageCitationLabels(explanation.SourceCitations), 2),
-		joinLimitedStrings(coverageCitationLabels(explanation.PolicyCitations), 2),
+		abbreviateCSVCell(explanation.Explanation, 72),
+		abbreviateCSVCell(joinLimitedStrings(coverageGraphFactLabels(explanation.GraphEvidence), 3), 192),
+		abbreviateCSVCell(joinLimitedStrings(coverageEvidenceFactLabels(explanation.BoundedEvidence), 2), 160),
+		abbreviateCSVCell(joinLimitedStrings(coverageCitationLabels(explanation.SourceCitations), 2), 160),
+		abbreviateCSVCell(joinLimitedStrings(coverageCitationLabels(explanation.PolicyCitations), 2), 120),
 		joinList(coverageMissingDimensionLabels(explanation.MissingDimensions)),
 		coverageFreshnessLabel(explanation.Freshness),
-		joinLimitedStrings(coverageProvenanceLabels(explanation.Provenance), 1),
+		abbreviateCSVCell(joinLimitedStrings(coverageProvenanceLabels(explanation.Provenance), 1), 72),
 		explanation.Confidence,
-		joinList(explanation.UnsupportedClaims),
+		abbreviateCSVCell(joinList(explanation.UnsupportedClaims), 160),
 		explanation.Owner,
 		explanation.ManualReviewState,
 		explanation.EvidencePacketReadiness,
-		explanation.NextAction,
-		abbreviateCSVCell(explanation.OverclaimGuard, 96),
-		abbreviateCSVCell(explanation.AdjacentControlRationale, 96),
-		explanation.LLMContext.Question,
-		joinList(explanation.LLMContext.AnswerBasis),
+		abbreviateCSVCell(explanation.NextAction, 80),
+		abbreviateCSVCell(explanation.OverclaimGuard, 72),
+		abbreviateCSVCell(explanation.AdjacentControlRationale, 72),
+		abbreviateCSVCell(explanation.LLMContext.Question, 80),
+		abbreviateCSVCell(joinList(explanation.LLMContext.AnswerBasis), 80),
 		joinList(explanation.LLMContext.MissingDimensions),
-		abbreviateCSVCell(explanation.LLMContext.NextAction, 96),
-		abbreviateCSVCell(explanation.LLMContext.OverclaimGuard, 96),
+		"same_as:next_action",
+		"same_as:overclaim_guard",
 		joinList(explanation.PolicyDocumentRefs),
 		joinList(explanation.ExceptionRefs),
 		joinList(explanation.RemediationRefs),
@@ -4981,7 +4992,7 @@ func controlEvidenceRequirementsHeader() []string {
 	return []string{
 		"framework", "control_id", "control_ref", "control_family",
 		"requirement_profile", "requirement_name", "requirement_source_id",
-		"entity_type", "required_fields", "freshness_window", "assessment_methods",
+		"entity_type", "evidence_use", "required_fields", "freshness_window", "assessment_methods",
 		"auditor_grade_evidence", "claim_rule_id", "claim_strength",
 		"sufficiency_rule", "coverage_claim", "claim_status", "overclaim_guard",
 		"adjacent_control_rationale", "source_capability_refs",
@@ -4997,7 +5008,7 @@ func findingEvidenceRequirementMapHeader() []string {
 		"finding_id", "name", "pack_id", "source_id", "evaluation_mode",
 		"framework", "control_id", "control_ref", "control_family",
 		"requirement_profile", "requirement_name", "requirement_source_id",
-		"entity_type", "required_fields", "freshness_window",
+		"entity_type", "required_fields", "evidence_use", "freshness_window",
 		"source_freshness_status", "required_missing_dimensions",
 		"manual_review_owner", "claim_rule_id", "claim_strength",
 		"sufficiency_rule", "coverage_claim", "source_capability_status",

@@ -4930,6 +4930,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Exact provider filter such as okta or oidc.
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Exact source filter such as mcp_oauth, mcp_oauth_client, api_key, or api_credential.
         - name: q
           in: query
           schema:
@@ -4957,6 +4967,21 @@ paths:
           in: query
           schema:
             type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Exact provider filter such as okta or oidc.
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Exact source filter such as mcp_oauth, mcp_oauth_client, api_key, api_credential, or mcp_oauth_entitlement.
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Exact user status filter such as active, inactive, suspended, or disabled.
         - name: q
           in: query
           schema:
@@ -5247,6 +5272,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCGraphPathRecord'
+        access_evidence_subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessEvidenceSubject'
+        reasoning_tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCEvidenceReasoningTask'
         exceptions_acceptances:
           type: array
           items:
@@ -5922,6 +5955,258 @@ components:
           type: string
         observed_at:
           type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCAccessEvidenceSubject:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        evidence_use:
+          type: string
+        subject_urn:
+          type: string
+        subject_type:
+          type: string
+        subject_label:
+          type: string
+        principal_urn:
+          type: string
+        principal_type:
+          type: string
+        principal_label:
+          type: string
+        account_status:
+          type: string
+        lifecycle_state:
+          type: string
+        mfa_posture:
+          type: string
+        reviewer_urn:
+          type: string
+        owner_urn:
+          type: string
+        exception_state:
+          type: string
+        manual_review_state:
+          type: string
+        period_start:
+          type: string
+        period_end:
+          type: string
+        freshness:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessSourceFreshness'
+        source_freshness:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessSourceFreshness'
+        source_citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessSourceCitation'
+        policy_citations:
+          type: array
+          items:
+            type: string
+        included_because:
+          type: array
+          items:
+            type: string
+        risk_signals:
+          type: array
+          items:
+            type: string
+        change_summary:
+          type: array
+          items:
+            type: string
+        missing_facts:
+          type: array
+          items:
+            type: string
+        unsupported_claims:
+          type: array
+          items:
+            type: string
+        overclaim_guards:
+          type: array
+          items:
+            type: string
+        confidence:
+          $ref: '#/components/schemas/GRCAccessEvidenceConfidence'
+        supported_controls:
+          type: array
+          items:
+            type: string
+        citations:
+          $ref: '#/components/schemas/GRCEvidenceCitations'
+        operating_effectiveness_item_ids:
+          type: array
+          items:
+            type: string
+        review_context_item_ids:
+          type: array
+          items:
+            type: string
+        manual_review_only_item_ids:
+          type: array
+          items:
+            type: string
+        access_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessEvidenceItem'
+    GRCAccessSourceFreshness:
+      type: object
+      additionalProperties: true
+      properties:
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        observed_at:
+          type: string
+        status:
+          type: string
+    GRCAccessSourceCitation:
+      type: object
+      additionalProperties: true
+      properties:
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        event_id:
+          type: string
+        graph_path_id:
+          type: string
+        observed_at:
+          type: string
+    GRCAccessEvidenceConfidence:
+      type: object
+      additionalProperties: true
+      properties:
+        level:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+    GRCAccessEvidenceItem:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        evidence_use:
+          type: string
+        assignment_kind:
+          type: string
+        access_target_urn:
+          type: string
+        access_target_type:
+          type: string
+        access_target_label:
+          type: string
+        mediator_urn:
+          type: string
+        mediator_type:
+          type: string
+        mediator_label:
+          type: string
+        entitlement_urn:
+          type: string
+        entitlement_type:
+          type: string
+        entitlement_label:
+          type: string
+        capability_urn:
+          type: string
+        capability_type:
+          type: string
+        capability_label:
+          type: string
+        privileged:
+          type: boolean
+        sensitive:
+          type: boolean
+        classification:
+          type: array
+          items:
+            type: string
+        changed_during_period:
+          type: boolean
+        source_ids:
+          type: array
+          items:
+            type: string
+        runtime_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        graph_path_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        source_citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCAccessSourceCitation'
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCEvidenceReasoningTask:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        subject_id:
+          type: string
+        question:
+          type: string
+        answer_scope:
+          type: string
+        control_ids:
+          type: array
+          items:
+            type: string
+        policy_citations:
+          type: array
+          items:
+            type: string
+        citation_graph_root_urns:
+          type: array
+          items:
+            type: string
+        citation_graph_path_ids:
+          type: array
+          items:
+            type: string
+        citation_event_ids:
+          type: array
+          items:
+            type: string
+        guards:
+          type: array
+          items:
+            type: string
         attributes:
           type: object
           additionalProperties:

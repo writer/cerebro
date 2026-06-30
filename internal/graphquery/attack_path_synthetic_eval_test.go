@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -23,7 +24,7 @@ func TestAttackPathsSyntheticTraversalProofEvals(t *testing.T) {
 		t.Fatalf("synthetic eval count = %d, want at least 600", len(cases))
 	}
 	for _, tc := range cases {
-		paths := attackPathsFromRows([]ports.CypherRow{syntheticAttackPathRow(tc)})
+		paths := attackpath.PathsFromRows([]ports.CypherRow{syntheticAttackPathRow(tc)})
 		gotPath := len(paths) == 1
 		if gotPath != tc.wantPath {
 			t.Fatalf("%s: got path=%v, want %v; paths=%#v", tc.id, gotPath, tc.wantPath, paths)
