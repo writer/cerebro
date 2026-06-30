@@ -6,6 +6,7 @@ GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
+GOLANGCI_LINT_TIMEOUT ?= 20m
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
@@ -272,7 +273,7 @@ mcp-sdk-compat: build ## Check MCP SDK compatibility against local server.
 # ==== Lint and Contracts ====
 ##@ Lint and Contracts
 lint: lint-bootstrap ## Run golangci-lint over application packages.
-	$(GOLANGCI_LINT) run --timeout 20m $(APP_PACKAGES)
+	$(GOLANGCI_LINT) run --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
