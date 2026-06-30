@@ -19,6 +19,7 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
+      workspace_gid: env:ASANA_WORKSPACE_GID
       token: env:ASANA_TOKEN
   - localId: audit-events
     config:
@@ -28,4 +29,5 @@ runtimes:
       expected_cadence_seconds: "3600"
       stale_after_seconds: "7200"
       per_page: "100"
+      workspace_gid: env:ASANA_WORKSPACE_GID
       token: env:ASANA_TOKEN
