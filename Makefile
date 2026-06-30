@@ -8,6 +8,8 @@ GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
 GOLANGCI_LINT_CONCURRENCY ?= 4
 GOLANGCI_LINT_TIMEOUT ?= 20m
+GO_TEST_SHARD_TOTAL ?= 1
+GO_TEST_SHARD_INDEX ?= 0
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
@@ -137,11 +139,29 @@ serve: build ## Build and run the local HTTP server.
 serve-dev: build ## Build and run the local HTTP server with acknowledged dev-mode auth/rate-limit opt-out.
 	CEREBRO_DEV_MODE=1 CEREBRO_DEV_MODE_ACK=1 ./bin/cerebro serve
 
-test: ## Run all Go tests.
-	go test ./...
+test: ## Run all Go tests. Set GO_TEST_SHARD_TOTAL and GO_TEST_SHARD_INDEX to run one stable shard.
+	@set -e; \
+	package_file="$$(mktemp)"; \
+	trap 'rm -f "$$package_file"' EXIT; \
+	go list ./... > "$$package_file"; \
+	packages="$$( $(PYTHON) scripts/go_package_shard.py --total "$(GO_TEST_SHARD_TOTAL)" --index "$(GO_TEST_SHARD_INDEX)" < "$$package_file")"; \
+	if [ -z "$$packages" ]; then \
+		echo "no Go packages selected for shard $(GO_TEST_SHARD_INDEX)/$(GO_TEST_SHARD_TOTAL)"; \
+	else \
+		go test $$packages; \
+	fi
 
-test-race: ## Run all Go tests with the race detector.
-	go test -race -timeout 20m ./...
+test-race: ## Run all Go tests with the race detector. Set GO_TEST_SHARD_TOTAL and GO_TEST_SHARD_INDEX to run one stable shard.
+	@set -e; \
+	package_file="$$(mktemp)"; \
+	trap 'rm -f "$$package_file"' EXIT; \
+	go list ./... > "$$package_file"; \
+	packages="$$( $(PYTHON) scripts/go_package_shard.py --total "$(GO_TEST_SHARD_TOTAL)" --index "$(GO_TEST_SHARD_INDEX)" < "$$package_file")"; \
+	if [ -z "$$packages" ]; then \
+		echo "no Go packages selected for shard $(GO_TEST_SHARD_INDEX)/$(GO_TEST_SHARD_TOTAL)"; \
+	else \
+		go test -race -timeout 20m $$packages; \
+	fi
 
 cover: ## Run Go coverage for high-stakes packages.
 	mkdir -p "$(dir $(COVERAGE_OUT))"
