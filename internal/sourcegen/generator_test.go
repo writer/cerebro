@@ -134,6 +134,14 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	if strings.Contains(sourceTest, "Record One") {
 		t.Fatalf("generated source test still uses generic synthetic record:\n%s", sourceTest)
 	}
+	for _, forbidden := range []string{
+		`t.Fatalf("Authorization"+" = %q"`,
+		`t.Fatalf("path = %q", r.URL.Path)`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("generated source test handler still calls %q:\n%s", forbidden, sourceTest)
+		}
+	}
 }
 
 func TestGenerateDryRunDoesNotWriteFiles(t *testing.T) {
@@ -843,6 +851,15 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
 		}
 	}
+	for _, forbidden := range []string{
+		`t.Fatalf("token method = %s"`,
+		`t.Fatalf("ParseForm() error = %v"`,
+		`t.Fatalf("grant_type = %q"`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("source_test.go token handler still calls %q:\n%s", forbidden, sourceTest)
+		}
+	}
 }
 
 func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
@@ -1225,6 +1242,14 @@ func TestGenerateDefinitionSupportsAWSSigV4Auth(t *testing.T) {
 	for _, want := range []string{`strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ")`, `strings.Contains(auth, "Credential=test-access-key/")`, `"access_key": "test-access-key"`, `"secret_key": "test-secret-key"`} {
 		if !strings.Contains(sourceTest, want) {
 			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+	for _, forbidden := range []string{
+		`t.Fatalf("Authorization"+" = %q"`,
+		`t.Fatalf("Authorization"+" missing credential scope: %q"`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("source_test.go SigV4 handler still calls %q:\n%s", forbidden, sourceTest)
 		}
 	}
 	if strings.Contains(sourceTest, `"AWS4-HMAC-SHA256 test-token"`) {

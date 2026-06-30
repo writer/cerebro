@@ -1467,14 +1467,14 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, "\tserver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n")
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\tt.Fatalf(\"token method = %%s\", r.Method)\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\tt.Fatalf(\"ParseForm() error = %%v\", err)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\tt.Fatalf(\"grant_type = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\tt.Fatalf(\"client_id = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\tt.Fatalf(\"client_secret = %%q\", got)\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
+		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\thttp.Error(w, \"token method must be POST\", http.StatusMethodNotAllowed)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\thttp.Error(w, \"invalid token form\", http.StatusBadRequest)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\thttp.Error(w, \"grant_type must be client_credentials\", http.StatusBadRequest)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\thttp.Error(w, \"client_id mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\thttp.Error(w, \"client_secret mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
 	}
 	fmt.Fprint(&b, generatedTestAuthAssertion(request))
 	if request.HealthPath != request.DefaultPath {
 		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == %s {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n", strconv.Quote(renderTestPath(request.HealthPath)))
 	}
 	fmt.Fprintf(&b, "\t\tfor _, tc := range familyCases {\n\t\t\tif r.URL.Path != tc.path {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_, _ = w.Write(tc.responseBody)\n\t\t\treturn\n\t\t}\n")
-	fmt.Fprintf(&b, "\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n")
+	fmt.Fprintf(&b, "\t\thttp.NotFound(w, r)\n")
 	fmt.Fprintf(&b, "\t}))\n\tdefer server.Close()\n")
 	// cfgValues must satisfy every config/credential key referenced by the
 	// source's templates (base URL, health path, and family paths) so Check and
@@ -1647,9 +1647,9 @@ func generatedTestAuthHeader(request normalizedRequest) (string, string) {
 func generatedTestAuthAssertion(request normalizedRequest) string {
 	header, value := generatedTestAuthHeader(request)
 	if request.AuthModel != AuthModelAWSSigV4 {
-		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\tt.Fatalf(%s+\" = %%q\", r.Header.Get(%s))\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header), strconv.Quote(header))
+		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\thttp.Error(w, %s+\" mismatch\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header))
 	}
-	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\tt.Fatalf(%s+\" = %%q\", auth)\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\tt.Fatalf(%s+\" missing credential scope: %%q\", auth)\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
+	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing SigV4 prefix\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing credential scope\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
 }
 
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}
