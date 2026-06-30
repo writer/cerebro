@@ -890,13 +890,19 @@ func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 		{Path: filepath.Join(sourceRoot, "catalog.yaml"), Content: renderCatalog(request)},
 		{Path: filepath.Join(sourceRoot, "deploy.yaml"), Content: renderDeploy(request)},
 		{Path: filepath.Join(sourceRoot, "source.go"), Content: renderSourceGo(request)},
+		{Path: filepath.Join(sourceRoot, "fixture.go"), Content: renderFixtureGo(request)},
 		{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
-		{Path: filepath.Join(sourceRoot, "testdata", "read_"+request.DefaultFamily+".json"), Content: renderReadFixture()},
 		{Path: filepath.Join(sourceRoot, "source_health_receipt.json"), Content: renderSourceHealthReceipt(request)},
 		{Path: filepath.Join(sourceRoot, "SOURCE_RUNTIME.md"), Content: renderRuntimeDocs(request)},
 		{Path: filepath.Join(sourceRoot, "PR_BODY.md"), Content: renderPRBody(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+".go"), Content: renderProjectionGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+"_test.go"), Content: renderProjectionTestGo(request)},
+	}
+	for _, family := range request.Families {
+		files = append(files,
+			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "discover_"+family.Name+".json"), Content: renderDiscoverFixture(family)},
+			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "read_"+family.Name+".json"), Content: renderReadFixture(request, family)},
+		)
 	}
 	for i := range files {
 		if strings.HasSuffix(files[i].Path, ".go") {
@@ -918,6 +924,10 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "emitted_kinds:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
+	}
+	fmt.Fprintf(&b, "runtime_families:\n")
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "  - %s\n", family.Name)
 	}
 	fmt.Fprintf(&b, "kind_lifecycle:\n")
 	for _, family := range request.Families {
@@ -1393,6 +1403,43 @@ func staticAttributesForFamily(request normalizedRequest, family familyData) map
 	return attrs
 }
 
+func renderFixtureGo(request normalizedRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
+	fmt.Fprintf(&b, "import (\n")
+	fmt.Fprintf(&b, "\t\"context\"\n")
+	fmt.Fprintf(&b, "\t\"embed\"\n")
+	fmt.Fprintf(&b, "\t\"fmt\"\n")
+	fmt.Fprintf(&b, "\t\"strings\"\n\n")
+	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/sourcecdk\"\n")
+	fmt.Fprintf(&b, ")\n\n")
+	fmt.Fprintf(&b, "//go:embed testdata/*.json\nvar fixtureFS embed.FS\n\n")
+	fmt.Fprintf(&b, "// NewFixture constructs the deterministic %s source used by tests.\n", request.Name)
+	fmt.Fprintf(&b, "func NewFixture() (sourcecdk.Source, error) {\n")
+	fmt.Fprintf(&b, "\tcatalogBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n")
+	fmt.Fprintf(&b, "\tcatalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n")
+	fmt.Fprintf(&b, "\tfamilies := []sourcecdk.FixtureFamily{}\n")
+	fmt.Fprintf(&b, "\tfor _, family := range []string{%s} {\n", familyConstList(request.Families))
+	fmt.Fprintf(&b, "\t\turns, err := sourcecdk.LoadFixtureURNs(fixtureFS, \"testdata/discover_\"+family+\".json\")\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
+	fmt.Fprintf(&b, "\t\tevents, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, \"testdata/read_\"+family+\".json\", catalog.EventContracts)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
+	fmt.Fprintf(&b, "\t\tfamilies = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})\n\t}\n")
+	fmt.Fprintf(&b, "\treturn sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{\n")
+	fmt.Fprintf(&b, "\t\tSpec:          catalog.Spec,\n\t\tContracts:     catalog.EventContracts,\n\t\tDefaultFamily: defaultFamily,\n\t\tCheck:         checkFixtureConfig,\n\t\tResolveFamily: resolveFixtureFamily,\n\t\tFamilies:      families,\n\t})\n")
+	fmt.Fprintf(&b, "}\n\n")
+	fmt.Fprintf(&b, "func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {\n\tif fixtureTenantID(cfg) == \"\" {\n\t\treturn fmt.Errorf(\"tenant_id is required\")\n\t}\n\treturn nil\n}\n\n")
+	fmt.Fprintf(&b, "func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {\n\tif fixtureTenantID(cfg) == \"\" {\n\t\treturn \"\", fmt.Errorf(\"tenant_id is required\")\n\t}\n\tfamily := strings.TrimSpace(sourcecdk.ConfigValue(cfg, \"family\"))\n\tif family == \"\" {\n\t\treturn defaultFamily, nil\n\t}\n\treturn family, nil\n}\n\n")
+	fmt.Fprintf(&b, "func fixtureTenantID(cfg sourcecdk.Config) string {\n\treturn strings.TrimSpace(sourcecdk.ConfigValue(cfg, \"tenant_id\"))\n}\n")
+	return b.String()
+}
+
+func familyConstList(families []familyData) string {
+	values := make([]string, 0, len(families))
+	for _, family := range families {
+		values = append(values, family.ConstName)
+	}
+	return strings.Join(values, ", ")
+}
+
 func renderSourceTestGo(request normalizedRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
@@ -1458,6 +1505,12 @@ func renderSourceTestGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\tif tokenRequests != 1 {\n\t\tt.Fatalf(\"token requests = %%d, want 1 cached token\", tokenRequests)\n\t}\n")
 	}
 	fmt.Fprintf(&b, "\tif event.Kind != %s {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif strings.TrimSpace(event.Id) == \"\" {\n\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t}\n}\n", strconv.Quote(request.Families[0].EventKind))
+	fmt.Fprintf(&b, "\nfunc TestNewFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
+	fmt.Fprintf(&b, "\tsource, err := NewFixture()\n\tif err != nil {\n\t\tt.Fatalf(\"NewFixture() error = %%v\", err)\n\t}\n")
+	fmt.Fprintf(&b, "\tfamilyConfigs := map[string]sourcecdk.Config{}\n")
+	fmt.Fprintf(&b, "\tfor _, family := range []string{%s} {\n", familyConstList(request.Families))
+	fmt.Fprintf(&b, "\t\tfamilyConfigs[family] = sourcecdk.NewConfig(map[string]string{\n\t\t\t\"family\": family,\n\t\t\t\"tenant_id\": \"tenant\",\n\t\t})\n\t}\n")
+	fmt.Fprintf(&b, "\tsourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{\n\t\tSource: source,\n\t\tFamilyConfigs: familyConfigs,\n\t\tRequireDiscover: true,\n\t})\n}\n")
 	return b.String()
 }
 
@@ -1510,23 +1563,223 @@ func renderTestPath(template string) string {
 	return rendered
 }
 
-func renderReadFixture() string {
-	fixture := map[string]any{
-		"items": []map[string]any{
-			{
-				"id":                  "record-1",
-				"resource_urn":        "urn:cerebro:tenant:runtime_asset:record-1",
-				"resource_type":       "asset",
-				"resource_id":         "record-1",
-				"name":                "Record One",
-				"updated_at":          "2026-06-01T00:00:00Z",
-				"evidence_cas_uri":    "cas://cases/record-1",
-				"evidence_cas_digest": "sha256:test",
-			},
-		},
-	}
+func renderDiscoverFixture(family familyData) string {
+	fixture := []string{fixtureURN(family)}
 	payload, _ := json.MarshalIndent(fixture, "", "  ")
 	return string(append(payload, '\n'))
+}
+
+func renderReadFixture(request normalizedRequest, family familyData) string {
+	payload := fixturePayload(family)
+	attributes := fixtureAttributes(family)
+	for _, field := range family.RequiredPayloadFields {
+		setFixturePayloadField(payload, field, fixturePayloadValue(field, family))
+	}
+	for _, attr := range family.RequiredAttributes {
+		if strings.TrimSpace(attributes[attr]) == "" {
+			attributes[attr] = fixtureAttributeValue(attr, family)
+		}
+	}
+	events := []map[string]any{{
+		"id":          request.SourceID + "-" + family.Name + "-record-1",
+		"tenant_id":   "tenant",
+		"source_id":   request.SourceID,
+		"kind":        family.EventKind,
+		"occurred_at": "2026-06-01T00:00:00Z",
+		"schema_ref":  family.SchemaRef,
+		"payload":     payload,
+		"attributes":  attributes,
+	}}
+	rendered, _ := json.MarshalIndent(events, "", "  ")
+	return string(append(rendered, '\n'))
+}
+
+func fixturePayload(family familyData) map[string]any {
+	payload := map[string]any{
+		"id":                  "record-1",
+		"name":                "Record One",
+		"resource_urn":        fixtureURN(family),
+		"resource_type":       family.Class,
+		"resource_id":         "record-1",
+		"updated_at":          "2026-06-01T00:00:00Z",
+		"evidence_cas_uri":    "cas://cases/record-1",
+		"evidence_cas_digest": "sha256:test",
+	}
+	switch family.Class {
+	case "finding":
+		payload["finding_id"] = "finding-1"
+		payload["severity"] = "high"
+		payload["status"] = "open"
+		payload["title"] = "Finding One"
+	case "identity_user":
+		payload["user_id"] = "user-1"
+		payload["email"] = "user@example.test"
+		payload["display_name"] = "User One"
+	case "identity_group":
+		payload["group_id"] = "group-1"
+		payload["group_email"] = "group@example.test"
+		payload["group_name"] = "Group One"
+	case "group_membership":
+		payload["group_id"] = "group-1"
+		payload["member_id"] = "user-1"
+		payload["member_email"] = "user@example.test"
+	case "audit_event":
+		payload["event_id"] = "event-1"
+		payload["event_type"] = "user.login"
+		payload["actor_id"] = "user-1"
+	case "evidence_cas_reference":
+		payload["evidence_id"] = "evidence-1"
+		payload["evidence_type"] = "evidence_cas.artifact"
+		payload["uri"] = "cas://cases/evidence-1"
+		payload["digest"] = "sha256:test"
+	case "secret":
+		payload["secret_id"] = "secret-1"
+		payload["secret_name"] = "Secret One"
+	case "policy":
+		payload["policy_id"] = "policy-1"
+		payload["policy_name"] = "Policy One"
+	case "deployment":
+		payload["deployment_id"] = "deployment-1"
+		payload["deployment_name"] = "Production"
+	case "alert":
+		payload["alert_id"] = "alert-1"
+		payload["alert_severity"] = "critical"
+	}
+	return payload
+}
+
+func fixtureAttributes(family familyData) map[string]string {
+	attributes := map[string]string{
+		"tenant_id":             "tenant",
+		"source_event_id":       "record-1",
+		"resource_urn":          fixtureURN(family),
+		"resource_type":         family.Class,
+		"resource_id":           "record-1",
+		"resource_name":         "Record One",
+		"observed_at":           "2026-06-01T00:00:00Z",
+		"evidence_cas_uri":      "cas://cases/record-1",
+		"evidence_cas_digest":   "sha256:test",
+		"evidence_cas_ref_type": "source_fixture",
+	}
+	switch family.Class {
+	case "finding":
+		attributes["finding_id"] = "finding-1"
+		attributes["severity"] = "high"
+		attributes["status"] = "open"
+		attributes["title"] = "Finding One"
+	case "identity_user":
+		attributes["user_id"] = "user-1"
+		attributes["email"] = "user@example.test"
+		attributes["display_name"] = "User One"
+	case "identity_group":
+		attributes["group_id"] = "group-1"
+		attributes["group_email"] = "group@example.test"
+		attributes["group_name"] = "Group One"
+	case "group_membership":
+		attributes["group_id"] = "group-1"
+		attributes["member_id"] = "user-1"
+		attributes["member_email"] = "user@example.test"
+	case "audit_event":
+		attributes["event_type"] = "user.login"
+		attributes["actor_id"] = "user-1"
+		attributes["actor_email"] = "user@example.test"
+	case "evidence_cas_reference":
+		attributes["evidence_id"] = "evidence-1"
+		attributes["evidence_type"] = "evidence_cas.artifact"
+		attributes["evidence_cas_uri"] = "cas://cases/evidence-1"
+		attributes["evidence_cas_digest"] = "sha256:test"
+	case "secret":
+		attributes["secret_id"] = "secret-1"
+		attributes["secret_name"] = "Secret One"
+	case "policy":
+		attributes["policy_id"] = "policy-1"
+		attributes["policy_name"] = "Policy One"
+	case "deployment":
+		attributes["deployment_id"] = "deployment-1"
+		attributes["deployment_name"] = "Production"
+	case "alert":
+		attributes["alert_id"] = "alert-1"
+		attributes["alert_severity"] = "critical"
+	}
+	return attributes
+}
+
+func fixtureURN(family familyData) string {
+	kind := strings.TrimSpace(family.URNKind)
+	if kind == "" {
+		kind = "runtime_" + family.Name
+	}
+	return "urn:cerebro:tenant:" + kind + ":record-1"
+}
+
+func fixturePayloadValue(field string, family familyData) string {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return "record-1"
+	}
+	switch field {
+	case "uri", "evidence_cas_uri":
+		return "cas://cases/evidence-1"
+	case "digest", "evidence_cas_digest":
+		return "sha256:test"
+	default:
+		return fixtureAttributeValue(field, family)
+	}
+}
+
+func fixtureAttributeValue(attr string, family familyData) string {
+	attr = strings.TrimSpace(attr)
+	switch attr {
+	case "tenant_id":
+		return "tenant"
+	case "source_event_id":
+		return "record-1"
+	case "resource_urn":
+		return fixtureURN(family)
+	case "resource_type":
+		return family.Class
+	case "resource_id", "id":
+		return "record-1"
+	case "severity", "alert_severity":
+		return "high"
+	case "status":
+		return "open"
+	case "event_type":
+		return "user.login"
+	case "actor_id":
+		return "user-1"
+	case "policy_name":
+		return "Policy One"
+	case "deployment_name":
+		return "Production"
+	default:
+		return strings.ReplaceAll(firstNonEmptyString(attr, "value"), "_", "-") + "-1"
+	}
+}
+
+func setFixturePayloadField(payload map[string]any, rawPath string, value any) {
+	path := strings.TrimSpace(rawPath)
+	if path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	current := payload
+	for index, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+		}
+		if index == len(parts)-1 {
+			current[part] = value
+			return
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			current[part] = next
+		}
+		current = next
+	}
 }
 
 func renderSourceHealthReceipt(request normalizedRequest) string {

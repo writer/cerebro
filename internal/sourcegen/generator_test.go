@@ -35,8 +35,15 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	for _, path := range []string{
 		"sources/demo_source/catalog.yaml",
 		"sources/demo_source/deploy.yaml",
+		"sources/demo_source/fixture.go",
 		"sources/demo_source/source.go",
 		"sources/demo_source/source_test.go",
+		"sources/demo_source/testdata/discover_asset_host.json",
+		"sources/demo_source/testdata/read_asset_host.json",
+		"sources/demo_source/testdata/discover_finding_vulnerability.json",
+		"sources/demo_source/testdata/read_finding_vulnerability.json",
+		"sources/demo_source/testdata/discover_evidence_cas_reference.json",
+		"sources/demo_source/testdata/read_evidence_cas_reference.json",
 		"sources/demo_source/source_health_receipt.json",
 		"sources/demo_source/SOURCE_RUNTIME.md",
 		"sources/demo_source/PR_BODY.md",
@@ -53,6 +60,8 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"- demo_source.asset_host",
 		"- demo_source.finding_vulnerability",
 		"- demo_source.evidence_cas_reference",
+		"runtime_families:",
+		"- asset_host",
 		"kind_lifecycle:",
 		"status: active",
 		"coverage_contract:",
@@ -186,6 +195,30 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
 	if strings.Contains(sourceTest, "evidence_cas_uri") {
 		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+	fixtureGo := readGeneratedFile(t, outputDir, "sources/example_idp/fixture.go")
+	for _, want := range []string{
+		"func NewFixture() (sourcecdk.Source, error)",
+		"sourcecdk.LoadFixtureEventsWithContracts",
+		"Contracts:     catalog.EventContracts",
+	} {
+		if !strings.Contains(fixtureGo, want) {
+			t.Fatalf("fixture.go missing %q:\n%s", want, fixtureGo)
+		}
+	}
+	readFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/read_users.json")
+	for _, want := range []string{
+		`"kind": "example_idp.user"`,
+		`"schema_ref": "example_idp/user/v1"`,
+		`"user_id":`,
+	} {
+		if !strings.Contains(readFixture, want) {
+			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
+		}
+	}
+	discoverFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/discover_users.json")
+	if !strings.Contains(discoverFixture, "urn:cerebro:tenant:") {
+		t.Fatalf("discover fixture missing urn:\n%s", discoverFixture)
 	}
 }
 
