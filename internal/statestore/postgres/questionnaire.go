@@ -410,17 +410,11 @@ func normalizeQuestionnaireRun(record ports.QuestionnaireRunRecord) ports.Questi
 	record.AssignedTeam = strings.TrimSpace(record.AssignedTeam)
 	record.Decision = strings.TrimSpace(record.Decision)
 	record.DecisionReason = strings.TrimSpace(record.DecisionReason)
-	if record.Direction == "" {
-		record.Direction = ports.QuestionnaireDirectionCustomerSecurityReview
-	}
 	if record.Status == "" {
 		record.Status = ports.QuestionnaireStatusIntake
 	}
 	if record.Decision == "" {
 		record.Decision = ports.QuestionnaireDecisionNeedsInput
-	}
-	if record.Title == "" {
-		record.Title = "Security questionnaire"
 	}
 	record.Attributes = emptyStringMap(record.Attributes)
 	return record
@@ -449,6 +443,9 @@ func validateQuestionnaireRun(record ports.QuestionnaireRunRecord) error {
 	}
 	if !ports.IsQuestionnaireDirection(record.Direction) {
 		return errors.New("questionnaire direction is invalid")
+	}
+	if len(record.Questions) == 0 {
+		return errors.New("questionnaire questions are required")
 	}
 	if !ports.IsQuestionnaireStatus(record.Status) {
 		return errors.New("questionnaire status is invalid")

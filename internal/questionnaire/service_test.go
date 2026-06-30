@@ -134,6 +134,48 @@ func TestVendorReviewAddsVendorEvidenceSlot(t *testing.T) {
 	}
 }
 
+func TestProcessEvidenceAnswersDoesNotCreateQuestionRows(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+	}, now)
+
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{
+		baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current"),
+	}, now)
+
+	if len(record.Questions) != 0 || len(record.Answers) != 0 {
+		t.Fatalf("questions/answers = %d/%d, want explicit intake only", len(record.Questions), len(record.Answers))
+	}
+}
+
+func TestRecordDecisionGlobalConditionalApprovesRun(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:       "q-1",
+			Question: "Attach the latest SOC 2 report.",
+		}},
+	}, now)
+	record = ProcessEvidenceAnswers(record, nil, now)
+	if record.Status != ports.QuestionnaireStatusNeedsInput {
+		t.Fatalf("status before decision = %s, want needs_input", record.Status)
+	}
+
+	record = RecordDecision(record, ports.QuestionnaireDecision{
+		Decision: ports.QuestionnaireDecisionApprovedWithConditions,
+		Reason:   "Approved with tracked follow-up.",
+		ActorID:  "security@example.com",
+	}, now.Add(time.Minute))
+
+	if record.Status != ports.QuestionnaireStatusApproved || record.Decision != ports.QuestionnaireDecisionApprovedWithConditions {
+		t.Fatalf("workflow = %s/%s, want approved/approved_with_conditions", record.Status, record.Decision)
+	}
+}
+
 func ptrEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) *evidencepackets.QuestionnaireAnswer {
 	return &answer
 }

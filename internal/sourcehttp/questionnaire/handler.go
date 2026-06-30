@@ -230,6 +230,19 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, ErrRuntimeUnavailable)
 		return
 	}
+	if !ports.IsQuestionnaireDirection(request.Direction) {
+		h.writeError(w, fmt.Errorf("%w: direction must be customer_security_review or vendor_review", ErrInvalidRequest))
+		return
+	}
+	if len(questionnairedomain.NormalizeQuestionsForIntake(request.Questions)) == 0 {
+		h.writeError(w, fmt.Errorf("%w: at least one question is required", ErrInvalidRequest))
+		return
+	}
+	dueAt, err := parseOptionalTime(request.DueAt)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	now := time.Now().UTC()
 	record := questionnairedomain.NewRunRecord(questionnairedomain.NewRunRequest{
 		TenantID:       scope.TenantID,
@@ -246,7 +259,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		SourceFormat:   request.SourceFormat,
 		OwnerID:        request.OwnerID,
 		AssignedTeam:   request.AssignedTeam,
-		DueAt:          parseOptionalTime(request.DueAt),
+		DueAt:          dueAt,
 		Questions:      request.Questions,
 		Attributes:     request.Attributes,
 	}, now)
@@ -321,11 +334,16 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 	assignment := request.Assignment
 	assignment.QuestionID = firstNonEmpty(assignment.QuestionID, request.QuestionID)
 	assignment.OwnerID = firstNonEmpty(assignment.OwnerID, request.OwnerID, request.Owner)
-	assignment.Team = firstNonEmpty(assignment.Team, request.Team, "security")
+	assignment.Team = firstNonEmpty(assignment.Team, request.Team)
 	assignment.Status = firstNonEmpty(assignment.Status, request.Status, "open")
 	assignment.Reason = firstNonEmpty(assignment.Reason, request.Reason)
 	if assignment.DueAt == nil {
-		assignment.DueAt = parseOptionalTime(request.DueAt)
+		dueAt, err := parseOptionalTime(request.DueAt)
+		if err != nil {
+			h.writeError(w, err)
+			return
+		}
+		assignment.DueAt = dueAt
 	}
 	now := time.Now().UTC()
 	updated := questionnairedomain.AddAssignment(*record, assignment, h.actorID(r.Context()), now)
@@ -468,7 +486,7 @@ func runViewFromRecord(record *ports.QuestionnaireRunRecord, compact bool) runVi
 		ID:                   record.RunID,
 		RunID:                record.RunID,
 		TenantID:             record.TenantID,
-		Title:                firstNonEmpty(record.Title, "Security questionnaire"),
+		Title:                record.Title,
 		Direction:            record.Direction,
 		Requester:            record.Requester,
 		CustomerName:         record.CustomerName,
@@ -575,19 +593,19 @@ func questionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
 	return runStore
 }
 
-func parseOptionalTime(value string) *time.Time {
+func parseOptionalTime(value string) (*time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil
+		return nil, nil
 	}
 	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
 			parsed = parsed.UTC()
-			return &parsed
+			return &parsed, nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("%w: due_at must be RFC3339 or YYYY-MM-DD", ErrInvalidRequest)
 }
 
 func firstNonEmpty(values ...string) string {

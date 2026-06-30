@@ -2319,10 +2319,10 @@ export type GRCQuestionnaireCreateRunRequest = {
   assigned_team?: string;
   attributes?: Record<string, string>;
   customer_name?: string;
-  direction?: "customer_security_review" | "vendor_review";
+  direction: "customer_security_review" | "vendor_review";
   due_at?: string;
   owner_id?: string;
-  questions?: GRCQuestionnaireQuestion[];
+  questions: GRCQuestionnaireQuestion[];
   requester?: string;
   runtime_id?: string;
   source_filename?: string;
@@ -2413,7 +2413,7 @@ export type GRCQuestionnaireQuestion = {
   mapped_controls?: string[];
   normalized_question?: string;
   owner_id?: string;
-  question?: string;
+  question: string;
   required_answer_format?: string;
   required_evidence_slots?: string[];
   review_state?: "ready" | "needs_review" | "blocked" | "approved" | "rejected";
@@ -2675,172 +2675,6 @@ export type GRCUploadStructuredField = {
   key?: string;
   label?: string;
   value?: string;
-};
-
-export type GRCVendorQuestionnaireApproval = {
-  approver?: string;
-  created_at?: string;
-  id?: string;
-  reason?: string;
-  state?: string;
-};
-
-export type GRCVendorQuestionnaireApprovalRequest = {
-  approver?: string;
-  reason?: string;
-  state?: "approved" | "approved_with_conditions" | "rejected";
-  team?: string;
-  tenant_id?: string;
-};
-
-export type GRCVendorQuestionnaireAssignment = {
-  created_at?: string;
-  due_at?: string;
-  id?: string;
-  owner?: string;
-  question_id?: string;
-  reason?: string;
-  status?: string;
-  updated_at?: string;
-};
-
-export type GRCVendorQuestionnaireAssignmentRequest = {
-  due_at?: string;
-  owner?: string;
-  question_id?: string;
-  reason?: string;
-  status?: string;
-  team?: string;
-  tenant_id?: string;
-};
-
-export type GRCVendorQuestionnaireComment = {
-  author?: string;
-  body?: string;
-  created_at?: string;
-  id?: string;
-};
-
-export type GRCVendorQuestionnaireCommentRequest = {
-  author?: string;
-  body?: string;
-  scope?: string;
-  tenant_id?: string;
-};
-
-export type GRCVendorQuestionnaireCreateRequest = {
-  assigned_team?: string;
-  attributes?: Record<string, string>;
-  current_owner_user_id?: string;
-  question_count?: number;
-  questionnaire_type?: string;
-  questionnaire_urn?: string;
-  reviewer_user_id?: string;
-  runtime_id?: string;
-  source_filename?: string;
-  source_id?: string;
-  tenant_id?: string;
-  title?: string;
-  upload_id?: string;
-  vendor_id?: string;
-  vendor_urn?: string;
-};
-
-export type GRCVendorQuestionnaireEvidenceMatch = {
-  answer_text?: string;
-  confidence_score?: number;
-  control_id?: string;
-  evidence_urn?: string;
-  id?: string;
-  match_state?: string;
-  observed_at?: string;
-  question_id?: string;
-  source_label?: string;
-  source_type?: string;
-};
-
-export type GRCVendorQuestionnaireProcessRequest = {
-  tenant_id?: string;
-};
-
-export type GRCVendorQuestionnaireReview = {
-  answered_count?: number;
-  approvals?: GRCVendorQuestionnaireApproval[];
-  assignments?: GRCVendorQuestionnaireAssignment[];
-  attributes?: Record<string, string>;
-  comments?: GRCVendorQuestionnaireComment[];
-  created_at?: string;
-  decision?: string;
-  decision_recommendation?: string;
-  decision_state?: string;
-  due_at?: string;
-  enrichment_state?: string;
-  evidence_match_count?: number;
-  evidence_matches?: GRCVendorQuestionnaireEvidenceMatch[];
-  id?: string;
-  missing_answer_count?: number;
-  missing_answers?: string[];
-  owner?: string;
-  process_state?: string;
-  processed_at?: string;
-  question_count?: number;
-  review_id?: string;
-  review_state?: string;
-  risk_notes?: string[];
-  source_filename?: string;
-  status?: string;
-  tenant_id?: string;
-  timeline?: GRCVendorQuestionnaireTimelineEvent[];
-  title?: string;
-  updated_at?: string;
-  upload_state?: string;
-  vendor_id?: string;
-  vendor_urn?: string;
-};
-
-export type GRCVendorQuestionnaireReviewEvent = {
-  actor_id?: string;
-  created_at?: string;
-  event_type?: string;
-  id?: string;
-  payload?: Record<string, string>;
-  review_id?: string;
-  summary?: string;
-  tenant_id?: string;
-  version?: number;
-};
-
-export type GRCVendorQuestionnaireReviewResponse = {
-  events?: GRCVendorQuestionnaireReviewEvent[];
-  generated_at?: string;
-  review?: GRCVendorQuestionnaireReview;
-};
-
-export type GRCVendorQuestionnaireReviewSummary = {
-  approved_reviews?: number;
-  blocked_reviews?: number;
-  intake_reviews?: number;
-  missing_answers?: number;
-  open_assignments?: number;
-  pending_approvals?: number;
-  processing_reviews?: number;
-  ready_reviews?: number;
-  total_reviews?: number;
-};
-
-export type GRCVendorQuestionnaireReviewsResponse = {
-  generated_at?: string;
-  reviews?: GRCVendorQuestionnaireReview[];
-  summary?: GRCVendorQuestionnaireReviewSummary;
-};
-
-export type GRCVendorQuestionnaireTimelineEvent = {
-  actor?: string;
-  created_at?: string;
-  detail?: string;
-  event_type?: string;
-  id?: string;
-  label?: string;
 };
 
 export type GetEntityNeighborhoodResponse = {

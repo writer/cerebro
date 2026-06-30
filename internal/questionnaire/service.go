@@ -34,11 +34,8 @@ type NewRunRequest struct {
 
 func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
-	direction := firstNonEmpty(request.Direction, ports.QuestionnaireDirectionCustomerSecurityReview)
-	if !ports.IsQuestionnaireDirection(direction) {
-		direction = ports.QuestionnaireDirectionCustomerSecurityReview
-	}
-	title := firstNonEmpty(request.Title, defaultTitle(direction))
+	direction := strings.TrimSpace(request.Direction)
+	title := strings.TrimSpace(request.Title)
 	questions := normalizeQuestions(request.Questions)
 	record := ports.QuestionnaireRunRecord{
 		QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{
@@ -65,12 +62,12 @@ func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRe
 			RuntimeID:      strings.TrimSpace(request.RuntimeID),
 			UploadID:       strings.TrimSpace(request.UploadID),
 			SourceFilename: strings.TrimSpace(request.SourceFilename),
-			SourceFormat:   firstNonEmpty(request.SourceFormat, sourceFormat(request.SourceFilename), "json"),
+			SourceFormat:   strings.TrimSpace(request.SourceFormat),
 		},
 		QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
 			Status:       ports.QuestionnaireStatusIntake,
 			OwnerID:      strings.TrimSpace(request.OwnerID),
-			AssignedTeam: firstNonEmpty(request.AssignedTeam, "security"),
+			AssignedTeam: strings.TrimSpace(request.AssignedTeam),
 			Decision:     ports.QuestionnaireDecisionNeedsInput,
 		},
 		QuestionnaireRunContent: ports.QuestionnaireRunContent{
@@ -91,9 +88,6 @@ func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers
 	now = normalizeNow(now)
 	record.UpdatedAt = now
 	record.Questions = normalizeQuestions(record.Questions)
-	if len(record.Questions) == 0 {
-		record.Questions = questionsFromEvidenceAnswers(evidenceAnswers)
-	}
 	answers := make([]ports.QuestionnaireRunAnswer, 0, len(record.Questions))
 	usedEvidenceAnswerIDs := map[string]struct{}{}
 	for _, question := range record.Questions {
@@ -103,14 +97,6 @@ func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers
 		}
 		answer := compileAnswer(record, question, match)
 		answers = append(answers, answer)
-	}
-	for _, evidenceAnswer := range evidenceAnswers {
-		if _, ok := usedEvidenceAnswerIDs[evidenceAnswer.ID]; ok {
-			continue
-		}
-		question := questionFromEvidenceAnswer(evidenceAnswer)
-		answers = append(answers, compileAnswer(record, question, &evidenceAnswer))
-		record.Questions = append(record.Questions, question)
 	}
 	sort.Slice(answers, func(i, j int) bool { return answers[i].QuestionID < answers[j].QuestionID })
 	record.Answers = answers
@@ -165,6 +151,10 @@ func SummarizeRun(record ports.QuestionnaireRunRecord) ports.QuestionnaireRunRec
 	return record
 }
 
+func NormalizeQuestionsForIntake(questions []ports.QuestionnaireQuestion) []ports.QuestionnaireQuestion {
+	return normalizeQuestions(questions)
+}
+
 func AddAssignment(record ports.QuestionnaireRunRecord, assignment ports.QuestionnaireAssignment, actorID string, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	assignment.ID = firstNonEmpty(assignment.ID, stableID("questionnaire-assignment", record.RunID, assignment.QuestionID, assignment.OwnerID, assignment.Team, fmt.Sprint(len(record.Assignments)+1)))
@@ -209,8 +199,10 @@ func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.Question
 	record.Status = statusFromAnswers(record.Answers)
 	if decision.QuestionID == "" {
 		switch decision.Decision {
-		case ports.QuestionnaireDecisionApproved:
+		case ports.QuestionnaireDecisionApproved, ports.QuestionnaireDecisionApprovedWithConditions:
 			record.Status = ports.QuestionnaireStatusApproved
+		case ports.QuestionnaireDecisionNeedsInput:
+			record.Status = ports.QuestionnaireStatusNeedsInput
 		case ports.QuestionnaireDecisionRejected:
 			record.Status = ports.QuestionnaireStatusRejected
 		}
@@ -520,33 +512,6 @@ func bestEvidenceAnswerForQuestion(question ports.QuestionnaireQuestion, answers
 	return best
 }
 
-func questionsFromEvidenceAnswers(answers []evidencepackets.QuestionnaireAnswer) []ports.QuestionnaireQuestion {
-	questions := make([]ports.QuestionnaireQuestion, 0, len(answers))
-	for _, answer := range answers {
-		questions = append(questions, questionFromEvidenceAnswer(answer))
-	}
-	return questions
-}
-
-func questionFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) ports.QuestionnaireQuestion {
-	question := ports.QuestionnaireQuestion{
-		ID:                 firstNonEmpty(answer.QuestionID, stableID("questionnaire-question", answer.ID)),
-		Question:           answer.Question,
-		NormalizedQuestion: normalizedQuestion(answer.Question),
-		MappedControls:     controlIDs(answer.Controls),
-		RequiredSlots:      slotsForQuestion(answer.Question, ""),
-		AnswerState:        ports.QuestionnaireAnswerBlocked,
-		ReviewState:        ports.QuestionnaireReviewBlocked,
-	}
-	if answer.AnswerState != "" {
-		question.AnswerState = answer.AnswerState
-	}
-	if answer.ReviewState != "" {
-		question.ReviewState = answer.ReviewState
-	}
-	return question
-}
-
 func normalizeQuestions(questions []ports.QuestionnaireQuestion) []ports.QuestionnaireQuestion {
 	result := make([]ports.QuestionnaireQuestion, 0, len(questions))
 	for index, question := range questions {
@@ -603,23 +568,6 @@ func decisionFromStatus(status string) string {
 	default:
 		return ports.QuestionnaireDecisionNeedsInput
 	}
-}
-
-func defaultTitle(direction string) string {
-	if direction == ports.QuestionnaireDirectionVendorReview {
-		return "Vendor questionnaire"
-	}
-	return "Security questionnaire"
-}
-
-func sourceFormat(filename string) string {
-	filename = strings.ToLower(strings.TrimSpace(filename))
-	for _, suffix := range []string{".csv", ".json", ".xlsx", ".xls", ".pdf"} {
-		if strings.HasSuffix(filename, suffix) {
-			return strings.TrimPrefix(suffix, ".")
-		}
-	}
-	return ""
 }
 
 func answerQuestion(question ports.QuestionnaireQuestion, answer evidencepackets.QuestionnaireAnswer) string {

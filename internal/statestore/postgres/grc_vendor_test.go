@@ -30,39 +30,6 @@ func TestGRCVendorDiscoveryDecisionAdvisoryLockSerializesUpserts(t *testing.T) {
 	}
 }
 
-func TestGRCVendorQuestionnaireReviewSchemaSerializesEvents(t *testing.T) {
-	joined := strings.Join(ensureGRCVendorQuestionnaireStatements, "\n")
-	for _, fragment := range []string{
-		"grc_vendor_questionnaire_reviews",
-		"grc_vendor_questionnaire_review_events",
-		"assignments_json JSONB",
-		"evidence_matches_json JSONB",
-		"missing_questions_json JSONB",
-		"answer_suggestions_json JSONB",
-		"timeline_json JSONB",
-		"grc_vendor_questionnaire_review_events_review_version_uidx",
-		"(tenant_id, review_id, version)",
-		"grc_vendor_questionnaire_reviews_tenant_status_idx",
-	} {
-		if !strings.Contains(joined, fragment) {
-			t.Fatalf("vendor questionnaire review schema missing %q:\n%s", fragment, joined)
-		}
-	}
-}
-
-func TestGRCVendorQuestionnaireReviewAdvisoryLockSerializesUpserts(t *testing.T) {
-	query := grcVendorQuestionnaireReviewAdvisoryLockSQL()
-	for _, fragment := range []string{
-		"pg_advisory_xact_lock",
-		"hashtext('grc_vendor_questionnaire_review')",
-		"hashtext($1)",
-	} {
-		if !strings.Contains(query, fragment) {
-			t.Fatalf("vendor questionnaire review advisory lock query missing %q:\n%s", fragment, query)
-		}
-	}
-}
-
 func TestQuestionnaireRunSchemaSerializesEvents(t *testing.T) {
 	joined := strings.Join(ensureQuestionnaireRunStatements, "\n")
 	for _, fragment := range []string{

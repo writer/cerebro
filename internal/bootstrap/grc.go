@@ -1453,7 +1453,7 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, ports.ErrGraphEntityNotFound),
 		errors.Is(err, ports.ErrGRCInventoryAssetReportNotFound),
 		errors.Is(err, ports.ErrGRCVendorDiscoveryDecisionNotFound),
-		errors.Is(err, ports.ErrGRCVendorQuestionnaireReviewNotFound):
+		errors.Is(err, ports.ErrQuestionnaireRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),

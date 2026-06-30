@@ -45,7 +45,6 @@ type grcTablesReady struct {
 	findingDisposition   bool
 	customDashboards     bool
 	vendorDiscovery      bool
-	vendorQuestionnaire  bool
 	questionnaireRun     bool
 }
 
