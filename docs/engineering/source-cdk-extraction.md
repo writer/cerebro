@@ -31,7 +31,7 @@ Legacy sources above the 300 LOC budget are grandfathered with exact no-growth c
 | `googleworkspace` | 815 | Extract API client setup and paginated directory readers. |
 | `grc` | 1195 | Keep control/evidence shaping out of source orchestration and push common mapping into shared helpers. |
 | `okta` | 2256 | Extract client, pagination, and identity/group/application readers into smaller units. |
-| `panopticon` | 765 | Separate request plumbing from emitted record construction. |
+| `panopticon` | 763 | Separate request plumbing from emitted record construction. |
 | `sentinelone` | 2112 | Extract API paging, agent/application readers, and shared response normalization. |
 | `vulnview` | 1002 | Split feed/client access from vulnerability record normalization. |
 

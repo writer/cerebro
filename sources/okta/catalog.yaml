@@ -243,6 +243,39 @@ coverage_contract:
           control_id: A.5.18
       known_unsupported_fields:
         - app-specific fine-grained entitlement payloads
+    - id: access_review_operations
+      type: relationship
+      title: Access review operations
+      families: [access_review, access_certification, reviewer_decision, exception]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, reviewer_attestation]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - reviewer workflow records may come from an access review or GRC workflow surface rather than Okta inventory alone
     - id: api_tokens
       type: entity_family
       title: API token metadata
@@ -581,6 +614,66 @@ coverage_contract:
           control_id: A.5.18
         - framework_name: "ISO 27001:2022"
           control_id: A.8.2
+    - id: dormant_account_reviews
+      type: relationship
+      title: Dormant account reviews
+      families: [dormant_user, last_login, never_logged_in, reviewer_decision, stale_login]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, reviewer_attestation]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.16
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - reviewer workflow records may come from an access review or GRC workflow surface rather than stale-login inventory alone
+    - id: external_account_reviews
+      type: relationship
+      title: External account reviews
+      families: [external_user, partner_access, sponsor, third_party_access, reviewer_decision]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, reviewer_attestation]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - reviewer workflow records may come from an access review or GRC workflow surface rather than personal-domain or guest flags alone
     - id: remediation_state
       type: remediation_state
       title: Remediation lifecycle state

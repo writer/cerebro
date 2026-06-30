@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -70,6 +71,81 @@ type EffectiveAccessPathEdge struct {
 	EventID    string            `json:"event_id,omitempty"`
 	At         string            `json:"at,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+func (p EffectiveAccessPath) IsPrivileged() bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		p.AssignmentKind,
+		p.AccessTarget.URN,
+		p.AccessTarget.EntityType,
+		p.AccessTarget.Label,
+		p.Entitlement.URN,
+		p.Entitlement.EntityType,
+		p.Entitlement.Label,
+		p.Capability.URN,
+		p.Capability.EntityType,
+		p.Capability.Label,
+		strings.Join(p.RelationChain, " "),
+	}, " "))
+	if strings.Contains(haystack, "admin") || strings.Contains(haystack, "privileged") || strings.Contains(haystack, "owner") || strings.Contains(haystack, "root") {
+		return true
+	}
+	for _, edge := range p.Edges {
+		for key, value := range edge.Attributes {
+			normalized := strings.ToLower(strings.TrimSpace(key + ":" + value))
+			if normalized == "privileged:true" || strings.Contains(normalized, "privilege:admin") || strings.Contains(normalized, "role:admin") {
+				return true
+			}
+		}
+		if edge.Relation == "can_admin" {
+			return true
+		}
+	}
+	return false
+}
+
+func (p EffectiveAccessPath) IsSensitive() bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		p.AccessTarget.URN,
+		p.AccessTarget.EntityType,
+		p.AccessTarget.Label,
+		p.Entitlement.URN,
+		p.Entitlement.EntityType,
+		p.Entitlement.Label,
+		p.Capability.URN,
+		p.Capability.EntityType,
+		p.Capability.Label,
+	}, " "))
+	if strings.Contains(haystack, "payroll") || strings.Contains(haystack, "finance") || strings.Contains(haystack, "sensitive") || strings.Contains(haystack, "confidential") {
+		return true
+	}
+	for _, edge := range p.Edges {
+		if strings.EqualFold(edge.Attributes["sensitive"], "true") || strings.EqualFold(edge.Attributes["data_classification"], "sensitive") {
+			return true
+		}
+	}
+	return false
+}
+
+func (p EffectiveAccessPath) AccessClassification() []string {
+	classification := []string{}
+	if p.IsPrivileged() {
+		classification = append(classification, "privileged")
+	}
+	if p.IsSensitive() {
+		classification = append(classification, "sensitive")
+	}
+	if p.Mediator != nil {
+		classification = append(classification, "group_mediated")
+	}
+	if strings.Contains(p.AssignmentKind, "role") {
+		classification = append(classification, "role_based")
+	}
+	return uniqueEffectiveAccessLabels(classification)
+}
+
+func (p EffectiveAccessPath) SupportsOperationProof(changedDuringPeriod bool) bool {
+	return changedDuringPeriod && (p.IsPrivileged() || p.IsSensitive())
 }
 
 func EffectiveAccessPathRequestFromQuery(values url.Values) (EffectiveAccessPathRequest, error) {
@@ -460,4 +536,21 @@ func effectiveAccessPathCounts(paths []EffectiveAccessPath) EffectiveAccessPathC
 	}
 	counts.CapabilitiesReturned = len(capabilities)
 	return counts
+}
+
+func uniqueEffectiveAccessLabels(values []string) []string {
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		seen[value] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for value := range seen {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
