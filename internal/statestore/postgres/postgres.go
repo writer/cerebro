@@ -45,6 +45,7 @@ type grcTablesReady struct {
 	findingDisposition   bool
 	customDashboards     bool
 	vendorDiscovery      bool
+	vendorQuestionnaire  bool
 }
 
 // Store is the Postgres-backed current-state store implementation.
