@@ -162,6 +162,45 @@ func TestAssignRunRejectsEmptyOwnerAndNestedBody(t *testing.T) {
 	}
 }
 
+func TestUpdateQuestionMapsRequiredEvidenceSlots(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Customer review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{ID: "q-1", Question: "Attach SOC 2 report."}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "security@example.com" },
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/questions", strings.NewReader(`{"question_id":"q-1","required_evidence_slots":["audit_report"],"mapped_controls":["SOC2-CC7.2"],"owner_id":"security@example.com","reason":"Mapped from intake review."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.UpdateQuestion(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := store.saved.Questions[0].RequiredSlots; len(got) != 1 || got[0] != "audit_report" {
+		t.Fatalf("required slots = %#v, want audit_report", got)
+	}
+	if got := store.saved.Questions[0].MappedControls; len(got) != 1 || got[0] != "SOC2-CC7.2" {
+		t.Fatalf("mapped controls = %#v, want SOC2-CC7.2", got)
+	}
+	if store.saved.Questions[0].OwnerID != "security@example.com" {
+		t.Fatalf("owner = %q, want security@example.com", store.saved.Questions[0].OwnerID)
+	}
+}
+
 func TestCreateRunRejectsDelimitedIntakeWithoutQuestionHeader(t *testing.T) {
 	store := &processRunStore{}
 	handler := NewHandler(store, Options{
@@ -184,6 +223,52 @@ func TestCreateRunRejectsDelimitedIntakeWithoutQuestionHeader(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestListRunsIncludesAnswerRowsAndQueueSummary(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		listRecords: []*ports.QuestionnaireRunRecord{{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Customer review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview, CustomerName: "Acme"},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput, BlockedAnswerCount: 1, MissingEvidence: 1, UnassignedCount: 1},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{ID: "q-1", Question: "Attach SOC 2 report.", RequiredSlots: []string{"audit_report"}}},
+				Answers: []ports.QuestionnaireRunAnswer{{
+					ID:          "answer-1",
+					QuestionID:  "q-1",
+					Question:    "Attach SOC 2 report.",
+					AnswerState: ports.QuestionnaireAnswerBlocked,
+					ReviewState: ports.QuestionnaireReviewBlocked,
+				}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		}},
+		summary: ports.QuestionnaireRunSummary{TotalRuns: 5, BlockedAnswers: 4, MissingEvidence: 3, UnassignedQuestions: 2},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: "tenant-1", Limit: 25}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/grc/questionnaire-runs", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ListRuns(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var response runsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Summary.TotalRuns != 5 || response.Summary.BlockedAnswers != 4 {
+		t.Fatalf("summary = %#v, want store aggregate", response.Summary)
+	}
+	if len(response.Runs) != 1 || len(response.Runs[0].Answers) != 1 || response.Runs[0].Answers[0].QuestionID != "q-1" {
+		t.Fatalf("list response answers = %#v, want answer rows", response.Runs)
 	}
 }
 
@@ -257,13 +342,13 @@ func TestSummarizeViewsCountsOnlyOpenDueRuns(t *testing.T) {
 	dueAt := time.Now().Add(-time.Hour)
 
 	summary := summarizeViews([]runView{
-		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusApproved, DueAt: &dueAt}},
-		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusRejected, DueAt: &dueAt}},
-		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusNeedsInput, DueAt: &dueAt}},
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusApproved, DueAt: &dueAt}, runViewCounts: runViewCounts{BlockedAnswerCount: 10}},
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusRejected, DueAt: &dueAt}, runViewCounts: runViewCounts{BlockedAnswerCount: 10}},
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusNeedsInput, DueAt: &dueAt}, runViewCounts: runViewCounts{BlockedAnswerCount: 1}},
 	})
 
-	if summary.DueRuns != 1 {
-		t.Fatalf("due runs = %d, want 1", summary.DueRuns)
+	if summary.DueRuns != 1 || summary.BlockedAnswers != 1 {
+		t.Fatalf("summary = %#v, want one open due run and one blocked answer", summary)
 	}
 }
 
@@ -290,8 +375,10 @@ func TestRunViewJSONStaysFlat(t *testing.T) {
 
 type processRunStore struct {
 	ports.StateStore
-	record ports.QuestionnaireRunRecord
-	saved  ports.QuestionnaireRunRecord
+	record      ports.QuestionnaireRunRecord
+	listRecords []*ports.QuestionnaireRunRecord
+	summary     ports.QuestionnaireRunSummary
+	saved       ports.QuestionnaireRunRecord
 }
 
 func (s *processRunStore) UpsertQuestionnaireRun(_ context.Context, record ports.QuestionnaireRunRecord, _ ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
@@ -308,7 +395,11 @@ func (s *processRunStore) GetQuestionnaireRun(_ context.Context, filter ports.Qu
 }
 
 func (s *processRunStore) ListQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) ([]*ports.QuestionnaireRunRecord, error) {
-	return nil, nil
+	return s.listRecords, nil
+}
+
+func (s *processRunStore) SummarizeQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) (ports.QuestionnaireRunSummary, error) {
+	return s.summary, nil
 }
 
 func (s *processRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {

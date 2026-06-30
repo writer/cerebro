@@ -208,30 +208,7 @@ func (s *Store) ListQuestionnaireRuns(ctx context.Context, filter ports.Question
 	if err := s.ensureQuestionnaireRunTables(ctx); err != nil {
 		return nil, err
 	}
-	clauses := []string{"1=1"}
-	args := []any{}
-	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
-	addTextFilter(&clauses, &args, "run_id", filter.RunID)
-	addTextFilter(&clauses, &args, "direction", filter.Direction)
-	addTextFilter(&clauses, &args, "status", filter.Status)
-	addTextFilter(&clauses, &args, "vendor_urn", filter.VendorURN)
-	addTextFilter(&clauses, &args, "requester", filter.Requester)
-	addTextFilter(&clauses, &args, "customer_name", filter.Customer)
-	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
-		args = append(args, "%"+strings.ToLower(ownerID)+"%")
-		clauses = append(clauses, fmt.Sprintf(`(
-			lower(owner_id) LIKE $%d
-			OR lower(assigned_team) LIKE $%d
-			OR EXISTS (
-				SELECT 1 FROM jsonb_array_elements(assignments_json) AS assignment
-				WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
-			)
-		)`, len(args), len(args), len(args), len(args)))
-	}
-	if query := strings.TrimSpace(filter.Query); query != "" {
-		args = append(args, "%"+strings.ToLower(query)+"%")
-		clauses = append(clauses, fmt.Sprintf("(lower(title) LIKE $%d OR lower(requester) LIKE $%d OR lower(customer_name) LIKE $%d OR lower(vendor_id) LIKE $%d)", len(args), len(args), len(args), len(args)))
-	}
+	clauses, args := questionnaireRunWhere(filter)
 	limit := filter.Limit
 	if limit == 0 || limit > 500 {
 		limit = 500
@@ -258,6 +235,81 @@ LIMIT $%d`, questionnaireRunColumns(), strings.Join(clauses, " AND "), len(args)
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func (s *Store) SummarizeQuestionnaireRuns(ctx context.Context, filter ports.QuestionnaireRunFilter) (ports.QuestionnaireRunSummary, error) {
+	if s == nil || s.db == nil {
+		return ports.QuestionnaireRunSummary{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureQuestionnaireRunTables(ctx); err != nil {
+		return ports.QuestionnaireRunSummary{}, err
+	}
+	clauses, args := questionnaireRunWhere(filter)
+	// #nosec G201 -- clauses are fixed column predicates and values remain parameterized.
+	query := fmt.Sprintf(`
+SELECT
+  COUNT(*),
+  COUNT(*) FILTER (WHERE direction = 'vendor_review'),
+  COUNT(*) FILTER (WHERE due_at IS NOT NULL AND due_at <= NOW() AND status NOT IN ('approved', 'rejected')),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN blocked_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN review_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN ready_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN stale_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN missing_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status NOT IN ('approved', 'rejected') THEN unassigned_count ELSE 0 END), 0)
+FROM grc_questionnaire_runs
+WHERE %s`, strings.Join(clauses, " AND "))
+	var summary ports.QuestionnaireRunSummary
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(
+		&summary.TotalRuns,
+		&summary.VendorRuns,
+		&summary.DueRuns,
+		&summary.BlockedAnswers,
+		&summary.ReviewAnswers,
+		&summary.ReadyAnswers,
+		&summary.StaleEvidence,
+		&summary.MissingEvidence,
+		&summary.UnassignedQuestions,
+	); err != nil {
+		return ports.QuestionnaireRunSummary{}, fmt.Errorf("summarize questionnaire runs: %w", err)
+	}
+	return summary, nil
+}
+
+func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any) {
+	clauses := []string{"1=1"}
+	args := []any{}
+	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
+	addTextFilter(&clauses, &args, "run_id", filter.RunID)
+	addTextFilter(&clauses, &args, "direction", filter.Direction)
+	addTextFilter(&clauses, &args, "status", filter.Status)
+	addTextFilter(&clauses, &args, "vendor_urn", filter.VendorURN)
+	addTextFilter(&clauses, &args, "requester", filter.Requester)
+	addTextFilter(&clauses, &args, "customer_name", filter.Customer)
+	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
+		args = append(args, "%"+strings.ToLower(ownerID)+"%")
+		clauses = append(clauses, fmt.Sprintf(`(
+			lower(owner_id) LIKE $%d
+			OR lower(assigned_team) LIKE $%d
+			OR EXISTS (
+				SELECT 1 FROM jsonb_array_elements(assignments_json) AS assignment
+				WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
+			)
+		)`, len(args), len(args), len(args), len(args)))
+	}
+	if query := strings.TrimSpace(filter.Query); query != "" {
+		args = append(args, "%"+strings.ToLower(query)+"%")
+		clauses = append(clauses, fmt.Sprintf(`(
+			lower(title) LIKE $%d
+			OR lower(requester) LIKE $%d
+			OR lower(customer_name) LIKE $%d
+			OR lower(vendor_id) LIKE $%d
+			OR lower(questions_json::text) LIKE $%d
+			OR lower(answers_json::text) LIKE $%d
+			OR lower(assignments_json::text) LIKE $%d
+		)`, len(args), len(args), len(args), len(args), len(args), len(args), len(args)))
+	}
+	return clauses, args
 }
 
 func (s *Store) ListQuestionnaireRunEvents(ctx context.Context, filter ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {

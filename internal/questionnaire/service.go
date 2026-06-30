@@ -32,6 +32,20 @@ type NewRunRequest struct {
 	Attributes     map[string]string
 }
 
+type UpdateQuestionRequest struct {
+	QuestionID     string
+	RequiredSlots  []string
+	MappedControls []string
+	OwnerID        string
+	AnswerState    string
+	ReviewState    string
+	UpdatedBy      string
+	UpdateReason   string
+	ClearOwner     bool
+	ClearSlots     bool
+	ClearControls  bool
+}
+
 func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	direction := strings.TrimSpace(request.Direction)
@@ -191,6 +205,41 @@ func AddComment(record ports.QuestionnaireRunRecord, comment ports.Questionnaire
 	return SummarizeRun(record)
 }
 
+func UpdateQuestion(record ports.QuestionnaireRunRecord, request UpdateQuestionRequest, now time.Time) ports.QuestionnaireRunRecord {
+	now = normalizeNow(now)
+	questionID := strings.TrimSpace(request.QuestionID)
+	for index := range record.Questions {
+		if record.Questions[index].ID != questionID {
+			continue
+		}
+		if request.ClearSlots {
+			record.Questions[index].RequiredSlots = nil
+		} else if request.RequiredSlots != nil {
+			record.Questions[index].RequiredSlots = uniqueSorted(request.RequiredSlots)
+		}
+		if request.ClearControls {
+			record.Questions[index].MappedControls = nil
+		} else if request.MappedControls != nil {
+			record.Questions[index].MappedControls = uniqueSorted(request.MappedControls)
+		}
+		if request.ClearOwner {
+			record.Questions[index].OwnerID = ""
+		} else if strings.TrimSpace(request.OwnerID) != "" {
+			record.Questions[index].OwnerID = strings.TrimSpace(request.OwnerID)
+		}
+		record.Questions[index].AnswerState = firstNonEmpty(request.AnswerState, record.Questions[index].AnswerState, ports.QuestionnaireAnswerNeedsReview)
+		record.Questions[index].ReviewState = firstNonEmpty(request.ReviewState, record.Questions[index].ReviewState, ports.QuestionnaireReviewNeedsReview)
+		break
+	}
+	record.Questions = normalizeQuestions(record.Questions)
+	record.UpdatedAt = now
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventUpdated, request.UpdatedBy, "Questionnaire question updated", map[string]string{
+		"question_id": questionID,
+		"reason":      strings.TrimSpace(request.UpdateReason),
+	}, now))
+	return SummarizeRun(record)
+}
+
 func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.QuestionnaireDecision, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	decision.ID = firstNonEmpty(decision.ID, stableID("questionnaire-decision", record.RunID, decision.QuestionID, decision.Decision, decision.ActorID, now.Format(time.RFC3339Nano)))
@@ -218,7 +267,9 @@ func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.Question
 	if decision.QuestionID == "" {
 		switch decision.Decision {
 		case ports.QuestionnaireDecisionApproved, ports.QuestionnaireDecisionApprovedWithConditions:
-			record.Status = ports.QuestionnaireStatusApproved
+			if blockedAnswerCount(record.Answers) == 0 {
+				record.Status = ports.QuestionnaireStatusApproved
+			}
 		case ports.QuestionnaireDecisionNeedsInput:
 			record.Status = ports.QuestionnaireStatusNeedsInput
 		case ports.QuestionnaireDecisionRejected:
@@ -361,7 +412,7 @@ func slotsFromEvidenceAnswer(requiredSlots []string, evidenceAnswer evidencepack
 func matchingSlotEvidence(slotID string, answer evidencepackets.QuestionnaireAnswer) []string {
 	ids := []string{}
 	for _, ref := range questionnaireEvidenceRefs(answer) {
-		if evidenceRefMatchesSlot(slotID, ref, answer) {
+		if evidenceRefMatchesSlot(slotID, ref) {
 			ids = append(ids, firstNonEmpty(ref.ID, ref.EvidencePacketID))
 		}
 	}
@@ -370,7 +421,7 @@ func matchingSlotEvidence(slotID string, answer evidencepackets.QuestionnaireAns
 
 func slotEvidenceState(slotID string, answer evidencepackets.QuestionnaireAnswer, state string) bool {
 	for _, ref := range questionnaireEvidenceRefs(answer) {
-		if !evidenceRefMatchesSlot(slotID, ref, answer) {
+		if !evidenceRefMatchesSlot(slotID, ref) {
 			continue
 		}
 		if strings.EqualFold(ref.Freshness.Status, state) || strings.EqualFold(ref.ReviewState, state) {
@@ -386,38 +437,54 @@ func questionnaireEvidenceRefs(answer evidencepackets.QuestionnaireAnswer) []evi
 	return refs
 }
 
-func evidenceRefMatchesSlot(slotID string, ref evidencepackets.QuestionnaireEvidenceRef, answer evidencepackets.QuestionnaireAnswer) bool {
-	terms := normalizedTerms(strings.Join([]string{
-		ref.ID,
-		ref.EvidencePacketID,
-		ref.EvidenceType,
-		ref.Source,
-		ref.SourceID,
-		ref.RuntimeID,
-		strings.Join(controlIDs(answer.Controls), " "),
-		controlTitles(answer.Controls),
-	}, " "))
-	switch slotID {
-	case "identity_mfa":
-		return hasAny(terms, "mfa", "multifactor", "identity", "sso", "okta", "idp")
-	case "access_review":
-		return hasAny(terms, "access", "permission", "permissions", "deprovision", "provision", "user", "users", "review")
-	case "encryption":
-		return hasAny(terms, "encrypt", "encryption", "encrypted", "key", "keys", "kms", "tls")
-	case "incident_response":
-		return hasAny(terms, "incident", "breach", "ir")
-	case "subprocessors":
-		return hasAny(terms, "subprocessor", "subprocessors", "third", "party", "dpa")
-	case "audit_report":
-		return hasAny(terms, "soc", "soc2", "iso", "audit", "report", "assurance")
-	case "policy":
-		return hasAny(terms, "policy", "policies", "procedure", "procedures", "standard", "standards")
-	case "ai_data_use":
-		return hasAny(terms, "ai", "model", "training", "retention") || hasPhrase(strings.Join(termList(ref.EvidenceType+" "+ref.Source), " "), "data use")
-	case "vendor_profile":
-		return hasAny(terms, "vendor", "profile", "third", "party", "diligence", "dpa", "subprocessor", "subprocessors")
-	default:
+func evidenceRefMatchesSlot(slotID string, ref evidencepackets.QuestionnaireEvidenceRef) bool {
+	for _, value := range []string{ref.EvidenceType, ref.ID, ref.EvidencePacketID} {
+		if evidenceTypeSatisfiesSlot(slotID, value) {
+			return true
+		}
+	}
+	return false
+}
+
+func evidenceTypeSatisfiesSlot(slotID string, value string) bool {
+	slotID = normalizeEvidenceToken(slotID)
+	value = normalizeEvidenceToken(value)
+	if slotID == "" || value == "" {
 		return false
+	}
+	if value == slotID {
+		return true
+	}
+	for _, allowed := range evidenceTypesForSlot(slotID) {
+		if value == normalizeEvidenceToken(allowed) {
+			return true
+		}
+	}
+	return false
+}
+
+func evidenceTypesForSlot(slotID string) []string {
+	switch normalizeEvidenceToken(slotID) {
+	case "identity_mfa":
+		return []string{"identity_configuration", "identity_governance", "multi_factor_authentication", "mfa_configuration"}
+	case "access_review":
+		return []string{"access_review", "identity_governance", "user_access_review", "access_governance"}
+	case "encryption":
+		return []string{"encryption_configuration", "encryption_evidence", "data_protection", "key_management"}
+	case "incident_response":
+		return []string{"incident_response", "incident_management", "incident_response_plan"}
+	case "subprocessors":
+		return []string{"subprocessor_list", "third_party_risk", "vendor_diligence", "dpa"}
+	case "audit_report":
+		return []string{"assurance_document", "audit_report", "soc_2", "soc2", "iso_27001"}
+	case "policy":
+		return []string{"policy", "policy_document", "procedure_document", "standard_document"}
+	case "ai_data_use":
+		return []string{"ai_data_use", "ai_governance", "model_governance", "data_use"}
+	case "vendor_profile":
+		return []string{"vendor_profile", "third_party_risk", "vendor_diligence", "subprocessor_list"}
+	default:
+		return nil
 	}
 }
 
@@ -638,6 +705,16 @@ func statusFromAnswers(answers []ports.QuestionnaireRunAnswer) string {
 	return ports.QuestionnaireStatusReadyForApproval
 }
 
+func blockedAnswerCount(answers []ports.QuestionnaireRunAnswer) int {
+	count := 0
+	for _, answer := range answers {
+		if answer.AnswerState == ports.QuestionnaireAnswerBlocked || answer.ReviewState == ports.QuestionnaireReviewBlocked || answer.ReviewState == ports.QuestionnaireReviewRejected {
+			count++
+		}
+	}
+	return count
+}
+
 func decisionFromStatus(status string) string {
 	switch status {
 	case ports.QuestionnaireStatusApproved:
@@ -701,14 +778,6 @@ func controlIDs(controls []evidencepackets.QuestionnaireControlRef) []string {
 	return uniqueSorted(ids)
 }
 
-func controlTitles(controls []evidencepackets.QuestionnaireControlRef) string {
-	titles := make([]string, 0, len(controls))
-	for _, control := range controls {
-		titles = append(titles, control.Title)
-	}
-	return strings.Join(titles, " ")
-}
-
 func requiredSlotMissing(slots []ports.QuestionnaireEvidenceSlot) bool {
 	for _, slot := range slots {
 		if slot.Required && slot.State == "missing" {
@@ -755,14 +824,6 @@ func normalizedQuestion(value string) string {
 	return strings.Join(termList(value), " ")
 }
 
-func normalizedTerms(value string) map[string]struct{} {
-	terms := map[string]struct{}{}
-	for _, term := range termList(value) {
-		terms[term] = struct{}{}
-	}
-	return terms
-}
-
 func termList(value string) []string {
 	value = strings.ToLower(strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(value))
 	parts := strings.FieldsFunc(value, func(r rune) bool {
@@ -777,17 +838,10 @@ func termList(value string) []string {
 	return terms
 }
 
-func hasAny(terms map[string]struct{}, values ...string) bool {
-	for _, value := range values {
-		if _, ok := terms[value]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func hasPhrase(normalized string, phrase string) bool {
-	return strings.Contains(" "+normalized+" ", " "+normalizedQuestion(phrase)+" ")
+func normalizeEvidenceToken(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer(".", "_", "-", "_", " ", "_", "/", "_", ":", "_").Replace(value)
+	return strings.Trim(value, "_")
 }
 
 func stableID(prefix string, values ...string) string {

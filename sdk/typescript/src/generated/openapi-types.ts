@@ -2435,6 +2435,18 @@ export type GRCQuestionnaireQuestion = {
   section?: string;
 };
 
+export type GRCQuestionnaireQuestionUpdateRequest = {
+  clear_mapped_controls?: boolean;
+  clear_owner?: boolean;
+  clear_required_evidence_slots?: boolean;
+  mapped_controls?: string[];
+  owner_id?: string;
+  question_id: string;
+  reason?: string;
+  required_evidence_slots?: string[];
+  tenant_id?: string;
+};
+
 export type GRCQuestionnaireReasoningContract = {
   confidence: string;
   evidence_packet_ids?: string[];

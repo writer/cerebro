@@ -3158,6 +3158,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
+  /grc/questionnaire-runs/{runID}/questions:
+    post:
+      summary: Update questionnaire question mapping
+      tags:
+        - GRC
+      parameters:
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCQuestionnaireQuestionUpdateRequest'
+      responses:
+        '200':
+          description: Question mapping updated on the questionnaire run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
   /grc/questionnaire-runs/{runID}/decisions:
     post:
       summary: Record questionnaire decision
@@ -12194,6 +12219,32 @@ components:
           type: string
         reason:
           type: string
+    GRCQuestionnaireQuestionUpdateRequest:
+      type: object
+      required: [question_id]
+      properties:
+        tenant_id:
+          type: string
+        question_id:
+          type: string
+        required_evidence_slots:
+          type: array
+          items:
+            type: string
+        mapped_controls:
+          type: array
+          items:
+            type: string
+        owner_id:
+          type: string
+        reason:
+          type: string
+        clear_required_evidence_slots:
+          type: boolean
+        clear_mapped_controls:
+          type: boolean
+        clear_owner:
+          type: boolean
     GRCQuestionnaireDecisionRequest:
       type: object
       required: [state]

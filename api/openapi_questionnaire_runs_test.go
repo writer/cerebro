@@ -17,6 +17,7 @@ func TestQuestionnaireRunRoutesDocumentUnifiedQueueContract(t *testing.T) {
 		"/grc/questionnaire-runs/{runID}",
 		"/grc/questionnaire-runs/{runID}/process",
 		"/grc/questionnaire-runs/{runID}/assignments",
+		"/grc/questionnaire-runs/{runID}/questions",
 		"/grc/questionnaire-runs/{runID}/decisions",
 		"/grc/questionnaire-runs/{runID}/comments",
 	} {
@@ -40,6 +41,7 @@ func TestQuestionnaireRunRoutesDocumentUnifiedQueueContract(t *testing.T) {
 		"GRCQuestionnaireEvidenceSlot:",
 		"GRCQuestionnaireCitation:",
 		"GRCQuestionnaireRunEvidenceGap:",
+		"GRCQuestionnaireQuestionUpdateRequest:",
 		"GRCQuestionnaireDecisionRequest:",
 	} {
 		if !strings.Contains(doc, want) {

@@ -31,6 +31,7 @@ type Scope struct {
 	RuntimeID  string
 	RuntimeIDs []string
 	SourceID   string
+	VendorURN  string
 	Limit      uint32
 }
 
@@ -213,6 +214,19 @@ type commentRequest struct {
 	Body       string                      `json:"body,omitempty"`
 }
 
+type questionUpdateRequest struct {
+	TenantID       string                       `json:"tenant_id,omitempty"`
+	Question       *ports.QuestionnaireQuestion `json:"question,omitempty"`
+	QuestionID     string                       `json:"question_id,omitempty"`
+	RequiredSlots  []string                     `json:"required_evidence_slots,omitempty"`
+	MappedControls []string                     `json:"mapped_controls,omitempty"`
+	OwnerID        string                       `json:"owner_id,omitempty"`
+	Reason         string                       `json:"reason,omitempty"`
+	ClearSlots     bool                         `json:"clear_required_evidence_slots,omitempty"`
+	ClearControls  bool                         `json:"clear_mapped_controls,omitempty"`
+	ClearOwner     bool                         `json:"clear_owner,omitempty"`
+}
+
 type processRequest struct {
 	TenantID string `json:"tenant_id,omitempty"`
 }
@@ -231,7 +245,7 @@ func (h *Handler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, ErrRuntimeUnavailable)
 		return
 	}
-	records, err := h.store.ListQuestionnaireRuns(r.Context(), ports.QuestionnaireRunFilter{
+	filter := ports.QuestionnaireRunFilter{
 		TenantID:  scope.TenantID,
 		Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
 		Status:    strings.TrimSpace(r.URL.Query().Get("status")),
@@ -241,13 +255,19 @@ func (h *Handler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		OwnerID:   strings.TrimSpace(r.URL.Query().Get("owner_id")),
 		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
 		Limit:     scope.Limit,
-	})
+	}
+	records, err := h.store.ListQuestionnaireRuns(r.Context(), filter)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
-	views := runViews(records, true)
-	writeJSON(w, http.StatusOK, runsResponse{Summary: summarizeViews(views), Runs: views, GeneratedAt: time.Now().UTC()})
+	summary, err := h.store.SummarizeQuestionnaireRuns(r.Context(), filter)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	views := runViews(records, false)
+	writeJSON(w, http.StatusOK, runsResponse{Summary: runSummaryFromStore(summary), Runs: views, GeneratedAt: time.Now().UTC()})
 }
 
 func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
@@ -288,6 +308,10 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
+	uploadID := strings.TrimSpace(request.UploadID)
+	if uploadID == "" {
+		uploadID = fmt.Sprintf("intake-%d", now.UnixNano())
+	}
 	record := questionnairedomain.NewRunRecord(questionnairedomain.NewRunRequest{
 		TenantID:       scope.TenantID,
 		Direction:      request.Direction,
@@ -298,7 +322,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		VendorID:       request.VendorID,
 		SourceID:       firstNonEmpty(request.SourceID, scope.SourceID),
 		RuntimeID:      firstNonEmpty(request.RuntimeID, scope.RuntimeID),
-		UploadID:       request.UploadID,
+		UploadID:       uploadID,
 		SourceFilename: request.SourceFilename,
 		SourceFormat:   request.SourceFormat,
 		OwnerID:        request.OwnerID,
@@ -406,6 +430,51 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	updated := questionnairedomain.AddAssignment(*record, assignment, h.actorID(r.Context()), now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventAssigned, h.actorID(r.Context()), "Questionnaire answer assigned", map[string]string{"question_id": assignment.QuestionID, "owner_id": assignment.OwnerID}, now)
+	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.bumpReviewCache(r.Context(), saved.TenantID)
+	writeJSON(w, http.StatusOK, runResponse{Run: runViewFromRecord(saved, false), GeneratedAt: now})
+}
+
+func (h *Handler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
+	var request questionUpdateRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	record, _, err := h.runFromRequest(r.Context(), requestWithTenant(r, request.TenantID), request.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if request.Question != nil {
+		h.writeError(w, fmt.Errorf("%w: question object is not accepted; use top-level fields", ErrInvalidRequest))
+		return
+	}
+	if err := validateQuestionReference(record, request.QuestionID, true); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if len(request.RequiredSlots) == 0 && len(request.MappedControls) == 0 && strings.TrimSpace(request.OwnerID) == "" && !request.ClearSlots && !request.ClearControls && !request.ClearOwner {
+		h.writeError(w, fmt.Errorf("%w: at least one question field is required", ErrInvalidRequest))
+		return
+	}
+	now := time.Now().UTC()
+	updated := questionnairedomain.UpdateQuestion(*record, questionnairedomain.UpdateQuestionRequest{
+		QuestionID:     request.QuestionID,
+		RequiredSlots:  request.RequiredSlots,
+		MappedControls: request.MappedControls,
+		OwnerID:        request.OwnerID,
+		UpdateReason:   request.Reason,
+		UpdatedBy:      h.actorID(r.Context()),
+		ClearSlots:     request.ClearSlots,
+		ClearControls:  request.ClearControls,
+		ClearOwner:     request.ClearOwner,
+	}, now)
+	event := questionnairedomain.Event(updated, ports.QuestionnaireEventUpdated, h.actorID(r.Context()), "Questionnaire question updated", map[string]string{"question_id": strings.TrimSpace(request.QuestionID)}, now)
 	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
 	if err != nil {
 		h.writeError(w, err)
@@ -647,6 +716,21 @@ func runViewFromRecord(record *ports.QuestionnaireRunRecord, compact bool) runVi
 	return view
 }
 
+func runSummaryFromStore(summary ports.QuestionnaireRunSummary) runSummary {
+	return runSummary{
+		TotalRuns:       summary.TotalRuns,
+		CustomerRuns:    summary.TotalRuns - summary.VendorRuns,
+		VendorRuns:      summary.VendorRuns,
+		DueRuns:         summary.DueRuns,
+		BlockedAnswers:  summary.BlockedAnswers,
+		ReviewAnswers:   summary.ReviewAnswers,
+		ReadyAnswers:    summary.ReadyAnswers,
+		StaleEvidence:   summary.StaleEvidence,
+		MissingEvidence: summary.MissingEvidence,
+		Unassigned:      summary.UnassignedQuestions,
+	}
+}
+
 func summarizeViews(views []runView) runSummary {
 	var summary runSummary
 	summary.TotalRuns = len(views)
@@ -657,17 +741,23 @@ func summarizeViews(views []runView) runSummary {
 		} else {
 			summary.CustomerRuns++
 		}
-		if view.DueAt != nil && !view.DueAt.After(now) && view.Status != ports.QuestionnaireStatusApproved && view.Status != ports.QuestionnaireStatusRejected {
+		if view.DueAt != nil && !view.DueAt.After(now) && questionnaireStatusIsOpenWork(view.Status) {
 			summary.DueRuns++
 		}
-		summary.BlockedAnswers += view.BlockedAnswerCount
-		summary.ReviewAnswers += view.ReviewAnswerCount
-		summary.ReadyAnswers += view.ReadyAnswerCount
-		summary.StaleEvidence += view.StaleEvidenceCount
-		summary.MissingEvidence += view.MissingEvidenceCount
-		summary.Unassigned += view.UnassignedCount
+		if questionnaireStatusIsOpenWork(view.Status) {
+			summary.BlockedAnswers += view.BlockedAnswerCount
+			summary.ReviewAnswers += view.ReviewAnswerCount
+			summary.ReadyAnswers += view.ReadyAnswerCount
+			summary.StaleEvidence += view.StaleEvidenceCount
+			summary.MissingEvidence += view.MissingEvidenceCount
+			summary.Unassigned += view.UnassignedCount
+		}
 	}
 	return summary
+}
+
+func questionnaireStatusIsOpenWork(status string) bool {
+	return status != ports.QuestionnaireStatusApproved && status != ports.QuestionnaireStatusRejected
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {

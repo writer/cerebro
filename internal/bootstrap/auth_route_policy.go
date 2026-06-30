@@ -106,6 +106,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/grc/questionnaire-runs", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/grc/questionnaire-runs/", Suffix: "/process", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodPost, Prefix: "/grc/questionnaire-runs/", Suffix: "/assignments", Scope: scopeGRCInventoryWrite},
+	{Method: http.MethodPost, Prefix: "/grc/questionnaire-runs/", Suffix: "/questions", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodPost, Prefix: "/grc/questionnaire-runs/", Suffix: "/decisions", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodPost, Prefix: "/grc/questionnaire-runs/", Suffix: "/comments", Scope: scopeGRCInventoryWrite},
 	{Method: http.MethodPost, Exact: "/grc/policy-lifecycle/actions", Scope: scopeGRCPolicyLifecycleWrite, Static: true},

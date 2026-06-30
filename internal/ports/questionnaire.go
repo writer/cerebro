@@ -38,6 +38,7 @@ const (
 	QuestionnaireEventCreated   = "created"
 	QuestionnaireEventProcessed = "processed"
 	QuestionnaireEventAssigned  = "assigned"
+	QuestionnaireEventUpdated   = "updated"
 	QuestionnaireEventDecided   = "decision_recorded"
 	QuestionnaireEventCommented = "commented"
 )
@@ -241,11 +242,24 @@ type QuestionnaireRunEventFilter struct {
 	Limit    uint32
 }
 
+type QuestionnaireRunSummary struct {
+	TotalRuns           int
+	VendorRuns          int
+	DueRuns             int
+	BlockedAnswers      int
+	ReviewAnswers       int
+	ReadyAnswers        int
+	StaleEvidence       int
+	MissingEvidence     int
+	UnassignedQuestions int
+}
+
 type QuestionnaireRunStore interface {
 	StateStore
 	UpsertQuestionnaireRun(context.Context, QuestionnaireRunRecord, QuestionnaireRunEventRecord) (*QuestionnaireRunRecord, error)
 	GetQuestionnaireRun(context.Context, QuestionnaireRunFilter) (*QuestionnaireRunRecord, error)
 	ListQuestionnaireRuns(context.Context, QuestionnaireRunFilter) ([]*QuestionnaireRunRecord, error)
+	SummarizeQuestionnaireRuns(context.Context, QuestionnaireRunFilter) (QuestionnaireRunSummary, error)
 	ListQuestionnaireRunEvents(context.Context, QuestionnaireRunEventFilter) ([]*QuestionnaireRunEventRecord, error)
 }
 

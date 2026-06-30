@@ -155,6 +155,12 @@ func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 			wantSlot:   "missing",
 		},
 		{
+			name:       "source keyword does not satisfy MFA slot without evidence type",
+			answer:     withEvidenceType(baseEvidenceAnswer("Attach the latest SOC 2 report.", "supported", "ready", "current"), "control_test", "okta"),
+			wantAnswer: ports.QuestionnaireAnswerBlocked,
+			wantSlot:   "missing",
+		},
+		{
 			name:       "audit report citation satisfies audit report",
 			answer:     withEvidenceType(baseEvidenceAnswer("Attach the latest SOC 2 report.", "supported", "ready", "current"), "audit_report", "trust-center"),
 			wantAnswer: ports.QuestionnaireAnswerSupported,
@@ -162,6 +168,10 @@ func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			requiredSlots := []string{"audit_report"}
+			if tt.name == "source keyword does not satisfy MFA slot without evidence type" {
+				requiredSlots = []string{"identity_mfa"}
+			}
 			record := NewRunRecord(NewRunRequest{
 				TenantID:  "tenant-1",
 				Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
@@ -169,7 +179,7 @@ func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 				Questions: []ports.QuestionnaireQuestion{{
 					ID:            "q-1",
 					Question:      "Attach the latest SOC 2 report.",
-					RequiredSlots: []string{"audit_report"},
+					RequiredSlots: requiredSlots,
 				}},
 			}, now)
 
@@ -181,8 +191,8 @@ func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 			if answer.AnswerState != tt.wantAnswer {
 				t.Fatalf("answer state = %s, want %s; slots=%#v gaps=%#v", answer.AnswerState, tt.wantAnswer, answer.EvidenceSlots, answer.MissingEvidence)
 			}
-			if got := slotState(answer.EvidenceSlots, "audit_report"); got != tt.wantSlot {
-				t.Fatalf("audit slot state = %s, want %s; slots=%#v", got, tt.wantSlot, answer.EvidenceSlots)
+			if got := slotState(answer.EvidenceSlots, requiredSlots[0]); got != tt.wantSlot {
+				t.Fatalf("%s slot state = %s, want %s; slots=%#v", requiredSlots[0], got, tt.wantSlot, answer.EvidenceSlots)
 			}
 		})
 	}
@@ -232,7 +242,7 @@ func TestProcessEvidenceAnswersDoesNotCreateQuestionRows(t *testing.T) {
 	}
 }
 
-func TestRecordDecisionGlobalConditionalApprovesRun(t *testing.T) {
+func TestRecordDecisionGlobalConditionalDoesNotApproveBlockedRun(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	record := NewRunRecord(NewRunRequest{
 		TenantID:  "tenant-1",
@@ -253,8 +263,8 @@ func TestRecordDecisionGlobalConditionalApprovesRun(t *testing.T) {
 		ActorID:  "security@example.com",
 	}, now.Add(time.Minute))
 
-	if record.Status != ports.QuestionnaireStatusApproved || record.Decision != ports.QuestionnaireDecisionApprovedWithConditions {
-		t.Fatalf("workflow = %s/%s, want approved/approved_with_conditions", record.Status, record.Decision)
+	if record.Status != ports.QuestionnaireStatusNeedsInput || record.Decision != ports.QuestionnaireDecisionApprovedWithConditions {
+		t.Fatalf("workflow = %s/%s, want needs_input/approved_with_conditions", record.Status, record.Decision)
 	}
 }
 

@@ -31,6 +31,7 @@ func grcQuestionnaireHTTPScope(scope grcScope) questionnairehttp.Scope {
 		RuntimeID:  scope.RuntimeID,
 		RuntimeIDs: scope.RuntimeIDs,
 		SourceID:   scope.SourceID,
+		VendorURN:  scope.VendorURN,
 		Limit:      scope.Limit,
 	}
 }
