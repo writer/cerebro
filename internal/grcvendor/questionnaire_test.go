@@ -88,9 +88,9 @@ func TestBuildQuestionnaireReviewEnrichmentUsesVendorEvidence(t *testing.T) {
 	}
 	for _, want := range []string{
 		"questionnaire",
-		"questionnaire:urn:cerebro:writer:security_questionnaire:vrm:linked-questionnaire",
-		"assurance:urn:cerebro:writer:assurance_document:vrm:soc2",
-		"review:urn:cerebro:writer:security_review:vrm:review-1",
+		"questionnaire:linked-questionnaire",
+		"assurance:soc2",
+		"review:review-1",
 		"evidence:evidence-1",
 		"finding:finding-1",
 	} {
@@ -127,9 +127,11 @@ func TestQuestionnaireEvidenceMatchesPreserveRelationshipURNIdentity(t *testing.
 
 	matches := questionnaireEvidenceMatches(ports.GRCVendorQuestionnaireReviewRecord{}, Vendor{}, relationships, nil, nil)
 
+	firstID := "questionnaire:sig-2026:" + hashString("urn:cerebro:writer:security_questionnaire:vrm:sig-2026")[:12]
+	secondID := "questionnaire:sig-2026:" + hashString("urn:cerebro:writer:security_questionnaire:manual:sig-2026")[:12]
 	for _, want := range []string{
-		"questionnaire:urn:cerebro:writer:security_questionnaire:vrm:sig-2026",
-		"questionnaire:urn:cerebro:writer:security_questionnaire:manual:sig-2026",
+		firstID,
+		secondID,
 	} {
 		if !hasQuestionnaireEvidence(matches, want) {
 			t.Fatalf("evidence matches missing %q: %#v", want, matches)

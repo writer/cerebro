@@ -162,14 +162,17 @@ func questionnaireEvidenceMatches(record ports.GRCVendorQuestionnaireReviewRecor
 	if record.QuestionnaireURN != "" {
 		add(ports.GRCVendorQuestionnaireEvidence{ID: "questionnaire", Label: firstNonEmpty(record.Title, "Security questionnaire"), Source: "questionnaire", URN: record.QuestionnaireURN, Confidence: "high", Reason: "Uploaded questionnaire artifact"})
 	}
+	questionnaireTails := relatedRecordTailCounts(relationships.SecurityQuestionnaires)
 	for _, related := range relationships.SecurityQuestionnaires {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "questionnaire:" + related.URN, Label: firstNonEmpty(related.Label, "Security questionnaire"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked questionnaire"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: relationshipEvidenceID("questionnaire", related, questionnaireTails), Label: firstNonEmpty(related.Label, "Security questionnaire"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked questionnaire"})
 	}
+	assuranceTails := relatedRecordTailCounts(relationships.AssuranceDocuments)
 	for _, related := range relationships.AssuranceDocuments {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "assurance:" + related.URN, Label: firstNonEmpty(related.Label, "Assurance document"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked assurance document"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: relationshipEvidenceID("assurance", related, assuranceTails), Label: firstNonEmpty(related.Label, "Assurance document"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked assurance document"})
 	}
+	reviewTails := relatedRecordTailCounts(relationships.SecurityReviews)
 	for _, related := range relationships.SecurityReviews {
-		add(ports.GRCVendorQuestionnaireEvidence{ID: "review:" + related.URN, Label: firstNonEmpty(related.Label, "Security review"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked security review"})
+		add(ports.GRCVendorQuestionnaireEvidence{ID: relationshipEvidenceID("review", related, reviewTails), Label: firstNonEmpty(related.Label, "Security review"), Source: "graph", URN: related.URN, Confidence: "high", Reason: "Linked security review"})
 	}
 	for _, item := range evidence {
 		add(ports.GRCVendorQuestionnaireEvidence{ID: "evidence:" + item.ID, Label: firstNonEmpty(item.Title, item.ID), Source: firstNonEmpty(item.SourceID, "finding_evidence"), ControlID: item.ControlID, Confidence: confidenceFromEvidenceState(item.State), Reason: firstNonEmpty(item.State, item.Type)})
@@ -188,6 +191,22 @@ func questionnaireEvidenceMatches(record ports.GRCVendorQuestionnaireReviewRecor
 	}
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].ID < matches[j].ID })
 	return dedupeQuestionnaireEvidence(matches)
+}
+
+func relatedRecordTailCounts(records []RelatedRecord) map[string]int {
+	counts := make(map[string]int, len(records))
+	for _, record := range records {
+		counts[urnTail(record.URN)]++
+	}
+	return counts
+}
+
+func relationshipEvidenceID(prefix string, record RelatedRecord, tailCounts map[string]int) string {
+	tail := urnTail(record.URN)
+	if tailCounts[tail] <= 1 {
+		return prefix + ":" + tail
+	}
+	return prefix + ":" + tail + ":" + hashString(record.URN)[:12]
 }
 
 func questionnaireMissingQuestions(vendor Vendor, findings []QuestionnaireFindingSignal) []ports.GRCVendorQuestionnaireMissing {
