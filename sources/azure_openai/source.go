@@ -113,6 +113,7 @@ func New() (*Source, error) {
 				Path:             "/subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/privateEndpointConnections",
 				URNKind:          "azure_openai_private_endpoint_connections",
 				IDKeys:           []string{"name", "id", "urn", "resource_urn"},
+				NextCursorKeys:   []string{"nextLink"},
 				DisablePageSize:  true,
 				ListKeys:         []string{"value"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},

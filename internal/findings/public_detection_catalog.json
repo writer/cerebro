@@ -52196,7 +52196,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -88168,7 +88169,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -252800,7 +252802,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
