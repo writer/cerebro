@@ -485,6 +485,123 @@ func TestUpdateQuestionMapsRequiredEvidenceSlots(t *testing.T) {
 	}
 }
 
+func TestLinkVendorAttachesVendorContext(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Vendor diligence"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{ID: "q-1", Question: "Attach vendor SOC 2 report."}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{Attributes: map[string]string{"source": "portal"}, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "risk@example.com" },
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/vendor-link", strings.NewReader(`{"vendor_urn":"urn:cerebro:tenant-1:vendor:okta","vendor_id":"okta","reason":"Matched intake requester."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.LinkVendor(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if store.saved.Direction != ports.QuestionnaireDirectionVendorReview || store.saved.VendorURN != "urn:cerebro:tenant-1:vendor:okta" || store.saved.VendorID != "okta" {
+		t.Fatalf("saved source = %#v, want linked vendor review", store.saved.QuestionnaireRunSource)
+	}
+	if store.saved.Attributes["linked_vendor_urn"] != "urn:cerebro:tenant-1:vendor:okta" || store.saved.Attributes["vendor_link_status"] != "linked" {
+		t.Fatalf("attributes = %#v, want linked vendor metadata", store.saved.Attributes)
+	}
+	if len(store.saved.Timeline) == 0 || store.saved.Timeline[len(store.saved.Timeline)-1].EventType != ports.QuestionnaireEventVendorLinked {
+		t.Fatalf("timeline = %#v, want vendor link event", store.saved.Timeline)
+	}
+	if store.savedEvent.EventType != ports.QuestionnaireEventVendorLinked || store.savedEvent.Payload["vendor_urn"] == "" {
+		t.Fatalf("event = %#v, want persisted vendor link event", store.savedEvent)
+	}
+}
+
+func TestLinkVendorRemovesVendorContext(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Vendor diligence"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionVendorReview, VendorURN: "urn:cerebro:tenant-1:vendor:okta", VendorID: "okta"},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{
+					"linked_vendor_urn":              "urn:cerebro:tenant-1:vendor:okta",
+					"linked_vendor_id":               "okta",
+					"vendor_link_previous_direction": ports.QuestionnaireDirectionCustomerSecurityReview,
+					"vendor_link_reason":             "Matched intake requester.",
+					"vendor_link_status":             "linked",
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "risk@example.com" },
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/vendor-link", strings.NewReader(`{"unlink":true}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.LinkVendor(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if store.saved.VendorURN != "" || store.saved.VendorID != "" {
+		t.Fatalf("vendor context = %q/%q, want cleared", store.saved.VendorURN, store.saved.VendorID)
+	}
+	if store.saved.Direction != ports.QuestionnaireDirectionCustomerSecurityReview {
+		t.Fatalf("direction = %q, want customer_security_review", store.saved.Direction)
+	}
+	if store.saved.Attributes["linked_vendor_urn"] != "" ||
+		store.saved.Attributes["vendor_link_previous_direction"] != "" ||
+		store.saved.Attributes["vendor_link_reason"] != "" ||
+		store.saved.Attributes["vendor_link_status"] != "unlinked" {
+		t.Fatalf("attributes = %#v, want unlinked vendor metadata", store.saved.Attributes)
+	}
+}
+
+func TestLinkVendorRejectsMissingVendorURN(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Vendor diligence"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/vendor-link", strings.NewReader(`{"reason":"No selected vendor."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.LinkVendor(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestCreateRunRejectsDelimitedIntakeWithoutQuestionHeader(t *testing.T) {
 	store := &processRunStore{}
 	handler := NewHandler(store, Options{
@@ -789,10 +906,12 @@ type processRunStore struct {
 	listRecords []*ports.QuestionnaireRunRecord
 	summary     ports.QuestionnaireRunSummary
 	saved       ports.QuestionnaireRunRecord
+	savedEvent  ports.QuestionnaireRunEventRecord
 }
 
-func (s *processRunStore) UpsertQuestionnaireRun(_ context.Context, record ports.QuestionnaireRunRecord, _ ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
+func (s *processRunStore) UpsertQuestionnaireRun(_ context.Context, record ports.QuestionnaireRunRecord, event ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
 	s.saved = record
+	s.savedEvent = event
 	return &s.saved, nil
 }
 

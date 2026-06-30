@@ -46,6 +46,19 @@ type UpdateQuestionRequest struct {
 	ClearControls  bool
 }
 
+type LinkVendorRequest struct {
+	VendorURN string
+	VendorID  string
+	Reason    string
+	ActorID   string
+	Unlink    bool
+}
+
+const (
+	questionnaireVendorLinkPreviousDirectionAttribute = "vendor_link_previous_direction"
+	questionnaireVendorLinkReasonAttribute            = "vendor_link_reason"
+)
+
 func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	direction := strings.TrimSpace(request.Direction)
@@ -96,6 +109,81 @@ func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRe
 	}
 	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventCreated, firstNonEmpty(record.OwnerID, record.AssignedTeam), "Questionnaire run created", nil, now))
 	return SummarizeRun(record)
+}
+
+func LinkVendor(record ports.QuestionnaireRunRecord, request LinkVendorRequest, now time.Time) ports.QuestionnaireRunRecord {
+	now = normalizeNow(now)
+	record.UpdatedAt = now
+	record.Attributes = copyStringMap(record.Attributes)
+	if record.Attributes == nil {
+		record.Attributes = map[string]string{}
+	}
+	reason := strings.TrimSpace(request.Reason)
+	attrs := map[string]string{}
+	if reason != "" {
+		attrs["reason"] = reason
+	}
+	if request.Unlink {
+		restoredDirection := directionForVendorUnlink(record.Attributes)
+		attrs["previous_vendor_urn"] = record.VendorURN
+		attrs["previous_vendor_id"] = record.VendorID
+		attrs["restored_direction"] = restoredDirection
+		record.Direction = restoredDirection
+		record.VendorURN = ""
+		record.VendorID = ""
+		delete(record.Attributes, "linked_vendor_urn")
+		delete(record.Attributes, "linked_vendor_id")
+		delete(record.Attributes, questionnaireVendorLinkPreviousDirectionAttribute)
+		record.Attributes["vendor_link_status"] = "unlinked"
+		setVendorLinkReason(record.Attributes, reason)
+		record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventVendorLinked, request.ActorID, "Vendor link removed", attrs, now))
+		return SummarizeRun(record)
+	}
+	vendorURN := strings.TrimSpace(request.VendorURN)
+	vendorID := strings.TrimSpace(request.VendorID)
+	previousDirection := previousDirectionForVendorLink(record)
+	record.Direction = ports.QuestionnaireDirectionVendorReview
+	record.VendorURN = vendorURN
+	record.VendorID = vendorID
+	record.Attributes[questionnaireVendorLinkPreviousDirectionAttribute] = previousDirection
+	record.Attributes["linked_vendor_urn"] = vendorURN
+	if vendorID != "" {
+		record.Attributes["linked_vendor_id"] = vendorID
+	} else {
+		delete(record.Attributes, "linked_vendor_id")
+	}
+	record.Attributes["vendor_link_status"] = "linked"
+	setVendorLinkReason(record.Attributes, reason)
+	attrs["vendor_urn"] = vendorURN
+	attrs["vendor_id"] = vendorID
+	attrs["previous_direction"] = previousDirection
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventVendorLinked, request.ActorID, "Vendor linked", attrs, now))
+	return SummarizeRun(record)
+}
+
+func previousDirectionForVendorLink(record ports.QuestionnaireRunRecord) string {
+	if stored := strings.TrimSpace(record.Attributes[questionnaireVendorLinkPreviousDirectionAttribute]); ports.IsQuestionnaireDirection(stored) {
+		return stored
+	}
+	if direction := strings.TrimSpace(record.Direction); ports.IsQuestionnaireDirection(direction) {
+		return direction
+	}
+	return ports.QuestionnaireDirectionCustomerSecurityReview
+}
+
+func directionForVendorUnlink(attributes map[string]string) string {
+	if direction := strings.TrimSpace(attributes[questionnaireVendorLinkPreviousDirectionAttribute]); ports.IsQuestionnaireDirection(direction) {
+		return direction
+	}
+	return ports.QuestionnaireDirectionCustomerSecurityReview
+}
+
+func setVendorLinkReason(attributes map[string]string, reason string) {
+	if reason == "" {
+		delete(attributes, questionnaireVendorLinkReasonAttribute)
+		return
+	}
+	attributes[questionnaireVendorLinkReasonAttribute] = reason
 }
 
 func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers []evidencepackets.QuestionnaireAnswer, now time.Time) ports.QuestionnaireRunRecord {

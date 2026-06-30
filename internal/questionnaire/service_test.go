@@ -140,6 +140,64 @@ func TestVendorReviewAddsVendorEvidenceSlot(t *testing.T) {
 	}
 }
 
+func TestLinkVendorRestoresCustomerReviewDirectionBeforeProcessing(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Title:     "Acme security review",
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:            "q-1",
+			Question:      "Do you enforce MFA for users?",
+			RequiredSlots: []string{"identity_mfa"},
+		}},
+	}, now)
+
+	record = LinkVendor(record, LinkVendorRequest{
+		VendorURN: "urn:cerebro:tenant-1:vendor:okta",
+		VendorID:  "okta",
+		Reason:    "Matched intake requester.",
+		ActorID:   "risk@example.com",
+	}, now.Add(time.Minute))
+	if record.Direction != ports.QuestionnaireDirectionVendorReview {
+		t.Fatalf("direction after link = %q, want vendor_review", record.Direction)
+	}
+	if got := record.Attributes[questionnaireVendorLinkPreviousDirectionAttribute]; got != ports.QuestionnaireDirectionCustomerSecurityReview {
+		t.Fatalf("previous direction = %q, want customer_security_review", got)
+	}
+	if got := record.Attributes[questionnaireVendorLinkReasonAttribute]; got != "Matched intake requester." {
+		t.Fatalf("link reason = %q, want stored reason", got)
+	}
+
+	record = LinkVendor(record, LinkVendorRequest{Unlink: true, ActorID: "risk@example.com"}, now.Add(2*time.Minute))
+	if record.Direction != ports.QuestionnaireDirectionCustomerSecurityReview {
+		t.Fatalf("direction after unlink = %q, want customer_security_review", record.Direction)
+	}
+	if record.VendorURN != "" || record.VendorID != "" {
+		t.Fatalf("vendor context = %q/%q, want cleared", record.VendorURN, record.VendorID)
+	}
+	if got := record.Attributes[questionnaireVendorLinkPreviousDirectionAttribute]; got != "" {
+		t.Fatalf("previous direction attribute = %q, want cleared", got)
+	}
+	if got := record.Attributes[questionnaireVendorLinkReasonAttribute]; got != "" {
+		t.Fatalf("link reason = %q, want cleared", got)
+	}
+
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{
+		baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current"),
+	}, now.Add(3*time.Minute))
+	if len(record.Answers) != 1 {
+		t.Fatalf("answer count = %d, want 1", len(record.Answers))
+	}
+	answer := record.Answers[0]
+	if slotPresent(answer.EvidenceSlots, "vendor_profile") {
+		t.Fatalf("vendor_profile slot present after unlink: %#v", answer.EvidenceSlots)
+	}
+	if answer.AnswerState != ports.QuestionnaireAnswerSupported {
+		t.Fatalf("answer state = %q, want supported; slots=%#v gaps=%#v", answer.AnswerState, answer.EvidenceSlots, answer.MissingEvidence)
+	}
+}
+
 func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	for _, tt := range []struct {
