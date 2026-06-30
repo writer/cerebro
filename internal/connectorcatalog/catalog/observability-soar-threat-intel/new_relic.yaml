@@ -9,7 +9,7 @@ entries:
         model: api_key
       categories:
         - observability
-      description: Collects monitored assets, alerts, and audit events from New Relic and projects them into the Cerebro graph as assets, findings, and audit events for alert, incident, service health, and response context.
+      description: Collects New Relic monitored entities, AI issues, and NrAuditEvent records through NerdGraph for asset inventory, finding review, and audit context.
       display_name: New Relic
       id: builtin-new_relic
       resource_families:
@@ -22,33 +22,32 @@ entries:
                 - assets
               high_value: true
               id: assets
-              support: partial
-              title: Monitored assets
+              support: supported
+              title: Monitored entities
               type: entity_family
           event:
             kind: new_relic.assets
             required_payload_fields:
-              - id
+              - guid
             schema_ref: new_relic/assets/v1
-            urn_kind: new_relic_assets
+            urn_kind: runtime_new_relic_entity
           id: assets
-          id_field: id
-          label: Monitored assets
-          method: GET
+          id_field: guid
+          label: Monitored entities
+          method: POST
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.data.actor.entitySearch.results.nextCursor
             cursor_param: cursor
             page_size: 100
-            page_size_param: limit
             type: cursor
-          path: /v1/entities
+          path: /graphql
           projection:
             fields:
-              resource_id: id
-              resource_type: resource_type|type|kind
-              resource_urn: resource_urn|urn|metadata.resource_urn
+              resource_id: guid
+              resource_type: entityType|type|domain
+              resource_urn: resource_urn
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.data.actor.entitySearch.results.entities[*]
         - coverage:
             - control_domains:
                 - remediation
@@ -58,34 +57,33 @@ entries:
                 - findings
               high_value: true
               id: findings
-              support: partial
-              title: Alerts
+              support: supported
+              title: AI issues
               type: remediation_state
           event:
             kind: new_relic.findings
             required_payload_fields:
-              - id
+              - issueId
             schema_ref: new_relic/findings/v1
-            urn_kind: new_relic_findings
+            urn_kind: finding
           id: findings
-          id_field: id
-          label: Alerts
-          method: GET
+          id_field: issueId
+          label: AI issues
+          method: POST
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.data.actor.account.aiIssues.issues.nextCursor
             cursor_param: cursor
             page_size: 100
-            page_size_param: limit
             type: cursor
-          path: /v1/alerts
+          path: /graphql
           projection:
             fields:
               description: description|summary
-              finding_id: id
-              severity: severity|risk|priority
+              finding_id: issueId
+              severity: priority|severity
               status: status|state
             template: finding
-          record_selector: $.data[*]
+          record_selector: $.data.actor.account.aiIssues.issues.issues[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -95,34 +93,28 @@ entries:
                 - audit_events
               high_value: true
               id: audit_events
-              support: partial
+              support: supported
               title: Audit events
               type: audit_event
           event:
             kind: new_relic.audit_events
             required_payload_fields:
-              - id
+              - eventId
             schema_ref: new_relic/audit_events/v1
             urn_kind: new_relic_audit_events
           id: audit_events
-          id_field: id
+          id_field: eventId
           label: Audit events
-          method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+          method: POST
+          path: /graphql
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
+              actor_email: actorEmail|userEmail|email
+              actor_id: actorId|userId|user
+              event_type: eventType|action|category
+              id: eventId
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.data.actor.account.nrql.results[*]
       schema_version: cerebro.integration/v1
       source_id: new_relic
       tenant_id: builtin_catalog
@@ -131,5 +123,5 @@ entries:
         verification:
           expect_status:
             - 200
-          method: GET
+          method: POST
           path: /graphql

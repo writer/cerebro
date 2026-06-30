@@ -11,44 +11,163 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
+func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
+	var requests []graphQLRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
 		}
-		if r.URL.RequestURI() == "/graphql" {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if r.URL.RequestURI() != "/graphql" {
+			t.Fatalf("uri = %q, want /graphql", r.URL.RequestURI())
 		}
-		if r.URL.Path != "/v1/entities" {
-			t.Fatalf("path = %q", r.URL.Path)
+		if r.Header.Get("API-Key") != "test-api-key" {
+			t.Fatalf("API-Key = %q", r.Header.Get("API-Key"))
 		}
+		var req graphQLRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		requests = append(requests, req)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		switch {
+		case strings.Contains(req.Query, "NewRelicSourceHealth"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"user": map[string]any{"name": "User One"}}}})
+		case strings.Contains(req.Query, "entitySearch"):
+			if got := req.Variables["query"]; got != "domain = 'APM'" {
+				t.Fatalf("entity query = %#v", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"entitySearch": map[string]any{"results": map[string]any{
+				"nextCursor": "asset-cursor-2",
+				"entities": []map[string]any{{
+					"guid":       "NR-ENTITY-1",
+					"name":       "Checkout service",
+					"type":       "SERVICE",
+					"entityType": "APM_APPLICATION_ENTITY",
+					"domain":     "APM",
+					"permalink":  "https://one.newrelic.com/entities/NR-ENTITY-1",
+					"reporting":  true,
+					"account":    map[string]any{"id": 42, "name": "Production"},
+				}},
+			}}}}})
+		case strings.Contains(req.Query, "aiIssues"):
+			if got := req.Variables["accountId"]; got != float64(42) {
+				t.Fatalf("issues accountId = %#v", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"account": map[string]any{"aiIssues": map[string]any{"issues": map[string]any{
+				"nextCursor": "issue-cursor-2",
+				"issues": []map[string]any{{
+					"issueId":     "ISSUE-1",
+					"title":       "Latency breach",
+					"priority":    "CRITICAL",
+					"state":       "ACTIVATED",
+					"createdAt":   "2026-06-01T00:00:00Z",
+					"updatedAt":   "2026-06-01T01:00:00Z",
+					"entityGuids": []string{"NR-ENTITY-1"},
+				}},
+			}}}}}})
+		case strings.Contains(req.Query, "NewRelicAuditEvents"):
+			if got := req.Variables["accountId"]; got != float64(42) {
+				t.Fatalf("audit accountId = %#v", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"account": map[string]any{"nrql": map[string]any{
+				"results": []map[string]any{{
+					"eventId":     "AUDIT-1",
+					"eventType":   "user.create",
+					"actorId":     "USER-1",
+					"actorEmail":  "admin@example.test",
+					"targetId":    "NR-ENTITY-1",
+					"targetName":  "Checkout service",
+					"targetType":  "entity",
+					"timestamp":   float64(1780272000000),
+					"description": "Created user",
+				}},
+			}}}}})
+		default:
+			t.Fatalf("unexpected GraphQL query: %s", req.Query)
+		}
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
-	if err := source.Check(context.Background(), cfg); err != nil {
+
+	cfgValues := map[string]string{
+		"tenant_id":    "tenant",
+		"base_url":     server.URL,
+		"api_key":      "test-api-key",
+		"account_id":   "42",
+		"entity_query": "domain = 'APM'",
+		"audit_nrql":   "SELECT * FROM NrAuditEvent SINCE 1 day ago LIMIT 100",
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(cfgValues)); err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
-	pull, err := source.Read(context.Background(), cfg, nil)
+	for _, tt := range []struct {
+		family          string
+		wantKind        string
+		wantNextCursor  string
+		wantAttribute   string
+		wantAttrValue   string
+		wantDiscoverURN bool
+	}{
+		{family: familyAssets, wantKind: "new_relic.assets", wantNextCursor: "asset-cursor-2", wantAttribute: "resource_id", wantAttrValue: "NR-ENTITY-1", wantDiscoverURN: true},
+		{family: familyFindings, wantKind: "new_relic.findings", wantNextCursor: "issue-cursor-2", wantAttribute: "finding_id", wantAttrValue: "ISSUE-1", wantDiscoverURN: true},
+		{family: familyAuditEvents, wantKind: "new_relic.audit_events", wantAttribute: "event_type", wantAttrValue: "user.create", wantDiscoverURN: true},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			cfgValues["family"] = tt.family
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(cfgValues), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.wantKind {
+				t.Fatalf("kind = %q, want %q", event.Kind, tt.wantKind)
+			}
+			if got := event.Attributes[tt.wantAttribute]; got != tt.wantAttrValue {
+				t.Fatalf("%s = %q, want %q", tt.wantAttribute, got, tt.wantAttrValue)
+			}
+			if tt.wantNextCursor != "" {
+				if pull.NextCursor == nil || sourcecdk.CursorToken(pull.NextCursor) != tt.wantNextCursor {
+					t.Fatalf("next cursor = %#v, want %q", pull.NextCursor, tt.wantNextCursor)
+				}
+			}
+			if tt.wantDiscoverURN {
+				urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(cfgValues))
+				if err != nil {
+					t.Fatalf("Discover(%s) error = %v", tt.family, err)
+				}
+				if len(urns) != 1 {
+					t.Fatalf("discover urns = %d, want 1", len(urns))
+				}
+			}
+		})
+	}
+	if len(requests) < 4 {
+		t.Fatalf("requests = %d, want health plus family reads", len(requests))
+	}
+}
+
+func TestNewFixtureReplaysNewRelicFamilies(t *testing.T) {
+	source, err := NewFixture()
 	if err != nil {
-		t.Fatalf("Read() error = %v", err)
+		t.Fatalf("NewFixture() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyAssets, familyFindings, familyAuditEvents} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
 	}
-	event := pull.Events[0]
-	if event.Kind != "new_relic.assets" {
-		t.Fatalf("kind = %q", event.Kind)
-	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
-	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
 }

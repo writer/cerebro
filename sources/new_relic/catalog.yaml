@@ -1,6 +1,29 @@
 id: new_relic
 name: "New Relic"
-description: "Collects monitored assets, alerts, and audit events from New Relic and projects them into the Cerebro graph as assets, findings, and audit events for alert, incident, service health, and response context."
+description: "Collects New Relic monitored entities, AI issues, and NrAuditEvent records through NerdGraph for asset inventory, finding review, and audit context."
+provider_api:
+  status: verified
+  transport: graphql
+  auth: api_key
+  endpoint: https://api.newrelic.com/graphql
+  references:
+    - https://docs.newrelic.com/docs/apis/nerdgraph/get-started/introduction-new-relic-nerdgraph/
+    - https://docs.newrelic.com/docs/apis/nerdgraph/examples/nerdgraph-entities-api-tutorial/
+    - https://docs.newrelic.com/docs/apis/nerdgraph/examples/nerdgraph-issues-api-via-github/
+    - https://docs.newrelic.com/docs/accounts/accounts/account-maintenance/query-account-audit-logs-nrauditevent/
+  families:
+    - id: assets
+      method: POST
+      path: /graphql
+      operation: actor.entitySearch.results
+    - id: findings
+      method: POST
+      path: /graphql
+      operation: actor.account.aiIssues.issues
+    - id: audit_events
+      method: POST
+      path: /graphql
+      operation: actor.account.nrql
 emitted_kinds:
   - new_relic.assets
   - new_relic.findings
@@ -22,68 +45,53 @@ coverage_contract:
   dimensions:
     - id: assets
       type: entity_family
-      title: "Assets"
+      title: "Monitored entities"
       families: [assets]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads NerdGraph entitySearch results with nextCursor pagination.
     - id: findings
       type: remediation_state
-      title: "Findings"
+      title: "AI issues"
       families: [findings]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [remediation_state]
-      control_domains: [remediation]
+      control_domains: [remediation, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads account-scoped NerdGraph AI issues and links issues to entity GUIDs when present.
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Audit events"
       families: [audit_events]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads account-scoped NrAuditEvent rows through NerdGraph NRQL.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [assets, findings]
+      support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - Entity search and issue reads use NerdGraph nextCursor pagination. Audit events use bounded NRQL configured through audit_nrql.
 event_contracts:
   - kind: new_relic.assets
     schema_ref: new_relic/assets/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, resource_urn, resource_type, resource_id]
+    required_payload_fields: [guid]
   - kind: new_relic.findings
     schema_ref: new_relic/findings/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - finding_id
-      - resource_urn
-      - severity
-      - status
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, finding_id, resource_urn, severity, status]
+    required_payload_fields: [issueId]
   - kind: new_relic.audit_events
     schema_ref: new_relic/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, event_type, actor_id]
+    required_payload_fields: [eventId]

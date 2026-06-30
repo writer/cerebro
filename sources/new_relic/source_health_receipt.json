@@ -12,6 +12,6 @@
   "health_endpoint": "/source-runtimes/health?source_id=new_relic",
   "receipt_kind": "source_health.receipt",
   "source_id": "new_relic",
-  "source_type": "json_api",
+  "source_type": "graphql",
   "stale_after_seconds": 86400
 }
