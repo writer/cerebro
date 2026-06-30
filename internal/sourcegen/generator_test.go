@@ -37,6 +37,12 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"sources/demo_source/deploy.yaml",
 		"sources/demo_source/source.go",
 		"sources/demo_source/source_test.go",
+		"sources/demo_source/testdata/discover_asset_host.json",
+		"sources/demo_source/testdata/read_asset_host.json",
+		"sources/demo_source/testdata/discover_finding_vulnerability.json",
+		"sources/demo_source/testdata/read_finding_vulnerability.json",
+		"sources/demo_source/testdata/discover_evidence_cas_reference.json",
+		"sources/demo_source/testdata/read_evidence_cas_reference.json",
 		"sources/demo_source/source_health_receipt.json",
 		"sources/demo_source/SOURCE_RUNTIME.md",
 		"sources/demo_source/PR_BODY.md",
@@ -77,6 +83,18 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	}
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
+	}
+	discoverFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/discover_finding_vulnerability.json")
+	for _, want := range []string{`"family": "finding_vulnerability"`, `"sync_operation": "discover"`} {
+		if !strings.Contains(discoverFixture, want) {
+			t.Fatalf("discover fixture missing %q:\n%s", want, discoverFixture)
+		}
+	}
+	readFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/read_asset_host.json")
+	for _, want := range []string{`"family": "asset_host"`, `"resource_type": "asset"`} {
+		if !strings.Contains(readFixture, want) {
+			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
+		}
 	}
 	deploy, err := sourcedeploy.Parse([]byte(readGeneratedFile(t, outputDir, "sources/demo_source/deploy.yaml")), "generated")
 	if err != nil {

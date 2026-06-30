@@ -891,12 +891,17 @@ func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 		{Path: filepath.Join(sourceRoot, "deploy.yaml"), Content: renderDeploy(request)},
 		{Path: filepath.Join(sourceRoot, "source.go"), Content: renderSourceGo(request)},
 		{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
-		{Path: filepath.Join(sourceRoot, "testdata", "read_"+request.DefaultFamily+".json"), Content: renderReadFixture()},
 		{Path: filepath.Join(sourceRoot, "source_health_receipt.json"), Content: renderSourceHealthReceipt(request)},
 		{Path: filepath.Join(sourceRoot, "SOURCE_RUNTIME.md"), Content: renderRuntimeDocs(request)},
 		{Path: filepath.Join(sourceRoot, "PR_BODY.md"), Content: renderPRBody(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+".go"), Content: renderProjectionGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+"_test.go"), Content: renderProjectionTestGo(request)},
+	}
+	for _, family := range request.Families {
+		files = append(files,
+			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "discover_"+family.Name+".json"), Content: renderDiscoverFixture(family)},
+			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "read_"+family.Name+".json"), Content: renderReadFixture(family)},
+		)
 	}
 	for i := range files {
 		if strings.HasSuffix(files[i].Path, ".go") {
@@ -1510,13 +1515,32 @@ func renderTestPath(template string) string {
 	return rendered
 }
 
-func renderReadFixture() string {
+func renderDiscoverFixture(family familyData) string {
 	fixture := map[string]any{
+		"family": family.Name,
+		"path":   family.Path,
+		"items": []map[string]any{
+			{
+				"id":             "record-1",
+				"name":           "Record One",
+				"resource_type":  family.Class,
+				"last_seen_at":   "2026-06-01T00:00:00Z",
+				"sync_operation": "discover",
+			},
+		},
+	}
+	payload, _ := json.MarshalIndent(fixture, "", "  ")
+	return string(append(payload, '\n'))
+}
+
+func renderReadFixture(family familyData) string {
+	fixture := map[string]any{
+		"family": family.Name,
 		"items": []map[string]any{
 			{
 				"id":                  "record-1",
 				"resource_urn":        "urn:cerebro:tenant:runtime_asset:record-1",
-				"resource_type":       "asset",
+				"resource_type":       family.Class,
 				"resource_id":         "record-1",
 				"name":                "Record One",
 				"updated_at":          "2026-06-01T00:00:00Z",
@@ -1565,6 +1589,7 @@ func renderRuntimeDocs(request normalizedRequest) string {
 		fmt.Fprintf(&b, "- `%s`, emits `%s`, reads `%s`\n", family.Name, family.EventKind, family.Path)
 	}
 	fmt.Fprintf(&b, "\n## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs: `sources/%s/testdata/discover_<family>.json` and `sources/%s/testdata/read_<family>.json` for every generated family\n", request.SourceID, request.SourceID)
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()
@@ -1581,6 +1606,7 @@ func renderPRBody(request normalizedRequest) string {
 	fmt.Fprintf(&b, "- Health endpoint: `%s`\n", healthEndpoint(request.SourceID))
 	fmt.Fprintf(&b, "- Freshness: `%s`\n\n", request.FreshnessExpectation)
 	fmt.Fprintf(&b, "## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs cover discover and read payloads for every generated family.\n")
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()

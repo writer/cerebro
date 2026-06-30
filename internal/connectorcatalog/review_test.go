@@ -311,6 +311,8 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
 			HasSourceTests:          true,
+			HasReadFixtures:         true,
+			HasDiscoverFixtures:     true,
 			HasFixturePair:          true,
 			HasDeployManifest:       true,
 			HasProjectorTests:       true,
@@ -326,6 +328,7 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
 			HasSourceTests:          true,
+			HasReadFixtures:         true,
 			HasDeployManifest:       true,
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
@@ -344,6 +347,15 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 2 {
 		t.Fatalf("needs runtime depth = %d, want 2", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+	}
+	if report.Summary.RuntimeDepth.SourcesWithReadFixtures != 2 {
+		t.Fatalf("sources with read fixtures = %d, want 2", report.Summary.RuntimeDepth.SourcesWithReadFixtures)
+	}
+	if report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures != 1 {
+		t.Fatalf("sources with discover fixtures = %d, want 1", report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures)
+	}
+	if report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures != 1 {
+		t.Fatalf("sources with runtime fixture pairs = %d, want 1", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
 	}
 	if _, ok := runtimeDepthFor(report, "github"); ok {
 		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
