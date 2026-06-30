@@ -229,6 +229,41 @@ Common fixes:
 - pause overlapping jobs,
 - inspect invalid events and fix source config or source implementation.
 
+## JetStream append publishes fail
+
+Symptoms:
+
+- `cerebro.jetstream.publish.requests` has `status="failed"`,
+- `cerebro.jetstream.publish.max_attempts_exhausted` is nonzero,
+- `jetstream.append` spans show `messaging.jetstream.error.category`,
+- source sync, graph ingest, or finding evaluation completes with missing append-log events.
+
+Checks:
+
+```bash
+curl -sS http://127.0.0.1:8080/health
+./bin/cerebro append-log dead-letters list status=pending limit=20
+./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
+```
+
+Verify:
+
+- `subject`, `error_category`, and `max_attempts_exhausted` on the alert,
+- `CEREBRO_APPEND_LOG_DRIVER=jetstream`,
+- `CEREBRO_JETSTREAM_URL`,
+- `CEREBRO_JETSTREAM_STREAM_NAME`,
+- NATS stream storage, API errors, and account limits,
+- rollout timing and graceful drain timeout,
+- pending dead letters for the failing subject.
+
+Common fixes:
+
+- restore NATS JetStream publish health before replay,
+- lower or pause the producer job that owns the failing phase,
+- increase broker/account capacity when API errors or storage pressure are present,
+- replay pending dead letters one record at a time after publish health recovers,
+- discard only records that should not be replayed.
+
 ## Graph routes fail
 
 Symptoms:

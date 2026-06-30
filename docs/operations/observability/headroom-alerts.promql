@@ -118,6 +118,49 @@ nats_jetstream_stream_bytes{stream=~".*cerebro.*"}
   / clamp_min(nats_jetstream_stream_bytes_limit{stream=~".*cerebro.*"}, 1)
 > 0.8
 
+# JetStream append publish failures by bounded subject and error category.
+# These use OTEL metric names after Prometheus mapping. Rename the metric names
+# if the collector uses a different mapping.
+sum by (subject, error_category, max_attempts_exhausted) (
+  rate(cerebro_jetstream_publish_requests_total{operation="append",status="failed"}[5m])
+) > 0
+
+# JetStream append publish attempts that exhausted the configured retry budget.
+sum by (subject, error_category) (
+  increase(cerebro_jetstream_publish_max_attempts_exhausted_total{operation="append"}[5m])
+) > 0
+
+# Dedicated page for finding-record publish exhaustion with no JetStream response.
+sum (
+  increase(cerebro_jetstream_publish_max_attempts_exhausted_total{
+    operation="append",
+    subject="sec.findings.v1.recorded",
+    error_category="no_response"
+  }[5m])
+) > 0
+
+# JetStream append retry pressure by subject and error category.
+(
+  sum by (subject, error_category) (
+    rate(cerebro_jetstream_publish_retries_total{operation="append"}[5m])
+  )
+  /
+  clamp_min(
+    sum by (subject, error_category) (
+      rate(cerebro_jetstream_publish_requests_total{operation="append"}[5m])
+    ),
+    1
+  )
+) > 1
+
+# JetStream append publish p95 latency by subject.
+histogram_quantile(
+  0.95,
+  sum by (le, subject) (
+    rate(cerebro_jetstream_publish_duration_seconds_bucket{operation="append"}[5m])
+  )
+) > 2
+
 # Neo4j/Aura query latency from a managed-service exporter.
 # Replace names to match the Aura/Neo4j integration.
 histogram_quantile(
