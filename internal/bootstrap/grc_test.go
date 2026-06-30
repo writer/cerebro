@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
+	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -36,6 +37,12 @@ func TestJoinGRCErrorsPreservesAllFailures(t *testing.T) {
 	}
 	if !errors.Is(err, ports.ErrFindingNotFound) {
 		t.Fatalf("joined error = %v, want finding not found", err)
+	}
+}
+
+func TestGRCQuestionnaireRuntimeUnavailableMapsToServiceUnavailable(t *testing.T) {
+	if got := grcHTTPStatusCode(questionnairehttp.ErrRuntimeUnavailable); got != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", got, http.StatusServiceUnavailable)
 	}
 }
 

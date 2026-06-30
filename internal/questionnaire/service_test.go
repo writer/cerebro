@@ -176,6 +176,28 @@ func TestRecordDecisionGlobalConditionalApprovesRun(t *testing.T) {
 	}
 }
 
+func TestSummarizeRunCountsPartialAnswersAsReviewWork(t *testing.T) {
+	record := SummarizeRun(ports.QuestionnaireRunRecord{
+		QuestionnaireRunContent: ports.QuestionnaireRunContent{
+			Questions: []ports.QuestionnaireQuestion{{
+				ID:       "q-1",
+				Question: "Is customer data encrypted?",
+			}},
+			Answers: []ports.QuestionnaireRunAnswer{{
+				ID:          "a-1",
+				QuestionID:  "q-1",
+				Question:    "Is customer data encrypted?",
+				AnswerState: ports.QuestionnaireAnswerPartial,
+				ReviewState: ports.QuestionnaireReviewNeedsReview,
+			}},
+		},
+	})
+
+	if record.ReviewAnswerCount != 1 {
+		t.Fatalf("review answers = %d, want 1", record.ReviewAnswerCount)
+	}
+}
+
 func ptrEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) *evidencepackets.QuestionnaireAnswer {
 	return &answer
 }

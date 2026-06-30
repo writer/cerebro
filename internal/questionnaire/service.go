@@ -123,7 +123,7 @@ func SummarizeRun(record ports.QuestionnaireRunRecord) ports.QuestionnaireRunRec
 			ready++
 		case ports.QuestionnaireAnswerBlocked:
 			blocked++
-		case ports.QuestionnaireAnswerNeedsReview:
+		case ports.QuestionnaireAnswerNeedsReview, ports.QuestionnaireAnswerPartial:
 			review++
 		}
 		for _, gap := range answer.MissingEvidence {

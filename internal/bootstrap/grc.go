@@ -23,6 +23,7 @@ import (
 	"github.com/writer/cerebro/internal/grcvendor"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"golang.org/x/sync/errgroup"
@@ -793,7 +794,8 @@ func grcTelemetryErrorKind(err error) string {
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable), errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
 		errors.Is(err, grcupload.ErrRuntimeUnavailable),
-		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
+		errors.Is(err, grcvendor.ErrRuntimeUnavailable),
+		errors.Is(err, questionnairehttp.ErrRuntimeUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
@@ -1462,7 +1464,8 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, graphquery.ErrRuntimeUnavailable),
 		errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
 		errors.Is(err, grcupload.ErrRuntimeUnavailable),
-		errors.Is(err, grcvendor.ErrRuntimeUnavailable):
+		errors.Is(err, grcvendor.ErrRuntimeUnavailable),
+		errors.Is(err, questionnairehttp.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, grcupload.ErrRemote):
 		statusCode = http.StatusBadGateway
