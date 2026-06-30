@@ -268,6 +268,11 @@ func compileAnswer(record ports.QuestionnaireRunRecord, question ports.Questionn
 	answer.ConfidenceScore = evidenceAnswer.Confidence.Score
 	answer.DraftAnswer = draftAnswer(question, *evidenceAnswer, answer.Citations)
 	answer.AnswerState, answer.ReviewState = answerStatesFromEvidence(*evidenceAnswer, answer.EvidenceSlots, answer.MissingEvidence, answer.Conflicts, answer.Freshness)
+	if answer.AnswerState == ports.QuestionnaireAnswerNotApplicable {
+		answer.EvidenceSlots = nil
+		answer.MissingEvidence = nil
+		answer.Conflicts = nil
+	}
 	return answer
 }
 
@@ -715,15 +720,6 @@ func overlapScore(left map[string]struct{}, right map[string]struct{}) int {
 		}
 	}
 	return score
-}
-
-func keys(values map[string]struct{}) []string {
-	out := make([]string, 0, len(values))
-	for value := range values {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func stableID(prefix string, values ...string) string {

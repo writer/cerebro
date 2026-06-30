@@ -293,12 +293,13 @@ func (h *Handler) ProcessRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	scope, err := h.resolveScope(requestWithTenant(r, firstNonEmpty(request.TenantID, record.TenantID)))
+	scopedReq := requestWithTenant(r, firstNonEmpty(request.TenantID, record.TenantID))
+	scope, err := h.resolveScope(scopedReq)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
-	answers, err := h.evidenceAnswers(r, scope)
+	answers, err := h.evidenceAnswers(scopedReq, scope)
 	if err != nil {
 		h.writeError(w, err)
 		return

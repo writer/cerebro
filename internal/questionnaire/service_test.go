@@ -113,6 +113,9 @@ func TestProcessEvidenceAnswersStateMatrix(t *testing.T) {
 			if tt.wantMissing && len(answer.MissingEvidence) == 0 {
 				t.Fatal("partial answer did not surface missing evidence")
 			}
+			if tt.wantAnswer == ports.QuestionnaireAnswerNotApplicable && (len(answer.MissingEvidence) > 0 || record.MissingEvidence != 0) {
+				t.Fatalf("not applicable answer carried missing evidence: answer gaps=%d run missing=%d", len(answer.MissingEvidence), record.MissingEvidence)
+			}
 		})
 	}
 }
