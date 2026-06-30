@@ -7,6 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-shard:
     name: ${{ matrix.name }}
@@ -17,10 +21,6 @@ jobs:
         include:
           - name: build
             command: make build
-          - name: test
-            command: make test
-          - name: race
-            command: make test-race
           - name: coverage
             command: make cover
           - name: sdk
@@ -35,6 +35,7 @@ jobs:
             command: make lint
           - name: proto
             command: make proto-lint proto-generate-check proto-breaking
+            checkout_fetch_depth: '0'
           - name: openapi
             command: make openapi-check openapi-lint
           - name: catalog
@@ -45,6 +46,7 @@ jobs:
             command: make docs-drift-check
           - name: readme
             command: make readme-check
+            checkout_fetch_depth: '0'
           - name: oss-audit
             command: make oss-audit
           - name: govulncheck
@@ -58,26 +60,130 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ matrix.checkout_fetch_depth || '1' }}
+
+      - name: Fetch main for base comparisons
+        if: matrix.checkout_fetch_depth == '0'
+        run: git fetch origin main:refs/remotes/origin/main
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/linters/go.sum
+
+      - name: Cache golangci-lint
+        if: matrix.name == 'lint'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: ${{ runner.os }}-golangci-lint-${{ hashFiles('go.sum', '.golangci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-golangci-lint-
 
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
 
+  go-test-shard:
+    name: test-${{ matrix.shard_index }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/linters/go.sum
+
+      - name: Run Go test shard ${{ matrix.shard_index }}
+        env:
+          GO_TEST_SHARD_TOTAL: 4
+          GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
+        run: make test
+
+  go-race-shard:
+    name: race-${{ matrix.shard_index }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/linters/go.sum
+
+      - name: Run Go race shard ${{ matrix.shard_index }}
+        env:
+          GO_TEST_SHARD_TOTAL: 4
+          GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
+        run: make test-race
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [go-test-shard]
+    if: always()
+    steps:
+      - name: Check Go test shards
+        run: |
+          if [ "${{ needs.go-test-shard.result }}" != "success" ]; then
+            echo "One or more Go test shards failed"
+            exit 1
+          fi
+          echo "All Go test shards passed"
+
+  race:
+    runs-on: ubuntu-latest
+    needs: [go-race-shard]
+    if: always()
+    steps:
+      - name: Check Go race shards
+        run: |
+          if [ "${{ needs.go-race-shard.result }}" != "success" ]; then
+            echo "One or more Go race shards failed"
+            exit 1
+          fi
+          echo "All Go race shards passed"
+
   verify:
     runs-on: ubuntu-latest
-    needs: [verify-shard]
+    needs: [verify-shard, test, race]
     if: always()
     steps:
       - name: Check verify shards
         run: |
           if [ "${{ needs.verify-shard.result }}" != "success" ]; then
             echo "One or more verify shards failed"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "One or more Go test shards failed"
+            exit 1
+          fi
+          if [ "${{ needs.race.result }}" != "success" ]; then
+            echo "One or more Go race shards failed"
             exit 1
           fi
           echo "All verify shards passed"

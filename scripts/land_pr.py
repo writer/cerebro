@@ -107,6 +107,89 @@ def fetch_comments(pr_number: int, repo: str) -> list[dict[str, object]]:
     return comments
 
 
+def repo_parts(repo: str) -> tuple[str, str]:
+    owner, separator, name = repo.partition("/")
+    if not owner or not separator or not name:
+        raise RuntimeError(f"repo must be OWNER/NAME, got {repo!r}")
+    return owner, name
+
+
+def fetch_active_review_threads(pr_number: int, repo: str) -> list[dict[str, object]]:
+    owner, name = repo_parts(repo)
+    query = """
+    query($owner:String!, $name:String!, $number:Int!, $after:String) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$number) {
+          reviewThreads(first:100, after:$after) {
+            nodes {
+              isResolved
+              isOutdated
+              path
+              line
+              comments(last:1) {
+                nodes {
+                  url
+                  body
+                }
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    }
+    """
+    active_threads = []
+    cursor: str | None = None
+    while True:
+        args = [
+            "api",
+            "graphql",
+            "-f",
+            f"owner={owner}",
+            "-f",
+            f"name={name}",
+            "-F",
+            f"number={pr_number}",
+            "-f",
+            f"query={query}",
+        ]
+        if cursor:
+            args.extend(["-f", f"after={cursor}"])
+        else:
+            args.extend(["-F", "after=null"])
+        raw = run_gh(args, repo)
+        parsed = json.loads(raw)
+        review_threads = (
+            parsed.get("data", {})
+            .get("repository", {})
+            .get("pullRequest", {})
+            .get("reviewThreads", {})
+        )
+        for thread in review_threads.get("nodes", []):
+            if thread.get("isResolved") or thread.get("isOutdated"):
+                continue
+            comments = thread.get("comments", {}).get("nodes", [])
+            latest = comments[-1] if comments else {}
+            active_threads.append(
+                {
+                    "path": thread.get("path") or "",
+                    "line": thread.get("line"),
+                    "url": latest.get("url") or "",
+                    "body": latest.get("body") or "",
+                }
+            )
+        page_info = review_threads.get("pageInfo", {})
+        if not page_info.get("hasNextPage"):
+            return active_threads
+        cursor = str(page_info.get("endCursor") or "")
+        if not cursor:
+            raise RuntimeError("review thread pagination did not return an end cursor")
+
+
 def check_named_status(checks: list[dict[str, object]], name: str) -> tuple[bool, str]:
     matches = [check for check in checks if check.get("name") == name]
     if not matches:
@@ -193,6 +276,18 @@ def check_droid_finished(comments: list[dict[str, object]]) -> tuple[bool, str]:
     if not is_finished_droid_review(body):
         return False, f"Droid latest comment is not a finished review: {comment.get('url') or ''}"
     return True, ""
+
+
+def check_no_active_review_threads(threads: list[dict[str, object]]) -> tuple[bool, str]:
+    if not threads:
+        return True, ""
+    first = threads[0]
+    location = str(first.get("path") or "review thread")
+    if first.get("line"):
+        location = f"{location}:{first['line']}"
+    url = str(first.get("url") or "")
+    suffix = f" ({url})" if url else ""
+    return False, f"{len(threads)} active review thread(s), first at {location}{suffix}"
 
 
 def wait_for_gate(label: str, timeout_seconds: int, interval_seconds: int, predicate) -> None:
@@ -297,6 +392,12 @@ def main() -> int:
         args.timeout_seconds,
         args.interval_seconds,
         lambda: check_droid_finished(fetch_comments(args.pr_number, args.repo)),
+    )
+    wait_for_gate(
+        "review threads",
+        args.timeout_seconds,
+        args.interval_seconds,
+        lambda: check_no_active_review_threads(fetch_active_review_threads(args.pr_number, args.repo)),
     )
 
     merge_args = ["pr", "merge", str(args.pr_number), "--squash", "--match-head-commit", str(pr.get("headRefOid") or "")]
