@@ -1,6 +1,6 @@
 id: increase
 name: "Increase"
-description: "Collects event, account, digital wallet token, ach prenotification, oauth connection, and event subscription from Increase and projects them into the Cerebro graph as alerts, assets, audit events, secrets, and users for inventory, access review, audit, risk, and operational context."
+description: "Collects Increase events, accounts, account numbers, statements, transfers, external accounts, cards, digital wallet tokens, OAuth connections, and event subscriptions for inventory, audit, risk, and operational context."
 emitted_kinds:
   - increase.event
   - increase.account
@@ -64,8 +64,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase event list response under the top-level `data` key, using `category` as the event type and `associated_object_id` as the affected resource reference.
     - id: account
       type: entity_family
       title: "Account"
@@ -74,8 +79,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase account list response, including account status, program, funding, currency, and entity references.
     - id: digital_wallet_token
       type: entity_family
       title: "Digital Wallet Token"
@@ -84,8 +92,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase digital wallet token list response, including token status, card reference, requestor, device, and cardholder fields.
     - id: ach_prenotification
       type: alert_state
       title: "Ach Prenotification"
@@ -94,8 +105,11 @@ coverage_contract:
       high_value: true
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase ACH prenotification list response, including status, effective date, standard entry class, and notification-of-change state.
     - id: oauth_connection
       type: entity_family
       title: "Oauth Connection"
@@ -104,18 +118,24 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase OAuth connection list response, including connection status, group, application, and deletion fields.
     - id: event_subscription
-      type: audit_event
+      type: entity_family
       title: "Event Subscription"
       families: [event_subscription]
       support: partial
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase event subscription list response, including status, URL, selected event categories, and OAuth connection reference.
     - id: account_number
       type: entity_family
       title: "Account Number"
@@ -124,8 +144,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase account number list response, including account reference, status, inbound ACH, and inbound check settings.
     - id: account_statement
       type: entity_family
       title: "Account Statement"
@@ -134,8 +157,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase account statement list response, including account reference, statement period, file reference, and balances.
     - id: account_transfer
       type: entity_family
       title: "Account Transfer"
@@ -144,8 +170,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase account transfer list response, including source and destination accounts, approval, status, transaction, and amount fields.
     - id: external_account
       type: entity_family
       title: "External Account"
@@ -154,8 +183,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase external account list response, including holder type, funding, status, and masked bank-account routing fields from documented examples.
     - id: ach_transfer
       type: entity_family
       title: "Ach Transfer"
@@ -164,8 +196,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase ACH transfer list response, including status, network, settlement, return, external account, and transaction references.
     - id: card
       type: entity_family
       title: "Card"
@@ -174,14 +209,21 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Increase card list response, including card status, account reference, expiration, last four digits, digital wallet, and authorization controls.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
       support: planned
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      known_unsupported_fields:
+        - durable incremental watermark across Increase cursor-list endpoints
+      notes:
+        - Increase list endpoints expose cursor pagination; this source currently runs scheduled full-family reads.
 event_contracts:
   - kind: increase.event
     schema_ref: increase/event/v1
@@ -189,7 +231,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
     required_payload_fields:
       - id
   - kind: increase.account
@@ -233,8 +275,9 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_urn
+      - resource_type
+      - resource_id
     required_payload_fields:
       - id
   - kind: increase.account_number
