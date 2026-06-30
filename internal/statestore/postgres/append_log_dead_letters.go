@@ -379,7 +379,7 @@ func (s *Store) ensureAppendLogDeadLetterTables(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
-	return s.ensureStatements(ctx, &s.appendLogDeadLettersReady, "append_log_dead_letters", ensureAppendLogDeadLetterStatements)
+	return s.ensureStatements(ctx, &s.appendLog.deadLetters, "append_log_dead_letters", ensureAppendLogDeadLetterStatements)
 }
 
 var _ ports.AppendLogDeadLetterStore = (*Store)(nil)

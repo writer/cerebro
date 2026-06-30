@@ -3,7 +3,6 @@ package recovery
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -63,10 +62,11 @@ func TestAppendDoesNotRecordNonExhaustedError(t *testing.T) {
 }
 
 func TestAppendReturnsStoreFailureWithOriginalError(t *testing.T) {
+	publishErr := errors.New("publish event: no response")
 	inner := &recordingLog{err: &ports.AppendLogPublishExhaustedError{
 		Subject:       "sec.findings.v1.recorded",
 		ErrorCategory: "no_response",
-		Err:           errors.New("publish event: no response"),
+		Err:           publishErr,
 	}}
 	storeErr := errors.New("postgres unavailable")
 	log := Wrap(inner, &recordingStore{recordErr: storeErr})
@@ -75,8 +75,8 @@ func TestAppendReturnsStoreFailureWithOriginalError(t *testing.T) {
 	if !errors.Is(err, storeErr) {
 		t.Fatalf("Append() error = %v, want joined store error", err)
 	}
-	if !strings.Contains(err.Error(), "publish event: no response") {
-		t.Fatalf("Append() error = %v, want original publish error text", err)
+	if !errors.Is(err, publishErr) {
+		t.Fatalf("Append() error = %v, want original publish error", err)
 	}
 }
 
