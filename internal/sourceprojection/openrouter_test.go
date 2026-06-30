@@ -47,7 +47,7 @@ func TestOpenrouterSecretProjectionDerivesStatusFromDisabledFlag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			attrs := map[string]string{"secret_id": "secret-1", "secret_name": "OpenRouter key", "secret_type": "openrouter_api_key"}
+			attrs := map[string]string{"secret_id": "secret-1", "secret_name": "OpenRouter key", "secret_type": "openrouter_api_key"} // #nosec G101 -- inert test fixture identifiers.
 			for key, value := range tt.attrs {
 				attrs[key] = value
 			}
