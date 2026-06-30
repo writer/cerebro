@@ -202,6 +202,7 @@ func TestQuestionnaireRunHTTPRoutesRequireWriteScope(t *testing.T) {
 		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/process"},
 		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/assignments"},
 		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/decisions"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/comments"},
 	} {
 		policy := httpRoutePolicyFor(tt.method, tt.path)
 		if policy.Scope != scopeGRCInventoryWrite || policy.AdminOnly {

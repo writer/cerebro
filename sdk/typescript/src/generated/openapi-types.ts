@@ -2275,11 +2275,9 @@ export type GRCQuestionnaireAssignment = {
 };
 
 export type GRCQuestionnaireAssignmentRequest = {
-  assignment?: GRCQuestionnaireAssignment;
   due_at?: string;
-  owner?: string;
   owner_id?: string;
-  question_id?: string;
+  question_id: string;
   reason?: string;
   status?: string;
   team?: string;
@@ -2306,6 +2304,12 @@ export type GRCQuestionnaireComment = {
   question_id?: string;
 };
 
+export type GRCQuestionnaireCommentRequest = {
+  body: string;
+  question_id: string;
+  tenant_id?: string;
+};
+
 export type GRCQuestionnaireControlRef = {
   control_id?: string;
   framework_id?: string;
@@ -2321,8 +2325,11 @@ export type GRCQuestionnaireCreateRunRequest = {
   customer_name?: string;
   direction: "customer_security_review" | "vendor_review";
   due_at?: string;
+  intake_format?: "json" | "csv" | "tsv" | "text";
+  intake_rows?: GRCQuestionnaireIntakeRow[];
+  intake_text?: string;
   owner_id?: string;
-  questions: GRCQuestionnaireQuestion[];
+  questions?: GRCQuestionnaireQuestion[];
   requester?: string;
   runtime_id?: string;
   source_filename?: string;
@@ -2345,11 +2352,9 @@ export type GRCQuestionnaireDecision = {
 };
 
 export type GRCQuestionnaireDecisionRequest = {
-  actor_id?: string;
-  decision?: GRCQuestionnaireDecision;
   question_id?: string;
   reason?: string;
-  state?: "approved" | "approved_with_conditions" | "rejected" | "needs_input";
+  state: "approved" | "approved_with_conditions" | "rejected" | "needs_input";
   tenant_id?: string;
 };
 
@@ -2401,6 +2406,16 @@ export type GRCQuestionnaireFreshness = {
   observed_at?: string;
   reason?: string;
   status?: string;
+};
+
+export type GRCQuestionnaireIntakeRow = {
+  id?: string;
+  mapped_controls?: string[];
+  owner_id?: string;
+  question?: string;
+  required_answer_format?: string;
+  required_evidence_slots?: string[];
+  section?: string;
 };
 
 export type GRCQuestionnaireProcessRunRequest = {

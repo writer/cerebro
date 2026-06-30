@@ -2,6 +2,7 @@ package questionnaire
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,28 +151,46 @@ type createRequest struct {
 	AssignedTeam   string                        `json:"assigned_team,omitempty"`
 	DueAt          string                        `json:"due_at,omitempty"`
 	Questions      []ports.QuestionnaireQuestion `json:"questions,omitempty"`
+	IntakeRows     []intakeRow                   `json:"intake_rows,omitempty"`
+	IntakeText     string                        `json:"intake_text,omitempty"`
+	IntakeFormat   string                        `json:"intake_format,omitempty"`
 	Attributes     map[string]string             `json:"attributes,omitempty"`
 }
 
+type intakeRow struct {
+	ID                   string   `json:"id,omitempty"`
+	Question             string   `json:"question,omitempty"`
+	Section              string   `json:"section,omitempty"`
+	RequiredAnswerFormat string   `json:"required_answer_format,omitempty"`
+	MappedControls       []string `json:"mapped_controls,omitempty"`
+	RequiredSlots        []string `json:"required_evidence_slots,omitempty"`
+	OwnerID              string   `json:"owner_id,omitempty"`
+}
+
 type assignmentRequest struct {
-	TenantID   string                        `json:"tenant_id,omitempty"`
-	Assignment ports.QuestionnaireAssignment `json:"assignment"`
-	QuestionID string                        `json:"question_id,omitempty"`
-	OwnerID    string                        `json:"owner_id,omitempty"`
-	Owner      string                        `json:"owner,omitempty"`
-	Team       string                        `json:"team,omitempty"`
-	Status     string                        `json:"status,omitempty"`
-	DueAt      string                        `json:"due_at,omitempty"`
-	Reason     string                        `json:"reason,omitempty"`
+	TenantID   string                         `json:"tenant_id,omitempty"`
+	Assignment *ports.QuestionnaireAssignment `json:"assignment,omitempty"`
+	QuestionID string                         `json:"question_id,omitempty"`
+	OwnerID    string                         `json:"owner_id,omitempty"`
+	Team       string                         `json:"team,omitempty"`
+	Status     string                         `json:"status,omitempty"`
+	DueAt      string                         `json:"due_at,omitempty"`
+	Reason     string                         `json:"reason,omitempty"`
 }
 
 type decisionRequest struct {
+	TenantID   string                       `json:"tenant_id,omitempty"`
+	Decision   *ports.QuestionnaireDecision `json:"decision,omitempty"`
+	QuestionID string                       `json:"question_id,omitempty"`
+	State      string                       `json:"state,omitempty"`
+	Reason     string                       `json:"reason,omitempty"`
+}
+
+type commentRequest struct {
 	TenantID   string                      `json:"tenant_id,omitempty"`
-	Decision   ports.QuestionnaireDecision `json:"decision"`
+	Comment    *ports.QuestionnaireComment `json:"comment,omitempty"`
 	QuestionID string                      `json:"question_id,omitempty"`
-	ActorID    string                      `json:"actor_id,omitempty"`
-	State      string                      `json:"state,omitempty"`
-	Reason     string                      `json:"reason,omitempty"`
+	Body       string                      `json:"body,omitempty"`
 }
 
 type processRequest struct {
@@ -234,7 +253,12 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, fmt.Errorf("%w: direction must be customer_security_review or vendor_review", ErrInvalidRequest))
 		return
 	}
-	if len(questionnairedomain.NormalizeQuestionsForIntake(request.Questions)) == 0 {
+	questions, err := questionsForCreate(request)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if len(questions) == 0 {
 		h.writeError(w, fmt.Errorf("%w: at least one question is required", ErrInvalidRequest))
 		return
 	}
@@ -260,10 +284,10 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		OwnerID:        request.OwnerID,
 		AssignedTeam:   request.AssignedTeam,
 		DueAt:          dueAt,
-		Questions:      request.Questions,
+		Questions:      questions,
 		Attributes:     request.Attributes,
 	}, now)
-	event := questionnairedomain.Event(record, ports.QuestionnaireEventCreated, h.actorID(r.Context()), "Questionnaire run created", map[string]string{"direction": record.Direction}, now)
+	event := questionnairedomain.Event(record, ports.QuestionnaireEventCreated, h.actorID(r.Context()), "Questionnaire run created", map[string]string{"direction": record.Direction, "question_count": strconv.Itoa(len(record.Questions)), "source_format": record.SourceFormat}, now)
 	created, err := h.store.UpsertQuestionnaireRun(r.Context(), record, event)
 	if err != nil {
 		h.writeError(w, err)
@@ -293,7 +317,7 @@ func (h *Handler) ProcessRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	scopedReq := requestWithTenant(r, firstNonEmpty(request.TenantID, record.TenantID))
+	scopedReq := requestWithRunScope(r, firstNonEmpty(request.TenantID, record.TenantID), record.SourceID, record.RuntimeID, record.VendorURN)
 	scope, err := h.resolveScope(scopedReq)
 	if err != nil {
 		h.writeError(w, err)
@@ -332,12 +356,25 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	assignment := request.Assignment
-	assignment.QuestionID = firstNonEmpty(assignment.QuestionID, request.QuestionID)
-	assignment.OwnerID = firstNonEmpty(assignment.OwnerID, request.OwnerID, request.Owner)
-	assignment.Team = firstNonEmpty(assignment.Team, request.Team)
-	assignment.Status = firstNonEmpty(assignment.Status, request.Status, "open")
-	assignment.Reason = firstNonEmpty(assignment.Reason, request.Reason)
+	if request.Assignment != nil {
+		h.writeError(w, fmt.Errorf("%w: assignment object is not accepted; use top-level fields", ErrInvalidRequest))
+		return
+	}
+	assignment := ports.QuestionnaireAssignment{
+		QuestionID: strings.TrimSpace(request.QuestionID),
+		OwnerID:    strings.TrimSpace(request.OwnerID),
+		Team:       strings.TrimSpace(request.Team),
+		Status:     firstNonEmpty(request.Status, "open"),
+		Reason:     strings.TrimSpace(request.Reason),
+	}
+	if err := validateQuestionReference(record, assignment.QuestionID, true); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if assignment.OwnerID == "" && assignment.Team == "" {
+		h.writeError(w, fmt.Errorf("%w: owner_id or team is required", ErrInvalidRequest))
+		return
+	}
 	if assignment.DueAt == nil {
 		dueAt, err := parseOptionalTime(request.DueAt)
 		if err != nil {
@@ -369,18 +406,67 @@ func (h *Handler) DecideRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	decision := request.Decision
-	decision.QuestionID = firstNonEmpty(decision.QuestionID, request.QuestionID)
-	decision.Decision = firstNonEmpty(decision.Decision, request.State)
-	decision.Reason = firstNonEmpty(decision.Reason, request.Reason)
-	decision.ActorID = h.actorID(r.Context())
+	if request.Decision != nil {
+		h.writeError(w, fmt.Errorf("%w: decision object is not accepted; use top-level fields", ErrInvalidRequest))
+		return
+	}
+	decision := ports.QuestionnaireDecision{
+		QuestionID: strings.TrimSpace(request.QuestionID),
+		Decision:   strings.TrimSpace(request.State),
+		Reason:     strings.TrimSpace(request.Reason),
+		ActorID:    h.actorID(r.Context()),
+	}
 	if !ports.IsQuestionnaireDecision(decision.Decision) || decision.Decision == "" {
 		h.writeError(w, fmt.Errorf("%w: decision must be approved, approved_with_conditions, rejected, or needs_input", ErrInvalidRequest))
+		return
+	}
+	if err := validateQuestionReference(record, decision.QuestionID, false); err != nil {
+		h.writeError(w, err)
 		return
 	}
 	now := time.Now().UTC()
 	updated := questionnairedomain.RecordDecision(*record, decision, now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventDecided, decision.ActorID, "Questionnaire decision recorded", map[string]string{"question_id": decision.QuestionID, "decision": decision.Decision}, now)
+	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.bumpReviewCache(r.Context(), saved.TenantID)
+	writeJSON(w, http.StatusOK, runResponse{Run: runViewFromRecord(saved, false), GeneratedAt: now})
+}
+
+func (h *Handler) CommentRun(w http.ResponseWriter, r *http.Request) {
+	var request commentRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	record, _, err := h.runFromRequest(r.Context(), requestWithTenant(r, request.TenantID), request.TenantID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if request.Comment != nil {
+		h.writeError(w, fmt.Errorf("%w: comment object is not accepted; use top-level fields", ErrInvalidRequest))
+		return
+	}
+	comment := ports.QuestionnaireComment{
+		QuestionID: strings.TrimSpace(request.QuestionID),
+		ActorID:    h.actorID(r.Context()),
+		Body:       strings.TrimSpace(request.Body),
+	}
+	if strings.TrimSpace(comment.Body) == "" {
+		h.writeError(w, fmt.Errorf("%w: comment body is required", ErrInvalidRequest))
+		return
+	}
+	if err := validateQuestionReference(record, comment.QuestionID, true); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	now := time.Now().UTC()
+	updated := questionnairedomain.AddComment(*record, comment, h.actorID(r.Context()), now)
+	event := questionnairedomain.Event(updated, ports.QuestionnaireEventCommented, comment.ActorID, "Questionnaire comment added", map[string]string{"question_id": comment.QuestionID}, now)
 	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
 	if err != nil {
 		h.writeError(w, err)
@@ -432,7 +518,16 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		h.writeErr(w, err)
 		return
 	}
-	http.Error(w, err.Error(), http.StatusInternalServerError)
+	switch {
+	case errors.Is(err, ErrInvalidRequest):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, ports.ErrQuestionnaireRunNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, ErrRuntimeUnavailable):
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (h *Handler) evidenceAnswers(r *http.Request, scope Scope) ([]evidencepackets.QuestionnaireAnswer, error) {
@@ -586,6 +681,50 @@ func requestWithTenant(r *http.Request, tenantID string) *http.Request {
 	return clone
 }
 
+func requestWithRunScope(r *http.Request, tenantID string, sourceID string, runtimeID string, vendorURN string) *http.Request {
+	values := map[string]string{
+		"tenant_id":  tenantID,
+		"source_id":  sourceID,
+		"runtime_id": runtimeID,
+		"vendor_urn": vendorURN,
+	}
+	clone := new(http.Request)
+	*clone = *r
+	clonedURL := *r.URL
+	query := clonedURL.Query()
+	changed := false
+	for key, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || strings.TrimSpace(query.Get(key)) != "" {
+			continue
+		}
+		query.Set(key, value)
+		changed = true
+	}
+	if !changed {
+		return r
+	}
+	clonedURL.RawQuery = query.Encode()
+	clone.URL = &clonedURL
+	return clone
+}
+
+func validateQuestionReference(record *ports.QuestionnaireRunRecord, questionID string, required bool) error {
+	questionID = strings.TrimSpace(questionID)
+	if questionID == "" {
+		if required {
+			return fmt.Errorf("%w: question_id is required", ErrInvalidRequest)
+		}
+		return nil
+	}
+	for _, question := range record.Questions {
+		if strings.TrimSpace(question.ID) == questionID {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: question_id %q does not exist on this run", ErrInvalidRequest, questionID)
+}
+
 func questionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
 	runStore, ok := store.(ports.QuestionnaireRunStore)
 	if !ok || isNilInterface(runStore) {
@@ -607,6 +746,182 @@ func parseOptionalTime(value string) (*time.Time, error) {
 		}
 	}
 	return nil, fmt.Errorf("%w: due_at must be RFC3339 or YYYY-MM-DD", ErrInvalidRequest)
+}
+
+func questionsForCreate(request createRequest) ([]ports.QuestionnaireQuestion, error) {
+	questions := append([]ports.QuestionnaireQuestion{}, request.Questions...)
+	for _, row := range request.IntakeRows {
+		questions = append(questions, questionFromIntakeRow(row))
+	}
+	if strings.TrimSpace(request.IntakeText) != "" {
+		parsed, err := parseIntakeText(request.IntakeText, firstNonEmpty(request.IntakeFormat, request.SourceFormat))
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, parsed...)
+	}
+	return questionnairedomain.NormalizeQuestionsForIntake(questions), nil
+}
+
+func parseIntakeText(value string, format string) ([]ports.QuestionnaireQuestion, error) {
+	format = strings.ToLower(strings.TrimSpace(format))
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	switch format {
+	case "json":
+		return parseJSONIntake(trimmed)
+	case "csv", "tsv":
+		return parseDelimitedIntake(trimmed, format)
+	case "", "text", "txt", "plain":
+		return parsePlainTextIntake(trimmed), nil
+	default:
+		return nil, fmt.Errorf("%w: intake_format must be csv, tsv, json, or text", ErrInvalidRequest)
+	}
+}
+
+func parseJSONIntake(value string) ([]ports.QuestionnaireQuestion, error) {
+	var questions []ports.QuestionnaireQuestion
+	if err := json.Unmarshal([]byte(value), &questions); err == nil {
+		return questionnairedomain.NormalizeQuestionsForIntake(questions), nil
+	}
+	var rows []intakeRow
+	if err := json.Unmarshal([]byte(value), &rows); err == nil {
+		return questionsFromIntakeRows(rows), nil
+	}
+	var envelope struct {
+		Questions  []ports.QuestionnaireQuestion `json:"questions"`
+		IntakeRows []intakeRow                   `json:"intake_rows"`
+		Rows       []intakeRow                   `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(value), &envelope); err != nil {
+		return nil, fmt.Errorf("%w: intake_text JSON must be an array or contain questions", ErrInvalidRequest)
+	}
+	questions = append(questions, envelope.Questions...)
+	questions = append(questions, questionsFromIntakeRows(envelope.IntakeRows)...)
+	questions = append(questions, questionsFromIntakeRows(envelope.Rows)...)
+	return questionnairedomain.NormalizeQuestionsForIntake(questions), nil
+}
+
+func parseDelimitedIntake(value string, format string) ([]ports.QuestionnaireQuestion, error) {
+	reader := csv.NewReader(strings.NewReader(value))
+	reader.TrimLeadingSpace = true
+	reader.FieldsPerRecord = -1
+	if format == "tsv" || strings.Count(value, "\t") > strings.Count(value, ",") {
+		reader.Comma = '\t'
+	}
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse questionnaire rows: %w", ErrInvalidRequest, err)
+	}
+	if len(records) == 0 {
+		return nil, nil
+	}
+	header := normalizedHeaders(records[0])
+	questionIndex := headerIndex(header, "question", "question_text", "prompt")
+	if questionIndex < 0 {
+		return nil, fmt.Errorf("%w: %s intake must include a question column", ErrInvalidRequest, firstNonEmpty(format, "csv"))
+	}
+	rows := []intakeRow{}
+	for _, record := range records[1:] {
+		if questionIndex >= len(record) || strings.TrimSpace(record[questionIndex]) == "" {
+			continue
+		}
+		rows = append(rows, intakeRow{
+			ID:                   columnValue(record, header, "id", "question_id"),
+			Question:             record[questionIndex],
+			Section:              columnValue(record, header, "section", "category"),
+			RequiredAnswerFormat: columnValue(record, header, "required_answer_format", "answer_format", "format"),
+			MappedControls:       splitList(columnValue(record, header, "mapped_controls", "controls", "control_ids")),
+			RequiredSlots:        splitList(columnValue(record, header, "required_evidence_slots", "evidence_slots", "slots")),
+			OwnerID:              columnValue(record, header, "owner_id", "owner", "assignee"),
+		})
+	}
+	return questionsFromIntakeRows(rows), nil
+}
+
+func parsePlainTextIntake(value string) []ports.QuestionnaireQuestion {
+	rows := []intakeRow{}
+	for _, line := range strings.Split(value, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "- ")
+		line = strings.TrimPrefix(line, "* ")
+		if line == "" {
+			continue
+		}
+		rows = append(rows, intakeRow{Question: line})
+	}
+	return questionsFromIntakeRows(rows)
+}
+
+func questionsFromIntakeRows(rows []intakeRow) []ports.QuestionnaireQuestion {
+	questions := make([]ports.QuestionnaireQuestion, 0, len(rows))
+	for _, row := range rows {
+		questions = append(questions, questionFromIntakeRow(row))
+	}
+	return questionnairedomain.NormalizeQuestionsForIntake(questions)
+}
+
+func questionFromIntakeRow(row intakeRow) ports.QuestionnaireQuestion {
+	return ports.QuestionnaireQuestion{
+		ID:                   row.ID,
+		Question:             row.Question,
+		Section:              row.Section,
+		RequiredAnswerFormat: row.RequiredAnswerFormat,
+		MappedControls:       row.MappedControls,
+		RequiredSlots:        row.RequiredSlots,
+		OwnerID:              row.OwnerID,
+	}
+}
+
+func normalizedHeaders(record []string) []string {
+	headers := make([]string, 0, len(record))
+	for _, value := range record {
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.ReplaceAll(value, " ", "_")
+		value = strings.ReplaceAll(value, "-", "_")
+		headers = append(headers, value)
+	}
+	return headers
+}
+
+func headerIndex(headers []string, names ...string) int {
+	for _, name := range names {
+		for index, header := range headers {
+			if header == name {
+				return index
+			}
+		}
+	}
+	return -1
+}
+
+func columnValue(record []string, headers []string, names ...string) string {
+	index := headerIndex(headers, names...)
+	if index < 0 || index >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[index])
+}
+
+func splitList(value string) []string {
+	value = strings.NewReplacer("|", ",", ";", ",").Replace(value)
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		result = append(result, part)
+	}
+	return result
 }
 
 func firstNonEmpty(values ...string) string {

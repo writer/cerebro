@@ -217,7 +217,17 @@ func (s *Store) ListQuestionnaireRuns(ctx context.Context, filter ports.Question
 	addTextFilter(&clauses, &args, "vendor_urn", filter.VendorURN)
 	addTextFilter(&clauses, &args, "requester", filter.Requester)
 	addTextFilter(&clauses, &args, "customer_name", filter.Customer)
-	addTextFilter(&clauses, &args, "owner_id", filter.OwnerID)
+	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
+		args = append(args, "%"+strings.ToLower(ownerID)+"%")
+		clauses = append(clauses, fmt.Sprintf(`(
+			lower(owner_id) LIKE $%d
+			OR lower(assigned_team) LIKE $%d
+			OR EXISTS (
+				SELECT 1 FROM jsonb_array_elements(assignments_json) AS assignment
+				WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
+			)
+		)`, len(args), len(args), len(args), len(args)))
+	}
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
 		clauses = append(clauses, fmt.Sprintf("(lower(title) LIKE $%d OR lower(requester) LIKE $%d OR lower(customer_name) LIKE $%d OR lower(vendor_id) LIKE $%d)", len(args), len(args), len(args), len(args)))

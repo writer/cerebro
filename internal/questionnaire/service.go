@@ -113,7 +113,7 @@ func SummarizeRun(record ports.QuestionnaireRunRecord) ports.QuestionnaireRunRec
 	ready, blocked, review, missing, stale, unassigned := 0, 0, 0, 0, 0, 0
 	assignedQuestions := map[string]struct{}{}
 	for _, assignment := range record.Assignments {
-		if assignment.Status == "" || assignment.Status == "open" {
+		if (assignment.Status == "" || assignment.Status == "open") && firstNonEmpty(assignment.OwnerID, assignment.Team) != "" {
 			assignedQuestions[assignment.QuestionID] = struct{}{}
 		}
 	}
@@ -176,6 +176,19 @@ func AddAssignment(record ports.QuestionnaireRunRecord, assignment ports.Questio
 	return SummarizeRun(record)
 }
 
+func AddComment(record ports.QuestionnaireRunRecord, comment ports.QuestionnaireComment, actorID string, now time.Time) ports.QuestionnaireRunRecord {
+	now = normalizeNow(now)
+	comment.ActorID = strings.TrimSpace(actorID)
+	comment.ID = firstNonEmpty(comment.ID, stableID("questionnaire-comment", record.RunID, comment.QuestionID, comment.ActorID, comment.Body, now.Format(time.RFC3339Nano)))
+	if comment.CreatedAt == nil {
+		comment.CreatedAt = &now
+	}
+	record.Comments = append([]ports.QuestionnaireComment{comment}, record.Comments...)
+	record.UpdatedAt = now
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventCommented, comment.ActorID, "Questionnaire comment added", map[string]string{"question_id": comment.QuestionID}, now))
+	return SummarizeRun(record)
+}
+
 func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.QuestionnaireDecision, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
 	decision.ID = firstNonEmpty(decision.ID, stableID("questionnaire-decision", record.RunID, decision.QuestionID, decision.Decision, decision.ActorID, now.Format(time.RFC3339Nano)))
@@ -190,9 +203,12 @@ func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.Question
 			switch decision.Decision {
 			case ports.QuestionnaireDecisionApproved, ports.QuestionnaireDecisionApprovedWithConditions:
 				record.Answers[index].ReviewState = ports.QuestionnaireReviewApproved
+			case ports.QuestionnaireDecisionNeedsInput:
+				record.Answers[index].ReviewState = ports.QuestionnaireReviewBlocked
+				record.Answers[index].AnswerState = ports.QuestionnaireAnswerBlocked
 			case ports.QuestionnaireDecisionRejected:
 				record.Answers[index].ReviewState = ports.QuestionnaireReviewRejected
-				record.Answers[index].AnswerState = ports.QuestionnaireAnswerNeedsReview
+				record.Answers[index].AnswerState = ports.QuestionnaireAnswerBlocked
 			}
 		}
 	}
@@ -241,7 +257,10 @@ func Event(record ports.QuestionnaireRunRecord, eventType string, actorID string
 }
 
 func compileAnswer(record ports.QuestionnaireRunRecord, question ports.QuestionnaireQuestion, evidenceAnswer *evidencepackets.QuestionnaireAnswer) ports.QuestionnaireRunAnswer {
-	requiredSlots := uniqueSorted(append(append([]string(nil), question.RequiredSlots...), slotsForQuestion(question.Question, record.Direction)...))
+	requiredSlots := uniqueSorted(append([]string(nil), question.RequiredSlots...))
+	if record.Direction == ports.QuestionnaireDirectionVendorReview {
+		requiredSlots = uniqueSorted(append(requiredSlots, "vendor_profile"))
+	}
 	answer := ports.QuestionnaireRunAnswer{
 		ID:          stableID("questionnaire-answer", record.RunID, question.ID),
 		QuestionID:  question.ID,
@@ -310,43 +329,6 @@ func answerStatesFromEvidence(evidenceAnswer evidencepackets.QuestionnaireAnswer
 	return ports.QuestionnaireAnswerSupported, ports.QuestionnaireReviewReady
 }
 
-func slotsForQuestion(question string, direction string) []string {
-	normalized := normalizedQuestion(question)
-	terms := normalizedTerms(question)
-	slots := []string{}
-	add := func(slot string) {
-		for _, existing := range slots {
-			if existing == slot {
-				return
-			}
-		}
-		slots = append(slots, slot)
-	}
-	switch {
-	case hasAny(terms, "mfa", "multifactor") || hasPhrase(normalized, "multi factor"):
-		add("identity_mfa")
-	case hasAny(terms, "access", "sso", "permission", "permissions", "deprovision", "provision", "user", "users"):
-		add("access_review")
-	case hasAny(terms, "encrypt", "encryption", "encrypted", "key", "keys"):
-		add("encryption")
-	case hasAny(terms, "incident", "breach", "response"):
-		add("incident_response")
-	case hasAny(terms, "subprocessor", "subprocessors", "third", "vendor", "vendors") || hasPhrase(normalized, "third party"):
-		add("subprocessors")
-	case hasAny(terms, "soc", "iso", "audit", "assurance"):
-		add("audit_report")
-	case hasAny(terms, "policy", "policies", "document", "documents"):
-		add("policy")
-	case hasAny(terms, "ai", "model", "training", "data", "retention"):
-		add("ai_data_use")
-	}
-	if direction == ports.QuestionnaireDirectionVendorReview {
-		add("vendor_profile")
-	}
-	sort.Strings(slots)
-	return slots
-}
-
 func slotsFromEvidenceAnswer(requiredSlots []string, evidenceAnswer evidencepackets.QuestionnaireAnswer) []ports.QuestionnaireEvidenceSlot {
 	slots := make([]ports.QuestionnaireEvidenceSlot, 0, len(requiredSlots))
 	for _, slotID := range requiredSlots {
@@ -380,9 +362,6 @@ func matchingSlotEvidence(slotID string, answer evidencepackets.QuestionnaireAns
 		if evidenceRefMatchesSlot(slotID, ref, answer) {
 			ids = append(ids, firstNonEmpty(ref.ID, ref.EvidencePacketID))
 		}
-	}
-	if len(ids) == 0 && slotID == "control_evidence" {
-		ids = append(ids, answer.EvidencePackets...)
 	}
 	return uniqueSorted(ids)
 }
@@ -435,8 +414,6 @@ func evidenceRefMatchesSlot(slotID string, ref evidencepackets.QuestionnaireEvid
 		return hasAny(terms, "ai", "model", "training", "retention") || hasPhrase(strings.Join(termList(ref.EvidenceType+" "+ref.Source), " "), "data use")
 	case "vendor_profile":
 		return hasAny(terms, "vendor", "profile", "third", "party", "diligence", "dpa", "subprocessor", "subprocessors")
-	case "control_evidence":
-		return firstNonEmpty(ref.ID, ref.EvidencePacketID) != ""
 	default:
 		return false
 	}
@@ -548,37 +525,27 @@ func freshnessFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) por
 }
 
 func draftAnswer(question ports.QuestionnaireQuestion, answer evidencepackets.QuestionnaireAnswer, citations []ports.QuestionnaireCitation) string {
+	if text := strings.TrimSpace(answer.Answer); text != "" {
+		return text
+	}
 	if answer.AnswerState == "not_required" {
 		return "No answer is required for this question."
 	}
-	citationLabels := make([]string, 0, len(citations))
-	for _, citation := range citations {
-		citationLabels = append(citationLabels, firstNonEmpty(citation.Label, citation.ID))
+	if len(citations) == 0 {
+		return "No answer is ready. Supporting evidence is missing."
 	}
-	if len(citationLabels) == 0 {
-		return "No draft answer is ready because supporting evidence is missing."
-	}
-	status := firstNonEmpty(answer.Freshness.Status, "unknown")
-	return fmt.Sprintf("Evidence is available for %q from %s. Freshness is %s. Keep the cited records with any answer sent outside the operating team.", answerQuestion(question, answer), strings.Join(uniqueSorted(citationLabels), ", "), status)
+	return "Evidence is available, but no approved answer text is attached to the evidence record."
 }
 
 func bestEvidenceAnswerForQuestion(question ports.QuestionnaireQuestion, answers []evidencepackets.QuestionnaireAnswer, used map[string]struct{}) *evidencepackets.QuestionnaireAnswer {
 	var best *evidencepackets.QuestionnaireAnswer
 	bestScore := -1
-	questionTerms := normalizedTerms(question.Question + " " + strings.Join(question.RequiredSlots, " ") + " " + strings.Join(question.MappedControls, " "))
 	for index := range answers {
 		answer := &answers[index]
 		if _, ok := used[answer.ID]; ok {
 			continue
 		}
-		score := overlapScore(questionTerms, normalizedTerms(answer.Question+" "+strings.Join(controlIDs(answer.Controls), " ")))
-		for _, control := range answer.Controls {
-			for _, mapped := range question.MappedControls {
-				if strings.EqualFold(control.ControlID, mapped) || strings.EqualFold(control.ID, mapped) {
-					score += 5
-				}
-			}
-		}
+		score := evidenceAnswerMatchScore(question, *answer)
 		if score > bestScore {
 			bestScore = score
 			best = answer
@@ -588,6 +555,37 @@ func bestEvidenceAnswerForQuestion(question ports.QuestionnaireQuestion, answers
 		return nil
 	}
 	return best
+}
+
+func evidenceAnswerMatchScore(question ports.QuestionnaireQuestion, answer evidencepackets.QuestionnaireAnswer) int {
+	if strings.TrimSpace(question.ID) != "" {
+		if strings.EqualFold(question.ID, answer.QuestionID) || strings.EqualFold(question.ID, answer.ID) {
+			return 100
+		}
+	}
+	controlMatches := 0
+	for _, control := range answer.Controls {
+		for _, mapped := range question.MappedControls {
+			if strings.EqualFold(control.ControlID, mapped) || strings.EqualFold(control.ID, mapped) {
+				controlMatches++
+			}
+		}
+	}
+	if controlMatches > 0 {
+		return 80 + controlMatches
+	}
+	if len(question.RequiredSlots) > 0 {
+		matchedSlots := 0
+		for _, slot := range question.RequiredSlots {
+			if len(matchingSlotEvidence(slot, answer)) > 0 {
+				matchedSlots++
+			}
+		}
+		if matchedSlots == len(question.RequiredSlots) {
+			return 60 + matchedSlots
+		}
+	}
+	return 0
 }
 
 func normalizeQuestions(questions []ports.QuestionnaireQuestion) []ports.QuestionnaireQuestion {
@@ -600,9 +598,6 @@ func normalizeQuestions(questions []ports.QuestionnaireQuestion) []ports.Questio
 		question.ID = firstNonEmpty(question.ID, stableID("questionnaire-question", question.Question, fmt.Sprint(index)))
 		question.NormalizedQuestion = firstNonEmpty(question.NormalizedQuestion, normalizedQuestion(question.Question))
 		question.RequiredSlots = uniqueSorted(append([]string(nil), question.RequiredSlots...))
-		if len(question.RequiredSlots) == 0 {
-			question.RequiredSlots = slotsForQuestion(question.Question, "")
-		}
 		question.MappedControls = uniqueSorted(question.MappedControls)
 		question.AnswerState = firstNonEmpty(question.AnswerState, ports.QuestionnaireAnswerBlocked)
 		question.ReviewState = firstNonEmpty(question.ReviewState, ports.QuestionnaireReviewBlocked)
@@ -625,6 +620,12 @@ func statusFromAnswers(answers []ports.QuestionnaireRunAnswer) string {
 		case ports.QuestionnaireAnswerNeedsReview, ports.QuestionnaireAnswerPartial:
 			review = true
 		}
+		switch answer.ReviewState {
+		case ports.QuestionnaireReviewBlocked, ports.QuestionnaireReviewRejected:
+			blocked = true
+		case ports.QuestionnaireReviewNeedsReview:
+			review = true
+		}
 	}
 	if blocked {
 		return ports.QuestionnaireStatusNeedsInput
@@ -637,8 +638,6 @@ func statusFromAnswers(answers []ports.QuestionnaireRunAnswer) string {
 
 func decisionFromStatus(status string) string {
 	switch status {
-	case ports.QuestionnaireStatusReadyForApproval:
-		return ports.QuestionnaireDecisionApprovedWithConditions
 	case ports.QuestionnaireStatusApproved:
 		return ports.QuestionnaireDecisionApproved
 	case ports.QuestionnaireStatusRejected:
@@ -646,10 +645,6 @@ func decisionFromStatus(status string) string {
 	default:
 		return ports.QuestionnaireDecisionNeedsInput
 	}
-}
-
-func answerQuestion(question ports.QuestionnaireQuestion, answer evidencepackets.QuestionnaireAnswer) string {
-	return firstNonEmpty(question.Question, answer.Question, answer.QuestionID)
 }
 
 func slotLabel(slot string) string {
@@ -673,7 +668,7 @@ func slotLabel(slot string) string {
 	case "vendor_profile":
 		return "Vendor profile"
 	default:
-		return "Control evidence"
+		return "Unresolved evidence slot"
 	}
 }
 
@@ -693,7 +688,7 @@ func slotForGap(code string, slots []string) string {
 	if len(slots) > 0 {
 		return slots[0]
 	}
-	return "control_evidence"
+	return "unresolved_evidence_slot"
 }
 
 func controlIDs(controls []evidencepackets.QuestionnaireControlRef) []string {
@@ -791,16 +786,6 @@ func hasAny(terms map[string]struct{}, values ...string) bool {
 
 func hasPhrase(normalized string, phrase string) bool {
 	return strings.Contains(" "+normalized+" ", " "+normalizedQuestion(phrase)+" ")
-}
-
-func overlapScore(left map[string]struct{}, right map[string]struct{}) int {
-	score := 0
-	for term := range left {
-		if _, ok := right[term]; ok {
-			score++
-		}
-	}
-	return score
 }
 
 func stableID(prefix string, values ...string) string {

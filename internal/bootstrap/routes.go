@@ -155,6 +155,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/process", routeSurfacePlatformHTTP, questionnaireRuns.ProcessRun)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/assignments", routeSurfacePlatformHTTP, questionnaireRuns.AssignRun)
 	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/decisions", routeSurfacePlatformHTTP, questionnaireRuns.DecideRun)
+	registerHTTPRoute(mux, "POST /grc/questionnaire-runs/{runID}/comments", routeSurfacePlatformHTTP, questionnaireRuns.CommentRun)
 	registerHTTPRoute(mux, "GET /grc/inventory/categories", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.categories", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory), app.handleGRCInventoryCategories))
 	registerHTTPRoute(mux, "GET /grc/inventory/assets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.assets", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssets))
 	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssetDetail))

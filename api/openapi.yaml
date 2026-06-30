@@ -3183,6 +3183,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
+  /grc/questionnaire-runs/{runID}/comments:
+    post:
+      summary: Add questionnaire comment
+      tags:
+        - GRC
+      parameters:
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCQuestionnaireCommentRequest'
+      responses:
+        '200':
+          description: Comment recorded on the questionnaire run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
   /grc/vendors:
     get:
       summary: Vendors
@@ -12075,7 +12100,6 @@ components:
       type: object
       required:
         - direction
-        - questions
       properties:
         tenant_id:
           type: string
@@ -12112,10 +12136,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GRCQuestionnaireQuestion'
+        intake_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCQuestionnaireIntakeRow'
+        intake_text:
+          type: string
+          description: JSON, CSV, TSV, or one-question-per-line intake content.
+        intake_format:
+          type: string
+          enum: [json, csv, tsv, text]
         attributes:
           type: object
           additionalProperties:
             type: string
+    GRCQuestionnaireIntakeRow:
+      type: object
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+        section:
+          type: string
+        required_answer_format:
+          type: string
+        mapped_controls:
+          type: array
+          items:
+            type: string
+        required_evidence_slots:
+          type: array
+          items:
+            type: string
+        owner_id:
+          type: string
     GRCQuestionnaireProcessRunRequest:
       type: object
       properties:
@@ -12123,14 +12178,13 @@ components:
           type: string
     GRCQuestionnaireAssignmentRequest:
       type: object
+      required: [question_id]
       properties:
         tenant_id:
           type: string
         question_id:
           type: string
         owner_id:
-          type: string
-        owner:
           type: string
         team:
           type: string
@@ -12140,24 +12194,29 @@ components:
           type: string
         reason:
           type: string
-        assignment:
-          $ref: '#/components/schemas/GRCQuestionnaireAssignment'
     GRCQuestionnaireDecisionRequest:
       type: object
+      required: [state]
       properties:
         tenant_id:
           type: string
         question_id:
-          type: string
-        actor_id:
           type: string
         state:
           type: string
           enum: [approved, approved_with_conditions, rejected, needs_input]
         reason:
           type: string
-        decision:
-          $ref: '#/components/schemas/GRCQuestionnaireDecision'
+    GRCQuestionnaireCommentRequest:
+      type: object
+      required: [question_id, body]
+      properties:
+        tenant_id:
+          type: string
+        question_id:
+          type: string
+        body:
+          type: string
     GRCPolicyVersionDiff:
       type: object
       properties:

@@ -1,6 +1,7 @@
 package questionnaire
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -86,12 +87,14 @@ func TestProcessEvidenceAnswersStateMatrix(t *testing.T) {
 				Questions: []ports.QuestionnaireQuestion{{
 					ID:            "q-1",
 					Question:      questionText,
-					RequiredSlots: slotsForQuestion(questionText, ports.QuestionnaireDirectionCustomerSecurityReview),
+					RequiredSlots: requiredSlotsForTestQuestion(questionText),
 				}},
 			}, now)
 			evidenceAnswers := []evidencepackets.QuestionnaireAnswer{}
 			if tt.answer != nil {
-				evidenceAnswers = append(evidenceAnswers, *tt.answer)
+				answer := *tt.answer
+				answer.QuestionID = "q-1"
+				evidenceAnswers = append(evidenceAnswers, answer)
 			}
 			record = ProcessEvidenceAnswers(record, evidenceAnswers, now)
 			if len(record.Answers) != 1 {
@@ -164,8 +167,9 @@ func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
 				Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
 				Title:     "Security questionnaire",
 				Questions: []ports.QuestionnaireQuestion{{
-					ID:       "q-1",
-					Question: "Attach the latest SOC 2 report.",
+					ID:            "q-1",
+					Question:      "Attach the latest SOC 2 report.",
+					RequiredSlots: []string{"audit_report"},
 				}},
 			}, now)
 
@@ -254,6 +258,64 @@ func TestRecordDecisionGlobalConditionalApprovesRun(t *testing.T) {
 	}
 }
 
+func TestRecordDecisionQuestionNeedsInputBlocksRun(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:            "q-1",
+			Question:      "Do you enforce MFA for users?",
+			RequiredSlots: []string{"identity_mfa"},
+		}},
+	}, now)
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{
+		baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current"),
+	}, now)
+	if record.Status != ports.QuestionnaireStatusReadyForApproval || record.Decision != ports.QuestionnaireDecisionNeedsInput {
+		t.Fatalf("workflow before decision = %s/%s, want ready_for_approval/needs_input", record.Status, record.Decision)
+	}
+
+	record = RecordDecision(record, ports.QuestionnaireDecision{
+		QuestionID: "q-1",
+		Decision:   ports.QuestionnaireDecisionNeedsInput,
+		Reason:     "Attach a fresh export.",
+		ActorID:    "security@example.com",
+	}, now.Add(time.Minute))
+
+	if record.Status != ports.QuestionnaireStatusNeedsInput {
+		t.Fatalf("status = %s, want needs_input", record.Status)
+	}
+	if got := record.Answers[0]; got.AnswerState != ports.QuestionnaireAnswerBlocked || got.ReviewState != ports.QuestionnaireReviewBlocked {
+		t.Fatalf("answer state = %s/%s, want blocked/blocked", got.AnswerState, got.ReviewState)
+	}
+}
+
+func TestAddCommentPrependsCommentAndTimeline(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:       "q-1",
+			Question: "Attach SOC 2 report.",
+		}},
+	}, now)
+
+	record = AddComment(record, ports.QuestionnaireComment{
+		QuestionID: "q-1",
+		ActorID:    "attacker@example.com",
+		Body:       "Owner asked for the current report.",
+	}, "security@example.com", now.Add(time.Minute))
+
+	if len(record.Comments) != 1 || record.Comments[0].ActorID != "security@example.com" {
+		t.Fatalf("comments = %#v, want actor-filled comment", record.Comments)
+	}
+	if len(record.Timeline) < 2 || record.Timeline[len(record.Timeline)-1].EventType != ports.QuestionnaireEventCommented {
+		t.Fatalf("timeline = %#v, want comment event", record.Timeline)
+	}
+}
+
 func TestSummarizeRunCountsPartialAnswersAsReviewWork(t *testing.T) {
 	record := SummarizeRun(ports.QuestionnaireRunRecord{
 		QuestionnaireRunContent: ports.QuestionnaireRunContent{
@@ -312,7 +374,7 @@ func baseEvidenceAnswer(question string, answerState string, reviewState string,
 }
 
 func evidenceRefForQuestion(question string) (string, string) {
-	slots := slotsForQuestion(question, ports.QuestionnaireDirectionCustomerSecurityReview)
+	slots := requiredSlotsForTestQuestion(question)
 	if len(slots) == 0 {
 		return "control_test", "okta"
 	}
@@ -335,6 +397,30 @@ func evidenceRefForQuestion(question string) (string, string) {
 		return "ai_data_use", "legal"
 	default:
 		return "control_test", "okta"
+	}
+}
+
+func requiredSlotsForTestQuestion(question string) []string {
+	normalized := strings.ToLower(question)
+	switch {
+	case strings.Contains(normalized, "mfa") || strings.Contains(normalized, "multi-factor"):
+		return []string{"identity_mfa"}
+	case strings.Contains(normalized, "access"):
+		return []string{"access_review"}
+	case strings.Contains(normalized, "audit") || strings.Contains(normalized, "soc"):
+		return []string{"audit_report"}
+	case strings.Contains(normalized, "encrypt"):
+		return []string{"encryption"}
+	case strings.Contains(normalized, "incident"):
+		return []string{"incident_response"}
+	case strings.Contains(normalized, "policy"):
+		return []string{"policy"}
+	case strings.Contains(normalized, "vendor") || strings.Contains(normalized, "subprocessor"):
+		return []string{"subprocessors"}
+	case strings.Contains(normalized, "ai") || strings.Contains(normalized, "training"):
+		return []string{"ai_data_use"}
+	default:
+		return nil
 	}
 }
 
