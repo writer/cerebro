@@ -3,6 +3,7 @@ package files_com
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -155,7 +156,8 @@ func TestProviderUnavailableResponseReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Check() error = nil, want provider unavailable error")
 	}
-	if !strings.Contains(err.Error(), "files_com API returned 503") {
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
 		t.Fatalf("Check() error = %v, want provider unavailable status", err)
 	}
 }
