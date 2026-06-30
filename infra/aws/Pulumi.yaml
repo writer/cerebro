@@ -439,6 +439,10 @@ config:
     type: integer
     default: 0
     description: Optional per-process bulkhead for concurrent Cerebro JetStream publishes; 0 leaves it unlimited
+  cerebro:jetstreamPublishFindingsMaxInFlight:
+    type: integer
+    default: 0
+    description: Optional per-process bulkhead for sec.findings.v1 JetStream publishes; 0 leaves it unlimited
   cerebro:jetstreamPublishRetryAttempts:
     type: integer
     default: 0

@@ -321,6 +321,7 @@ jetstream_max_age = config.get("jetstreamMaxAge") or ""
 jetstream_dupe_window = config.get("jetstreamDupeWindow") or "10m"
 jetstream_discard_policy = config.get("jetstreamDiscardPolicy") or "old"
 jetstream_publish_max_in_flight = _config_int("jetstreamPublishMaxInFlight", 0)
+jetstream_publish_findings_max_in_flight = _config_int("jetstreamPublishFindingsMaxInFlight", 0)
 jetstream_publish_retry_attempts = _config_int("jetstreamPublishRetryAttempts", 0)
 jetstream_publish_retry_initial_backoff = config.get("jetstreamPublishRetryInitialBackoff") or ""
 jetstream_publish_retry_max_backoff = config.get("jetstreamPublishRetryMaxBackoff") or ""
@@ -850,6 +851,10 @@ app_environment = {
 }
 if jetstream_publish_max_in_flight > 0:
     app_environment["CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT"] = str(jetstream_publish_max_in_flight)
+if jetstream_publish_findings_max_in_flight > 0:
+    app_environment["CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT"] = str(
+        jetstream_publish_findings_max_in_flight
+    )
 if jetstream_publish_retry_attempts > 0:
     app_environment["CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS"] = str(jetstream_publish_retry_attempts)
 if jetstream_publish_retry_initial_backoff:

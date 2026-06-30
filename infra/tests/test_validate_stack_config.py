@@ -111,6 +111,7 @@ config:
   cerebro:natsCpu: 2048
   cerebro:natsMemory: 32768
   cerebro:jetstreamPublishMaxInFlight: 4
+  cerebro:jetstreamPublishFindingsMaxInFlight: 4
   cerebro:jetstreamPublishRetryMaxElapsed: 5m
   cerebro:natsEfsThroughputMode: elastic
   cerebro:postgresDeletionProtection: true
@@ -986,11 +987,15 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_active_environments_require_jetstream_publish_restore_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:jetstreamPublishMaxInFlight: 4", "  cerebro:jetstreamPublishMaxInFlight: 2").replace(
+            "  cerebro:jetstreamPublishFindingsMaxInFlight: 4",
+            "  cerebro:jetstreamPublishFindingsMaxInFlight: 2",
+        ).replace(
             "  cerebro:jetstreamPublishRetryMaxElapsed: 5m",
             "  cerebro:jetstreamPublishRetryMaxElapsed: 90s",
         )
         messages = self._messages(content)
         self.assertTrue(any("publish max-in-flight" in message for message in messages))
+        self.assertTrue(any("findings publish max-in-flight" in message for message in messages))
         self.assertTrue(any("retry max elapsed at least 5m" in message for message in messages))
 
     def test_active_environments_require_nats_efs_throughput_headroom(self) -> None:
