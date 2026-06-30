@@ -632,6 +632,47 @@ func TestAppendEmitsFindingsPublishBulkheadTelemetry(t *testing.T) {
 	}
 }
 
+func TestAppendPreservesGlobalBulkheadMaxTelemetryWithFindingsBulkhead(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{
+		js:            pub,
+		subjectPrefix: "events",
+		publishSlots:  make(chan struct{}, 5),
+		findingSlots:  make(chan struct{}, 2),
+	}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-global-findings-bulkhead-telemetry",
+			Kind: securityevents.FindingRecorded,
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.jetstream.publish.bulkhead.scopes"] != "global,findings" {
+		t.Fatalf("bulkhead scopes = %v, want global,findings", end["messaging.jetstream.publish.bulkhead.scopes"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(5) {
+		t.Fatalf("bulkhead max in flight = %v, want legacy global value 5", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"] != float64(2) {
+		t.Fatalf("effective bulkhead max in flight = %v, want tightest value 2", end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != float64(5) {
+		t.Fatalf("global bulkhead max in flight = %v, want 5", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != float64(2) {
+		t.Fatalf("findings bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"])
+	}
+}
+
 func TestAppendNonFindingBypassesFindingsPublishBulkhead(t *testing.T) {
 	pub := &fakePublisher{}
 	findingSlots := make(chan struct{}, 1)

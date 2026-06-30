@@ -166,6 +166,8 @@ For JetStream append incidents, alert on `cerebro.jetstream.publish.requests`,
 `name="jetstream.publish.retry_exhausted"` telemetry for `tenant_id`,
 `runtime_id`, phase, retry count, trace context, and
 `messaging.jetstream.publish.bulkhead.scopes`. Use
+`messaging.jetstream.publish.bulkhead.effective_max_in_flight` for the tightest
+active publish cap and
 `messaging.jetstream.publish.bulkhead.findings.wait_ms` to confirm
 `sec.findings.v1.*` publish queueing. The checked-in alert templates in
 [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql)

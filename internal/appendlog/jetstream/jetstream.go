@@ -78,26 +78,27 @@ type replayStream interface {
 }
 
 type publishTelemetry struct {
-	Attempts       int
-	MaxAttempts    int
-	RetryCount     int
-	LastBackoff    time.Duration
-	LastRetryable  bool
-	Duration       time.Duration
-	RetryBudget    time.Duration
-	AttemptTimeout time.Duration
-	MaxBackoff     time.Duration
-	ClientRetries  int
-	ClientWait     time.Duration
-	RetryExhausted bool
-	MaxExhausted   bool
-	BulkheadWait   time.Duration
-	BulkheadLimit  int
-	Bulkheads      []publishBulkheadTelemetry
-	AckStream      string
-	AckSequence    uint64
-	AckDuplicate   bool
-	AckUnavailable bool
+	Attempts               int
+	MaxAttempts            int
+	RetryCount             int
+	LastBackoff            time.Duration
+	LastRetryable          bool
+	Duration               time.Duration
+	RetryBudget            time.Duration
+	AttemptTimeout         time.Duration
+	MaxBackoff             time.Duration
+	ClientRetries          int
+	ClientWait             time.Duration
+	RetryExhausted         bool
+	MaxExhausted           bool
+	BulkheadWait           time.Duration
+	BulkheadLimit          int
+	BulkheadEffectiveLimit int
+	Bulkheads              []publishBulkheadTelemetry
+	AckStream              string
+	AckSequence            uint64
+	AckDuplicate           bool
+	AckUnavailable         bool
 }
 
 type publishBulkheadTelemetry struct {
@@ -693,8 +694,11 @@ func (r *publishTelemetry) addBulkheads(bulkheads []publishBulkheadTelemetry) {
 			continue
 		}
 		r.BulkheadWait += bulkhead.Wait
-		if r.BulkheadLimit == 0 || bulkhead.Limit < r.BulkheadLimit {
+		if bulkhead.Scope == publishBulkheadScopeGlobal || r.BulkheadLimit == 0 {
 			r.BulkheadLimit = bulkhead.Limit
+		}
+		if r.BulkheadEffectiveLimit == 0 || bulkhead.Limit < r.BulkheadEffectiveLimit {
+			r.BulkheadEffectiveLimit = bulkhead.Limit
 		}
 		found := false
 		for i := range r.Bulkheads {
@@ -735,6 +739,7 @@ func (r publishTelemetry) attrs() telemetry.Attributes {
 		attrs = attrs.With(telemetry.Attrs(
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.enabled", Value: true},
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.max_in_flight", Value: r.BulkheadLimit},
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.effective_max_in_flight", Value: r.BulkheadEffectiveLimit},
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.wait_ms", Value: r.BulkheadWait.Milliseconds()},
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.scopes", Value: strings.Join(scopes, ",")},
 		))
