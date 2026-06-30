@@ -273,7 +273,12 @@ func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
 			strings.Contains(haystack, "show")) {
 		return true
 	}
-	if strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document") {
+	if (strings.Contains(haystack, "policy doc") || strings.Contains(haystack, "policy document")) &&
+		(strings.Contains(haystack, "answer") ||
+			strings.Contains(haystack, "audit") ||
+			strings.Contains(haystack, "compliance") ||
+			strings.Contains(haystack, "question") ||
+			strings.Contains(haystack, "questionnaire")) {
 		return true
 	}
 	if strings.Contains(haystack, "okta") &&

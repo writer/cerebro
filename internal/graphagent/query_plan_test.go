@@ -570,6 +570,8 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 		"List controls with evidence attached",
 		"What is in the evidence packet for this finding?",
 		"Show the evidence packet export status",
+		"List all policy documents",
+		"Show policy doc count",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
