@@ -398,7 +398,7 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 			continue
 		}
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
-		mergeInternalAttributes(row, "exception_attributes_json_internal", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
+		mergeInternalAttributesWithPrefix(row, "exception_attributes_json_internal", "exception_", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
 		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
 		removeRawAttributeJSONFields(row)

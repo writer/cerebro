@@ -930,11 +930,11 @@ LIMIT 25`,
 	if _, exists := row["exception_attributes_json_internal"]; exists {
 		t.Fatalf("internal exception attributes leaked in row: %#v", row)
 	}
-	if _, exists := row["exception_status"]; exists {
-		t.Fatalf("exception-only non-questionnaire row used questionnaire field names: %#v", row)
+	if _, exists := row["status"]; exists {
+		t.Fatalf("exception-only non-questionnaire row used ambiguous status field: %#v", row)
 	}
-	if got := row["status"]; got != "accepted" {
-		t.Fatalf("status = %q, want accepted", got)
+	if got := row["exception_status"]; got != "accepted" {
+		t.Fatalf("exception_status = %q, want accepted", got)
 	}
 	if got := row["exception_id"]; got != "exc-1" {
 		t.Fatalf("exception_id = %q, want exc-1", got)
