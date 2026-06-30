@@ -1741,8 +1741,10 @@ func fixtureAttributeValue(attr string, family familyData) string {
 		return family.Class
 	case "resource_id", "id":
 		return "record-1"
-	case "severity", "alert_severity":
+	case "severity":
 		return "high"
+	case "alert_severity":
+		return "critical"
 	case "status":
 		return "open"
 	case "event_type":

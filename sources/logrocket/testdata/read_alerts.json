@@ -2,7 +2,7 @@
   {
     "attributes": {
       "alert_id": "alert-id-1",
-      "alert_severity": "high",
+      "alert_severity": "critical",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_ref_type": "source_fixture",
       "evidence_cas_uri": "cas://cases/record-1",

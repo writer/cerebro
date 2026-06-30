@@ -1269,6 +1269,15 @@ func FuzzGenerateDryRun(f *testing.F) {
 	})
 }
 
+func TestFixtureAttributeValueKeepsAlertSeverityCritical(t *testing.T) {
+	if got := fixtureAttributeValue("severity", familyData{}); got != "high" {
+		t.Fatalf("severity = %q, want high", got)
+	}
+	if got := fixtureAttributeValue("alert_severity", familyData{}); got != "critical" {
+		t.Fatalf("alert_severity = %q, want critical", got)
+	}
+}
+
 func readGeneratedFile(t *testing.T, root string, path string) string {
 	t.Helper()
 	cleanRoot, err := filepath.Abs(root)
