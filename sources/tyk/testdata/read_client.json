@@ -33,7 +33,7 @@
       "api_method": "GET",
       "api_path": "/tyk/oauth/clients/${config.apiid}",
       "client": "client",
-      "client_id": "client-id-source-tyk-client-1",
+      "client_id": "source-tyk-client-1",
       "event_id": "source-tyk-client-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-tyk-client-1",

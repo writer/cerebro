@@ -36,7 +36,7 @@
     "kind": "clickmeter.clickstream",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "accessTime": "accessTime-source-clickmeter-clickstream-1",
+      "accessTime": "source-clickmeter-clickstream-1",
       "actor_email": "actor@clickmeter.example.test",
       "actor_id": "clickmeter-users-1",
       "actor_name": "actor-name-source-clickmeter-clickstream-1",

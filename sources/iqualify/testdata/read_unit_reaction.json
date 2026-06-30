@@ -53,7 +53,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/iqualify/unit_reaction/source-iqualify-unit_reaction-1",
       "family": "unit_reaction",
-      "feedback": "feedback-source-iqualify-unit_reaction-1",
+      "feedback": "source-iqualify-unit_reaction-1",
       "id": "source-iqualify-unit_reaction-1",
       "name": "Iqualify Unit Reaction Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

@@ -30,7 +30,7 @@
     "kind": "billbee.stock",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-billbee-stock-1",
+      "Id": "source-billbee-stock-1",
       "Name": "Billbee Stock Fixture",
       "api_method": "GET",
       "api_path": "/api/v1/products/stocks",

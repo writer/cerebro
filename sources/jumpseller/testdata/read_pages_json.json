@@ -46,7 +46,7 @@
       "id": "source-jumpseller-pages_json-1",
       "name": "Jumpseller Pages Json Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "page": "page-source-jumpseller-pages_json-1",
+      "page": "source-jumpseller-pages_json-1",
       "pages_json": "pages_json",
       "record_class": "asset",
       "record_selector": "$[*]",

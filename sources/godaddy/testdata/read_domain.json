@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v1/domains",
-      "authCode": "authCode-source-godaddy-domain-1",
+      "authCode": "source-godaddy-domain-1",
       "domain": "domain",
       "event_id": "source-godaddy-domain-1",
       "evidence_cas": {

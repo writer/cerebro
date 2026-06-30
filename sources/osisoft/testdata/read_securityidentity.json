@@ -43,7 +43,7 @@
     "kind": "osisoft.securityidentity",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-osisoft-securityidentity-1",
+      "Id": "source-osisoft-securityidentity-1",
       "Name": "Osisoft Securityidentity Fixture",
       "api_method": "GET",
       "api_path": "/assetservers/${config.webid}/securityidentities",

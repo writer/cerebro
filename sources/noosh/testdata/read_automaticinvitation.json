@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v1/workgroups/${config.workgroup_id}/automaticInvitations",
-      "automatic_invitation_type_name": "automatic-invitation-type-name-source-noosh-automaticinvitation-1",
+      "automatic_invitation_type_name": "source-noosh-automaticinvitation-1",
       "automaticinvitation": "automaticinvitation",
       "event_id": "source-noosh-automaticinvitation-1",
       "evidence_cas": {

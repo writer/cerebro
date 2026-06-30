@@ -30,7 +30,7 @@
     "kind": "billbee.custom_field",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-billbee-custom_field-1",
+      "Id": "source-billbee-custom_field-1",
       "Name": "Billbee Custom Field Fixture",
       "api_method": "GET",
       "api_path": "/api/v1/products/custom-fields",

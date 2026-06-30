@@ -65,7 +65,7 @@
       "resource_type": "activity",
       "resource_urn": "urn:cerebro:tenant:threatjammer_activity:source-threatjammer-activity-1",
       "schema_ref": "threatjammer/activity/v1",
-      "self": "self-source-threatjammer-activity-1",
+      "self": "source-threatjammer-activity-1",
       "source_id": "threatjammer",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"

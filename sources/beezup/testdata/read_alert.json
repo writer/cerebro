@@ -39,7 +39,7 @@
     "kind": "beezup.alert",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "alertId": "alertId-source-beezup-alert-1",
+      "alertId": "source-beezup-alert-1",
       "alert_id": "source-beezup-alert-1",
       "alert_name": "Beezup Alert Fixture",
       "alert_severity": "critical",

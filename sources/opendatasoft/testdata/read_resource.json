@@ -53,7 +53,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/opendatasoft/resource/source-opendatasoft-resource-1",
       "family": "resource",
-      "href": "href-source-opendatasoft-resource-1",
+      "href": "source-opendatasoft-resource-1",
       "id": "source-opendatasoft-resource-1",
       "name": "Opendatasoft Resource Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

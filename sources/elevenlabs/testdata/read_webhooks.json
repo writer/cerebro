@@ -70,7 +70,7 @@
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z",
       "url": "deployment-url-source-elevenlabs-webhooks-1",
-      "webhook_id": "webhook-id-source-elevenlabs-webhooks-1"
+      "webhook_id": "source-elevenlabs-webhooks-1"
     },
     "schema_ref": "elevenlabs/webhooks/v1",
     "source_id": "elevenlabs",

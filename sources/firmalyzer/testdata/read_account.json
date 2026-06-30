@@ -78,7 +78,7 @@
       "source_id": "firmalyzer",
       "status": "open",
       "tenant_id": "tenant",
-      "uid": "uid-source-firmalyzer-account-1",
+      "uid": "source-firmalyzer-account-1",
       "updated_at": "2026-06-01T00:00:00Z",
       "user_id": "source-firmalyzer-account-1"
     },

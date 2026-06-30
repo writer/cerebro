@@ -64,7 +64,7 @@
       "id": "source-n_auth-user-1",
       "job_title": "job-title-source-n_auth-user-1",
       "last_login_at": "2026-06-01T00:00:00Z",
-      "lastlogin": "lastlogin-source-n_auth-user-1",
+      "lastlogin": "source-n_auth-user-1",
       "login": "login@n-auth.example.test",
       "manager": "manager-source-n_auth-user-1",
       "name": "N Auth User Fixture",

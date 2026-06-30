@@ -75,7 +75,7 @@
       "resource_type": "user_actions_json",
       "resource_urn": "urn:cerebro:tenant:discourse_user_actions_json:source-discourse-user_actions_json-1",
       "schema_ref": "discourse/user_actions_json/v1",
-      "slug": "slug-source-discourse-user_actions_json-1",
+      "slug": "source-discourse-user_actions_json-1",
       "source_id": "discourse",
       "status": "open",
       "tenant_id": "tenant",

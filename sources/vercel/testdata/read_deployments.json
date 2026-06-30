@@ -52,7 +52,7 @@
       "schema_ref": "vercel/deployments/v1",
       "source_id": "vercel",
       "tenant_id": "tenant",
-      "uid": "uid-source-vercel-deployments-1",
+      "uid": "source-vercel-deployments-1",
       "updated_at": "2026-06-01T00:00:00Z"
     },
     "schema_ref": "vercel/deployments/v1",

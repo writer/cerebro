@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/customers.json",
-      "customer": "customer-source-jumpseller-customers_json-1",
+      "customer": "source-jumpseller-customers_json-1",
       "customers_json": "customers_json",
       "event_id": "source-jumpseller-customers_json-1",
       "evidence_cas": {

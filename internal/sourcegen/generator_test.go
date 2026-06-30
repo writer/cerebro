@@ -277,6 +277,29 @@ func TestFixtureEmailLocalPartForPayloadPath(t *testing.T) {
 	}
 }
 
+func TestFixturePayloadValueUsesRecordIDForFamilyIDField(t *testing.T) {
+	request := normalizedRequest{Request: Request{SourceID: "elevenlabs"}}
+	family := familyData{
+		Name:    "service_account_api_keys",
+		IDField: "key_id",
+	}
+
+	if got, want := fixturePayloadValue(request, "key_id", family), "source-elevenlabs-service_account_api_keys-1"; got != want {
+		t.Fatalf("fixturePayloadValue(key_id) = %q, want %q", got, want)
+	}
+	if got := fixturePayloadValue(request, "config_file", family); got == "source-elevenlabs-service_account_api_keys-1" {
+		t.Fatalf("fixturePayloadValue(config_file) unexpectedly used record ID: %q", got)
+	}
+
+	emailFamily := familyData{
+		Name:    "users",
+		IDField: "email",
+	}
+	if got, want := fixturePayloadValue(request, "email", emailFamily), "email@elevenlabs.example.test"; got != want {
+		t.Fatalf("fixturePayloadValue(email ID field) = %q, want %q", got, want)
+	}
+}
+
 func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
 		Definition: connectordefinitions.Definition{

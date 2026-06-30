@@ -30,7 +30,7 @@
     "kind": "akeneo.reference_entities_attribute",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "allowed_extensions": "allowed-extensions-source-akeneo-reference_entities_attribute-1",
+      "allowed_extensions": "source-akeneo-reference_entities_attribute-1",
       "api_method": "GET",
       "api_path": "/api/rest/v1/reference-entities/${config.reference_entity_code}/attributes",
       "attribute": "attribute",

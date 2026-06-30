@@ -74,7 +74,7 @@
       "resource_id": "source-learnifier-teammember-1",
       "resource_type": "teammember",
       "resource_urn": "urn:cerebro:tenant:learnifier_teammember:source-learnifier-teammember-1",
-      "roles": "roles-source-learnifier-teammember-1",
+      "roles": "source-learnifier-teammember-1",
       "schema_ref": "learnifier/teammember/v1",
       "source_id": "learnifier",
       "status": "open",

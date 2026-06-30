@@ -62,7 +62,7 @@
       "evidence_cas_uri": "cas://cases/noosh/clientworkgroups_projecthomeuserfield/source-noosh-clientworkgroups_projecthomeuserfield-1",
       "family": "clientworkgroups_projecthomeuserfield",
       "id": "source-noosh-clientworkgroups_projecthomeuserfield-1",
-      "is_required": "is-required-source-noosh-clientworkgroups_projecthomeuserfield-1",
+      "is_required": "source-noosh-clientworkgroups_projecthomeuserfield-1",
       "job_title": "job-title-source-noosh-clientworkgroups_projecthomeuserfield-1",
       "label": "Noosh Clientworkgroups Projecthomeuserfield Fixture",
       "last_login_at": "2026-06-01T00:00:00Z",

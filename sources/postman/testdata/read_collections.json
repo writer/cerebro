@@ -52,7 +52,7 @@
       "schema_ref": "postman/collections/v1",
       "source_id": "postman",
       "tenant_id": "tenant",
-      "uid": "uid-source-postman-collections-1",
+      "uid": "source-postman-collections-1",
       "updated_at": "2026-06-01T00:00:00Z"
     },
     "schema_ref": "postman/collections/v1",

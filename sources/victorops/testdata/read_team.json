@@ -63,7 +63,7 @@
       "resource_type": "team",
       "resource_urn": "urn:cerebro:tenant:victorops_team:source-victorops-team-1",
       "schema_ref": "victorops/team/v1",
-      "slug": "slug-source-victorops-team-1",
+      "slug": "source-victorops-team-1",
       "source_id": "victorops",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"

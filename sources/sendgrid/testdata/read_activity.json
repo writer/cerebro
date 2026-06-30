@@ -39,7 +39,7 @@
       "actor_email": "actor@sendgrid.example.test",
       "actor_id": "sendgrid-users-1",
       "actor_name": "actor-name-source-sendgrid-activity-1",
-      "allowed": "allowed-source-sendgrid-activity-1",
+      "allowed": "source-sendgrid-activity-1",
       "api_method": "GET",
       "api_path": "/access_settings/activity",
       "event_id": "source-sendgrid-activity-1",

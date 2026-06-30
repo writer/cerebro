@@ -37,7 +37,7 @@
     "kind": "osisoft.analysisruleplugin",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-osisoft-analysisruleplugin-1",
+      "Id": "source-osisoft-analysisruleplugin-1",
       "Name": "Osisoft Analysisruleplugin Fixture",
       "analysisruleplugin": "analysisruleplugin",
       "api_method": "GET",

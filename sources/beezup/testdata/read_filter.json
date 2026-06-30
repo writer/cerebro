@@ -45,7 +45,7 @@
       "family": "filter",
       "filter": "filter",
       "id": "source-beezup-filter-1",
-      "links": "links-source-beezup-filter-1",
+      "links": "source-beezup-filter-1",
       "name": "Beezup Filter Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

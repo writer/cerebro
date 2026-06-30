@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-beezup-beezupcolumn-1",
       "api_method": "GET",
       "api_path": "/v2/user/catalogs/beezupColumns",
-      "beezUPColumnName": "beezUPColumnName-source-beezup-beezupcolumn-1",
+      "beezUPColumnName": "source-beezup-beezupcolumn-1",
       "description": "Beezup Beezupcolumn Fixture",
       "event_id": "source-beezup-beezupcolumn-1",
       "event_type": "beezup.beezupcolumn.observed",

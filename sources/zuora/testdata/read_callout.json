@@ -46,7 +46,7 @@
       "alert_type": "callout",
       "api_method": "GET",
       "api_path": "/v1/notification-history/callout",
-      "attemptedNum": "attemptedNum-source-zuora-callout-1",
+      "attemptedNum": "source-zuora-callout-1",
       "description": "Zuora Callout Fixture alert",
       "event_id": "source-zuora-callout-1",
       "evidence_cas": {

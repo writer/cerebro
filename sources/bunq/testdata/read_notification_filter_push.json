@@ -61,7 +61,7 @@
       "fired_at": "2026-06-01T00:00:00Z",
       "id": "source-bunq-notification_filter_push-1",
       "name": "Bunq Notification Filter Push Fixture",
-      "notification_filters": "notification-filters-source-bunq-notification_filter_push-1",
+      "notification_filters": "source-bunq-notification_filter_push-1",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "alert",
       "record_selector": "$[*]",

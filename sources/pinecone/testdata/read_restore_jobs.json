@@ -64,7 +64,7 @@
       "resource_id": "source-pinecone-restore_jobs-1",
       "resource_type": "restore_jobs",
       "resource_urn": "urn:cerebro:tenant:pinecone_restore_jobs:source-pinecone-restore_jobs-1",
-      "restore_job_id": "restore-job-id-source-pinecone-restore_jobs-1",
+      "restore_job_id": "source-pinecone-restore_jobs-1",
       "schema_ref": "pinecone/restore_jobs/v1",
       "source_id": "pinecone",
       "status": "open",

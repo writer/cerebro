@@ -50,7 +50,7 @@
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",
       "record_selector": "$.items[*]",
-      "ref": "ref-source-fire-batche-1",
+      "ref": "source-fire-batche-1",
       "resource_id": "source-fire-batche-1",
       "resource_type": "batche",
       "resource_urn": "urn:cerebro:tenant:fire_batche:source-fire-batche-1",

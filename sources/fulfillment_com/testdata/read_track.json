@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/track",
-      "eventCategory": "eventCategory-source-fulfillment_com-track-1",
+      "eventCategory": "source-fulfillment_com-track-1",
       "event_id": "source-fulfillment_com-track-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-fulfillment_com-track-1",

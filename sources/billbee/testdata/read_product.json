@@ -30,7 +30,7 @@
     "kind": "billbee.product",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-billbee-product-1",
+      "Id": "source-billbee-product-1",
       "Title": "Billbee Product Fixture",
       "api_method": "GET",
       "api_path": "/api/v1/products",

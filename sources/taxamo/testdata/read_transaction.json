@@ -45,7 +45,7 @@
       "evidence_cas_uri": "cas://cases/taxamo/transaction/source-taxamo-transaction-1",
       "family": "transaction",
       "id": "source-taxamo-transaction-1",
-      "key": "key-source-taxamo-transaction-1",
+      "key": "source-taxamo-transaction-1",
       "name": "Taxamo Transaction Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

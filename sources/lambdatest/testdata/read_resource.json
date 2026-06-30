@@ -30,7 +30,7 @@
     "kind": "lambdatest.resource",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "activity_id": "activity-id-source-lambdatest-resource-1",
+      "activity_id": "source-lambdatest-resource-1",
       "api_method": "GET",
       "api_path": "/${config.test_id}",
       "event_id": "source-lambdatest-resource-1",

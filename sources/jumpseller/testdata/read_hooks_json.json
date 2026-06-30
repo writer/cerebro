@@ -43,7 +43,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/jumpseller/hooks_json/source-jumpseller-hooks_json-1",
       "family": "hooks_json",
-      "hook": "hook-source-jumpseller-hooks_json-1",
+      "hook": "source-jumpseller-hooks_json-1",
       "hooks_json": "hooks_json",
       "id": "source-jumpseller-hooks_json-1",
       "name": "Jumpseller Hooks Json Fixture",

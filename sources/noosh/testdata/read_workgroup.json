@@ -55,7 +55,7 @@
       "group_id": "source-noosh-workgroup-1",
       "group_name": "Noosh Workgroup Fixture",
       "id": "source-noosh-workgroup-1",
-      "is_default": "is-default-source-noosh-workgroup-1",
+      "is_default": "source-noosh-workgroup-1",
       "name": "Noosh Workgroup Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "identity_group",

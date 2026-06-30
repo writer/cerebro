@@ -30,7 +30,7 @@
     "kind": "avaza.lookup",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Name": "Name-source-avaza-lookup-1",
+      "Name": "source-avaza-lookup-1",
       "api_method": "GET",
       "api_path": "/api/ExpenseGroup/Lookup",
       "event_id": "source-avaza-lookup-1",

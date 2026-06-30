@@ -33,7 +33,7 @@
       "api_method": "GET",
       "api_path": "/api/rest/v1/asset-families/${config.code}",
       "asset_family": "asset_family",
-      "assign_assets_to": "assign-assets-to-source-akeneo-asset_family-1",
+      "assign_assets_to": "source-akeneo-asset_family-1",
       "event_id": "source-akeneo-asset_family-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-akeneo-asset_family-1",

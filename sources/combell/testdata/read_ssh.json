@@ -43,7 +43,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/combell/ssh/source-combell-ssh-1",
       "family": "ssh",
-      "fingerprint": "fingerprint-source-combell-ssh-1",
+      "fingerprint": "source-combell-ssh-1",
       "id": "source-combell-ssh-1",
       "name": "Combell Ssh Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

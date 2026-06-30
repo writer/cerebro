@@ -52,7 +52,7 @@
       "resource_urn": "urn:cerebro:tenant:ibm_watsonx_ai_foundation_model_tasks:source-ibm_watsonx_ai-foundation_model_tasks-1",
       "schema_ref": "ibm_watsonx_ai/foundation_model_tasks/v1",
       "source_id": "ibm_watsonx_ai",
-      "task_id": "task-id-source-ibm_watsonx_ai-foundation_model_tasks-1",
+      "task_id": "source-ibm_watsonx_ai-foundation_model_tasks-1",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
     },

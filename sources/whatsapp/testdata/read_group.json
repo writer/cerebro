@@ -38,7 +38,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/groups",
-      "code": "code-source-whatsapp-group-1",
+      "code": "source-whatsapp-group-1",
       "description": "Whatsapp Group Fixture identity_group",
       "domain": "domain-source-whatsapp-group-1",
       "event_id": "source-whatsapp-group-1",

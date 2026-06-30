@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/groups/${config.groupid}/invite",
-      "code": "code-source-whatsapp-invite-1",
+      "code": "source-whatsapp-invite-1",
       "event_id": "source-whatsapp-invite-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-whatsapp-invite-1",

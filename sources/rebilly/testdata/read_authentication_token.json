@@ -41,7 +41,7 @@
       "api_path": "/authentication-tokens",
       "authentication_token": "authentication_token",
       "created_at": "2026-06-01T00:00:00Z",
-      "credentialId": "credentialId-source-rebilly-authentication_token-1",
+      "credentialId": "source-rebilly-authentication_token-1",
       "event_id": "source-rebilly-authentication_token-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-rebilly-authentication_token-1",

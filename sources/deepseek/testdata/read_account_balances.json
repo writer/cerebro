@@ -30,7 +30,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/user/balance",
-      "currency": "currency-source-deepseek-account_balances-1",
+      "currency": "source-deepseek-account_balances-1",
       "event_id": "source-deepseek-account_balances-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-deepseek-account_balances-1",

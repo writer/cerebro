@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/api/rest/v1/reference-entities/${config.reference_entity_code}/attributes/${config.attribute_code}/options",
-      "code": "code-source-akeneo-attributes_option-1",
+      "code": "source-akeneo-attributes_option-1",
       "event_id": "source-akeneo-attributes_option-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-akeneo-attributes_option-1",

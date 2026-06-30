@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/netlicensing/licensetemplate/source-netlicensing-licensetemplate-1",
       "family": "licensetemplate",
       "id": "source-netlicensing-licensetemplate-1",
-      "infos": "infos-source-netlicensing-licensetemplate-1",
+      "infos": "source-netlicensing-licensetemplate-1",
       "licensetemplate": "licensetemplate",
       "name": "Netlicensing Licensetemplate Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

@@ -30,7 +30,7 @@
     "kind": "avaza.company",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "BillingAddress": "BillingAddress-source-avaza-company-1",
+      "BillingAddress": "source-avaza-company-1",
       "api_method": "GET",
       "api_path": "/api/Company",
       "company": "company",

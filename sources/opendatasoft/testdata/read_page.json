@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/opendatasoft/page/source-opendatasoft-page-1",
       "family": "page",
       "id": "source-opendatasoft-page-1",
-      "links": "links-source-opendatasoft-page-1",
+      "links": "source-opendatasoft-page-1",
       "name": "Opendatasoft Page Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "page": "page",

@@ -36,7 +36,7 @@
     "kind": "osisoft.elementtemplate",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-osisoft-elementtemplate-1",
+      "Id": "source-osisoft-elementtemplate-1",
       "Name": "Osisoft Elementtemplate Fixture",
       "actor_email": "actor@osisoft.example.test",
       "actor_id": "osisoft-users-1",

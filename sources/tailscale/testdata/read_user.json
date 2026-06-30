@@ -47,7 +47,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/tailscale/user/source-tailscale-user-1",
       "family": "user",
-      "id": "user-id-source-tailscale-user-1",
+      "id": "source-tailscale-user-1",
       "lastSeen": "2026-06-01T00:00:00Z",
       "loginName": "login-name@tailscale.example.test",
       "name": "Tailscale User Fixture",

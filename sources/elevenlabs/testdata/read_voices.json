@@ -53,7 +53,7 @@
       "source_id": "elevenlabs",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z",
-      "voice_id": "voice-id-source-elevenlabs-voices-1"
+      "voice_id": "source-elevenlabs-voices-1"
     },
     "schema_ref": "elevenlabs/voices/v1",
     "source_id": "elevenlabs",

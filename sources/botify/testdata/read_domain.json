@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/analyses/${config.username}/${config.project_slug}/${config.analysis_slug}/features/top_domains/domains",
-      "domain": "domain-source-botify-domain-1",
+      "domain": "source-botify-domain-1",
       "event_id": "source-botify-domain-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-botify-domain-1",

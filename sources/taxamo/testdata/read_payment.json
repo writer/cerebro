@@ -30,7 +30,7 @@
     "kind": "taxamo.payment",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "amount": "amount-source-taxamo-payment-1",
+      "amount": "source-taxamo-payment-1",
       "api_method": "GET",
       "api_path": "/api/v1/transactions/${config.key}/payments",
       "event_id": "source-taxamo-payment-1",

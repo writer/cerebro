@@ -30,7 +30,7 @@
     "kind": "clickmeter.aggregated_list",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "activityDay": "activityDay-source-clickmeter-aggregated_list-1",
+      "activityDay": "source-clickmeter-aggregated_list-1",
       "api_method": "GET",
       "api_path": "/groups/${config.id}/aggregated/list",
       "event_id": "source-clickmeter-aggregated_list-1",

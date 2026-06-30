@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-beezup-category-1",
       "api_method": "GET",
       "api_path": "/v2/user/catalogs/${config.storeid}/categories",
-      "categoryId": "categoryId-source-beezup-category-1",
+      "categoryId": "source-beezup-category-1",
       "event_id": "source-beezup-category-1",
       "event_type": "beezup.category.observed",
       "evidence_cas": {

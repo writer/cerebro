@@ -37,7 +37,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/firmware/${config.firmware_hash}/config-issues",
-      "config_file": "config-file-source-firmalyzer-config_issue-1",
+      "config_file": "source-firmalyzer-config_issue-1",
       "description": "Firmalyzer Config Issue Fixture finding",
       "event_id": "source-firmalyzer-config_issue-1",
       "evidence_cas": {

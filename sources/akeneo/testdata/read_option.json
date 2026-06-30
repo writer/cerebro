@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/api/rest/v1/asset-families/${config.asset_family_code}/attributes/${config.attribute_code}/options",
-      "code": "code-source-akeneo-option-1",
+      "code": "source-akeneo-option-1",
       "event_id": "source-akeneo-option-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-akeneo-option-1",

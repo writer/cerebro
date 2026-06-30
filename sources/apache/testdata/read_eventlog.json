@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-apache-eventlog-1",
       "api_method": "GET",
       "api_path": "/eventLogs",
-      "dag_id": "dag-id-source-apache-eventlog-1",
+      "dag_id": "source-apache-eventlog-1",
       "event_id": "source-apache-eventlog-1",
       "event_type": "apache.eventlog.observed",
       "evidence_cas": {

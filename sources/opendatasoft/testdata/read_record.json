@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/opendatasoft/record/source-opendatasoft-record-1",
       "family": "record",
       "id": "source-opendatasoft-record-1",
-      "links": "links-source-opendatasoft-record-1",
+      "links": "source-opendatasoft-record-1",
       "name": "Opendatasoft Record Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record": "record",

@@ -38,7 +38,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v1/workgroups/${config.workgroup_id}/clientWorkgroups",
-      "client_ac_workgroup_id": "client-ac-workgroup-id-source-noosh-clientworkgroup-1",
+      "client_ac_workgroup_id": "source-noosh-clientworkgroup-1",
       "description": "Noosh Clientworkgroup Fixture identity_group",
       "domain": "domain-source-noosh-clientworkgroup-1",
       "event_id": "source-noosh-clientworkgroup-1",

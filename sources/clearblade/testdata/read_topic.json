@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/clearblade/topic/source-clearblade-topic-1",
       "family": "topic",
       "id": "source-clearblade-topic-1",
-      "ip": "ip-source-clearblade-topic-1",
+      "ip": "source-clearblade-topic-1",
       "name": "Clearblade Topic Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

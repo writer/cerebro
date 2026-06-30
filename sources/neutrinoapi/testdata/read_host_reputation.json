@@ -45,7 +45,7 @@
       "family": "host_reputation",
       "host_reputation": "host_reputation",
       "id": "source-neutrinoapi-host_reputation-1",
-      "is-listed": "is-listed-source-neutrinoapi-host_reputation-1",
+      "is-listed": "source-neutrinoapi-host_reputation-1",
       "name": "Neutrinoapi Host Reputation Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

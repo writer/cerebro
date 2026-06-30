@@ -53,7 +53,7 @@
       "resource_type": "project",
       "resource_urn": "urn:cerebro:tenant:botify_project:source-botify-project-1",
       "schema_ref": "botify/project/v1",
-      "slug": "slug-source-botify-project-1",
+      "slug": "source-botify-project-1",
       "source_id": "botify",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"

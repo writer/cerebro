@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v1/environment/webhooks",
-      "event": "event-source-shipengine-webhook-1",
+      "event": "source-shipengine-webhook-1",
       "event_id": "source-shipengine-webhook-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-shipengine-webhook-1",

@@ -74,7 +74,7 @@
       "resource_id": "source-noosh-memberrole-1",
       "resource_type": "memberrole",
       "resource_urn": "urn:cerebro:tenant:noosh_memberrole:source-noosh-memberrole-1",
-      "role_id": "role-id-source-noosh-memberrole-1",
+      "role_id": "source-noosh-memberrole-1",
       "schema_ref": "noosh/memberrole/v1",
       "source_id": "noosh",
       "status": "open",

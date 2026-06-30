@@ -30,7 +30,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/backups",
-      "backup_id": "backup-id-source-pinecone-backups-1",
+      "backup_id": "source-pinecone-backups-1",
       "event_id": "source-pinecone-backups-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-pinecone-backups-1",

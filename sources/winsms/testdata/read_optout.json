@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/winsms/optout/source-winsms-optout-1",
       "family": "optout",
       "id": "source-winsms-optout-1",
-      "incomingApiMessageId": "incomingApiMessageId-source-winsms-optout-1",
+      "incomingApiMessageId": "source-winsms-optout-1",
       "name": "Winsms Optout Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "optout": "optout",

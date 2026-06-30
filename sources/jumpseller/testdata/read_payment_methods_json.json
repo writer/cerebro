@@ -46,7 +46,7 @@
       "id": "source-jumpseller-payment_methods_json-1",
       "name": "Jumpseller Payment Methods Json Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "payment_method": "payment-method-source-jumpseller-payment_methods_json-1",
+      "payment_method": "source-jumpseller-payment_methods_json-1",
       "payment_methods_json": "payment_methods_json",
       "record_class": "asset",
       "record_selector": "$[*]",

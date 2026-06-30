@@ -30,7 +30,7 @@
     "kind": "taxamo.refund",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "amount": "amount-source-taxamo-refund-1",
+      "amount": "source-taxamo-refund-1",
       "api_method": "GET",
       "api_path": "/api/v1/transactions/${config.key}/refunds",
       "event_id": "source-taxamo-refund-1",

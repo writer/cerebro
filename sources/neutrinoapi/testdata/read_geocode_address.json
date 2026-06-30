@@ -30,7 +30,7 @@
     "kind": "neutrinoapi.geocode_address",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "address": "address-source-neutrinoapi-geocode_address-1",
+      "address": "source-neutrinoapi-geocode_address-1",
       "api_method": "GET",
       "api_path": "/geocode-address",
       "event_id": "source-neutrinoapi-geocode_address-1",

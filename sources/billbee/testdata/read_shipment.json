@@ -30,7 +30,7 @@
     "kind": "billbee.shipment",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "BillbeeId": "BillbeeId-source-billbee-shipment-1",
+      "BillbeeId": "source-billbee-shipment-1",
       "api_method": "GET",
       "api_path": "/api/v1/shipment/shipments",
       "event_id": "source-billbee-shipment-1",

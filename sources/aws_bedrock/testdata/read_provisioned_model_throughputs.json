@@ -59,7 +59,7 @@
       "id": "source-aws_bedrock-provisioned_model_throughputs-1",
       "name": "Aws Bedrock Provisioned Model Throughputs Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "provisionedModelArn": "provisionedModelArn-source-aws_bedrock-provisioned_model_throughputs-1",
+      "provisionedModelArn": "source-aws_bedrock-provisioned_model_throughputs-1",
       "provisionedModelName": "Aws Bedrock Provisioned Model Throughputs Fixture",
       "record_class": "deployment",
       "record_selector": "$.provisionedModelSummaries[*]",

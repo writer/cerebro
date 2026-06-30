@@ -54,7 +54,7 @@
       "evidence_cas_uri": "cas://cases/mastodon/activity/source-mastodon-activity-1",
       "family": "activity",
       "id": "source-mastodon-activity-1",
-      "logins": "logins-source-mastodon-activity-1",
+      "logins": "source-mastodon-activity-1",
       "name": "Mastodon Activity Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "audit_event",

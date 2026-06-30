@@ -36,7 +36,7 @@
     "kind": "osisoft.eventframe",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-osisoft-eventframe-1",
+      "Id": "source-osisoft-eventframe-1",
       "Name": "Osisoft Eventframe Fixture",
       "actor_email": "actor@osisoft.example.test",
       "actor_id": "osisoft-users-1",

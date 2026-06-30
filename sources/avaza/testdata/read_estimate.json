@@ -30,7 +30,7 @@
     "kind": "avaza.estimate",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "AccountIDFK": "AccountIDFK-source-avaza-estimate-1",
+      "AccountIDFK": "source-avaza-estimate-1",
       "Subject": "Avaza Estimate Fixture",
       "api_method": "GET",
       "api_path": "/api/Estimate",

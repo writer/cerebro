@@ -37,7 +37,7 @@
     "kind": "beezup.rule",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actionName": "actionName-source-beezup-rule-1",
+      "actionName": "source-beezup-rule-1",
       "api_method": "GET",
       "api_path": "/v2/user/analytics/${config.storeid}/rules",
       "created_at": "2026-06-01T00:00:00Z",

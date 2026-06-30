@@ -42,7 +42,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v2/bookings/team-member-booking-profiles",
-      "description": "Square Team Member Booking Profile Fixture group_membership",
+      "description": "source-square-team_member_booking_profile-1",
       "display_name": "Square Team Member Booking Profile Fixture",
       "event_id": "source-square-team_member_booking_profile-1",
       "evidence_cas": {

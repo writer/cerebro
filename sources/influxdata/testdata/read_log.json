@@ -54,7 +54,7 @@
       "evidence_cas_uri": "cas://cases/influxdata/log/source-influxdata-log-1",
       "family": "log",
       "id": "source-influxdata-log-1",
-      "message": "message-source-influxdata-log-1",
+      "message": "source-influxdata-log-1",
       "name": "Influxdata Log Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "audit_event",

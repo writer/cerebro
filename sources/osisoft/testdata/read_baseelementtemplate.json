@@ -36,7 +36,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "AllowElementToExtend": "open",
-      "Id": "Id-source-osisoft-baseelementtemplate-1",
+      "Id": "source-osisoft-baseelementtemplate-1",
       "Name": "Osisoft Baseelementtemplate Fixture",
       "Severity": "high",
       "api_method": "GET",

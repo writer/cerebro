@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-docusign-request_log-1",
       "api_method": "GET",
       "api_path": "/v2.1/diagnostics/request_logs",
-      "createdDateTime": "createdDateTime-source-docusign-request_log-1",
+      "createdDateTime": "source-docusign-request_log-1",
       "description": "Docusign Request Log Fixture",
       "event_id": "source-docusign-request_log-1",
       "event_type": "docusign.request_log.observed",

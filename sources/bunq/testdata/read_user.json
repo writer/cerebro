@@ -43,7 +43,7 @@
     "kind": "bunq.user",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "UserApiKey": "UserApiKey-source-bunq-user-1",
+      "UserApiKey": "source-bunq-user-1",
       "api_method": "GET",
       "api_path": "/user",
       "created_at": "2026-06-01T00:00:00Z",

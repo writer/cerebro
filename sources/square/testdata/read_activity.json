@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-square-activity-1",
       "api_method": "GET",
       "api_path": "/v2/gift-cards/activities",
-      "category": "category-source-square-activity-1",
+      "category": "source-square-activity-1",
       "event_id": "source-square-activity-1",
       "event_type": "square.activity.observed",
       "evidence_cas": {

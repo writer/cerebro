@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/docusign/permission_profile/source-docusign-permission_profile-1",
       "family": "permission_profile",
       "id": "source-docusign-permission_profile-1",
-      "modifiedByUsername": "modifiedByUsername-source-docusign-permission_profile-1",
+      "modifiedByUsername": "source-docusign-permission_profile-1",
       "name": "Docusign Permission Profile Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "permission_profile": "permission_profile",

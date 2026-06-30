@@ -57,7 +57,7 @@
       "evidence_cas_uri": "cas://cases/aws_bedrock/model_customization_jobs/source-aws_bedrock-model_customization_jobs-1",
       "family": "model_customization_jobs",
       "id": "source-aws_bedrock-model_customization_jobs-1",
-      "jobArn": "jobArn-source-aws_bedrock-model_customization_jobs-1",
+      "jobArn": "source-aws_bedrock-model_customization_jobs-1",
       "jobName": "Aws Bedrock Model Customization Jobs Fixture",
       "name": "Aws Bedrock Model Customization Jobs Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/buckets/${config.bucketkey}/tests/${config.testid}/metrics",
-      "avg_response_time_ms": "avg-response-time-ms-source-runscope-metric-1",
+      "avg_response_time_ms": "source-runscope-metric-1",
       "event_id": "source-runscope-metric-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-runscope-metric-1",

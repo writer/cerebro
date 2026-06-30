@@ -38,7 +38,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v2.1/accounts/${config.accountid}/signing_groups",
-      "created": "created-source-docusign-signing_group-1",
+      "created": "source-docusign-signing_group-1",
       "description": "Docusign Signing Group Fixture identity_group",
       "domain": "domain-source-docusign-signing_group-1",
       "event_id": "source-docusign-signing_group-1",

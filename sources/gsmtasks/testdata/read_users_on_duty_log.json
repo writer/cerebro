@@ -36,7 +36,7 @@
     "kind": "gsmtasks.users_on_duty_log",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "account": "account-source-gsmtasks-users_on_duty_log-1",
+      "account": "source-gsmtasks-users_on_duty_log-1",
       "actor_email": "actor@gsmtasks.example.test",
       "actor_id": "gsmtasks-users-1",
       "actor_name": "actor-name-source-gsmtasks-users_on_duty_log-1",

@@ -30,7 +30,7 @@
     "kind": "taxamo.vy",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "amount": "amount-source-taxamo-vy-1",
+      "amount": "source-taxamo-vy-1",
       "api_method": "GET",
       "api_path": "/api/v1/reports/eu/vies",
       "event_id": "source-taxamo-vy-1",

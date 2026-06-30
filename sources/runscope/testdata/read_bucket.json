@@ -45,7 +45,7 @@
       "evidence_cas_uri": "cas://cases/runscope/bucket/source-runscope-bucket-1",
       "family": "bucket",
       "id": "source-runscope-bucket-1",
-      "key": "key-source-runscope-bucket-1",
+      "key": "source-runscope-bucket-1",
       "name": "Runscope Bucket Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

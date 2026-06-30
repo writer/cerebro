@@ -36,7 +36,7 @@
     "kind": "files_com.user_group",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "admin": "admin-source-files_com-user_group-1",
+      "admin": "source-files_com-user_group-1",
       "api_method": "GET",
       "api_path": "/user/groups",
       "description": "Files Com User Group Fixture identity_group",

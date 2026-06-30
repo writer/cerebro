@@ -46,7 +46,7 @@
       "id": "source-visiblethread-weburl-1",
       "name": "Visiblethread Weburl Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "paragraphCounter": "paragraphCounter-source-visiblethread-weburl-1",
+      "paragraphCounter": "source-visiblethread-weburl-1",
       "record_class": "asset",
       "record_selector": "$.paragraphs[*]",
       "resource_id": "source-visiblethread-weburl-1",

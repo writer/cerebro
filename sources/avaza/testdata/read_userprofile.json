@@ -43,7 +43,7 @@
     "kind": "avaza.userprofile",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Email": "Email-source-avaza-userprofile-1",
+      "Email": "source-avaza-userprofile-1",
       "api_method": "GET",
       "api_path": "/api/UserProfile",
       "created_at": "2026-06-01T00:00:00Z",

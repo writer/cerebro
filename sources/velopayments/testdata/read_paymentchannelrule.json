@@ -53,7 +53,7 @@
       "evidence_cas_uri": "cas://cases/velopayments/paymentchannelrule/source-velopayments-paymentchannelrule-1",
       "family": "paymentchannelrule",
       "id": "source-velopayments-paymentchannelrule-1",
-      "isoCountryCode": "isoCountryCode-source-velopayments-paymentchannelrule-1",
+      "isoCountryCode": "source-velopayments-paymentchannelrule-1",
       "name": "Velopayments Paymentchannelrule Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "paymentchannelrule": "paymentchannelrule",

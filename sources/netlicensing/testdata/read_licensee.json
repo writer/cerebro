@@ -44,7 +44,7 @@
       "evidence_cas_uri": "cas://cases/netlicensing/licensee/source-netlicensing-licensee-1",
       "family": "licensee",
       "id": "source-netlicensing-licensee-1",
-      "infos": "infos-source-netlicensing-licensee-1",
+      "infos": "source-netlicensing-licensee-1",
       "licensee": "licensee",
       "name": "Netlicensing Licensee Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

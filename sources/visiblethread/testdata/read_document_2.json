@@ -47,7 +47,7 @@
       "id": "source-visiblethread-document_2-1",
       "name": "Visiblethread Document 2 Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "paragraphCounter": "paragraphCounter-source-visiblethread-document_2-1",
+      "paragraphCounter": "source-visiblethread-document_2-1",
       "record_class": "asset",
       "record_selector": "$.paragraphs[*]",
       "resource_id": "source-visiblethread-document_2-1",

@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/api/v/4/devices/${config.systemkey}/connections",
-      "client_id": "client-id-source-clearblade-connection-1",
+      "client_id": "source-clearblade-connection-1",
       "connection": "connection",
       "event_id": "source-clearblade-connection-1",
       "evidence_cas": {

@@ -52,7 +52,7 @@
       "evidence_cas_uri": "cas://cases/netlicensing/token/source-netlicensing-token-1",
       "family": "token",
       "id": "source-netlicensing-token-1",
-      "infos": "infos-source-netlicensing-token-1",
+      "infos": "source-netlicensing-token-1",
       "name": "Netlicensing Token Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "secret",

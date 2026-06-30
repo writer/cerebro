@@ -54,7 +54,7 @@
       "evidence_cas_uri": "cas://cases/tailscale/device/source-tailscale-device-1",
       "family": "device",
       "hostname": "Tailscale Device Fixture",
-      "id": "device-id-source-tailscale-device-1",
+      "id": "source-tailscale-device-1",
       "isExternal": "true",
       "keyExpiryDisabled": "true",
       "lastSeen": "2026-06-01T00:00:00Z",

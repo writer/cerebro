@@ -55,7 +55,7 @@
       "evidence_cas_uri": "cas://cases/mist/call_event/source-mist-call_event-1",
       "family": "call_event",
       "id": "source-mist-call_event-1",
-      "key": "key-source-mist-call_event-1",
+      "key": "source-mist-call_event-1",
       "name": "Mist Call Event Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "audit_event",

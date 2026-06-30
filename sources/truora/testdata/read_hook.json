@@ -30,7 +30,7 @@
     "kind": "truora.hook",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actions": "actions-source-truora-hook-1",
+      "actions": "source-truora-hook-1",
       "api_method": "GET",
       "api_path": "/v1/hooks",
       "event_id": "source-truora-hook-1",

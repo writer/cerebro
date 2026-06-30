@@ -41,7 +41,7 @@
       "actor_name": "actor-name-source-magento-attribute-1",
       "api_method": "GET",
       "api_path": "/V1/categories/attributes",
-      "apply_to": "apply-to-source-magento-attribute-1",
+      "apply_to": "source-magento-attribute-1",
       "event_id": "source-magento-attribute-1",
       "event_type": "magento.attribute.observed",
       "evidence_cas": {

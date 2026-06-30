@@ -39,7 +39,7 @@
     "kind": "victorops.incident",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "alertCount": "alertCount-source-victorops-incident-1",
+      "alertCount": "source-victorops-incident-1",
       "alert_id": "source-victorops-incident-1",
       "alert_name": "Victorops Incident Fixture",
       "alert_severity": "critical",

@@ -42,7 +42,7 @@
       "evidence_cas_uri": "cas://cases/aws_bedrock/foundation_models/source-aws_bedrock-foundation_models-1",
       "family": "foundation_models",
       "id": "source-aws_bedrock-foundation_models-1",
-      "modelId": "modelId-source-aws_bedrock-foundation_models-1",
+      "modelId": "source-aws_bedrock-foundation_models-1",
       "modelName": "Aws Bedrock Foundation Models Fixture",
       "name": "Aws Bedrock Foundation Models Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

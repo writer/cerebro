@@ -36,7 +36,7 @@
     "kind": "configcat.auditlog",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actionTarget": "actionTarget-source-configcat-auditlog-1",
+      "actionTarget": "source-configcat-auditlog-1",
       "actor_email": "actor@configcat.example.test",
       "actor_id": "configcat-users-1",
       "actor_name": "actor-name-source-configcat-auditlog-1",

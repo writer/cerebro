@@ -30,7 +30,7 @@
     "kind": "avaza.expense",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Email": "Email-source-avaza-expense-1",
+      "Email": "source-avaza-expense-1",
       "api_method": "GET",
       "api_path": "/api/Expense",
       "event_id": "source-avaza-expense-1",

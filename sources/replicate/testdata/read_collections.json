@@ -50,7 +50,7 @@
       "resource_type": "collections",
       "resource_urn": "urn:cerebro:tenant:replicate_collections:source-replicate-collections-1",
       "schema_ref": "replicate/collections/v1",
-      "slug": "slug-source-replicate-collections-1",
+      "slug": "source-replicate-collections-1",
       "source_id": "replicate",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"

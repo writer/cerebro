@@ -51,7 +51,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/google_drive/changes/source-google_drive-changes-1",
       "family": "changes",
-      "fileId": "fileId-source-google_drive-changes-1",
+      "fileId": "source-google_drive-changes-1",
       "id": "source-google_drive-changes-1",
       "name": "Google Drive Changes Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

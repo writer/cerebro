@@ -43,7 +43,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/opendatasoft/metadata_template/source-opendatasoft-metadata_template-1",
       "family": "metadata_template",
-      "href": "href-source-opendatasoft-metadata_template-1",
+      "href": "source-opendatasoft-metadata_template-1",
       "id": "source-opendatasoft-metadata_template-1",
       "metadata_template": "metadata_template",
       "name": "Opendatasoft Metadata Template Fixture",

@@ -30,7 +30,7 @@
     "kind": "firmalyzer.private_key",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "algorithm": "algorithm-source-firmalyzer-private_key-1",
+      "algorithm": "source-firmalyzer-private_key-1",
       "api_method": "GET",
       "api_path": "/firmware/${config.firmware_hash}/private-keys",
       "event_id": "source-firmalyzer-private_key-1",

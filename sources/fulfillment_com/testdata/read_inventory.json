@@ -45,7 +45,7 @@
       "family": "inventory",
       "id": "source-fulfillment_com-inventory-1",
       "inventory": "inventory",
-      "item": "item-source-fulfillment_com-inventory-1",
+      "item": "source-fulfillment_com-inventory-1",
       "name": "Fulfillment Com Inventory Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",

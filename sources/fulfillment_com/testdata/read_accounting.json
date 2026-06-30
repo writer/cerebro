@@ -61,7 +61,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/fulfillment_com/accounting/source-fulfillment_com-accounting-1",
       "family": "accounting",
-      "fees": "fees-source-fulfillment_com-accounting-1",
+      "fees": "source-fulfillment_com-accounting-1",
       "id": "source-fulfillment_com-accounting-1",
       "job_title": "job-title-source-fulfillment_com-accounting-1",
       "last_login_at": "2026-06-01T00:00:00Z",

@@ -47,7 +47,7 @@
       "id": "source-zuora-hostedpage-1",
       "name": "Zuora Hostedpage Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "pageId": "pageId-source-zuora-hostedpage-1",
+      "pageId": "source-zuora-hostedpage-1",
       "record_class": "asset",
       "record_selector": "$.hostedpages[*]",
       "resource_id": "source-zuora-hostedpage-1",

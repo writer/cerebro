@@ -64,7 +64,7 @@
       "resource_urn": "urn:cerebro:tenant:noosh_teamtemplate:source-noosh-teamtemplate-1",
       "schema_ref": "noosh/teamtemplate/v1",
       "source_id": "noosh",
-      "team_template_id": "team-template-id-source-noosh-teamtemplate-1",
+      "team_template_id": "source-noosh-teamtemplate-1",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
     },

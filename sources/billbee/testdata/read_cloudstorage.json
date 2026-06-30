@@ -30,7 +30,7 @@
     "kind": "billbee.cloudstorage",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Id": "Id-source-billbee-cloudstorage-1",
+      "Id": "source-billbee-cloudstorage-1",
       "Name": "Billbee Cloudstorage Fixture",
       "api_method": "GET",
       "api_path": "/api/v1/cloudstorages",

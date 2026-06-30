@@ -39,7 +39,7 @@
     "kind": "godaddy.optin",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "addedAt": "addedAt-source-godaddy-optin-1",
+      "addedAt": "source-godaddy-optin-1",
       "alert_id": "source-godaddy-optin-1",
       "alert_name": "Godaddy Optin Fixture",
       "alert_severity": "critical",

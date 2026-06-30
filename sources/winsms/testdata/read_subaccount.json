@@ -43,7 +43,7 @@
     "kind": "winsms.subaccount",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "accountNumber": "accountNumber-source-winsms-subaccount-1",
+      "accountNumber": "source-winsms-subaccount-1",
       "api_method": "GET",
       "api_path": "/subaccounts",
       "created_at": "2026-06-01T00:00:00Z",

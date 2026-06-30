@@ -36,7 +36,7 @@
     "kind": "zuora.revenue_event",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "accountingPeriodEndDate": "accountingPeriodEndDate-source-zuora-revenue_event-1",
+      "accountingPeriodEndDate": "source-zuora-revenue_event-1",
       "actor_email": "actor@zuora.example.test",
       "actor_id": "zuora-users-1",
       "actor_name": "actor-name-source-zuora-revenue_event-1",

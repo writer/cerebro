@@ -62,7 +62,7 @@
       "evidence_cas_uri": "cas://cases/clearblade/session_user/source-clearblade-session_user-1",
       "family": "session_user",
       "id": "source-clearblade-session_user-1",
-      "issued": "issued-source-clearblade-session_user-1",
+      "issued": "source-clearblade-session_user-1",
       "job_title": "job-title-source-clearblade-session_user-1",
       "last_login_at": "2026-06-01T00:00:00Z",
       "login": "login@clearblade.example.test",

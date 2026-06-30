@@ -44,7 +44,7 @@
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_uri": "cas://cases/discourse/backups_json/source-discourse-backups_json-1",
       "family": "backups_json",
-      "filename": "filename-source-discourse-backups_json-1",
+      "filename": "source-discourse-backups_json-1",
       "id": "source-discourse-backups_json-1",
       "name": "Discourse Backups Json Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

@@ -52,7 +52,7 @@
       "evidence_cas_uri": "cas://cases/files_com/exavault_reserved/source-files_com-exavault_reserved-1",
       "exavault_reserved": "exavault_reserved",
       "family": "exavault_reserved",
-      "ftp_enabled": "ftp-enabled-source-files_com-exavault_reserved-1",
+      "ftp_enabled": "source-files_com-exavault_reserved-1",
       "id": "source-files_com-exavault_reserved-1",
       "name": "Files Com Exavault Reserved Fixture",
       "observed_at": "2026-06-01T00:00:00Z",

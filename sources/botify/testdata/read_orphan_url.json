@@ -56,7 +56,7 @@
       "source_id": "botify",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z",
-      "url": "url-source-botify-orphan_url-1"
+      "url": "source-botify-orphan_url-1"
     },
     "schema_ref": "botify/orphan_url/v1",
     "source_id": "botify",

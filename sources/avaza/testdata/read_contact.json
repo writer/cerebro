@@ -30,7 +30,7 @@
     "kind": "avaza.contact",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "Email": "Email-source-avaza-contact-1",
+      "Email": "source-avaza-contact-1",
       "api_method": "GET",
       "api_path": "/api/Contact",
       "contact": "contact",

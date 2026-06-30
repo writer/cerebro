@@ -32,7 +32,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/custom_fields.json",
-      "custom_field": "custom-field-source-jumpseller-custom_fields_json-1",
+      "custom_field": "source-jumpseller-custom_fields_json-1",
       "custom_fields_json": "custom_fields_json",
       "event_id": "source-jumpseller-custom_fields_json-1",
       "evidence_cas": {

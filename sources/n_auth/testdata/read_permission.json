@@ -30,7 +30,7 @@
     "kind": "n_auth.permission",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "acl": "acl-source-n_auth-permission-1",
+      "acl": "source-n_auth-permission-1",
       "api_method": "GET",
       "api_path": "/servers/${config.serverid}/permissions/",
       "event_id": "source-n_auth-permission-1",

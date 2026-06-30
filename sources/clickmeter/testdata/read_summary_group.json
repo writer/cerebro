@@ -36,7 +36,7 @@
     "kind": "clickmeter.summary_group",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "activityDay": "activityDay-source-clickmeter-summary_group-1",
+      "activityDay": "source-clickmeter-summary_group-1",
       "api_method": "GET",
       "api_path": "/aggregated/summary/groups",
       "description": "Clickmeter Summary Group Fixture identity_group",
