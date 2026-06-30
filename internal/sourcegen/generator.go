@@ -110,6 +110,7 @@ type familyData struct {
 	ProjectorName         string
 	Path                  string
 	Method                string
+	RecordSelector        string
 	URNKind               string
 	EventKind             string
 	SchemaRef             string
@@ -667,6 +668,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
 			Path:                  resource.Path,
 			Method:                methodForResource(resource),
+			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
 			SchemaRef:             schemaRef,
@@ -900,7 +902,7 @@ func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 	}
 	for _, family := range request.Families {
 		files = append(files,
-			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "discover_"+family.Name+".json"), Content: renderDiscoverFixture(family)},
+			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "discover_"+family.Name+".json"), Content: renderDiscoverFixture(request, family)},
 			generatedFile{Path: filepath.Join(sourceRoot, "testdata", "read_"+family.Name+".json"), Content: renderReadFixture(request, family)},
 		)
 	}
@@ -1564,25 +1566,35 @@ func renderTestPath(template string) string {
 	return rendered
 }
 
-func renderDiscoverFixture(family familyData) string {
-	fixture := []string{fixtureURN(family)}
+func renderDiscoverFixture(request normalizedRequest, family familyData) string {
+	fixture := []string{fixtureURN(request, family)}
 	payload, _ := json.MarshalIndent(fixture, "", "  ")
 	return string(append(payload, '\n'))
 }
 
 func renderReadFixture(request normalizedRequest, family familyData) string {
-	payload := fixturePayload(family)
-	attributes := fixtureAttributes(family)
+	payload := fixturePayload(request, family)
+	attributes := fixtureAttributes(request, family)
+	for attr, path := range attributePathsForFamily(family) {
+		value := fixtureAttributeValueForMapping(request, attr, path, family)
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		setFixturePayloadMappedField(payload, path, value)
+		if strings.TrimSpace(attributes[attr]) == "" || attr == "resource_type" {
+			attributes[attr] = value
+		}
+	}
 	for _, field := range family.RequiredPayloadFields {
-		setFixturePayloadField(payload, field, fixturePayloadValue(field, family))
+		setFixturePayloadField(payload, field, fixturePayloadValue(request, field, family))
 	}
 	for _, attr := range family.RequiredAttributes {
 		if strings.TrimSpace(attributes[attr]) == "" {
-			attributes[attr] = fixtureAttributeValue(attr, family)
+			attributes[attr] = fixtureAttributeValue(request, attr, family)
 		}
 	}
 	events := []map[string]any{{
-		"id":          request.SourceID + "-" + family.Name + "-record-1",
+		"id":          fixtureEventID(request, family),
 		"tenant_id":   "tenant",
 		"source_id":   request.SourceID,
 		"kind":        family.EventKind,
@@ -1595,169 +1607,332 @@ func renderReadFixture(request normalizedRequest, family familyData) string {
 	return string(append(rendered, '\n'))
 }
 
-func fixturePayload(family familyData) map[string]any {
+func fixturePayload(request normalizedRequest, family familyData) map[string]any {
+	recordID := fixtureRecordID(request, family)
+	displayName := fixtureDisplayName(request, family)
+	evidenceURI := fixtureEvidenceURI(request, family)
 	payload := map[string]any{
-		"id":                  "record-1",
-		"name":                "Record One",
-		"resource_urn":        fixtureURN(family),
-		"resource_type":       family.Class,
-		"resource_id":         "record-1",
+		"api_method":          fixtureAPIMethod(family),
+		"api_path":            family.Path,
+		"family":              family.Name,
+		"id":                  recordID,
+		"name":                displayName,
+		"record_class":        family.Class,
+		"resource_urn":        fixtureURN(request, family),
+		"resource_type":       fixtureResourceType(family),
+		"resource_id":         recordID,
+		"schema_ref":          family.SchemaRef,
+		"source_id":           request.SourceID,
 		"updated_at":          "2026-06-01T00:00:00Z",
-		"evidence_cas_uri":    "cas://cases/record-1",
+		"evidence_cas_uri":    evidenceURI,
 		"evidence_cas_digest": "sha256:test",
+	}
+	if family.RecordSelector != "" {
+		payload["record_selector"] = family.RecordSelector
 	}
 	switch family.Class {
 	case "finding":
-		payload["finding_id"] = "finding-1"
+		payload["finding_id"] = recordID
 		payload["severity"] = "high"
 		payload["status"] = "open"
-		payload["title"] = "Finding One"
+		payload["title"] = displayName
+		payload["description"] = displayName + " finding"
 	case "identity_user":
-		payload["user_id"] = "user-1"
-		payload["email"] = "user@example.test"
-		payload["display_name"] = "User One"
+		payload["user_id"] = recordID
+		payload["email"] = fixtureEmail(request, "user")
+		payload["display_name"] = displayName
 	case "identity_group":
-		payload["group_id"] = "group-1"
-		payload["group_email"] = "group@example.test"
-		payload["group_name"] = "Group One"
+		payload["group_id"] = recordID
+		payload["group_email"] = fixtureEmail(request, "group")
+		payload["group_name"] = displayName
 	case "group_membership":
-		payload["group_id"] = "group-1"
-		payload["member_id"] = "user-1"
-		payload["member_email"] = "user@example.test"
+		payload["group_id"] = fixtureRelatedRecordID(request, "groups")
+		payload["member_id"] = fixtureRelatedRecordID(request, "users")
+		payload["member_email"] = fixtureEmail(request, "user")
 	case "audit_event":
-		payload["event_id"] = "event-1"
-		payload["event_type"] = "user.login"
-		payload["actor_id"] = "user-1"
+		payload["event_id"] = recordID
+		payload["event_type"] = request.SourceID + "." + family.Name + ".observed"
+		payload["actor_id"] = fixtureRelatedRecordID(request, "users")
 	case "evidence_cas_reference":
-		payload["evidence_id"] = "evidence-1"
+		payload["evidence_id"] = recordID
 		payload["evidence_type"] = "evidence_cas.artifact"
-		payload["uri"] = "cas://cases/evidence-1"
+		payload["uri"] = evidenceURI
 		payload["digest"] = "sha256:test"
 	case "secret":
-		payload["secret_id"] = "secret-1"
-		payload["secret_name"] = "Secret One"
+		payload["secret_id"] = recordID
+		payload["secret_name"] = displayName
 	case "policy":
-		payload["policy_id"] = "policy-1"
-		payload["policy_name"] = "Policy One"
+		payload["policy_id"] = recordID
+		payload["policy_name"] = displayName
 	case "deployment":
-		payload["deployment_id"] = "deployment-1"
-		payload["deployment_name"] = "Production"
+		payload["deployment_id"] = recordID
+		payload["deployment_name"] = displayName
 	case "alert":
-		payload["alert_id"] = "alert-1"
+		payload["alert_id"] = recordID
+		payload["alert_name"] = displayName
 		payload["alert_severity"] = "critical"
+		payload["alert_status"] = "open"
 	}
 	return payload
 }
 
-func fixtureAttributes(family familyData) map[string]string {
+func fixtureAttributes(request normalizedRequest, family familyData) map[string]string {
+	recordID := fixtureRecordID(request, family)
+	displayName := fixtureDisplayName(request, family)
+	evidenceURI := fixtureEvidenceURI(request, family)
 	attributes := map[string]string{
+		"api_method":            fixtureAPIMethod(family),
+		"api_path":              family.Path,
+		"external_id":           recordID,
+		"family":                family.Name,
+		"provider":              request.SourceID,
+		"record_class":          family.Class,
+		"schema":                family.Schema,
+		"source_provider":       request.SourceID,
+		"source_system":         request.SourceID,
 		"tenant_id":             "tenant",
-		"source_event_id":       "record-1",
-		"resource_urn":          fixtureURN(family),
-		"resource_type":         family.Class,
-		"resource_id":           "record-1",
-		"resource_name":         "Record One",
+		"source_event_id":       recordID,
+		"resource_urn":          fixtureURN(request, family),
+		"resource_type":         fixtureResourceType(family),
+		"resource_id":           recordID,
+		"resource_name":         displayName,
 		"observed_at":           "2026-06-01T00:00:00Z",
-		"evidence_cas_uri":      "cas://cases/record-1",
+		"evidence_cas_uri":      evidenceURI,
 		"evidence_cas_digest":   "sha256:test",
 		"evidence_cas_ref_type": "source_fixture",
 	}
+	if family.RecordSelector != "" {
+		attributes["record_selector"] = family.RecordSelector
+	}
 	switch family.Class {
 	case "finding":
-		attributes["finding_id"] = "finding-1"
+		attributes["finding_id"] = recordID
 		attributes["severity"] = "high"
 		attributes["status"] = "open"
-		attributes["title"] = "Finding One"
+		attributes["title"] = displayName
 	case "identity_user":
-		attributes["user_id"] = "user-1"
-		attributes["email"] = "user@example.test"
-		attributes["display_name"] = "User One"
+		attributes["user_id"] = recordID
+		attributes["email"] = fixtureEmail(request, "user")
+		attributes["display_name"] = displayName
 	case "identity_group":
-		attributes["group_id"] = "group-1"
-		attributes["group_email"] = "group@example.test"
-		attributes["group_name"] = "Group One"
+		attributes["group_id"] = recordID
+		attributes["group_email"] = fixtureEmail(request, "group")
+		attributes["group_name"] = displayName
 	case "group_membership":
-		attributes["group_id"] = "group-1"
-		attributes["member_id"] = "user-1"
-		attributes["member_email"] = "user@example.test"
+		attributes["group_id"] = fixtureRelatedRecordID(request, "groups")
+		attributes["member_id"] = fixtureRelatedRecordID(request, "users")
+		attributes["member_email"] = fixtureEmail(request, "user")
 	case "audit_event":
-		attributes["event_type"] = "user.login"
-		attributes["actor_id"] = "user-1"
-		attributes["actor_email"] = "user@example.test"
+		attributes["event_type"] = request.SourceID + "." + family.Name + ".observed"
+		attributes["actor_id"] = fixtureRelatedRecordID(request, "users")
+		attributes["actor_email"] = fixtureEmail(request, "user")
 	case "evidence_cas_reference":
-		attributes["evidence_id"] = "evidence-1"
+		attributes["evidence_id"] = recordID
 		attributes["evidence_type"] = "evidence_cas.artifact"
-		attributes["evidence_cas_uri"] = "cas://cases/evidence-1"
+		attributes["evidence_cas_uri"] = evidenceURI
 		attributes["evidence_cas_digest"] = "sha256:test"
 	case "secret":
-		attributes["secret_id"] = "secret-1"
-		attributes["secret_name"] = "Secret One"
+		attributes["secret_id"] = recordID
+		attributes["secret_name"] = displayName
 	case "policy":
-		attributes["policy_id"] = "policy-1"
-		attributes["policy_name"] = "Policy One"
+		attributes["policy_id"] = recordID
+		attributes["policy_name"] = displayName
 	case "deployment":
-		attributes["deployment_id"] = "deployment-1"
-		attributes["deployment_name"] = "Production"
+		attributes["deployment_id"] = recordID
+		attributes["deployment_name"] = displayName
 	case "alert":
-		attributes["alert_id"] = "alert-1"
+		attributes["alert_id"] = recordID
+		attributes["alert_name"] = displayName
 		attributes["alert_severity"] = "critical"
+		attributes["alert_status"] = "open"
 	}
 	return attributes
 }
 
-func fixtureURN(family familyData) string {
+func fixtureURN(request normalizedRequest, family familyData) string {
 	kind := strings.TrimSpace(family.URNKind)
 	if kind == "" {
 		kind = "runtime_" + family.Name
 	}
-	return "urn:cerebro:tenant:" + kind + ":record-1"
+	return "urn:cerebro:tenant:" + kind + ":" + fixtureRecordID(request, family)
 }
 
-func fixturePayloadValue(field string, family familyData) string {
+func fixturePayloadValue(request normalizedRequest, field string, family familyData) string {
 	field = strings.TrimSpace(field)
 	if field == "" {
-		return "record-1"
+		return fixtureRecordID(request, family)
 	}
 	switch field {
 	case "uri", "evidence_cas_uri":
-		return "cas://cases/evidence-1"
+		return fixtureEvidenceURI(request, family)
 	case "digest", "evidence_cas_digest":
 		return "sha256:test"
 	default:
-		return fixtureAttributeValue(field, family)
+		return fixtureAttributeValue(request, field, family)
 	}
 }
 
-func fixtureAttributeValue(attr string, family familyData) string {
+func fixtureAttributeValue(request normalizedRequest, attr string, family familyData) string {
 	attr = strings.TrimSpace(attr)
+	recordID := fixtureRecordID(request, family)
 	switch attr {
 	case "tenant_id":
 		return "tenant"
-	case "source_event_id":
-		return "record-1"
-	case "resource_urn":
-		return fixtureURN(family)
-	case "resource_type":
+	case "api_method":
+		return fixtureAPIMethod(family)
+	case "api_path":
+		return family.Path
+	case "record_selector":
+		return family.RecordSelector
+	case "external_id", "id", "source_event_id":
+		return recordID
+	case "source_id", "source_provider", "source_system", "provider", "alert_source":
+		return request.SourceID
+	case "family":
+		return family.Name
+	case "record_class":
 		return family.Class
-	case "resource_id", "id":
-		return "record-1"
+	case "schema":
+		return family.Schema
+	case "resource_urn":
+		return fixtureURN(request, family)
+	case "resource_type":
+		return fixtureResourceType(family)
+	case "resource_id", "alert_id", "deployment_id", "evidence_id", "finding_id", "policy_id", "secret_id", "user_id":
+		return recordID
+	case "group_id":
+		if family.Class == "group_membership" {
+			return fixtureRelatedRecordID(request, "groups")
+		}
+		return recordID
+	case "member_id", "member_user_id":
+		return fixtureRelatedRecordID(request, "users")
+	case "resource_name", "alert_name", "deployment_name", "display_name", "group_name", "member_name", "name", "policy_name", "secret_name", "title":
+		return fixtureDisplayName(request, family)
+	case "email", "primary_email", "login", "actor_email", "group_email", "member_email", "resource_email":
+		return fixtureEmail(request, strings.TrimSuffix(strings.TrimPrefix(attr, "actor_"), "_email"))
 	case "severity":
 		return "high"
 	case "alert_severity":
 		return "critical"
-	case "status":
+	case "status", "alert_status", "deployment_status", "policy_status", "secret_status":
 		return "open"
+	case "description", "alert_description", "policy_description":
+		return fixtureDisplayName(request, family) + " " + family.Class
 	case "event_type":
-		return "user.login"
+		return request.SourceID + "." + family.Name + ".observed"
 	case "actor_id":
-		return "user-1"
-	case "policy_name":
-		return "Policy One"
-	case "deployment_name":
-		return "Production"
+		return fixtureRelatedRecordID(request, "users")
+	case "evidence_cas_uri", "uri":
+		return fixtureEvidenceURI(request, family)
+	case "evidence_cas_digest", "digest":
+		return "sha256:test"
+	case "evidence_cas_ref_type":
+		return "source_fixture"
+	case "evidence_type":
+		return "evidence_cas.artifact"
+	case "secret_rotation_enabled":
+		return "true"
+	case "alert_type", "deployment_environment", "member_type", "policy_type", "secret_type":
+		return fixtureResourceType(family)
 	default:
-		return strings.ReplaceAll(firstNonEmptyString(attr, "value"), "_", "-") + "-1"
+		if strings.HasSuffix(attr, "_at") || attr == "timestamp" {
+			return "2026-06-01T00:00:00Z"
+		}
+		return strings.ReplaceAll(firstNonEmptyString(attr, "value"), "_", "-") + "-" + recordID
 	}
+}
+
+func fixtureAttributeValueForMapping(request normalizedRequest, attr string, path string, family familyData) string {
+	if attr == "resource_type" {
+		if value := fixtureLiteralResourceType(path); value != "" {
+			return value
+		}
+	}
+	return fixtureAttributeValue(request, attr, family)
+}
+
+func fixtureLiteralResourceType(rawPath string) string {
+	candidates := fixturePayloadPathCandidates(rawPath)
+	if len(candidates) == 0 {
+		return ""
+	}
+	candidate := candidates[0]
+	switch candidate {
+	case "resource_type", "type", "kind", "metadata.resource_type":
+		return ""
+	default:
+		if strings.Contains(candidate, ".") {
+			return ""
+		}
+		return candidate
+	}
+}
+
+func fixtureRecordID(request normalizedRequest, family familyData) string {
+	return request.SourceID + "-" + family.Name + "-1"
+}
+
+func fixtureEventID(request normalizedRequest, family familyData) string {
+	return request.SourceID + "-" + family.Name + "-event-1"
+}
+
+func fixtureRelatedRecordID(request normalizedRequest, familyName string) string {
+	return request.SourceID + "-" + familyName + "-1"
+}
+
+func fixtureDisplayName(request normalizedRequest, family familyData) string {
+	return titleFromID(request.SourceID) + " " + titleFromID(family.Name) + " Fixture"
+}
+
+func fixtureEvidenceURI(request normalizedRequest, family familyData) string {
+	return "cas://cases/" + request.SourceID + "/" + family.Name + "/" + fixtureRecordID(request, family)
+}
+
+func fixtureAPIMethod(family familyData) string {
+	if method := strings.TrimSpace(family.Method); method != "" {
+		return method
+	}
+	return "GET"
+}
+
+func fixtureResourceType(family familyData) string {
+	return firstNonEmptyString(family.Schema, family.Name, family.Class)
+}
+
+func fixtureEmail(request normalizedRequest, localPart string) string {
+	local := strings.Trim(strings.ReplaceAll(strings.ToLower(localPart), "_", "-"), "-")
+	if local == "" {
+		local = "user"
+	}
+	domain := strings.Trim(strings.ReplaceAll(strings.ToLower(request.SourceID), "_", "-"), "-")
+	if domain == "" {
+		domain = "source"
+	}
+	return local + "@" + domain + ".example.test"
+}
+
+func setFixturePayloadMappedField(payload map[string]any, rawPath string, value any) {
+	for _, path := range fixturePayloadPathCandidates(rawPath) {
+		if path == "" {
+			continue
+		}
+		setFixturePayloadField(payload, path, value)
+		return
+	}
+}
+
+func fixturePayloadPathCandidates(rawPath string) []string {
+	parts := strings.Split(rawPath, "|")
+	candidates := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || strings.ContainsAny(part, "$[]*{} ") {
+			continue
+		}
+		candidates = append(candidates, part)
+	}
+	return candidates
 }
 
 func setFixturePayloadField(payload map[string]any, rawPath string, value any) {

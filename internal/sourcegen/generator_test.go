@@ -209,13 +209,20 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	readFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/read_users.json")
 	for _, want := range []string{
+		`"api_path": "/v1/users"`,
 		`"kind": "example_idp.user"`,
+		`"record_selector": "$.data[*]"`,
 		`"schema_ref": "example_idp/user/v1"`,
+		`"source_id": "example_idp"`,
 		`"user_id":`,
+		`example_idp-users-1`,
 	} {
 		if !strings.Contains(readFixture, want) {
 			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
 		}
+	}
+	if strings.Contains(readFixture, "Record One") {
+		t.Fatalf("read fixture still uses generic synthetic name:\n%s", readFixture)
 	}
 	discoverFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/discover_users.json")
 	if !strings.Contains(discoverFixture, "urn:cerebro:tenant:") {
@@ -1270,10 +1277,11 @@ func FuzzGenerateDryRun(f *testing.F) {
 }
 
 func TestFixtureAttributeValueKeepsAlertSeverityCritical(t *testing.T) {
-	if got := fixtureAttributeValue("severity", familyData{}); got != "high" {
+	request := normalizedRequest{Request: Request{SourceID: "demo_source"}}
+	if got := fixtureAttributeValue(request, "severity", familyData{Name: "alerts"}); got != "high" {
 		t.Fatalf("severity = %q, want high", got)
 	}
-	if got := fixtureAttributeValue("alert_severity", familyData{}); got != "critical" {
+	if got := fixtureAttributeValue(request, "alert_severity", familyData{Name: "alerts"}); got != "critical" {
 		t.Fatalf("alert_severity = %q, want critical", got)
 	}
 }
