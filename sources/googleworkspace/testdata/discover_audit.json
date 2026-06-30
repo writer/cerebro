@@ -1,30 +1,4 @@
 [
-  {
-    "id": {
-      "time": "2026-04-23T00:00:00.000Z",
-      "uniqueQualifier": "audit-1",
-      "applicationName": "admin",
-      "customerId": "C01"
-    },
-    "actor": {
-      "email": "admin@writer.com",
-      "profileId": "1001"
-    },
-    "events": [
-      {
-        "name": "CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
-        "type": "SECURITY_SETTINGS",
-        "parameters": [
-          {
-            "name": "RESOURCE_TYPE",
-            "value": "security_setting"
-          },
-          {
-            "name": "SETTING_NAME",
-            "value": "2SV enforcement"
-          }
-        ]
-      }
-    ]
-  }
+  "urn:cerebro:writer.com:google_workspace_audit:CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
+  "urn:cerebro:writer.com:google_workspace_audit:AUTHORIZE_API_CLIENT_ACCESS"
 ]
