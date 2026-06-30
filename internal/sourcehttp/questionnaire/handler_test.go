@@ -536,9 +536,11 @@ func TestLinkVendorRemovesVendorContext(t *testing.T) {
 			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
 			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
 				Attributes: map[string]string{
-					"linked_vendor_urn":  "urn:cerebro:tenant-1:vendor:okta",
-					"linked_vendor_id":   "okta",
-					"vendor_link_status": "linked",
+					"linked_vendor_urn":              "urn:cerebro:tenant-1:vendor:okta",
+					"linked_vendor_id":               "okta",
+					"vendor_link_previous_direction": ports.QuestionnaireDirectionCustomerSecurityReview,
+					"vendor_link_reason":             "Matched intake requester.",
+					"vendor_link_status":             "linked",
 				},
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -551,7 +553,7 @@ func TestLinkVendorRemovesVendorContext(t *testing.T) {
 		},
 		Actor: func(context.Context) string { return "risk@example.com" },
 	})
-	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/vendor-link", strings.NewReader(`{"unlink":true,"reason":"Wrong vendor."}`))
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/vendor-link", strings.NewReader(`{"unlink":true}`))
 	req.SetPathValue("runID", "run-1")
 	recorder := httptest.NewRecorder()
 
@@ -563,7 +565,13 @@ func TestLinkVendorRemovesVendorContext(t *testing.T) {
 	if store.saved.VendorURN != "" || store.saved.VendorID != "" {
 		t.Fatalf("vendor context = %q/%q, want cleared", store.saved.VendorURN, store.saved.VendorID)
 	}
-	if store.saved.Attributes["linked_vendor_urn"] != "" || store.saved.Attributes["vendor_link_status"] != "unlinked" {
+	if store.saved.Direction != ports.QuestionnaireDirectionCustomerSecurityReview {
+		t.Fatalf("direction = %q, want customer_security_review", store.saved.Direction)
+	}
+	if store.saved.Attributes["linked_vendor_urn"] != "" ||
+		store.saved.Attributes["vendor_link_previous_direction"] != "" ||
+		store.saved.Attributes["vendor_link_reason"] != "" ||
+		store.saved.Attributes["vendor_link_status"] != "unlinked" {
 		t.Fatalf("attributes = %#v, want unlinked vendor metadata", store.saved.Attributes)
 	}
 }
