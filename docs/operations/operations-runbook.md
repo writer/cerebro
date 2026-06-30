@@ -134,6 +134,11 @@ Discard a record only after confirming the event should not be replayed:
 ./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
 ```
 
+Dead-letter IDs are deterministic for the subject, event ID, and payload. If the
+same event exhausts again after an operator has replayed or discarded that
+record, Cerebro preserves the terminal record and does not move it back to
+`pending`.
+
 ### Neo4j or Aura
 
 Neo4j or Aura is required for graph projection, graph queries, graph health, graph ingest runs, impact queries, and graph-agent flows.

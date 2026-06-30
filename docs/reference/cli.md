@@ -73,6 +73,9 @@ Replay one record after the append-log path is healthy, or discard it after inve
 ./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
 ```
 
+Dead-letter IDs are deterministic for the subject, event ID, and payload. A
+replayed or discarded record stays terminal if the same event exhausts again.
+
 ## Finding Rules
 
 ```bash
