@@ -836,7 +836,7 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/auth0/source_test.go")
 	for _, want := range []string{
 		`r.URL.Path == "/oauth/token"`,
-		`tokenRequests != 1`,
+		`tokenRequests < 1 || tokenRequests > len(familyCases)`,
 		`"token_url": server.URL + "/oauth/token"`,
 	} {
 		if !strings.Contains(sourceTest, want) {

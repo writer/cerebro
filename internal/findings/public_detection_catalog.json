@@ -5440,39 +5440,6 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
           "source_id": "aws",
           "dimension_id": "iam_role_assignment",
           "dimension_type": "app_entitlement",
@@ -5627,6 +5594,39 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "google_workspace",
+          "dimension_id": "role_assignments",
+          "dimension_type": "app_entitlement",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role",
+            "privileged",
+            "role_assignment",
+            "super_admin"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
             }
           ]
         },
@@ -6323,70 +6323,6 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "admin_roles",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
           "source_id": "aws",
           "dimension_id": "iam_role_assignment",
           "dimension_type": "app_entitlement",
@@ -6435,6 +6371,72 @@
           "control_domains": [
             "identity_access",
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "support_access_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit",
+            "impersonation",
+            "session",
+            "support",
+            "support_access",
+            "support_session"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration",
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "identity_access",
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "privileged_users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "admin",
+            "owner",
+            "privileged",
+            "privileged_user",
+            "role",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -8824,39 +8826,6 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
           "source_id": "aws",
           "dimension_id": "effective_permission",
           "dimension_type": "app_entitlement",
@@ -9004,6 +8973,39 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "google_workspace",
+          "dimension_id": "role_assignments",
+          "dimension_type": "app_entitlement",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role",
+            "privileged",
+            "role_assignment",
+            "super_admin"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
             }
           ]
         }
@@ -11142,35 +11144,6 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
           "source_id": "azure",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -11379,6 +11352,34 @@
             "identity_configuration"
           ],
           "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account",
+            "active_account",
+            "personal_email",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration",
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -16714,6 +16715,35 @@
       "source_coverage_refs": [
         {
           "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "external_account_reviews",
           "dimension_type": "relationship",
           "support_level": "partial",
@@ -16752,35 +16782,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -27216,6 +27217,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -27253,35 +27283,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -33487,6 +33488,34 @@
           ]
         },
         {
+          "source_id": "tailscale",
+          "dimension_id": "privileged_users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "admin",
+            "owner",
+            "privileged",
+            "privileged_user",
+            "role",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -33512,34 +33541,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             }
           ]
         }
@@ -49226,38 +49227,6 @@
           ]
         },
         {
-          "source_id": "github",
-          "dimension_id": "organization_authentication_policy",
-          "dimension_type": "audit_event",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "2fa",
-            "audit",
-            "auth_control",
-            "authentication",
-            "mfa",
-            "org_auth",
-            "two_factor"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "IA-5"
-            },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "8.3"
-            }
-          ]
-        },
-        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -49377,6 +49346,38 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-5"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.3"
             }
           ]
         }
@@ -49546,38 +49547,6 @@
           ]
         },
         {
-          "source_id": "github",
-          "dimension_id": "organization_authentication_policy",
-          "dimension_type": "audit_event",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "2fa",
-            "audit",
-            "auth_control",
-            "authentication",
-            "mfa",
-            "org_auth",
-            "two_factor"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "IA-5"
-            },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "8.3"
-            }
-          ]
-        },
-        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -49697,6 +49666,38 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-5"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.3"
             }
           ]
         }
@@ -80315,6 +80316,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -80352,35 +80382,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -83600,6 +83601,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -83637,35 +83667,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -100698,6 +100699,35 @@
         },
         {
           "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "admin_roles",
           "dimension_type": "relationship",
           "support_level": "partial",
@@ -100732,35 +100762,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -101918,26 +101919,29 @@
           ]
         },
         {
-          "source_id": "elevenlabs",
-          "dimension_id": "service_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
+          "source_id": "okta",
+          "dimension_id": "support_access_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
           "high_value": true,
           "families": [
-            "service_accounts"
+            "audit",
+            "impersonation",
+            "session",
+            "support",
+            "support_access",
+            "support_session"
           ],
           "evidence_types": [
-            "source_snapshot"
+            "access_review",
+            "identity_configuration",
+            "logging_configuration"
           ],
           "control_domains": [
-            "asset_inventory",
-            "identity_access"
+            "identity_access",
+            "logging_monitoring"
           ],
           "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -106839,6 +106843,30 @@
       "source_coverage_refs": [
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "self_hosted_runners",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -106863,30 +106891,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
             }
           ]
         },
@@ -107990,6 +107994,34 @@
       "source_coverage_refs": [
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "6.3"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -108026,34 +108058,6 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "11.3"
             },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "6.3"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "6.3"
@@ -108398,6 +108402,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "6.3"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -108480,34 +108512,6 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "11.3"
             },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "6.3"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "6.3"
@@ -108662,6 +108666,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "6.3"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -108744,34 +108776,6 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "11.3"
             },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "6.3"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "6.3"
@@ -110088,6 +110092,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "webhooks",
           "dimension_type": "app_entitlement",
           "support_level": "partial",
@@ -110111,28 +110137,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
             }
           ]
         }
@@ -110809,6 +110813,30 @@
       "source_coverage_refs": [
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-3"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "self_hosted_runners",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -110833,30 +110861,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-3"
             }
           ]
         },
@@ -114971,6 +114975,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -115040,34 +115072,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
             }
           ]
         }
@@ -117740,6 +117744,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -117764,28 +117790,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -117989,6 +117993,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -118013,28 +118039,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -121138,6 +121142,28 @@
       "source_coverage_refs": [
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -121162,28 +121188,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -124351,6 +124355,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "webhooks",
           "dimension_type": "app_entitlement",
           "support_level": "partial",
@@ -124374,28 +124400,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
             }
           ]
         }
@@ -124554,6 +124558,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "webhooks",
           "dimension_type": "app_entitlement",
           "support_level": "partial",
@@ -124577,28 +124603,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
             }
           ]
         }
@@ -124757,6 +124761,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "webhooks",
           "dimension_type": "app_entitlement",
           "support_level": "partial",
@@ -124780,28 +124806,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
             }
           ]
         }
@@ -151725,6 +151729,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "remediation_state",
           "dimension_type": "remediation_state",
           "support_level": "partial",
@@ -151747,28 +151773,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -151952,6 +151956,28 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "remediation_state",
           "dimension_type": "remediation_state",
           "support_level": "partial",
@@ -151974,28 +152000,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -152717,6 +152721,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -152745,34 +152777,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -152923,6 +152927,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -152951,34 +152983,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -153343,6 +153347,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -153371,34 +153403,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -153549,6 +153553,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -153577,34 +153609,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -153969,6 +153973,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -153997,34 +154029,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -154175,6 +154179,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -154203,34 +154235,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -154763,6 +154767,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -154791,34 +154823,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -154969,6 +154973,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -154997,34 +155029,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -155389,6 +155393,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -155417,34 +155449,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -155595,6 +155599,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -155623,34 +155655,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -156015,6 +156019,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -156043,34 +156075,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -156221,6 +156225,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -156249,34 +156281,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -156641,6 +156645,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -156669,34 +156701,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -156847,6 +156851,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -156875,34 +156907,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -157435,6 +157439,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -157463,34 +157495,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -157641,6 +157645,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -157669,34 +157701,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -158229,6 +158233,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -158257,34 +158289,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -158435,6 +158439,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -158463,34 +158495,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "SI-2"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC8.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -184156,6 +184160,52 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "code_security_controls",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -184210,52 +184260,6 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "audit_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "audit"
-          ],
-          "evidence_types": [
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "logging_monitoring"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -184401,6 +184405,34 @@
         },
         {
           "source_id": "github",
+          "dimension_id": "repositories",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "repository"
+          ],
+          "evidence_types": [
+            "asset_inventory",
+            "change_management"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "6.3"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "remediation_state",
           "dimension_type": "remediation_state",
           "support_level": "partial",
@@ -184495,34 +184527,6 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "11.3"
             },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "6.3"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC7.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "repositories",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "repository"
-          ],
-          "evidence_types": [
-            "asset_inventory",
-            "change_management"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "secure_delivery"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "6.3"
@@ -185261,6 +185265,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -185341,35 +185374,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -187768,6 +187772,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -187801,35 +187834,6 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -196715,6 +196719,28 @@
       "source_coverage_refs": [
         {
           "source_id": "github",
+          "dimension_id": "organization_members",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "org_inventory"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "github",
           "dimension_id": "organization_authentication_policy",
           "dimension_type": "audit_event",
           "support_level": "partial",
@@ -196739,28 +196765,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.17"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "organization_members",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "org_inventory"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205007,33 +205011,6 @@
         },
         {
           "source_id": "okta",
-          "dimension_id": "admin_roles",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -205083,6 +205060,33 @@
             "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "admin_roles",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.2"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -207789,33 +207793,6 @@
         },
         {
           "source_id": "okta",
-          "dimension_id": "admin_roles",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
           "dimension_id": "group_memberships",
           "dimension_type": "relationship",
           "support_level": "supported",
@@ -207863,6 +207840,33 @@
             "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "admin_roles",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.2"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -210325,6 +210329,38 @@
           ]
         },
         {
+          "source_id": "tailscale",
+          "dimension_id": "privileged_users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "admin",
+            "owner",
+            "privileged",
+            "privileged_user",
+            "role",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -210350,38 +210386,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
             },
             {
               "framework_name": "SOC 2",
@@ -213682,33 +213686,6 @@
         },
         {
           "source_id": "okta",
-          "dimension_id": "admin_roles",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
           "support_level": "supported",
@@ -213758,6 +213735,33 @@
             "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "admin_roles",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.2"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -215382,6 +215386,50 @@
         },
         {
           "source_id": "okta",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
           "dimension_id": "app_assignments",
           "dimension_type": "app_entitlement",
           "support_level": "partial",
@@ -215431,50 +215479,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.18"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "applications",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "application"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "group"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -236144,6 +236148,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -236181,35 +236214,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -241981,6 +241985,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -242018,35 +242051,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -253340,6 +253344,36 @@
           ]
         },
         {
+          "source_id": "aws",
+          "dimension_id": "iam_role_trust",
+          "dimension_type": "relationship",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cross_account",
+            "iam_role_trust",
+            "role_trust"
+          ],
+          "evidence_types": [
+            "cloud_configuration",
+            "identity_configuration",
+            "relationship_evidence"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -253385,36 +253419,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "aws",
-          "dimension_id": "iam_role_trust",
-          "dimension_type": "relationship",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "cross_account",
-            "iam_role_trust",
-            "role_trust"
-          ],
-          "evidence_types": [
-            "cloud_configuration",
-            "identity_configuration",
-            "relationship_evidence"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             },
             {
               "framework_name": "SOC 2",
@@ -257997,6 +258001,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -258034,35 +258067,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -258449,6 +258453,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -258486,35 +258519,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -259988,39 +259992,6 @@
         },
         {
           "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.15"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "google_workspace",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
           "support_level": "supported",
@@ -260093,6 +260064,39 @@
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.9"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "google_workspace",
+          "dimension_id": "role_assignments",
+          "dimension_type": "app_entitlement",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "admin_role",
+            "privileged",
+            "role_assignment",
+            "super_admin"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
             },
             {
               "framework_name": "SOC 2",
@@ -260517,37 +260521,6 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "dormant_account_reviews",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "dormant_user",
-            "last_login",
-            "never_logged_in",
-            "reviewer_decision",
-            "stale_login"
-          ],
-          "evidence_types": [
-            "access_review",
-            "reviewer_attestation"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
           "source_id": "google_workspace",
           "dimension_id": "mfa_posture",
           "dimension_type": "app_entitlement",
@@ -260599,6 +260572,37 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "dormant_account_reviews",
+          "dimension_type": "relationship",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "reviewer_decision",
+            "stale_login"
+          ],
+          "evidence_types": [
+            "access_review",
+            "reviewer_attestation"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -266645,6 +266649,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -266682,35 +266715,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -273557,6 +273561,35 @@
           ]
         },
         {
+          "source_id": "okta",
+          "dimension_id": "policy_rules",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "policy",
+            "policy_lifecycle",
+            "policy_rule",
+            "policy_tampering"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -273594,35 +273627,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",

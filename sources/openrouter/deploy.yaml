@@ -9,7 +9,6 @@ runtimes:
       health_path: /v1/models
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      tenant_id: tenant
       token: env:OPENROUTER_TOKEN
   - localId: api-keys
     config:
@@ -18,7 +17,6 @@ runtimes:
       health_path: /v1/models
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      tenant_id: tenant
       token: env:OPENROUTER_TOKEN
   - localId: provider-keys
     config:
@@ -27,7 +25,6 @@ runtimes:
       health_path: /v1/models
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      tenant_id: tenant
       token: env:OPENROUTER_TOKEN
   - localId: usage-activity
     config:
@@ -36,5 +33,4 @@ runtimes:
       health_path: /v1/models
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      tenant_id: tenant
       token: env:OPENROUTER_TOKEN

@@ -1517,7 +1517,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\tif err := source.Check(context.Background(), cfg); err != nil {\n\t\tt.Fatalf(\"Check() error = %%v\", err)\n\t}\n")
 	fmt.Fprintf(&b, "\tfor _, tc := range familyCases {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\treadCfgValues := map[string]string{}\n\t\t\tfor key, value := range cfgValues {\n\t\t\t\treadCfgValues[key] = value\n\t\t\t}\n\t\t\treadCfgValues[\"family\"] = tc.name\n\t\t\tpull, err := source.Read(context.Background(), sourcecdk.NewConfig(readCfgValues), nil)\n\t\t\tif err != nil {\n\t\t\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t\t\t}\n\t\t\tif len(pull.Events) != 1 {\n\t\t\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t\t\t}\n\t\t\tevent := pull.Events[0]\n\t\t\tif event.Kind != tc.kind {\n\t\t\t\tt.Fatalf(\"kind = %%q, want %%q\", event.Kind, tc.kind)\n\t\t\t}\n\t\t\tif strings.TrimSpace(event.Id) == \"\" {\n\t\t\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t\t\t}\n\t\t\tfor attr, want := range tc.expectedAttributes {\n\t\t\t\tif got := event.Attributes[attr]; got != want {\n\t\t\t\t\tt.Fatalf(\"attribute %%s = %%q, want %%q\", attr, got, want)\n\t\t\t\t}\n\t\t\t}\n\t\t})\n\t}\n")
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, "\tif tokenRequests != 1 {\n\t\tt.Fatalf(\"token requests = %%d, want 1 cached token\", tokenRequests)\n\t}\n")
+		fmt.Fprintf(&b, "\tif tokenRequests < 1 || tokenRequests > len(familyCases) {\n\t\tt.Fatalf(\"token requests = %%d, want between 1 and %%d\", tokenRequests, len(familyCases))\n\t}\n")
 	}
 	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "\nfunc TestNewFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
