@@ -9,7 +9,7 @@
       "deployment_name": "prod-search",
       "deployment_status": "CLUSTER_PHASE_HEALTHY",
       "deployment_updated_at": "2026-05-29T08:15:00Z",
-      "deployment_url": "https://prod-search.aws-us-east-1-0.qdrant.io",
+      "deployment_url": "https://prod-search.qdrant.example.com",
       "external_id": "22222222-2222-4222-8222-222222222222",
       "family": "clusters",
       "observed_at": "2026-05-29T08:15:00Z",
@@ -53,7 +53,7 @@
         "endpoint": {
           "grpcPort": 6334,
           "restPort": 6333,
-          "url": "https://prod-search.aws-us-east-1-0.qdrant.io"
+          "url": "https://prod-search.qdrant.example.com"
         },
         "jwtRbac": true,
         "nodesUp": 3,
