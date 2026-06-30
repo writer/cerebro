@@ -73,6 +73,7 @@ type Store struct {
 	connectorCredentialReady   bool
 	connectorDefinitionReady   bool
 	appendLogRuntimeIndexReady bool
+	appendLogDeadLettersReady  bool
 	userPreferencesReady       bool
 }
 

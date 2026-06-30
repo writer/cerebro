@@ -7,7 +7,7 @@ make build
 ./bin/cerebro version
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 Agent onboarding is a Makefile workflow around the CLI and HTTP API:
 
@@ -56,6 +56,22 @@ Source runtime persistence requires Postgres. Sync also requires NATS JetStream.
 ```
 
 See [Source runtime guide](../domains/source-runtime-guide.md) for store setup, secrets, sync behavior, and recovery.
+
+## Append Log Recovery
+
+Exhausted JetStream publishes are recorded in Postgres when the state store is configured. List pending records without requiring JetStream to be healthy:
+
+```bash
+./bin/cerebro append-log dead-letters list
+./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
+```
+
+Replay one record after the append-log path is healthy, or discard it after investigation:
+
+```bash
+./bin/cerebro append-log dead-letters replay <dead-letter-id>
+./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+```
 
 ## Finding Rules
 

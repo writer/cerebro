@@ -115,6 +115,25 @@ Relevant variable:
 
 - `CEREBRO_JETSTREAM_DRAIN_TIMEOUT`
 
+If publish retries exhaust, check the recovery table before advancing runtime work:
+
+```bash
+./bin/cerebro append-log dead-letters list status=pending limit=20
+./bin/cerebro append-log dead-letters list subject=sec.findings.v1.recorded status=pending limit=20
+```
+
+After JetStream publish health is restored, replay one record:
+
+```bash
+./bin/cerebro append-log dead-letters replay <dead-letter-id>
+```
+
+Discard a record only after confirming the event should not be replayed:
+
+```bash
+./bin/cerebro append-log dead-letters discard <dead-letter-id> reason=<reason>
+```
+
 ### Neo4j or Aura
 
 Neo4j or Aura is required for graph projection, graph queries, graph health, graph ingest runs, impact queries, and graph-agent flows.

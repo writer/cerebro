@@ -2,12 +2,24 @@ package ports
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
 const EventAttributeSourceRuntimeID = "source_runtime_id"
+const EventAttributeJobID = "job_id"
+
+var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
+
+const (
+	AppendLogDeadLetterStatusPending   = "pending"
+	AppendLogDeadLetterStatusReplayed  = "replayed"
+	AppendLogDeadLetterStatusDiscarded = "discarded"
+)
 
 // AppendLog is the future append-only event log boundary.
 type AppendLog interface {
@@ -19,6 +31,84 @@ type AppendLog interface {
 // publish a validated page or upload batch through one boundary.
 type AppendLogBatcher interface {
 	AppendBatch(context.Context, []*cerebrov1.EventEnvelope) error
+}
+
+// AppendLogPublishExhaustedError marks a publish that exhausted the configured
+// retry budget. It lets recovery wrappers distinguish durable publish failures
+// from validation, authorization, and caller-cancellation errors.
+type AppendLogPublishExhaustedError struct {
+	Operation     string
+	Subject       string
+	ErrorCategory string
+	RetryCount    int
+	MaxAttempts   int
+	Err           error
+}
+
+func (e *AppendLogPublishExhaustedError) Error() string {
+	subject := strings.TrimSpace(e.Subject)
+	if subject == "" {
+		subject = "unknown"
+	}
+	if e.Err == nil {
+		return fmt.Sprintf("append log publish exhausted for subject %s", subject)
+	}
+	return fmt.Sprintf("append log publish exhausted for subject %s: %v", subject, e.Err)
+}
+
+func (e *AppendLogPublishExhaustedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// AppendLogDeadLetter records one append-log event that could not be published
+// after all configured attempts.
+type AppendLogDeadLetter struct {
+	ID            string
+	Status        string
+	Subject       string
+	Operation     string
+	EventID       string
+	EventKind     string
+	TenantID      string
+	SourceID      string
+	RuntimeID     string
+	JobID         string
+	ErrorCategory string
+	ErrorMessage  string
+	RetryCount    int
+	MaxAttempts   int
+	PayloadHash   string
+	PayloadBytes  int
+	Event         *cerebrov1.EventEnvelope
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	ReplayedAt    time.Time
+	DiscardedAt   time.Time
+	DiscardReason string
+}
+
+// AppendLogDeadLetterFilter scopes operator reads over persisted publish
+// recovery records.
+type AppendLogDeadLetterFilter struct {
+	Status    string
+	Subject   string
+	RuntimeID string
+	SourceID  string
+	Limit     uint32
+}
+
+// AppendLogDeadLetterStore persists and manages exhausted publish recovery
+// records outside JetStream so broker degradation does not recursively depend
+// on the same append path.
+type AppendLogDeadLetterStore interface {
+	RecordAppendLogDeadLetter(context.Context, AppendLogDeadLetter) error
+	ListAppendLogDeadLetters(context.Context, AppendLogDeadLetterFilter) ([]AppendLogDeadLetter, error)
+	GetAppendLogDeadLetter(context.Context, string) (AppendLogDeadLetter, error)
+	MarkAppendLogDeadLetterReplayed(context.Context, string) error
+	DiscardAppendLogDeadLetter(context.Context, string, string) error
 }
 
 // ReplayRequest scopes a bounded event replay from the append log.
