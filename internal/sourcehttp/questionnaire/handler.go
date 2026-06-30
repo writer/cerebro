@@ -98,40 +98,60 @@ type runSummary struct {
 }
 
 type runView struct {
-	ID                   string                          `json:"id"`
-	RunID                string                          `json:"run_id"`
-	TenantID             string                          `json:"tenant_id,omitempty"`
-	Title                string                          `json:"title"`
-	Direction            string                          `json:"direction"`
-	Requester            string                          `json:"requester,omitempty"`
-	CustomerName         string                          `json:"customer_name,omitempty"`
-	VendorURN            string                          `json:"vendor_urn,omitempty"`
-	VendorID             string                          `json:"vendor_id,omitempty"`
-	SourceFilename       string                          `json:"source_filename,omitempty"`
-	SourceFormat         string                          `json:"source_format,omitempty"`
-	Status               string                          `json:"status"`
-	OwnerID              string                          `json:"owner_id,omitempty"`
-	AssignedTeam         string                          `json:"assigned_team,omitempty"`
-	Decision             string                          `json:"decision,omitempty"`
-	DecisionReason       string                          `json:"decision_reason,omitempty"`
-	DueAt                *time.Time                      `json:"due_at,omitempty"`
-	CreatedAt            time.Time                       `json:"created_at"`
-	UpdatedAt            time.Time                       `json:"updated_at"`
-	QuestionCount        int                             `json:"question_count"`
-	AnswerCount          int                             `json:"answer_count"`
-	ReadyAnswerCount     int                             `json:"ready_answer_count"`
-	BlockedAnswerCount   int                             `json:"blocked_answer_count"`
-	ReviewAnswerCount    int                             `json:"review_answer_count"`
-	MissingEvidenceCount int                             `json:"missing_evidence_count"`
-	StaleEvidenceCount   int                             `json:"stale_evidence_count"`
-	UnassignedCount      int                             `json:"unassigned_count"`
-	Questions            []ports.QuestionnaireQuestion   `json:"questions,omitempty"`
-	Answers              []ports.QuestionnaireRunAnswer  `json:"answers,omitempty"`
-	Assignments          []ports.QuestionnaireAssignment `json:"assignments,omitempty"`
-	Decisions            []ports.QuestionnaireDecision   `json:"decisions,omitempty"`
-	Comments             []ports.QuestionnaireComment    `json:"comments,omitempty"`
-	Timeline             []ports.QuestionnaireTimeline   `json:"timeline,omitempty"`
-	Attributes           map[string]string               `json:"attributes,omitempty"`
+	runViewIdentity
+	runViewParties
+	runViewWorkflow
+	runViewCounts
+	runViewContent
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type runViewIdentity struct {
+	ID        string    `json:"id"`
+	RunID     string    `json:"run_id"`
+	TenantID  string    `json:"tenant_id,omitempty"`
+	Title     string    `json:"title"`
+	Direction string    `json:"direction"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type runViewParties struct {
+	Requester      string `json:"requester,omitempty"`
+	CustomerName   string `json:"customer_name,omitempty"`
+	VendorURN      string `json:"vendor_urn,omitempty"`
+	VendorID       string `json:"vendor_id,omitempty"`
+	SourceFilename string `json:"source_filename,omitempty"`
+	SourceFormat   string `json:"source_format,omitempty"`
+	OwnerID        string `json:"owner_id,omitempty"`
+	AssignedTeam   string `json:"assigned_team,omitempty"`
+}
+
+type runViewWorkflow struct {
+	Status         string     `json:"status"`
+	Decision       string     `json:"decision,omitempty"`
+	DecisionReason string     `json:"decision_reason,omitempty"`
+	DueAt          *time.Time `json:"due_at,omitempty"`
+}
+
+type runViewCounts struct {
+	QuestionCount        int `json:"question_count"`
+	AnswerCount          int `json:"answer_count"`
+	ReadyAnswerCount     int `json:"ready_answer_count"`
+	BlockedAnswerCount   int `json:"blocked_answer_count"`
+	ReviewAnswerCount    int `json:"review_answer_count"`
+	MissingEvidenceCount int `json:"missing_evidence_count"`
+	StaleEvidenceCount   int `json:"stale_evidence_count"`
+	UnassignedCount      int `json:"unassigned_count"`
+}
+
+type runViewContent struct {
+	Questions   []ports.QuestionnaireQuestion   `json:"questions,omitempty"`
+	Answers     []ports.QuestionnaireRunAnswer  `json:"answers,omitempty"`
+	Assignments []ports.QuestionnaireAssignment `json:"assignments,omitempty"`
+	Decisions   []ports.QuestionnaireDecision   `json:"decisions,omitempty"`
+	Comments    []ports.QuestionnaireComment    `json:"comments,omitempty"`
+	Timeline    []ports.QuestionnaireTimeline   `json:"timeline,omitempty"`
 }
 
 type createRequest struct {
@@ -579,34 +599,42 @@ func runViewFromRecord(record *ports.QuestionnaireRunRecord, compact bool) runVi
 		return runView{}
 	}
 	view := runView{
-		ID:                   record.RunID,
-		RunID:                record.RunID,
-		TenantID:             record.TenantID,
-		Title:                record.Title,
-		Direction:            record.Direction,
-		Requester:            record.Requester,
-		CustomerName:         record.CustomerName,
-		VendorURN:            record.VendorURN,
-		VendorID:             record.VendorID,
-		SourceFilename:       record.SourceFilename,
-		SourceFormat:         record.SourceFormat,
-		Status:               record.Status,
-		OwnerID:              record.OwnerID,
-		AssignedTeam:         record.AssignedTeam,
-		Decision:             record.Decision,
-		DecisionReason:       record.DecisionReason,
-		DueAt:                record.DueAt,
-		CreatedAt:            record.CreatedAt,
-		UpdatedAt:            record.UpdatedAt,
-		QuestionCount:        len(record.Questions),
-		AnswerCount:          len(record.Answers),
-		ReadyAnswerCount:     record.ReadyAnswerCount,
-		BlockedAnswerCount:   record.BlockedAnswerCount,
-		ReviewAnswerCount:    record.ReviewAnswerCount,
-		MissingEvidenceCount: record.MissingEvidence,
-		StaleEvidenceCount:   record.StaleEvidence,
-		UnassignedCount:      record.UnassignedCount,
-		Attributes:           record.Attributes,
+		runViewIdentity: runViewIdentity{
+			ID:        record.RunID,
+			RunID:     record.RunID,
+			TenantID:  record.TenantID,
+			Title:     record.Title,
+			Direction: record.Direction,
+			CreatedAt: record.CreatedAt,
+			UpdatedAt: record.UpdatedAt,
+		},
+		runViewParties: runViewParties{
+			Requester:      record.Requester,
+			CustomerName:   record.CustomerName,
+			VendorURN:      record.VendorURN,
+			VendorID:       record.VendorID,
+			SourceFilename: record.SourceFilename,
+			SourceFormat:   record.SourceFormat,
+			OwnerID:        record.OwnerID,
+			AssignedTeam:   record.AssignedTeam,
+		},
+		runViewWorkflow: runViewWorkflow{
+			Status:         record.Status,
+			Decision:       record.Decision,
+			DecisionReason: record.DecisionReason,
+			DueAt:          record.DueAt,
+		},
+		runViewCounts: runViewCounts{
+			QuestionCount:        len(record.Questions),
+			AnswerCount:          len(record.Answers),
+			ReadyAnswerCount:     record.ReadyAnswerCount,
+			BlockedAnswerCount:   record.BlockedAnswerCount,
+			ReviewAnswerCount:    record.ReviewAnswerCount,
+			MissingEvidenceCount: record.MissingEvidence,
+			StaleEvidenceCount:   record.StaleEvidence,
+			UnassignedCount:      record.UnassignedCount,
+		},
+		Attributes: record.Attributes,
 	}
 	if !compact {
 		view.Questions = record.Questions
@@ -629,7 +657,7 @@ func summarizeViews(views []runView) runSummary {
 		} else {
 			summary.CustomerRuns++
 		}
-		if view.DueAt != nil && !view.DueAt.After(now) && view.Status != ports.QuestionnaireStatusApproved {
+		if view.DueAt != nil && !view.DueAt.After(now) && view.Status != ports.QuestionnaireStatusApproved && view.Status != ports.QuestionnaireStatusRejected {
 			summary.DueRuns++
 		}
 		summary.BlockedAnswers += view.BlockedAnswerCount
@@ -695,7 +723,7 @@ func requestWithRunScope(r *http.Request, tenantID string, sourceID string, runt
 	changed := false
 	for key, value := range values {
 		value = strings.TrimSpace(value)
-		if value == "" || strings.TrimSpace(query.Get(key)) != "" {
+		if value == "" {
 			continue
 		}
 		query.Set(key, value)

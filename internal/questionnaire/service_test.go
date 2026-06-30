@@ -338,6 +338,26 @@ func TestSummarizeRunCountsPartialAnswersAsReviewWork(t *testing.T) {
 	}
 }
 
+func TestSummarizeRunIgnoresGapsForNotApplicableAnswers(t *testing.T) {
+	record := SummarizeRun(ports.QuestionnaireRunRecord{
+		QuestionnaireRunContent: ports.QuestionnaireRunContent{
+			Answers: []ports.QuestionnaireRunAnswer{{
+				ID:          "a-1",
+				QuestionID:  "q-1",
+				AnswerState: ports.QuestionnaireAnswerNotApplicable,
+				ReviewState: ports.QuestionnaireReviewReady,
+				MissingEvidence: []ports.QuestionnaireEvidenceGap{{
+					Code: "missing_required_evidence",
+				}},
+			}},
+		},
+	})
+
+	if record.MissingEvidence != 0 || record.StaleEvidence != 0 {
+		t.Fatalf("gap counts = missing %d stale %d, want 0/0", record.MissingEvidence, record.StaleEvidence)
+	}
+}
+
 func ptrEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) *evidencepackets.QuestionnaireAnswer {
 	return &answer
 }

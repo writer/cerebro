@@ -236,7 +236,7 @@ func TestProcessRunPassesScopedRequestToEvidenceResolver(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/process", strings.NewReader(`{"tenant_id":"tenant-body"}`))
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/process?tenant_id=query-tenant&source_id=query-source&runtime_id=query-runtime&vendor_urn=urn:cerebro:query-tenant:vendor:bad", strings.NewReader(`{"tenant_id":"tenant-body"}`))
 	req.SetPathValue("runID", "run-1")
 	recorder := httptest.NewRecorder()
 
@@ -250,6 +250,41 @@ func TestProcessRunPassesScopedRequestToEvidenceResolver(t *testing.T) {
 	}
 	if evidenceRequestSource != "source-okta" || evidenceRequestRuntime != "runtime-okta" || evidenceRequestVendor == "" {
 		t.Fatalf("evidence scope source/runtime/vendor = %q/%q/%q, want saved run context", evidenceRequestSource, evidenceRequestRuntime, evidenceRequestVendor)
+	}
+}
+
+func TestSummarizeViewsCountsOnlyOpenDueRuns(t *testing.T) {
+	dueAt := time.Now().Add(-time.Hour)
+
+	summary := summarizeViews([]runView{
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusApproved, DueAt: &dueAt}},
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusRejected, DueAt: &dueAt}},
+		{runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusNeedsInput, DueAt: &dueAt}},
+	})
+
+	if summary.DueRuns != 1 {
+		t.Fatalf("due runs = %d, want 1", summary.DueRuns)
+	}
+}
+
+func TestRunViewJSONStaysFlat(t *testing.T) {
+	payload, err := json.Marshal(runView{
+		runViewIdentity: runViewIdentity{ID: "run-1", RunID: "run-1", TenantID: "tenant-1", Title: "Customer review", Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+		runViewParties:  runViewParties{Requester: "sales@example.com", CustomerName: "Acme", OwnerID: "security@example.com"},
+		runViewWorkflow: runViewWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+		runViewCounts:   runViewCounts{QuestionCount: 1, MissingEvidenceCount: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(payload, &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"run_id", "tenant_id", "customer_name", "owner_id", "status", "question_count", "missing_evidence_count"} {
+		if _, ok := body[key]; !ok {
+			t.Fatalf("missing flat JSON key %q in %s", key, payload)
+		}
 	}
 }
 

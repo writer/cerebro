@@ -126,11 +126,13 @@ func SummarizeRun(record ports.QuestionnaireRunRecord) ports.QuestionnaireRunRec
 		case ports.QuestionnaireAnswerNeedsReview, ports.QuestionnaireAnswerPartial:
 			review++
 		}
-		for _, gap := range answer.MissingEvidence {
-			if gap.Code == "stale_evidence" {
-				stale++
-			} else {
-				missing++
+		if answer.AnswerState != ports.QuestionnaireAnswerNotApplicable {
+			for _, gap := range answer.MissingEvidence {
+				if gap.Code == "stale_evidence" {
+					stale++
+				} else {
+					missing++
+				}
 			}
 		}
 	}
@@ -403,7 +405,7 @@ func evidenceRefMatchesSlot(slotID string, ref evidencepackets.QuestionnaireEvid
 	case "encryption":
 		return hasAny(terms, "encrypt", "encryption", "encrypted", "key", "keys", "kms", "tls")
 	case "incident_response":
-		return hasAny(terms, "incident", "breach", "response", "ir")
+		return hasAny(terms, "incident", "breach", "ir")
 	case "subprocessors":
 		return hasAny(terms, "subprocessor", "subprocessors", "third", "party", "dpa")
 	case "audit_report":
