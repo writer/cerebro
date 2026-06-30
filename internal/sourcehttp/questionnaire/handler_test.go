@@ -338,6 +338,65 @@ func TestProcessRunPassesScopedRequestToEvidenceResolver(t *testing.T) {
 	}
 }
 
+func TestProcessRunClearsCallerScopeWhenRunScopeIsEmpty(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{
+				TenantID: "tenant-body",
+				RunID:    "run-1",
+				Title:    "Customer review",
+			},
+			QuestionnaireRunSource: ports.QuestionnaireRunSource{
+				Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+			},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
+				Status: ports.QuestionnaireStatusIntake,
+			},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{
+					ID:       "q-1",
+					Question: "Do you enforce MFA?",
+				}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+	}
+	var evidenceRequestSource string
+	var evidenceRequestRuntime string
+	var evidenceRequestVendor string
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: r.URL.Query().Get("tenant_id"), SourceID: r.URL.Query().Get("source_id"), RuntimeID: r.URL.Query().Get("runtime_id"), VendorURN: r.URL.Query().Get("vendor_urn"), Limit: 25}, nil
+		},
+		Evidence: func(r *http.Request, scope Scope) ([]evidencepackets.QuestionnaireAnswer, error) {
+			evidenceRequestSource = r.URL.Query().Get("source_id")
+			evidenceRequestRuntime = r.URL.Query().Get("runtime_id")
+			evidenceRequestVendor = r.URL.Query().Get("vendor_urn")
+			if scope.SourceID != "" || scope.RuntimeID != "" || scope.VendorURN != "" {
+				t.Fatalf("scope = source %q runtime %q vendor %q, want empty run scope", scope.SourceID, scope.RuntimeID, scope.VendorURN)
+			}
+			return nil, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/process?tenant_id=query-tenant&source_id=query-source&runtime_id=query-runtime&vendor_urn=urn:cerebro:query-tenant:vendor:bad", strings.NewReader(`{"tenant_id":"tenant-body"}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.ProcessRun(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if evidenceRequestSource != "" || evidenceRequestRuntime != "" || evidenceRequestVendor != "" {
+		t.Fatalf("request scope source/runtime/vendor = %q/%q/%q, want empty", evidenceRequestSource, evidenceRequestRuntime, evidenceRequestVendor)
+	}
+}
+
 func TestSummarizeViewsCountsOnlyOpenDueRuns(t *testing.T) {
 	dueAt := time.Now().Add(-time.Hour)
 

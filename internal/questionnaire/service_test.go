@@ -368,6 +368,58 @@ func TestSummarizeRunIgnoresGapsForNotApplicableAnswers(t *testing.T) {
 	}
 }
 
+func TestProcessEvidenceAnswersPreservesTerminalRunDecisionOnReprocess(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Title:     "Security questionnaire",
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:            "q-1",
+			Question:      "Do you enforce MFA for users?",
+			RequiredSlots: []string{"identity_mfa"},
+		}},
+	}, now)
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current")}, now)
+	record = RecordDecision(record, ports.QuestionnaireDecision{Decision: ports.QuestionnaireDecisionApproved, ActorID: "reviewer@example.com", Reason: "Ready to send."}, now.Add(time.Minute))
+
+	record = ProcessEvidenceAnswers(record, nil, now.Add(2*time.Minute))
+
+	if record.Status != ports.QuestionnaireStatusApproved || record.Decision != ports.QuestionnaireDecisionApproved || record.DecisionReason != "Ready to send." {
+		t.Fatalf("terminal decision = status %q decision %q reason %q, want approved/approved/Ready to send.", record.Status, record.Decision, record.DecisionReason)
+	}
+	if len(record.Decisions) != 1 {
+		t.Fatalf("decision audit count = %d, want 1", len(record.Decisions))
+	}
+}
+
+func TestProcessEvidenceAnswersPreservesAnswerReviewDecisionOnReprocess(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Title:     "Security questionnaire",
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:            "q-1",
+			Question:      "Do you enforce MFA for users?",
+			RequiredSlots: []string{"identity_mfa"},
+		}},
+	}, now)
+	evidenceAnswer := baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current")
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{evidenceAnswer}, now)
+	record = RecordDecision(record, ports.QuestionnaireDecision{QuestionID: "q-1", Decision: ports.QuestionnaireDecisionApprovedWithConditions, ActorID: "reviewer@example.com", Reason: "Refresh before renewal."}, now.Add(time.Minute))
+
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{evidenceAnswer}, now.Add(2*time.Minute))
+
+	if len(record.Answers) != 1 {
+		t.Fatalf("answer count = %d, want 1", len(record.Answers))
+	}
+	answer := record.Answers[0]
+	if answer.ReviewerDecision != ports.QuestionnaireDecisionApprovedWithConditions || answer.ReviewerReason != "Refresh before renewal." || answer.ReviewState != ports.QuestionnaireReviewApproved {
+		t.Fatalf("review decision = %q/%q state %q, want approved_with_conditions/reason/approved", answer.ReviewerDecision, answer.ReviewerReason, answer.ReviewState)
+	}
+}
+
 func ptrEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) *evidencepackets.QuestionnaireAnswer {
 	return &answer
 }

@@ -100,6 +100,10 @@ func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRe
 
 func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers []evidencepackets.QuestionnaireAnswer, now time.Time) ports.QuestionnaireRunRecord {
 	now = normalizeNow(now)
+	previousStatus := record.Status
+	previousDecision := record.Decision
+	previousDecisionReason := record.DecisionReason
+	previousAnswers := questionnaireAnswersByQuestionID(record.Answers)
 	record.UpdatedAt = now
 	record.Questions = normalizeQuestions(record.Questions)
 	answers := make([]ports.QuestionnaireRunAnswer, 0, len(record.Questions))
@@ -110,12 +114,21 @@ func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers
 			usedEvidenceAnswerIDs[match.ID] = struct{}{}
 		}
 		answer := compileAnswer(record, question, match)
+		if previous, ok := previousAnswers[answer.QuestionID]; ok {
+			answer = preserveAnswerReviewDecision(answer, previous)
+		}
 		answers = append(answers, answer)
 	}
 	sort.Slice(answers, func(i, j int) bool { return answers[i].QuestionID < answers[j].QuestionID })
 	record.Answers = answers
-	record.Status = statusFromAnswers(answers)
-	record.Decision = decisionFromStatus(record.Status)
+	if terminalQuestionnaireDecision(previousStatus, previousDecision) {
+		record.Status = previousStatus
+		record.Decision = previousDecision
+		record.DecisionReason = previousDecisionReason
+	} else {
+		record.Status = statusFromAnswers(answers)
+		record.Decision = decisionFromStatus(record.Status)
+	}
 	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventProcessed, firstNonEmpty(record.OwnerID, record.AssignedTeam), "Questionnaire answers refreshed from evidence", map[string]string{
 		"answer_count": fmt.Sprint(len(answers)),
 		"status":       record.Status,
@@ -355,6 +368,46 @@ func compileAnswer(record ports.QuestionnaireRunRecord, question ports.Questionn
 		answer.Conflicts = nil
 	}
 	return answer
+}
+
+func questionnaireAnswersByQuestionID(answers []ports.QuestionnaireRunAnswer) map[string]ports.QuestionnaireRunAnswer {
+	byID := make(map[string]ports.QuestionnaireRunAnswer, len(answers))
+	for _, answer := range answers {
+		if answer.QuestionID != "" {
+			byID[answer.QuestionID] = answer
+		}
+	}
+	return byID
+}
+
+func preserveAnswerReviewDecision(answer ports.QuestionnaireRunAnswer, previous ports.QuestionnaireRunAnswer) ports.QuestionnaireRunAnswer {
+	if previous.ReviewerDecision == "" {
+		return answer
+	}
+	answer.ReviewerDecision = previous.ReviewerDecision
+	answer.ReviewerReason = previous.ReviewerReason
+	switch previous.ReviewerDecision {
+	case ports.QuestionnaireDecisionApproved, ports.QuestionnaireDecisionApprovedWithConditions:
+		answer.ReviewState = ports.QuestionnaireReviewApproved
+	case ports.QuestionnaireDecisionRejected:
+		answer.ReviewState = ports.QuestionnaireReviewRejected
+	case ports.QuestionnaireDecisionNeedsInput:
+		answer.ReviewState = ports.QuestionnaireReviewBlocked
+	}
+	return answer
+}
+
+func terminalQuestionnaireDecision(status string, decision string) bool {
+	switch status {
+	case ports.QuestionnaireStatusApproved, ports.QuestionnaireStatusRejected:
+		return true
+	}
+	switch decision {
+	case ports.QuestionnaireDecisionApproved, ports.QuestionnaireDecisionApprovedWithConditions, ports.QuestionnaireDecisionRejected:
+		return true
+	default:
+		return false
+	}
 }
 
 func answerStatesFromEvidence(evidenceAnswer evidencepackets.QuestionnaireAnswer, slots []ports.QuestionnaireEvidenceSlot, gaps []ports.QuestionnaireEvidenceGap, conflicts []ports.QuestionnaireEvidenceGap, freshness ports.QuestionnaireFreshness) (string, string) {

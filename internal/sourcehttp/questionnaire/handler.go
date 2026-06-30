@@ -814,6 +814,8 @@ func requestWithRunScope(r *http.Request, tenantID string, sourceID string, runt
 	for key, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
+			query.Del(key)
+			changed = true
 			continue
 		}
 		query.Set(key, value)
