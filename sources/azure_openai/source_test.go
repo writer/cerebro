@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -84,6 +85,12 @@ func TestSourceCheckAndReadDeploymentsUsesARMValueAndHeaders(t *testing.T) {
 	}
 	if event.Attributes["resource_type"] != "Microsoft.CognitiveServices/accounts/deployments" {
 		t.Fatalf("resource_type = %q", event.Attributes["resource_type"])
+	}
+	if !strings.Contains(event.Attributes["resource_urn"], "azure_openai_deployments") {
+		t.Fatalf("resource_urn = %q, want synthesized deployment URN", event.Attributes["resource_urn"])
+	}
+	if got := event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339); got != "2026-06-02T00:00:00Z" {
+		t.Fatalf("occurred_at = %q, want provider lastModifiedAt", got)
 	}
 	if !strings.Contains(pull.NextCursor.GetOpaque(), "skipToken=deployments-page-2") {
 		t.Fatalf("NextCursor = %q", pull.NextCursor.GetOpaque())
@@ -209,6 +216,27 @@ func TestSourceReadPrivateEndpointConnectionsUsesARMValue(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":{"message":"service unavailable"}}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), testConfig(server.URL, map[string]string{"family": familyDeployments}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "azure_openai API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func TestSourceReadsEveryAzureManagementFamily(t *testing.T) {
 	tests := []struct {
 		family string
@@ -293,6 +321,14 @@ func TestSourceReadsEveryAzureManagementFamily(t *testing.T) {
 			}
 			if got := event.Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+			if strings.TrimSpace(event.Attributes["resource_urn"]) == "" {
+				t.Fatalf("resource_urn is empty for %s: %#v", tt.family, event.Attributes)
+			}
+			if tt.family != familyModelCatalog {
+				if got := event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339); got != "2026-06-02T00:00:00Z" {
+					t.Fatalf("occurred_at = %q, want provider systemData timestamp", got)
+				}
 			}
 		})
 	}
@@ -408,6 +444,10 @@ func raiPolicyRecord(name string, basePolicyName string, mode string) map[string
 				"source":            "Prompt",
 			}},
 		},
+		"systemData": map[string]any{
+			"createdAt":      "2026-06-01T00:00:00Z",
+			"lastModifiedAt": "2026-06-02T00:00:00Z",
+		},
 	}
 }
 
@@ -422,7 +462,7 @@ func raiBlocklistRecord() map[string]any {
 		},
 		"systemData": map[string]any{
 			"createdAt":      "2026-06-01T00:00:00Z",
-			"lastModifiedAt": "2026-06-01T00:05:00Z",
+			"lastModifiedAt": "2026-06-02T00:00:00Z",
 		},
 	}
 }
@@ -441,6 +481,10 @@ func privateEndpointConnectionRecord() map[string]any {
 				"description":     "Approved for production traffic",
 				"actionsRequired": "None",
 			},
+		},
+		"systemData": map[string]any{
+			"createdAt":      "2026-06-01T00:00:00Z",
+			"lastModifiedAt": "2026-06-02T00:00:00Z",
 		},
 	}
 }

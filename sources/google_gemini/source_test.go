@@ -111,6 +111,32 @@ func TestSourceReadRequiresGeminiAPIKey(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":{"message":"service unavailable"}}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    defaultFamily,
+		"api_key":   "test-key",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "google_gemini API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func assertGeminiEvent(t *testing.T, pull sourcecdk.Pull, tc geminiRuntimeFamily, wantID string, wantName string) {
 	t.Helper()
 	if len(pull.Events) != 1 {
@@ -122,6 +148,9 @@ func assertGeminiEvent(t *testing.T, pull sourcecdk.Pull, tc geminiRuntimeFamily
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	if strings.TrimSpace(event.Attributes["resource_urn"]) == "" {
+		t.Fatalf("resource_urn is empty for %s: %#v", tc.family, event.Attributes)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {

@@ -114,7 +114,7 @@ func New() (*Source, error) {
 				Name:             familyAuthConnections,
 				Path:             "/v1/workspace/auth-connections",
 				URNKind:          "elevenlabs_auth_connections",
-				IDKeys:           []string{"name", "secret_id", "id", "key", "sid"},
+				IDKeys:           []string{"id", "name", "secret_id", "key", "sid"},
 				DisablePageSize:  true,
 				ListKeys:         []string{"auth_connections"},
 				Config:           jsonapi.FamilyConfig{ResourceURNKind: "elevenlabs_auth_connections"},

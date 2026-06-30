@@ -174,6 +174,16 @@ func TestSourceReadsRuntimeFamiliesFromProviderShapedResponses(t *testing.T) {
 			if strings.TrimSpace(event.Attributes["resource_urn"]) == "" {
 				t.Fatalf("resource_urn is empty: %#v", event.Attributes)
 			}
+			urns, err := source.Discover(context.Background(), testConfig(server.URL, tc.family))
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if len(urns) != 1 {
+				t.Fatalf("Discover() urns = %d, want 1", len(urns))
+			}
+			if got, want := urns[0].String(), event.Attributes["resource_urn"]; got != want {
+				t.Fatalf("Discover() URN = %q, want read resource_urn %q", got, want)
+			}
 			for key, want := range tc.attributes {
 				if got := event.Attributes[key]; got != want {
 					t.Fatalf("attribute %s = %q, want %q", key, got, want)
@@ -244,6 +254,27 @@ func TestSourceVoicesPaginationCheckpoint(t *testing.T) {
 	}
 	if got := requests[1].URL.Query().Get("next_page_token"); got != "voice-page-2" {
 		t.Fatalf("second next_page_token = %q, want voice-page-2", got)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"detail":{"message":"service unavailable"}}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), testConfig(server.URL, familyModelCatalog), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "elevenlabs API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
 	}
 }
 
