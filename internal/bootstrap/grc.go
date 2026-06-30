@@ -836,7 +836,6 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
 		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
 		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
-		VendorURN:  strings.TrimSpace(r.URL.Query().Get("vendor_urn")),
 		Limit:      limit,
 	}, nil
 }

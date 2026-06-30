@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/writer/cerebro/internal/evidencepackets"
 	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
@@ -12,8 +13,7 @@ import (
 func (app *App) grcQuestionnaireRunHandler() *questionnairehttp.Handler {
 	return questionnairehttp.NewHandler(app.deps.StateStore, questionnairehttp.Options{
 		Scope: func(r *http.Request) (questionnairehttp.Scope, error) {
-			scope, err := grcScopeFromRequest(r)
-			return grcQuestionnaireHTTPScope(scope), err
+			return grcQuestionnaireScopeFromRequest(r)
 		},
 		Evidence:  app.grcQuestionnaireEvidenceAnswers,
 		Authorize: authorizeTenantID,
@@ -23,6 +23,13 @@ func (app *App) grcQuestionnaireRunHandler() *questionnairehttp.Handler {
 		},
 		WriteErr: writeGRCQuestionnaireError,
 	})
+}
+
+func grcQuestionnaireScopeFromRequest(r *http.Request) (questionnairehttp.Scope, error) {
+	scope, err := grcScopeFromRequest(r)
+	httpScope := grcQuestionnaireHTTPScope(scope)
+	httpScope.VendorURN = strings.TrimSpace(r.URL.Query().Get("vendor_urn"))
+	return httpScope, err
 }
 
 func grcQuestionnaireHTTPScope(scope grcScope) questionnairehttp.Scope {
@@ -36,8 +43,20 @@ func grcQuestionnaireHTTPScope(scope grcScope) questionnairehttp.Scope {
 	}
 }
 
-func (app *App) grcQuestionnaireEvidenceAnswers(r *http.Request, _ questionnairehttp.Scope) ([]evidencepackets.QuestionnaireAnswer, error) {
-	result, err := app.buildGRCControlEvidencePacket(r)
+func (app *App) grcQuestionnaireEvidenceAnswers(r *http.Request, httpScope questionnairehttp.Scope) ([]evidencepackets.QuestionnaireAnswer, error) {
+	scope := grcScope{
+		TenantID:   httpScope.TenantID,
+		RuntimeID:  httpScope.RuntimeID,
+		RuntimeIDs: httpScope.RuntimeIDs,
+		SourceID:   httpScope.SourceID,
+		VendorURN:  httpScope.VendorURN,
+		Limit:      httpScope.Limit,
+	}
+	runtimes, err := app.grcListRuntimes(r, scope)
+	if err != nil {
+		return nil, err
+	}
+	result, err := app.buildGRCControlEvidencePacketWithScope(r, scope, runtimes)
 	if err != nil {
 		return nil, err
 	}
