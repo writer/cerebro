@@ -39,12 +39,11 @@ type Response struct {
 	Runs        []EvaluationRun      `json:"evaluation_runs"`
 	ResponseGraphRecords
 	ResponseReasoningRecords
-	Exceptions []ExceptionAcceptance     `json:"exceptions_acceptances"`
-	Answers    []QuestionnaireAnswer     `json:"questionnaire_answers"`
-	Artifacts  []EvidenceExportArtifact  `json:"export_artifacts"`
-	Export     EvidenceExport            `json:"export"`
-	Snapshot   AuditSnapshot             `json:"snapshot"`
-	Metadata   grccontrol.ReportMetadata `json:"metadata"`
+	ResponseQuestionnaireRecords
+	Artifacts []EvidenceExportArtifact  `json:"export_artifacts"`
+	Export    EvidenceExport            `json:"export"`
+	Snapshot  AuditSnapshot             `json:"snapshot"`
+	Metadata  grccontrol.ReportMetadata `json:"metadata"`
 }
 
 type ResponseGraphRecords struct {
@@ -55,6 +54,11 @@ type ResponseGraphRecords struct {
 type ResponseReasoningRecords struct {
 	Access    []AccessEvidenceSubject `json:"access_evidence_subjects,omitempty"`
 	Reasoning []EvidenceReasoningTask `json:"reasoning_tasks,omitempty"`
+}
+
+type ResponseQuestionnaireRecords struct {
+	Exceptions []ExceptionAcceptance `json:"exceptions_acceptances"`
+	Answers    []QuestionnaireAnswer `json:"questionnaire_answers"`
 }
 
 type AuditProgram struct {
@@ -698,12 +702,14 @@ func Build(result grccontrol.PacketResult) Response {
 			GraphRows:  graphRows,
 			GraphPaths: graphPaths,
 		},
-		Exceptions: exceptions,
-		Answers:    answers,
-		Artifacts:  artifacts,
-		Export:     export,
-		Snapshot:   snapshot,
-		Metadata:   result.Metadata,
+		ResponseQuestionnaireRecords: ResponseQuestionnaireRecords{
+			Exceptions: exceptions,
+			Answers:    answers,
+		},
+		Artifacts: artifacts,
+		Export:    export,
+		Snapshot:  snapshot,
+		Metadata:  result.Metadata,
 	}
 }
 
