@@ -420,10 +420,20 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	publishResult, err := l.publishMsg(ctx, msg, "append", publishAttrs)
 	endAttrs := publishAttrs().With(publishResult.attrs())
 	if err != nil {
-		err = fmt.Errorf("publish event: %w", err)
-		recordJetStreamPublish(ctx, "append", subject, "failed", err, publishResult)
-		jetstreamTelemetryError(ctx, span, "append", err, endAttrs)
-		return err
+		publishErr := fmt.Errorf("publish event: %w", err)
+		recordJetStreamPublish(ctx, "append", subject, "failed", publishErr, publishResult)
+		jetstreamTelemetryError(ctx, span, "append", publishErr, endAttrs)
+		if publishResult.MaxExhausted {
+			return &ports.AppendLogPublishExhaustedError{
+				Operation:     "append",
+				Subject:       subject,
+				ErrorCategory: jetstreamErrorCategory(err),
+				RetryCount:    publishResult.RetryCount,
+				MaxAttempts:   publishResult.MaxAttempts,
+				Err:           publishErr,
+			}
+		}
+		return publishErr
 	}
 	recordJetStreamPublish(ctx, "append", subject, "completed", nil, publishResult)
 	if publishResult.RetryCount > 0 {

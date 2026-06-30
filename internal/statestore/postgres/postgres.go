@@ -48,32 +48,37 @@ type grcTablesReady struct {
 	vendorQuestionnaire  bool
 }
 
+type appendLogTablesReady struct {
+	runtimeIndex bool
+	deadLetters  bool
+}
+
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db                         *sql.DB
-	schemaMu                   sync.Mutex
-	claimTablesReady           bool
-	projectionTablesReady      bool
-	findingTablesReady         bool
-	reportTablesReady          bool
-	sourceRuntimeTableReady    bool
-	findingEvidenceReady       bool
-	findingEvaluationRunReady  bool
-	findingIntel               findingIntelReady
-	vulnDBTablesReady          bool
-	deviceAuthTablesReady      bool
-	mcpOAuthTablesReady        bool
-	startupLeaseTableReady     bool
-	schemaMigrationsReady      bool
-	ask                        askTablesReady
-	jobTablesReady             bool
-	runtimeBlocklistReady      bool
-	grc                        grcTablesReady
-	identity                   identityTablesReady
-	connectorCredentialReady   bool
-	connectorDefinitionReady   bool
-	appendLogRuntimeIndexReady bool
-	userPreferencesReady       bool
+	db                        *sql.DB
+	schemaMu                  sync.Mutex
+	claimTablesReady          bool
+	projectionTablesReady     bool
+	findingTablesReady        bool
+	reportTablesReady         bool
+	sourceRuntimeTableReady   bool
+	findingEvidenceReady      bool
+	findingEvaluationRunReady bool
+	findingIntel              findingIntelReady
+	vulnDBTablesReady         bool
+	deviceAuthTablesReady     bool
+	mcpOAuthTablesReady       bool
+	startupLeaseTableReady    bool
+	schemaMigrationsReady     bool
+	ask                       askTablesReady
+	jobTablesReady            bool
+	runtimeBlocklistReady     bool
+	grc                       grcTablesReady
+	identity                  identityTablesReady
+	connectorCredentialReady  bool
+	connectorDefinitionReady  bool
+	appendLog                 appendLogTablesReady
+	userPreferencesReady      bool
 }
 
 // Open opens a Postgres-backed current-state store.

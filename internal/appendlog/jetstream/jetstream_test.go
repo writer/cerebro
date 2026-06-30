@@ -510,6 +510,34 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	}
 }
 
+func TestAppendReturnsTypedPublishExhaustedError(t *testing.T) {
+	skipPublishRetryWaits(t)
+	errs := make([]error, publishRetryAttempts)
+	for i := range errs {
+		errs[i] = errors.New("nats: no response from stream")
+	}
+	pub := &fakePublisher{publishErrs: errs}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+		Id:   "evt-exhausted",
+		Kind: securityevents.FindingRecorded,
+	})
+	var exhausted *ports.AppendLogPublishExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("Append() error = %T %v, want AppendLogPublishExhaustedError", err, err)
+	}
+	if exhausted.Subject != securityevents.FindingRecorded {
+		t.Fatalf("exhausted subject = %q, want canonical finding subject", exhausted.Subject)
+	}
+	if exhausted.Operation != "append" || exhausted.ErrorCategory != "no_response" {
+		t.Fatalf("exhausted details = %#v", exhausted)
+	}
+	if exhausted.RetryCount != publishRetryAttempts-1 || exhausted.MaxAttempts != publishRetryAttempts {
+		t.Fatalf("exhausted retry budget = %d/%d, want %d/%d", exhausted.RetryCount, exhausted.MaxAttempts, publishRetryAttempts-1, publishRetryAttempts)
+	}
+}
+
 func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
 	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
