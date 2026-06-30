@@ -137,6 +137,81 @@ func TestVendorReviewAddsVendorEvidenceSlot(t *testing.T) {
 	}
 }
 
+func TestProcessEvidenceAnswersRequiresCitationForRequiredSlot(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name       string
+		answer     evidencepackets.QuestionnaireAnswer
+		wantAnswer string
+		wantSlot   string
+	}{
+		{
+			name:       "unrelated citation does not satisfy audit report",
+			answer:     withEvidenceType(baseEvidenceAnswer("Attach the latest SOC 2 report.", "supported", "ready", "current"), "control_test", "okta"),
+			wantAnswer: ports.QuestionnaireAnswerBlocked,
+			wantSlot:   "missing",
+		},
+		{
+			name:       "audit report citation satisfies audit report",
+			answer:     withEvidenceType(baseEvidenceAnswer("Attach the latest SOC 2 report.", "supported", "ready", "current"), "audit_report", "trust-center"),
+			wantAnswer: ports.QuestionnaireAnswerSupported,
+			wantSlot:   "satisfied",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			record := NewRunRecord(NewRunRequest{
+				TenantID:  "tenant-1",
+				Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+				Title:     "Security questionnaire",
+				Questions: []ports.QuestionnaireQuestion{{
+					ID:       "q-1",
+					Question: "Attach the latest SOC 2 report.",
+				}},
+			}, now)
+
+			record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{tt.answer}, now)
+			if len(record.Answers) != 1 {
+				t.Fatalf("answer count = %d, want 1", len(record.Answers))
+			}
+			answer := record.Answers[0]
+			if answer.AnswerState != tt.wantAnswer {
+				t.Fatalf("answer state = %s, want %s; slots=%#v gaps=%#v", answer.AnswerState, tt.wantAnswer, answer.EvidenceSlots, answer.MissingEvidence)
+			}
+			if got := slotState(answer.EvidenceSlots, "audit_report"); got != tt.wantSlot {
+				t.Fatalf("audit slot state = %s, want %s; slots=%#v", got, tt.wantSlot, answer.EvidenceSlots)
+			}
+		})
+	}
+}
+
+func TestProcessEvidenceAnswersBlocksUnresolvedEvidenceSlot(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Title:     "Security questionnaire",
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:       "q-1",
+			Question: "Security questionnaire item",
+		}},
+	}, now)
+
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{
+		withEvidenceType(baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current"), "control_test", "okta"),
+	}, now)
+
+	if len(record.Answers) != 1 {
+		t.Fatalf("answer count = %d, want 1", len(record.Answers))
+	}
+	answer := record.Answers[0]
+	if answer.AnswerState != ports.QuestionnaireAnswerBlocked || len(answer.EvidenceSlots) != 0 {
+		t.Fatalf("answer = %s slots=%#v, want blocked without generic slots", answer.AnswerState, answer.EvidenceSlots)
+	}
+	if len(answer.MissingEvidence) != 1 || answer.MissingEvidence[0].Code != "unresolved_evidence_slot" {
+		t.Fatalf("missing evidence = %#v, want unresolved slot gap", answer.MissingEvidence)
+	}
+}
+
 func TestProcessEvidenceAnswersDoesNotCreateQuestionRows(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	record := NewRunRecord(NewRunRequest{
@@ -206,6 +281,7 @@ func ptrEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) *evidencepack
 }
 
 func baseEvidenceAnswer(question string, answerState string, reviewState string, freshness string) evidencepackets.QuestionnaireAnswer {
+	evidenceType, sourceID := evidenceRefForQuestion(question)
 	return evidencepackets.QuestionnaireAnswer{
 		ID:          "answer-" + answerState + "-" + freshness,
 		QuestionID:  "source-q-1",
@@ -225,13 +301,40 @@ func baseEvidenceAnswer(question string, answerState string, reviewState string,
 		SourceEvidence: []evidencepackets.QuestionnaireEvidenceRef{{
 			ID:               "evidence-1",
 			EvidencePacketID: "packet-1",
-			EvidenceType:     "control_test",
-			SourceID:         "okta",
+			EvidenceType:     evidenceType,
+			SourceID:         sourceID,
 			Freshness:        evidencepackets.EvidenceFreshness{Status: freshness, ObservedAt: "2026-06-01T00:00:00Z"},
 		}},
 		EvidencePackets: []string{"packet-1"},
 		Citations:       evidencepackets.EvidenceCitations{EvidenceIDs: []string{"evidence-1"}},
 		Freshness:       evidencepackets.EvidenceFreshness{Status: freshness, ObservedAt: "2026-06-01T00:00:00Z"},
+	}
+}
+
+func evidenceRefForQuestion(question string) (string, string) {
+	slots := slotsForQuestion(question, ports.QuestionnaireDirectionCustomerSecurityReview)
+	if len(slots) == 0 {
+		return "control_test", "okta"
+	}
+	switch slots[0] {
+	case "access_review":
+		return "access_review", "okta"
+	case "audit_report":
+		return "audit_report", "trust-center"
+	case "encryption":
+		return "encryption_evidence", "kms"
+	case "identity_mfa":
+		return "identity_mfa", "okta"
+	case "incident_response":
+		return "incident_response", "pagerduty"
+	case "policy":
+		return "policy_document", "policy-library"
+	case "subprocessors":
+		return "subprocessor_list", "trust-center"
+	case "ai_data_use":
+		return "ai_data_use", "legal"
+	default:
+		return "control_test", "okta"
 	}
 }
 
@@ -253,6 +356,14 @@ func withGap(answer evidencepackets.QuestionnaireAnswer, code string) evidencepa
 	return answer
 }
 
+func withEvidenceType(answer evidencepackets.QuestionnaireAnswer, evidenceType string, sourceID string) evidencepackets.QuestionnaireAnswer {
+	for index := range answer.SourceEvidence {
+		answer.SourceEvidence[index].EvidenceType = evidenceType
+		answer.SourceEvidence[index].SourceID = sourceID
+	}
+	return answer
+}
+
 func slotPresent(slots []ports.QuestionnaireEvidenceSlot, id string) bool {
 	for _, slot := range slots {
 		if slot.ID == id {
@@ -260,4 +371,13 @@ func slotPresent(slots []ports.QuestionnaireEvidenceSlot, id string) bool {
 		}
 	}
 	return false
+}
+
+func slotState(slots []ports.QuestionnaireEvidenceSlot, id string) string {
+	for _, slot := range slots {
+		if slot.ID == id {
+			return slot.State
+		}
+	}
+	return ""
 }

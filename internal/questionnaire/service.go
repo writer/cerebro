@@ -251,6 +251,15 @@ func compileAnswer(record ports.QuestionnaireRunRecord, question ports.Questionn
 		Confidence:  "low",
 		Freshness:   ports.QuestionnaireFreshness{Status: "missing"},
 	}
+	if len(requiredSlots) == 0 {
+		answer.MissingEvidence = []ports.QuestionnaireEvidenceGap{{
+			ID:     stableID("questionnaire-gap", question.ID, "unresolved_slot"),
+			Code:   "unresolved_evidence_slot",
+			Reason: "No required evidence slot could be resolved for this question.",
+		}}
+		answer.DraftAnswer = "No answer is ready. No required evidence slot could be resolved."
+		return answer
+	}
 	if evidenceAnswer == nil {
 		answer.EvidenceSlots = missingSlots(requiredSlots, "No matching evidence answer was found.")
 		answer.MissingEvidence = gapsForMissingSlots(question.ID, requiredSlots, "No matching evidence answer was found.")
@@ -261,7 +270,7 @@ func compileAnswer(record ports.QuestionnaireRunRecord, question ports.Questionn
 	answer.Controls = controlIDs(evidenceAnswer.Controls)
 	answer.Citations = citationsFromEvidenceAnswer(*evidenceAnswer)
 	answer.Freshness = freshnessFromEvidenceAnswer(*evidenceAnswer)
-	answer.EvidenceSlots = slotsFromEvidenceAnswer(requiredSlots, answer.Citations, *evidenceAnswer)
+	answer.EvidenceSlots = slotsFromEvidenceAnswer(requiredSlots, *evidenceAnswer)
 	answer.MissingEvidence = gapsFromEvidenceAnswer(question.ID, requiredSlots, *evidenceAnswer, answer.EvidenceSlots)
 	answer.Conflicts = conflictsFromEvidenceAnswer(question.ID, *evidenceAnswer)
 	answer.Confidence = evidenceAnswer.Confidence.Level
@@ -334,39 +343,103 @@ func slotsForQuestion(question string, direction string) []string {
 	if direction == ports.QuestionnaireDirectionVendorReview {
 		add("vendor_profile")
 	}
-	if len(slots) == 0 {
-		add("control_evidence")
-	}
 	sort.Strings(slots)
 	return slots
 }
 
-func slotsFromEvidenceAnswer(requiredSlots []string, citations []ports.QuestionnaireCitation, evidenceAnswer evidencepackets.QuestionnaireAnswer) []ports.QuestionnaireEvidenceSlot {
-	citationIDs := make([]string, 0, len(citations))
-	for _, citation := range citations {
-		citationIDs = append(citationIDs, citation.ID)
-	}
+func slotsFromEvidenceAnswer(requiredSlots []string, evidenceAnswer evidencepackets.QuestionnaireAnswer) []ports.QuestionnaireEvidenceSlot {
 	slots := make([]ports.QuestionnaireEvidenceSlot, 0, len(requiredSlots))
 	for _, slotID := range requiredSlots {
+		matches := matchingSlotEvidence(slotID, evidenceAnswer)
 		slot := ports.QuestionnaireEvidenceSlot{
-			ID:          slotID,
-			Label:       slotLabel(slotID),
-			State:       "missing",
-			Required:    true,
-			CitationIDs: append([]string(nil), citationIDs...),
+			ID:       slotID,
+			Label:    slotLabel(slotID),
+			State:    "missing",
+			Required: true,
 		}
-		if len(citations) > 0 {
+		if len(matches) > 0 {
 			slot.State = "satisfied"
+			slot.CitationIDs = matches
+		} else {
+			slot.MissingReasons = []string{"No current citation matched the required evidence slot."}
 		}
-		if evidenceAnswer.Freshness.Status == "stale" {
+		if slot.State == "satisfied" && slotEvidenceState(slotID, evidenceAnswer, "stale") {
 			slot.State = "stale"
 		}
-		if evidenceAnswer.AnswerState == "manual_review" {
+		if slot.State == "satisfied" && (evidenceAnswer.AnswerState == "manual_review" || slotEvidenceState(slotID, evidenceAnswer, "needs_review")) {
 			slot.State = "needs_review"
 		}
 		slots = append(slots, slot)
 	}
 	return slots
+}
+
+func matchingSlotEvidence(slotID string, answer evidencepackets.QuestionnaireAnswer) []string {
+	ids := []string{}
+	for _, ref := range questionnaireEvidenceRefs(answer) {
+		if evidenceRefMatchesSlot(slotID, ref, answer) {
+			ids = append(ids, firstNonEmpty(ref.ID, ref.EvidencePacketID))
+		}
+	}
+	if len(ids) == 0 && slotID == "control_evidence" {
+		ids = append(ids, answer.EvidencePackets...)
+	}
+	return uniqueSorted(ids)
+}
+
+func slotEvidenceState(slotID string, answer evidencepackets.QuestionnaireAnswer, state string) bool {
+	for _, ref := range questionnaireEvidenceRefs(answer) {
+		if !evidenceRefMatchesSlot(slotID, ref, answer) {
+			continue
+		}
+		if strings.EqualFold(ref.Freshness.Status, state) || strings.EqualFold(ref.ReviewState, state) {
+			return true
+		}
+	}
+	return false
+}
+
+func questionnaireEvidenceRefs(answer evidencepackets.QuestionnaireAnswer) []evidencepackets.QuestionnaireEvidenceRef {
+	refs := append([]evidencepackets.QuestionnaireEvidenceRef{}, answer.SourceEvidence...)
+	refs = append(refs, answer.PolicyDocuments...)
+	return refs
+}
+
+func evidenceRefMatchesSlot(slotID string, ref evidencepackets.QuestionnaireEvidenceRef, answer evidencepackets.QuestionnaireAnswer) bool {
+	terms := normalizedTerms(strings.Join([]string{
+		ref.ID,
+		ref.EvidencePacketID,
+		ref.EvidenceType,
+		ref.Source,
+		ref.SourceID,
+		ref.RuntimeID,
+		strings.Join(controlIDs(answer.Controls), " "),
+		controlTitles(answer.Controls),
+	}, " "))
+	switch slotID {
+	case "identity_mfa":
+		return hasAny(terms, "mfa", "multifactor", "identity", "sso", "okta", "idp")
+	case "access_review":
+		return hasAny(terms, "access", "permission", "permissions", "deprovision", "provision", "user", "users", "review")
+	case "encryption":
+		return hasAny(terms, "encrypt", "encryption", "encrypted", "key", "keys", "kms", "tls")
+	case "incident_response":
+		return hasAny(terms, "incident", "breach", "response", "ir")
+	case "subprocessors":
+		return hasAny(terms, "subprocessor", "subprocessors", "third", "party", "dpa")
+	case "audit_report":
+		return hasAny(terms, "soc", "soc2", "iso", "audit", "report", "assurance")
+	case "policy":
+		return hasAny(terms, "policy", "policies", "procedure", "procedures", "standard", "standards")
+	case "ai_data_use":
+		return hasAny(terms, "ai", "model", "training", "retention") || hasPhrase(strings.Join(termList(ref.EvidenceType+" "+ref.Source), " "), "data use")
+	case "vendor_profile":
+		return hasAny(terms, "vendor", "profile", "third", "party", "diligence", "dpa", "subprocessor", "subprocessors")
+	case "control_evidence":
+		return firstNonEmpty(ref.ID, ref.EvidencePacketID) != ""
+	default:
+		return false
+	}
 }
 
 func missingSlots(requiredSlots []string, reason string) []ports.QuestionnaireEvidenceSlot {
@@ -629,6 +702,14 @@ func controlIDs(controls []evidencepackets.QuestionnaireControlRef) []string {
 		ids = append(ids, firstNonEmpty(control.ControlID, control.ID))
 	}
 	return uniqueSorted(ids)
+}
+
+func controlTitles(controls []evidencepackets.QuestionnaireControlRef) string {
+	titles := make([]string, 0, len(controls))
+	for _, control := range controls {
+		titles = append(titles, control.Title)
+	}
+	return strings.Join(titles, " ")
 }
 
 func requiredSlotMissing(slots []ports.QuestionnaireEvidenceSlot) bool {
