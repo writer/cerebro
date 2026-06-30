@@ -36,8 +36,6 @@ jobs:
             checkout_fetch_depth: '0'
           - name: openapi
             command: make openapi-check openapi-lint
-          - name: catalog
-            command: make catalog-check detection-catalog-check
           - name: graph-actions
             command: make graph-action-check
           - name: docs-drift
@@ -52,7 +50,7 @@ jobs:
           - name: release-smoke
             command: make release-smoke
           - name: docker-smoke
-            command: make docker-smoke
+            command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha --cache-to type=gha,mode=max,ignore-error=true' make docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
@@ -68,10 +66,24 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/linters/go.sum
+          cache: false
+
+      - name: Cache Go build data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+
+      - name: Set up Docker Buildx
+        if: matrix.name == 'docker-smoke'
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
@@ -83,12 +95,54 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: api-cmd
-            command: make lint-api-cmd
-          - name: internal
-            command: make lint-internal
-          - name: sources
-            command: make lint-sources
+          - name: api-cmd-0
+            packages: ./api/... ./cmd/...
+            shard_total: 4
+            shard_index: 0
+          - name: api-cmd-1
+            packages: ./api/... ./cmd/...
+            shard_total: 4
+            shard_index: 1
+          - name: api-cmd-2
+            packages: ./api/... ./cmd/...
+            shard_total: 4
+            shard_index: 2
+          - name: api-cmd-3
+            packages: ./api/... ./cmd/...
+            shard_total: 4
+            shard_index: 3
+          - name: internal-0
+            packages: ./internal/...
+            shard_total: 4
+            shard_index: 0
+          - name: internal-1
+            packages: ./internal/...
+            shard_total: 4
+            shard_index: 1
+          - name: internal-2
+            packages: ./internal/...
+            shard_total: 4
+            shard_index: 2
+          - name: internal-3
+            packages: ./internal/...
+            shard_total: 4
+            shard_index: 3
+          - name: sources-0
+            packages: ./sources/...
+            shard_total: 4
+            shard_index: 0
+          - name: sources-1
+            packages: ./sources/...
+            shard_total: 4
+            shard_index: 1
+          - name: sources-2
+            packages: ./sources/...
+            shard_total: 4
+            shard_index: 2
+          - name: sources-3
+            packages: ./sources/...
+            shard_total: 4
+            shard_index: 3
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -98,10 +152,20 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/linters/go.sum
+          cache: false
+
+      - name: Cache Go build data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
 
       - name: Cache golangci-lint
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -109,11 +173,51 @@ jobs:
           path: |
             ~/.cache/golangci-lint
             ~/go/bin/golangci-lint
-          key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
           restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-
+            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-
             ${{ runner.os }}-${{ runner.arch }}-golangci-lint-
 
       - name: Run ${{ matrix.name }} lint
+        run: make lint-shard LINT_PACKAGES="${{ matrix.packages }}" LINT_SHARD_TOTAL="${{ matrix.shard_total }}" LINT_SHARD_INDEX="${{ matrix.shard_index }}"
+
+  catalog-shard:
+    name: catalog-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: source-catalog
+            command: make catalog-check
+          - name: detection-catalog
+            command: make detection-catalog-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Cache Go build data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-${{ hashFiles('go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+
+      - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
 
   go-test-shard:
@@ -122,7 +226,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -132,14 +236,24 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/linters/go.sum
+          cache: false
+
+      - name: Cache Go build data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
 
       - name: Run Go test shard ${{ matrix.shard_index }}
         env:
-          GO_TEST_SHARD_TOTAL: 4
+          GO_TEST_SHARD_TOTAL: 12
           GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
         run: make test
 
@@ -149,7 +263,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3, 4, 5]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -159,14 +273,24 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/linters/go.sum
+          cache: false
+
+      - name: Cache Go build data
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
 
       - name: Run Go race shard ${{ matrix.shard_index }}
         env:
-          GO_TEST_SHARD_TOTAL: 6
+          GO_TEST_SHARD_TOTAL: 16
           GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
         run: make test-race
 
@@ -209,9 +333,22 @@ jobs:
           fi
           echo "All Go lint shards passed"
 
+  catalog:
+    runs-on: ubuntu-latest
+    needs: [catalog-shard]
+    if: always()
+    steps:
+      - name: Check catalog shards
+        run: |
+          if [ "${{ needs.catalog-shard.result }}" != "success" ]; then
+            echo "One or more catalog shards failed"
+            exit 1
+          fi
+          echo "All catalog shards passed"
+
   verify:
     runs-on: ubuntu-latest
-    needs: [verify-shard, test, race, lint]
+    needs: [verify-shard, catalog, test, race, lint]
     if: always()
     steps:
       - name: Check verify shards
@@ -230,6 +367,10 @@ jobs:
           fi
           if [ "${{ needs.lint.result }}" != "success" ]; then
             echo "One or more Go lint shards failed"
+            exit 1
+          fi
+          if [ "${{ needs.catalog.result }}" != "success" ]; then
+            echo "One or more catalog shards failed"
             exit 1
           fi
           echo "All verify shards passed"

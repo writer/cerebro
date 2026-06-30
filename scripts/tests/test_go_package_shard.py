@@ -52,6 +52,25 @@ class GoPackageShardTests(unittest.TestCase):
             heavy_locations["github.com/writer/cerebro/internal/bootstrap"],
         )
 
+    def test_weighted_packages_use_default_weight_for_unknown_packages(self):
+        packages = [
+            "github.com/writer/cerebro/cmd/cerebro",
+            "github.com/writer/cerebro/internal/a",
+            "github.com/writer/cerebro/internal/b",
+            "github.com/writer/cerebro/internal/c",
+            "github.com/writer/cerebro/internal/d",
+            "github.com/writer/cerebro/internal/e",
+        ]
+        weights = {"github.com/writer/cerebro/cmd/cerebro": 100}
+
+        light_default = [go_package_shard.select_packages(packages, 2, index, weights) for index in range(2)]
+        heavier_default = [
+            go_package_shard.select_packages(packages, 2, index, weights, default_weight=25) for index in range(2)
+        ]
+
+        self.assertEqual(sorted(package for shard in heavier_default for package in shard), sorted(packages))
+        self.assertNotEqual([len(shard) for shard in light_default], [len(shard) for shard in heavier_default])
+
     def test_cli_accepts_weight_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             weights_path = Path(tmp) / "weights.json"
@@ -67,6 +86,8 @@ class GoPackageShardTests(unittest.TestCase):
                     "0",
                     "--weights",
                     str(weights_path),
+                    "--default-weight",
+                    "2",
                 ],
                 input="./heavy\n./light\n",
                 text=True,
