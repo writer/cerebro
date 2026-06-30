@@ -159,6 +159,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: namespaces
       type: entity_family
       title: Kubernetes namespaces
@@ -167,6 +172,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: ingresses
       type: entity_family
       title: Kubernetes ingresses
@@ -175,6 +185,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "CIS Controls v8"
+          control_id: "12"
     - id: nodes
       type: entity_family
       title: Kubernetes nodes
@@ -183,6 +198,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: pods
       type: entity_family
       title: Kubernetes pods
@@ -191,6 +211,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: service_accounts
       type: entity_family
       title: Kubernetes service accounts
@@ -199,6 +224,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
     - id: services
       type: entity_family
       title: Kubernetes services
@@ -207,6 +237,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "CIS Controls v8"
+          control_id: "12"
     - id: workloads
       type: entity_family
       title: Kubernetes workloads
@@ -215,6 +250,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: workload_identity_bindings
       type: relationship
       title: Kubernetes workload identity bindings
@@ -223,6 +263,11 @@ coverage_contract:
       high_value: true
       evidence_types: [relationship_evidence]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
     - id: rbac_roles
       type: app_entitlement
       title: Kubernetes RBAC roles
@@ -231,6 +276,11 @@ coverage_contract:
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
     - id: rbac_bindings
       type: relationship
       title: Kubernetes RBAC bindings
@@ -239,3 +289,8 @@ coverage_contract:
       high_value: true
       evidence_types: [relationship_evidence]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
