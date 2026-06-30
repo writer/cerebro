@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -115,6 +116,10 @@ func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 				},
 				"mdm":       map[string]any{"mdm_enabled": "True"},
 				"filevault": map[string]any{"filevault_enabled": false},
+				"kandji_agent": map[string]any{
+					"is_agent_installed":     true,
+					"last_check_in_datetime": "2026-05-01T12:10:00Z",
+				},
 			})
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
@@ -154,6 +159,7 @@ func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 		"status":            "enrolled",
 		"blueprint_name":    "Engineering Macs",
 		"owner_email":       "alice@example.com",
+		"agent_installed":   "true",
 	} {
 		if got := attrs[key]; got != want {
 			t.Fatalf("posture attribute %q = %q, want %q", key, got, want)
@@ -169,14 +175,16 @@ func TestReadApplicationFamily(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
 				{
-					"id":            "app-1",
-					"device_id":     "device-1",
-					"name":          "Safari",
-					"bundle_id":     "com.apple.Safari",
-					"version":       "18.0",
-					"publisher":     "Apple",
-					"last_seen_at":  "2026-05-01T12:00:00Z",
-					"serial_number": "SERIAL1",
+					"device_id":          "device-1",
+					"device__name":       "MacBook Pro",
+					"device__family":     "Mac",
+					"device__user_email": "alice@example.com",
+					"name":               "Safari",
+					"bundle_id":          "com.apple.Safari",
+					"version":            "18.0",
+					"developer_name":     "Apple",
+					"last_collected_at":  "2026-05-01T12:00:00Z",
+					"serial_number":      "SERIAL1",
 				},
 			},
 		})
@@ -207,6 +215,9 @@ func TestReadApplicationFamily(t *testing.T) {
 	if attrs["application_name"] != "Safari" || attrs["bundle_identifier"] != "com.apple.Safari" || attrs["installed_version"] != "18.0" {
 		t.Fatalf("attrs = %#v, want app inventory attributes", attrs)
 	}
+	if attrs["device_name"] != "MacBook Pro" || attrs["platform"] != "Mac" || attrs["owner_email"] != "alice@example.com" {
+		t.Fatalf("attrs = %#v, want Prism device/user attributes", attrs)
+	}
 }
 
 func TestReadVulnerabilityFamily(t *testing.T) {
@@ -217,15 +228,18 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
 				{
-					"id":                "finding-1",
-					"cve_id":            "CVE-2026-0001",
-					"severity":          "high",
-					"device_id":         "device-1",
-					"installed_version": "1.0.0",
-					"fixed_version":     "1.0.1",
-					"app": map[string]any{
-						"name": "Safari",
-					},
+					"device_id":             "device-1",
+					"device_name":           "MacBook Pro",
+					"device_serial_number":  "SERIAL1",
+					"name":                  "Safari",
+					"version":               "18.0",
+					"bundle_id":             "com.apple.Safari",
+					"cve_id":                "CVE-2026-0001",
+					"cve_description":       "WebKit memory safety issue",
+					"cvss_score":            8.1,
+					"cvss_severity":         "High",
+					"first_detection_date":  "2026-05-01",
+					"latest_detection_date": "2026-05-02",
 				},
 			},
 		})
@@ -255,6 +269,78 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	}
 	if attrs["cve_id"] != "CVE-2026-0001" || attrs["application_name"] != "Safari" {
 		t.Fatalf("attrs = %#v, want CVE/application attributes", attrs)
+	}
+	if attrs["severity"] != "High" || attrs["description"] != "WebKit memory safety issue" || attrs["serial_number"] != "SERIAL1" {
+		t.Fatalf("attrs = %#v, want Kandji vulnerability detection attributes", attrs)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyApplication, familyDevice, familyVulnerability} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family          string
+		kind            string
+		wantResourceURN string
+	}{
+		{family: familyApplication, kind: "kandji.application", wantResourceURN: "urn:cerebro:tenant:kandji_application:com.agilebits.onepassword7"},
+		{family: familyDevice, kind: "kandji.device", wantResourceURN: "urn:cerebro:tenant:kandji_device:03f81208-2b6a-4a77-81f5-cf1633bcfb95"},
+		{family: familyVulnerability, kind: "kandji.vulnerability", wantResourceURN: "urn:cerebro:tenant:kandji_vulnerability:CVE-2024-12345"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes["resource_urn"]; got != tt.wantResourceURN {
+				t.Fatalf("Read(%s).resource_urn = %q, want %q", tt.family, got, tt.wantResourceURN)
+			}
+		})
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kandji-token",
+		"family":    familyApplication,
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "kandji API returned 503") {
+		t.Fatalf("Read() error = %q, want 503 provider error", got)
 	}
 }
 
