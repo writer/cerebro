@@ -164,8 +164,13 @@ For JetStream append incidents, alert on `cerebro.jetstream.publish.requests`,
 `cerebro.jetstream.publish.max_attempts_exhausted` grouped by `subject` and
 `error_category`. Then pivot to `name="jetstream.append"` or
 `name="jetstream.publish.retry_exhausted"` telemetry for `tenant_id`,
-`runtime_id`, phase, retry count, and trace context. The checked-in alert
-templates in [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql)
+`runtime_id`, phase, retry count, trace context, and
+`messaging.jetstream.publish.bulkhead.scopes`. Use
+`messaging.jetstream.publish.bulkhead.effective_max_in_flight` for the tightest
+active publish cap and
+`messaging.jetstream.publish.bulkhead.findings.wait_ms` to confirm
+`sec.findings.v1.*` publish queueing. The checked-in alert templates in
+[`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql)
 include the dedicated `sec.findings.v1.recorded` + `no_response` page.
 
 ## Error Contract

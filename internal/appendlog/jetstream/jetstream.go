@@ -53,6 +53,11 @@ const (
 	replayStrategyRuntimeIndex      = "runtime_index"
 )
 
+const (
+	publishBulkheadScopeGlobal   = "global"
+	publishBulkheadScopeFindings = "findings"
+)
+
 var errRuntimeReplayIndexRequired = errors.New("runtime replay index required")
 
 var waitBeforePublishRetryFunc = waitBeforePublishRetry
@@ -73,25 +78,33 @@ type replayStream interface {
 }
 
 type publishTelemetry struct {
-	Attempts       int
-	MaxAttempts    int
-	RetryCount     int
-	LastBackoff    time.Duration
-	LastRetryable  bool
-	Duration       time.Duration
-	RetryBudget    time.Duration
-	AttemptTimeout time.Duration
-	MaxBackoff     time.Duration
-	ClientRetries  int
-	ClientWait     time.Duration
-	RetryExhausted bool
-	MaxExhausted   bool
-	BulkheadWait   time.Duration
-	BulkheadLimit  int
-	AckStream      string
-	AckSequence    uint64
-	AckDuplicate   bool
-	AckUnavailable bool
+	Attempts               int
+	MaxAttempts            int
+	RetryCount             int
+	LastBackoff            time.Duration
+	LastRetryable          bool
+	Duration               time.Duration
+	RetryBudget            time.Duration
+	AttemptTimeout         time.Duration
+	MaxBackoff             time.Duration
+	ClientRetries          int
+	ClientWait             time.Duration
+	RetryExhausted         bool
+	MaxExhausted           bool
+	BulkheadWait           time.Duration
+	BulkheadLimit          int
+	BulkheadEffectiveLimit int
+	Bulkheads              []publishBulkheadTelemetry
+	AckStream              string
+	AckSequence            uint64
+	AckDuplicate           bool
+	AckUnavailable         bool
+}
+
+type publishBulkheadTelemetry struct {
+	Scope string
+	Limit int
+	Wait  time.Duration
 }
 
 type publishRetryConfig struct {
@@ -148,6 +161,7 @@ type Log struct {
 	streamName    string
 	subjectPrefix string
 	publishSlots  chan struct{}
+	findingSlots  chan struct{}
 	publishRetry  publishRetryConfig
 	canaryMu      sync.Mutex
 	lastCanary    time.Time
@@ -217,6 +231,9 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 	}
 	if cfg.JetStreamPublishMaxInFlight > 0 {
 		log.publishSlots = make(chan struct{}, cfg.JetStreamPublishMaxInFlight)
+	}
+	if cfg.JetStreamPublishFindingsMaxInFlight > 0 {
+		log.findingSlots = make(chan struct{}, cfg.JetStreamPublishFindingsMaxInFlight)
 	}
 	return log, nil
 }
@@ -475,9 +492,8 @@ func (l *Log) publishMsg(ctx context.Context, msg *nats.Msg, operation string, e
 	for attempt := 1; attempt <= result.MaxAttempts; attempt++ {
 		result.Attempts = attempt
 		attemptCtx, cancel := context.WithTimeout(retryCtx, retry.AttemptTimeout)
-		wait, release, acquireErr := l.acquirePublishSlot(attemptCtx)
-		result.BulkheadWait += wait
-		result.BulkheadLimit = l.publishLimit()
+		bulkheads, release, acquireErr := l.acquirePublishSlots(attemptCtx, msg.Subject)
+		result.addBulkheads(bulkheads)
 		if acquireErr != nil {
 			cancel()
 			err = acquireErr
@@ -564,27 +580,92 @@ func (l *Log) applyExpectedStream(msg *nats.Msg) {
 	msg.Header.Set(jetstream.ExpectedStreamHeader, strings.TrimSpace(l.streamName))
 }
 
-func (l *Log) acquirePublishSlot(ctx context.Context) (time.Duration, func(), error) {
-	limit := l.publishLimit()
-	if limit <= 0 || l.publishSlots == nil {
+func (l *Log) acquirePublishSlots(ctx context.Context, subject string) ([]publishBulkheadTelemetry, func(), error) {
+	bulkheads := l.publishBulkheads(subject)
+	if len(bulkheads) == 0 {
+		return nil, func() {}, nil
+	}
+	acquired := make([]publishBulkheadTelemetry, 0, len(bulkheads))
+	releases := make([]func(), 0, len(bulkheads))
+	releaseAll := func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
+	}
+	for _, bulkhead := range bulkheads {
+		wait, release, err := acquirePublishSlot(ctx, bulkhead.slots)
+		acquired = append(acquired, publishBulkheadTelemetry{
+			Scope: bulkhead.scope,
+			Limit: cap(bulkhead.slots),
+			Wait:  wait,
+		})
+		if err != nil {
+			releaseAll()
+			return acquired, func() {}, err
+		}
+		releases = append(releases, release)
+	}
+	return acquired, releaseAll, nil
+}
+
+type publishBulkhead struct {
+	scope string
+	slots chan struct{}
+}
+
+func (l *Log) publishBulkheads(subject string) []publishBulkhead {
+	if l == nil {
+		return nil
+	}
+	bulkheads := make([]publishBulkhead, 0, 2)
+	if l.publishSlots != nil {
+		bulkheads = append(bulkheads, publishBulkhead{
+			scope: publishBulkheadScopeGlobal,
+			slots: l.publishSlots,
+		})
+	}
+	if l.findingSlots != nil && isFindingPublishSubject(subject) {
+		bulkheads = append(bulkheads, publishBulkhead{
+			scope: publishBulkheadScopeFindings,
+			slots: l.findingSlots,
+		})
+	}
+	return bulkheads
+}
+
+func acquirePublishSlot(ctx context.Context, slots chan struct{}) (time.Duration, func(), error) {
+	if slots == nil {
 		return 0, func() {}, nil
 	}
 	started := time.Now()
 	select {
-	case l.publishSlots <- struct{}{}:
+	case slots <- struct{}{}:
 		return time.Since(started), func() {
-			<-l.publishSlots
+			<-slots
 		}, nil
 	case <-ctx.Done():
 		return time.Since(started), func() {}, ctx.Err()
 	}
 }
 
-func (l *Log) publishLimit() int {
-	if l == nil || l.publishSlots == nil {
-		return 0
+func isFindingPublishSubject(subject string) bool {
+	normalized := strings.TrimSpace(subject)
+	if normalized == securityevents.FindingsV1Prefix || strings.HasPrefix(normalized, securityevents.FindingsV1Prefix+".") {
+		return true
 	}
-	return cap(l.publishSlots)
+	for _, kind := range []string{
+		workflowevents.EventKindFindingRecorded,
+		workflowevents.EventKindFindingNoteAdded,
+		workflowevents.EventKindFindingTicketLinked,
+		workflowevents.EventKindFindingStatusChanged,
+		workflowevents.EventKindFindingExternalRefLinked,
+		workflowevents.EventKindFindingTombstoned,
+	} {
+		if normalized == kind || strings.HasSuffix(normalized, "."+kind) {
+			return true
+		}
+	}
+	return false
 }
 
 func publishMessageID(event *cerebrov1.EventEnvelope, payload []byte) string {
@@ -607,6 +688,33 @@ func (r *publishTelemetry) applyAck(ack *jetstream.PubAck) {
 	r.AckDuplicate = ack.Duplicate
 }
 
+func (r *publishTelemetry) addBulkheads(bulkheads []publishBulkheadTelemetry) {
+	for _, bulkhead := range bulkheads {
+		if bulkhead.Scope == "" || bulkhead.Limit <= 0 {
+			continue
+		}
+		r.BulkheadWait += bulkhead.Wait
+		if bulkhead.Scope == publishBulkheadScopeGlobal || r.BulkheadLimit == 0 {
+			r.BulkheadLimit = bulkhead.Limit
+		}
+		if r.BulkheadEffectiveLimit == 0 || bulkhead.Limit < r.BulkheadEffectiveLimit {
+			r.BulkheadEffectiveLimit = bulkhead.Limit
+		}
+		found := false
+		for i := range r.Bulkheads {
+			if r.Bulkheads[i].Scope == bulkhead.Scope {
+				r.Bulkheads[i].Wait += bulkhead.Wait
+				r.Bulkheads[i].Limit = bulkhead.Limit
+				found = true
+				break
+			}
+		}
+		if !found {
+			r.Bulkheads = append(r.Bulkheads, bulkhead)
+		}
+	}
+}
+
 func (r publishTelemetry) attrs() telemetry.Attributes {
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "messaging.jetstream.publish.attempts", Value: r.Attempts},
@@ -624,11 +732,23 @@ func (r publishTelemetry) attrs() telemetry.Attributes {
 		telemetry.Field{Key: "messaging.jetstream.publish.client_retry_wait_ms", Value: r.ClientWait.Milliseconds()},
 	)
 	if r.BulkheadLimit > 0 {
+		scopes := make([]string, 0, len(r.Bulkheads))
+		for _, bulkhead := range r.Bulkheads {
+			scopes = append(scopes, bulkhead.Scope)
+		}
 		attrs = attrs.With(telemetry.Attrs(
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.enabled", Value: true},
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.max_in_flight", Value: r.BulkheadLimit},
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.effective_max_in_flight", Value: r.BulkheadEffectiveLimit},
 			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.wait_ms", Value: r.BulkheadWait.Milliseconds()},
+			telemetry.Field{Key: "messaging.jetstream.publish.bulkhead.scopes", Value: strings.Join(scopes, ",")},
 		))
+		for _, bulkhead := range r.Bulkheads {
+			attrs = attrs.With(telemetry.Attrs(
+				telemetry.Field{Key: "messaging.jetstream.publish.bulkhead." + bulkhead.Scope + ".max_in_flight", Value: bulkhead.Limit},
+				telemetry.Field{Key: "messaging.jetstream.publish.bulkhead." + bulkhead.Scope + ".wait_ms", Value: bulkhead.Wait.Milliseconds()},
+			))
+		}
 	}
 	if r.AckUnavailable {
 		attrs = attrs.WithField(telemetry.Field{Key: "messaging.jetstream.ack.unavailable", Value: true})

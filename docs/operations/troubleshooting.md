@@ -252,6 +252,7 @@ Verify:
 - `CEREBRO_APPEND_LOG_DRIVER=jetstream`,
 - `CEREBRO_JETSTREAM_URL`,
 - `CEREBRO_JETSTREAM_STREAM_NAME`,
+- `messaging.jetstream.publish.bulkhead.scopes` and `messaging.jetstream.publish.bulkhead.findings.wait_ms` on `jetstream.append` spans,
 - NATS stream storage, API errors, and account limits,
 - rollout timing and graceful drain timeout,
 - pending dead letters for the failing subject.
@@ -260,6 +261,7 @@ Common fixes:
 
 - restore NATS JetStream publish health before replay,
 - lower or pause the producer job that owns the failing phase,
+- set `CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT` when `sec.findings.v1.*` publishes saturate ACKs,
 - increase broker/account capacity when API errors or storage pressure are present,
 - replay pending dead letters one record at a time after publish health recovers,
 - discard only records that should not be replayed.
