@@ -52,6 +52,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
     - id: checks
       type: lifecycle_state
       title: Device compliance checks
@@ -60,6 +67,13 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: CA-7
     - id: issues
       type: lifecycle_state
       title: Open and resolved device check issues
@@ -68,14 +82,30 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "4"
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: SI-2
     - id: software_inventory
       type: entity_family
-      title: Installed software inventory
+      title: Kolide installation packages
       families: [software]
-      support: supported
+      support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+      known_unsupported_fields:
+        - Installed third-party application inventory is not exposed by Kolide's documented /packages response.
+      notes:
+        - The software family reflects Kolide package records documented on the /packages endpoint.
     - id: user_device_relationships
       type: relationship
       title: User to device relationships
@@ -84,11 +114,27 @@ coverage_contract:
       high_value: true
       evidence_types: [relationship_evidence]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
     - id: vulnerabilities
       type: entity_family
       title: Endpoint software vulnerabilities
       families: [vulnerability]
-      support: supported
+      support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "7"
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: RA-5
+      notes:
+        - Vulnerability attributes are emitted from Kolide issue value objects when the failed check payload includes vulnerability metadata.

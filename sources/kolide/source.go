@@ -25,6 +25,7 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
+		StaticHeaders:   map[string]string{"X-Kolide-Api-Version": defaultAPIVersion},
 		Families:        families(),
 	})
 	if err != nil {

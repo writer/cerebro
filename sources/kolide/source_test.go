@@ -35,14 +35,306 @@ func TestDefaultBaseURLUsesCurrentAPI(t *testing.T) {
 	}
 }
 
+func TestSourceCheckAndReadFamilies(t *testing.T) {
+	tests := []struct {
+		family string
+		path   string
+		kind   string
+		record map[string]any
+		attrs  map[string]string
+	}{
+		{
+			family: familyDevice,
+			path:   "/devices",
+			kind:   "kolide.device",
+			record: map[string]any{
+				"id":                    "device_01",
+				"name":                  "ENG-MBA-01",
+				"registered_at":         "2026-05-01T12:00:00Z",
+				"last_authenticated_at": "2026-05-29T17:05:00Z",
+				"last_seen_at":          "2026-05-30T08:30:00Z",
+				"registered_owner_info": map[string]any{
+					"identifier": "person_01",
+					"location":   "https://api.kolide.com/people/person_01",
+				},
+				"operating_system": "macOS 15.5",
+				"hardware_model":   "MacBook Pro",
+				"serial":           "C02KOLIDE001",
+				"hardware_uuid":    "E7C0B9B1-8E76-4D24-A423-589A2B035C12",
+				"auth_state":       "Good",
+				"auth_configuration": map[string]any{
+					"device_id":           "device_01",
+					"authentication_mode": "only_registered_owner",
+				},
+				"device_type": "Mac",
+				"form_factor": "Computer",
+			},
+			attrs: map[string]string{
+				"device_id":           "device_01",
+				"device_name":         "ENG-MBA-01",
+				"serial_number":       "C02KOLIDE001",
+				"os":                  "macOS 15.5",
+				"status":              "Good",
+				"authentication_mode": "only_registered_owner",
+			},
+		},
+		{
+			family: familyCheck,
+			path:   "/checks",
+			kind:   "kolide.check",
+			record: map[string]any{
+				"id":                        "check_01",
+				"name":                      "Disk encryption is enabled",
+				"slug":                      "disk-encryption-enabled",
+				"compatible_platforms":      []any{"darwin"},
+				"description":               "Requires FileVault on macOS devices.",
+				"issue_title":               "Enable disk encryption",
+				"fix_instructions_template": "Turn on FileVault.",
+				"rationale_template":        "Disk encryption protects local data.",
+				"blocks_auth_configuration": map[string]any{
+					"blocking_enabled":  true,
+					"grace_period_days": 3,
+				},
+				"percent_passing": 96,
+				"kolide_provided": true,
+				"type":            "osquery",
+			},
+			attrs: map[string]string{
+				"check_id":         "check_01",
+				"slug":             "disk-encryption-enabled",
+				"title":            "Enable disk encryption",
+				"remediation":      "Turn on FileVault.",
+				"blocking_enabled": "true",
+				"percent_passing":  "96",
+			},
+		},
+		{
+			family: familyIssue,
+			path:   "/issues",
+			kind:   "kolide.issue",
+			record: map[string]any{
+				"id":                "issue_01",
+				"issue_key":         "volume",
+				"issue_value":       "Macintosh HD",
+				"title":             "Disk encryption disabled",
+				"value":             map[string]any{"encrypted": false},
+				"exempted":          false,
+				"resolved_at":       nil,
+				"detected_at":       "2026-05-20T14:00:00Z",
+				"blocks_device_at":  "2026-05-27T14:00:00Z",
+				"last_rechecked_at": "2026-05-21T09:15:00Z",
+				"device_information": map[string]any{
+					"identifier": "device_01",
+					"location":   "https://api.kolide.com/devices/device_01",
+				},
+				"check_information": map[string]any{
+					"identifier": "check_01",
+					"location":   "https://api.kolide.com/checks/check_01",
+				},
+			},
+			attrs: map[string]string{
+				"issue_id":         "issue_01",
+				"issue_key":        "volume",
+				"issue_value":      "Macintosh HD",
+				"device_id":        "device_01",
+				"check_id":         "check_01",
+				"check_url":        "https://api.kolide.com/checks/check_01",
+				"blocks_device_at": "2026-05-27T14:00:00Z",
+			},
+		},
+		{
+			family: familySoftware,
+			path:   "/packages",
+			kind:   "kolide.software",
+			record: map[string]any{
+				"id":       "package_01",
+				"url":      "https://api.kolide.com/packages/package_01",
+				"version":  "1.12.3",
+				"built_at": "2026-05-15T18:45:00Z",
+			},
+			attrs: map[string]string{
+				"software_id":       "package_01",
+				"package_id":        "package_01",
+				"package_name":      "package_01",
+				"installed_version": "1.12.3",
+				"download_url":      "https://api.kolide.com/packages/package_01",
+				"built_at":          "2026-05-15T18:45:00Z",
+			},
+		},
+		{
+			family: familyUserDevice,
+			path:   "/devices",
+			kind:   "kolide.user_device",
+			record: map[string]any{
+				"id":                    "device_02",
+				"name":                  "ENG-WIN-02",
+				"registered_at":         "2026-05-04T10:00:00Z",
+				"last_authenticated_at": "2026-05-28T11:20:00Z",
+				"last_seen_at":          "2026-05-28T11:45:00Z",
+				"registered_owner_info": map[string]any{
+					"identifier": "person_02",
+					"location":   "https://api.kolide.com/people/person_02",
+				},
+				"serial":        "PF4KOLIDE002",
+				"hardware_uuid": "B6124D09-BD62-4638-B228-184F7C6C8D99",
+				"device_type":   "Windows",
+			},
+			attrs: map[string]string{
+				"device_id":   "device_02",
+				"device_name": "ENG-WIN-02",
+				"owner_id":    "person_02",
+				"owner_url":   "https://api.kolide.com/people/person_02",
+			},
+		},
+		{
+			family: familyVulnerability,
+			path:   "/issues",
+			kind:   "kolide.vulnerability",
+			record: map[string]any{
+				"id":                "issue_vuln_01",
+				"issue_key":         "cve",
+				"issue_value":       "CVE-2026-0001",
+				"title":             "OpenSSL package has a vulnerable version",
+				"detected_at":       "2026-05-25T10:00:00Z",
+				"last_rechecked_at": "2026-05-25T12:00:00Z",
+				"device_information": map[string]any{
+					"identifier": "device_01",
+					"location":   "https://api.kolide.com/devices/device_01",
+				},
+				"check_information": map[string]any{
+					"identifier": "check_vulnerability_01",
+					"location":   "https://api.kolide.com/checks/check_vulnerability_01",
+				},
+				"value": map[string]any{
+					"cve_id":            "CVE-2026-0001",
+					"package_name":      "openssl",
+					"installed_version": "3.0.1",
+					"fixed_version":     "3.0.2",
+					"severity":          "high",
+					"remediation":       "Update OpenSSL to 3.0.2 or later.",
+				},
+			},
+			attrs: map[string]string{
+				"vulnerability_id":  "issue_vuln_01",
+				"cve_id":            "CVE-2026-0001",
+				"device_id":         "device_01",
+				"package_name":      "openssl",
+				"installed_version": "3.0.1",
+				"fixed_version":     "3.0.2",
+				"severity":          "high",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.URL.Path != tt.path {
+					t.Fatalf("request path = %q, want %s", r.URL.Path, tt.path)
+				}
+				if got := r.URL.Query().Get("per_page"); got == "" {
+					t.Fatalf("per_page query is empty")
+				}
+				if got := r.URL.Query().Get("limit"); got != "" {
+					t.Fatalf("limit query = %q, want Kolide per_page only", got)
+				}
+				if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
+					t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
+				}
+				if got := r.Header.Get("X-Kolide-Api-Version"); got != defaultAPIVersion {
+					t.Fatalf("X-Kolide-Api-Version = %q, want %s", got, defaultAPIVersion)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data":       []map[string]any{tt.record},
+					"pagination": map[string]any{"current_cursor": "", "next_cursor": "", "count": 1},
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			cfg := sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "tenant",
+				"base_url":  server.URL,
+				"token":     "kolide-token",
+				"family":    tt.family,
+				"per_page":  "100",
+			})
+			if err := source.Check(context.Background(), cfg); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			urns, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if len(urns) != 1 {
+				t.Fatalf("len(URNs) = %d, want 1", len(urns))
+			}
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.kind {
+				t.Fatalf("Kind = %q, want %s", event.Kind, tt.kind)
+			}
+			for key, want := range tt.attrs {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("%s attribute %q = %q, want %q", tt.family, key, got, want)
+				}
+			}
+			if requests != 3 {
+				t.Fatalf("requests = %d, want Check, Discover, and Read", requests)
+			}
+		})
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "This feature has been disabled by your organization",
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"token":     "kolide-token",
+		"family":    familyDevice,
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider unavailable error")
+	}
+	if !strings.Contains(err.Error(), "kolide API returned 401") ||
+		!strings.Contains(err.Error(), "This feature has been disabled by your organization") {
+		t.Fatalf("Read() error = %v, want Kolide unavailable message", err)
+	}
+}
+
 func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/device.json")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/devices" {
-			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		if r.URL.Path != "/devices" {
+			t.Fatalf("request path = %q, want /devices", r.URL.Path)
 		}
 		_, _ = w.Write(fixture)
 	}))
@@ -55,7 +347,7 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "device",
 	}), nil)
@@ -69,15 +361,15 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	if event.Kind != "kolide.device" {
 		t.Fatalf("Kind = %q, want kolide.device", event.Kind)
 	}
-	if event.Attributes["hostname"] != "mba-1.writer.test" || event.Attributes["owner_email"] != "alice@writer.com" {
-		t.Fatalf("attrs = %#v, want fixture hostname/owner", event.Attributes)
+	if event.Attributes["device_name"] != "ENG-MBA-01" || event.Attributes["serial_number"] != "C02KOLIDE001" {
+		t.Fatalf("attrs = %#v, want fixture device name/serial", event.Attributes)
 	}
 }
 
 func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/devices" {
-			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		if r.URL.Path != "/devices" {
+			t.Fatalf("request path = %q, want /devices", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -99,7 +391,7 @@ func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "device",
 	}), nil)
@@ -123,8 +415,8 @@ func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 
 func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/devices" {
-			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		if r.URL.Path != "/devices" {
+			t.Fatalf("request path = %q, want /devices", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -145,7 +437,7 @@ func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "device",
 	}), nil)
@@ -162,8 +454,8 @@ func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/packages" {
-			t.Fatalf("request path = %q, want /api/v1/packages", r.URL.Path)
+		if r.URL.Path != "/packages" {
+			t.Fatalf("request path = %q, want /packages", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
 			t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
@@ -193,7 +485,7 @@ func TestReadSoftwareFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "software",
 	}), nil)
@@ -220,8 +512,8 @@ func TestReadSoftwareFamily(t *testing.T) {
 
 func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/packages" {
-			t.Fatalf("request path = %q, want /api/v1/packages", r.URL.Path)
+		if r.URL.Path != "/packages" {
+			t.Fatalf("request path = %q, want /packages", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -247,7 +539,7 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "software",
 	}), nil)
@@ -267,8 +559,8 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/issues" {
-			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
+		if r.URL.Path != "/issues" {
+			t.Fatalf("request path = %q, want /issues", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -293,7 +585,7 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "vulnerability",
 	}), nil)
@@ -314,8 +606,8 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 
 func TestReadIssueFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/issues" {
-			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
+		if r.URL.Path != "/issues" {
+			t.Fatalf("request path = %q, want /issues", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -345,7 +637,7 @@ func TestReadIssueFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "issue",
 	}), nil)
@@ -381,8 +673,8 @@ func TestReadIssueFamily(t *testing.T) {
 
 func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/issues" {
-			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
+		if r.URL.Path != "/issues" {
+			t.Fatalf("request path = %q, want /issues", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -403,7 +695,7 @@ func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "issue",
 	}), nil)
@@ -427,8 +719,8 @@ func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
 
 func TestReadCheckFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/checks" {
-			t.Fatalf("request path = %q, want /api/v1/checks", r.URL.Path)
+		if r.URL.Path != "/checks" {
+			t.Fatalf("request path = %q, want /checks", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -451,7 +743,7 @@ func TestReadCheckFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v1",
+		"base_url":  server.URL,
 		"token":     "kolide-token",
 		"family":    "check",
 	}), nil)
