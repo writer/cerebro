@@ -1666,6 +1666,7 @@ def validate_stack(path: Path) -> list[Finding]:
     nats_cpu = config.get("natsCpu", 512)
     nats_memory = config.get("natsMemory", 1024)
     jetstream_publish_max_in_flight = config.get("jetstreamPublishMaxInFlight", 0)
+    jetstream_publish_findings_max_in_flight = config.get("jetstreamPublishFindingsMaxInFlight", 0)
     jetstream_publish_retry_max_elapsed = config.get("jetstreamPublishRetryMaxElapsed")
     nats_efs_throughput_mode = str(config.get("natsEfsThroughputMode", "bursting")).strip().lower()
     nats_efs_provisioned_throughput = config.get("natsEfsProvisionedThroughputMibps")
@@ -1734,6 +1735,18 @@ def validate_stack(path: Path) -> list[Finding]:
                     stack,
                     "cerebro:jetstreamPublishMaxInFlight",
                     f"active Cerebro environments must set JetStream publish max-in-flight to at least {ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT}",
+                )
+            )
+        if (
+            not isinstance(jetstream_publish_findings_max_in_flight, int)
+            or jetstream_publish_findings_max_in_flight < ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT
+        ):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:jetstreamPublishFindingsMaxInFlight",
+                    f"active Cerebro environments must set JetStream findings publish max-in-flight to at least {ACTIVE_JETSTREAM_MIN_PUBLISH_MAX_IN_FLIGHT}",
                 )
             )
         retry_max_elapsed_seconds = _parse_duration_seconds(jetstream_publish_retry_max_elapsed)

@@ -227,7 +227,9 @@ and a Cerebro publish retry budget of at least 5 minutes. That retry window is
 deliberately longer than the observed 26 GiB stream restore window, and
 `cerebro:jetstreamPublishMaxInFlight` limits per-process publish fan-out during a
 broker restart so source runtimes wait instead of stampeding the recovering
-stream.
+stream. `cerebro:jetstreamPublishFindingsMaxInFlight` adds the same app-side
+queue for `sec.findings.v1.*` publishes so finding-rule bursts report their own
+bulkhead wait fields.
 
 The app sets `CEREBRO_JETSTREAM_STREAM_NAME` from `cerebro:jetstreamStreamName`.
 Publishes carry `Nats-Expected-Stream`, and readiness checks fail when that

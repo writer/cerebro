@@ -82,6 +82,7 @@ config:
   cerebro:jetstreamDupeWindow: 10m
   cerebro:jetstreamDiscardPolicy: old
   cerebro:jetstreamPublishMaxInFlight: 16
+  cerebro:jetstreamPublishFindingsMaxInFlight: 16
   cerebro:jetstreamPublishRetryAttempts: 24
   cerebro:jetstreamPublishRetryInitialBackoff: 500ms
   cerebro:jetstreamPublishRetryMaxBackoff: 10s
