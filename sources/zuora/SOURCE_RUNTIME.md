@@ -1,6 +1,6 @@
 # Zuora
 
-Generated Source Runtime SDK scaffold for `zuora`.
+Zuora source runtime for event triggers, billing configuration, notification history, catalog products, revenue events, and account payment methods.
 
 ## Runtime input
 
@@ -18,20 +18,20 @@ Generated Source Runtime SDK scaffold for `zuora`.
 
 ## Families
 
-- `event_trigger`, emits `zuora.event_trigger`, reads `/events/event-triggers`
+- `account`, emits `zuora.account`, reads `/v1/accounts/${config.account_key}/payment-methods`
 - `accounting_code`, emits `zuora.accounting_code`, reads `/v1/accounting-codes`
-- `callout`, emits `zuora.callout`, reads `/v1/notification-history/callout`
-- `hostedpage`, emits `zuora.hostedpage`, reads `/v1/hostedpages`
-- `product`, emits `zuora.product`, reads `/v1/catalog/products`
 - `accounting_period`, emits `zuora.accounting_period`, reads `/v1/accounting-periods`
+- `callout`, emits `zuora.callout`, reads `/v1/notification-history/callout`
 - `email`, emits `zuora.email`, reads `/v1/notification-history/email`
 - `email_template`, emits `zuora.email_template`, reads `/notifications/email-templates`
+- `event_trigger`, emits `zuora.event_trigger`, reads `/events/event-triggers`
+- `hostedpage`, emits `zuora.hostedpage`, reads `/v1/hostedpages`
 - `notification_definition`, emits `zuora.notification_definition`, reads `/notifications/notification-definitions`
+- `product`, emits `zuora.product`, reads `/v1/catalog/products`
 - `revenue_event`, emits `zuora.revenue_event`, reads `/v1/revenue-items/revenue-events/${config.event_number}`
 - `revenue_schedule`, emits `zuora.revenue_schedule`, reads `/v1/revenue-events/revenue-schedules/${config.rs_number}`
-- `account`, emits `zuora.account`, reads `/v1/payment-methods/credit-cards/accounts/${config.account_key}`
 
 ## Tests
 
-- `go test ./sources/zuora ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/zuora -count=1`
+- `make catalog-check sourcegen-check`
