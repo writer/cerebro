@@ -198,18 +198,30 @@ func TestEffectiveAccessPathAccessClassification(t *testing.T) {
 	}
 }
 
-func TestEffectiveAccessPathSupportsOperationProofOnlyWhenChanged(t *testing.T) {
-	path := EffectiveAccessPath{
+func TestEffectiveAccessPathSupportsOperationProofRequiresChangedPrivilegedOrSensitiveAccess(t *testing.T) {
+	standard := EffectiveAccessPath{
 		AssignmentKind: "direct_app_assignment",
 		AccessTarget:   GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-1", EntityType: "okta.application", Label: "App"},
 		Entitlement:    GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:user", EntityType: "okta.entitlement", Label: "User"},
 		Capability:     GraphEntityRef{URN: "urn:cerebro:writer:capability:standard_access", EntityType: "capability", Label: "Standard access"},
 	}
-	if path.SupportsOperationProof(false) {
-		t.Fatalf("SupportsOperationProof(false) = true, want false")
+	if standard.SupportsOperationProof(true) {
+		t.Fatalf("standard SupportsOperationProof(true) = true, want false")
 	}
-	if !path.SupportsOperationProof(true) {
-		t.Fatalf("SupportsOperationProof(true) = false, want true")
+
+	privileged := standard
+	privileged.Capability = GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:admin", EntityType: "privileged.capability", Label: "Administrator"}
+	if privileged.SupportsOperationProof(false) {
+		t.Fatalf("privileged SupportsOperationProof(false) = true, want false")
+	}
+	if !privileged.SupportsOperationProof(true) {
+		t.Fatalf("privileged SupportsOperationProof(true) = false, want true")
+	}
+
+	sensitive := standard
+	sensitive.AccessTarget = GraphEntityRef{URN: "urn:cerebro:writer:okta_application:finance", EntityType: "okta.application", Label: "Finance Reports"}
+	if !sensitive.SupportsOperationProof(true) {
+		t.Fatalf("sensitive SupportsOperationProof(true) = false, want true")
 	}
 }
 

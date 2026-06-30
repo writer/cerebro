@@ -145,7 +145,7 @@ func (p EffectiveAccessPath) AccessClassification() []string {
 }
 
 func (p EffectiveAccessPath) SupportsOperationProof(changedDuringPeriod bool) bool {
-	return changedDuringPeriod && (p.IsPrivileged() || p.IsSensitive() || strings.Contains(p.AssignmentKind, "assignment"))
+	return changedDuringPeriod && (p.IsPrivileged() || p.IsSensitive())
 }
 
 func EffectiveAccessPathRequestFromQuery(values url.Values) (EffectiveAccessPathRequest, error) {
