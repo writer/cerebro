@@ -77,6 +77,14 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	}
 	return s.inner.Read(ctx, cfg, cursor)
 }
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
+		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+			return s.inner.ReadPathParamValues(ctx, cfg, cursor, pagerDutyServiceIDConfig, serviceIDs)
+		}
+	}
+	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }

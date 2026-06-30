@@ -239,6 +239,100 @@ func TestReadUsesPagerDutyOffsetPagination(t *testing.T) {
 	}
 }
 
+func TestReadWithCheckpointPreservesPagerDutyOffsetCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get(pagerDutyPageSizeParam); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		switch r.URL.Query().Get(pagerDutyCursorParam) {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"users": []map[string]any{
+					{"id": "PU1", "name": "Alice Responder"},
+					{"id": "PU2", "name": "Bob Responder"},
+				},
+				"limit":  2,
+				"offset": 0,
+				"more":   true,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"users":  []map[string]any{{"id": "PU3", "name": "Carol Responder"}},
+				"limit":  2,
+				"offset": 2,
+				"more":   false,
+			})
+		default:
+			t.Fatalf("offset = %q, want empty or 2", r.URL.Query().Get(pagerDutyCursorParam))
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyUser,
+		"tenant_id": "writer",
+		"token":     "pagerduty-token",
+		"per_page":  "2",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	if first.Checkpoint == nil || first.Checkpoint.GetCursorOpaque() != "2" {
+		t.Fatalf("first Checkpoint = %#v, want provider cursor 2", first.Checkpoint)
+	}
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if second.Checkpoint == nil || second.Checkpoint.GetCursorOpaque() != "PU3" {
+		t.Fatalf("second Checkpoint = %#v, want last provider id PU3", second.Checkpoint)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get(pagerDutyCursorParam) != "2" {
+		t.Fatalf("requests = %#v, want second request with offset=2", requests)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyService,
+		"tenant_id": "writer",
+		"token":     "pagerduty-token",
+	})
+	_, err = source.Read(context.Background(), cfg, nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "pagerduty API returned 503") || !strings.Contains(got, "service unavailable") {
+		t.Fatalf("Read() error = %q, want provider status and message", got)
+	}
+}
+
 func TestReadIntegrationsFansOutAcrossServiceIDs(t *testing.T) {
 	requests := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
