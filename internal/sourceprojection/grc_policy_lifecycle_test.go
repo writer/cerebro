@@ -372,7 +372,7 @@ func TestProjectGRCPolicyEvidenceSnippetLinksDocumentPolicyControlAndQuestion(t 
 	if entity := state.entities[snippetURN]; entity == nil || entity.EntityType != "policy.evidence_snippet" || entity.Attributes["snippet_text"] == "" {
 		t.Fatalf("snippet entity = %#v, want policy evidence snippet with text", entity)
 	} else if entity.Attributes["policy_citations"] == "" || entity.Attributes["manual_review_state"] != "ready_to_project" || entity.Attributes["unsupported_claims"] == "" || entity.Attributes["source_provenance"] == "" {
-		t.Fatalf("snippet attrs = %#v, want QAuto citation fields", entity.Attributes)
+		t.Fatalf("snippet attrs = %#v, want questionnaire citation fields", entity.Attributes)
 	}
 	assertProjectedLink(t, state, documentURN, relationHasEvidence, snippetURN)
 	assertProjectedLink(t, state, policyURN, relationHasEvidence, snippetURN)

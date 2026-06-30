@@ -248,9 +248,10 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	validator := s.validator
-	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+	candidateLimit := postProcessingCandidateLimit(conversion)
+	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < candidateLimit {
 		options := validator.options
-		options.MaxRows = postProcessingCandidateRowLimit
+		options.MaxRows = candidateLimit
 		validator = NewValidator(validator.store, options)
 	}
 	return validator.validate(ctx, cypher, params)
@@ -385,11 +386,33 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 
 func sanitizeInternalRowFields(rows []map[string]any) {
 	for _, row := range rows {
+		if questionnaireEvidenceRow(row) {
+			mergeInternalAttributesWithPrefix(row, "control_attributes_json_internal", "control_", []string{"control_id", "control_external_id", "policy_id", "policy_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "support_attributes_json_internal", "support_", []string{"evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "evidence_attributes_json_internal", "evidence_", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "direct_evidence_attributes_json_internal", "direct_evidence_", []string{"evidence_id", "evidence_type", "document_type", "policy_document_type", "status", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "finding_attributes_json_internal", "finding_", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+			mergeInternalAttributesWithPrefix(row, "exception_attributes_json_internal", "exception_", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
+			mergeInternalAttributesWithPrefix(row, "source_attributes_json_internal", "source_", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
+			mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
+			removeRawAttributeJSONFields(row)
+			continue
+		}
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+		mergeInternalAttributesWithPrefix(row, "exception_attributes_json_internal", "exception_", []string{"status", "exception_id", "expires_at", "owner_id", "source_system"})
 		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
 		removeRawAttributeJSONFields(row)
 	}
+}
+
+func questionnaireEvidenceRow(row map[string]any) bool {
+	for _, key := range []string{"control_attributes_json_internal", "support_attributes_json_internal", "evidence_attributes_json_internal"} {
+		if _, ok := row[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func removeRawAttributeJSONFields(row map[string]any) {
@@ -504,17 +527,40 @@ func postProcessAskRows(conversion conversionResult, rows []map[string]any) []ma
 		return postProcessTopRiskFindingRows(conversion.Plan, rows)
 	case IntentFailingControls:
 		return postProcessFailingControlRows(conversion.Plan, rows)
+	case IntentQuestionnaireEvidence:
+		return postProcessQuestionnaireEvidenceRows(conversion.Plan, rows)
 	default:
 		return rows
 	}
 }
 
 func usesPostProcessingCandidates(conversion conversionResult) bool {
-	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings || conversion.Plan.Intent == IntentFailingControls)
+	if !conversion.Deterministic {
+		return false
+	}
+	switch conversion.Plan.Intent {
+	case IntentAggregateFindingsBySource, IntentTopRiskFindings, IntentFailingControls, IntentQuestionnaireEvidence:
+		return true
+	default:
+		return false
+	}
 }
 
 func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
-	return usesPostProcessingCandidates(conversion) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+	candidateLimit := postProcessingCandidateLimit(conversion)
+	return usesPostProcessingCandidates(conversion) && rowLimit >= candidateLimit && len(rows) >= rowLimit
+}
+
+func postProcessingCandidateLimit(conversion conversionResult) int {
+	if !usesPostProcessingCandidates(conversion) {
+		return defaultMaxRows
+	}
+	switch conversion.Plan.Intent {
+	case IntentQuestionnaireEvidence:
+		return questionnaireEvidenceCandidateRowLimit
+	default:
+		return postProcessingCandidateRowLimit
+	}
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
@@ -802,6 +848,41 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 	return result
 }
 
+func postProcessQuestionnaireEvidenceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	limit := postProcessedRowLimit(plan)
+	result := make([]map[string]any, 0, limit)
+	seen := map[string]struct{}{}
+	for index, row := range rows {
+		key := questionnaireEvidenceCandidateKey(row, index)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, row)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func questionnaireEvidenceCandidateKey(row map[string]any, index int) string {
+	parts := []string{
+		stringRowValue(row, "control_urn"),
+		stringRowValue(row, "support_urn"),
+		stringRowValue(row, "evidence_urn"),
+		stringRowValue(row, "finding_urn"),
+		stringRowValue(row, "exception_urn"),
+		stringRowValue(row, "source_urn"),
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			return strings.Join(parts, "\x00")
+		}
+	}
+	return fmt.Sprintf("row:%d", index)
+}
+
 func failingControlRefsFromAttributes(attrs ...map[string]any) []failingControlRef {
 	seen := map[string]struct{}{}
 	var refs []failingControlRef
@@ -942,6 +1023,10 @@ func severityName(rank int) string {
 }
 
 func mergeInternalAttributes(row map[string]any, key string, fields []string) {
+	mergeInternalAttributesWithPrefix(row, key, "", fields)
+}
+
+func mergeInternalAttributesWithPrefix(row map[string]any, key string, prefix string, fields []string) {
 	raw, ok := row[key].(string)
 	delete(row, key)
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -952,7 +1037,14 @@ func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 		return
 	}
 	for _, field := range fields {
-		if !rowValueEmpty(row[field]) {
+		outputField := prefixedAttributeField(prefix, field)
+		if !rowValueEmpty(row[outputField]) && strings.TrimSpace(prefix) != "" {
+			collisionField := strings.TrimSpace(prefix) + strings.TrimSpace(field)
+			if collisionField != outputField {
+				outputField = collisionField
+			}
+		}
+		if !rowValueEmpty(row[outputField]) {
 			continue
 		}
 		value, ok := attrs[field]
@@ -960,9 +1052,22 @@ func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 			continue
 		}
 		if text, ok := internalAttributeText(value); ok {
-			row[field] = text
+			row[outputField] = text
 		}
 	}
+}
+
+func prefixedAttributeField(prefix string, field string) string {
+	prefix = strings.TrimSpace(prefix)
+	field = strings.TrimSpace(field)
+	if prefix == "" || field == "" {
+		return field
+	}
+	base := strings.TrimSuffix(prefix, "_")
+	if base != "" && strings.HasPrefix(field, base+"_") {
+		return field
+	}
+	return prefix + field
 }
 
 func internalAttributeText(value any) (string, bool) {
@@ -1149,13 +1254,14 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentQuestionnaireEvidence},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
 			"Show controls with open findings and cite the affected resources.",
 			"Count findings by source family.",
 			"Show source health and freshness for security integrations.",
 			"Explain the evidence for a specific finding URN.",
+			"Answer an Okta MFA questionnaire item from bounded graph evidence.",
 		},
 		TraceID: traceID,
 	}

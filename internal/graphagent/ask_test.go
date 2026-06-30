@@ -131,6 +131,135 @@ func TestServiceUsesDeterministicFastPathForCommonTopRiskAsk(t *testing.T) {
 	}
 }
 
+func TestServiceUsesGraphEvidenceBeforeQuestionnaireSummary(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"control_urn":                              "urn:cerebro:writer:policy:control:iam-1",
+				"control_label":                            "Access control",
+				"control_ref":                              "IAM-1",
+				"control_attributes_json_internal":         `{"policy_type":"control","control_id":"IAM-1","status":"monitored"}`,
+				"support_urn":                              "urn:cerebro:writer:okta_policy_rule:mfa-global",
+				"support_label":                            "Okta MFA rule",
+				"support_type":                             "okta.policy_rule",
+				"support_source_id":                        "okta",
+				"support_relation":                         "supports",
+				"support_attributes_json_internal":         `{"status":"active","source_system":"okta"}`,
+				"evidence_urn":                             "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot",
+				"evidence_label":                           "Okta MFA snapshot",
+				"evidence_type":                            "runtime_evidence",
+				"evidence_source_id":                       "okta",
+				"evidence_relation":                        "has_evidence",
+				"evidence_attributes_json_internal":        `{"evidence_type":"okta_policy","status":"ready"}`,
+				"direct_evidence_urn":                      "urn:cerebro:writer:runtime_evidence:okta-direct-control",
+				"direct_evidence_label":                    "Okta direct control evidence",
+				"direct_evidence_type":                     "runtime_evidence",
+				"direct_evidence_source_id":                "okta",
+				"direct_evidence_relation":                 "has_evidence",
+				"direct_evidence_attributes_json_internal": `{"evidence_type":"okta_control","status":"reviewed","source_system":"okta"}`,
+				"source_urn":                               "urn:cerebro:writer:source:okta",
+				"source_label":                             "Okta",
+				"source_attributes_json_internal":          `{"status":"healthy","last_sync_at":"2026-06-29T12:00:00Z"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftErr: errors.New("draft should be skipped"),
+		Summary:  "Okta MFA is supported by `urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot`; review any uncovered lifecycle claims manually.",
+	}
+	service := NewServiceWithOptions(store, llm, ValidatorOptions{}, ServiceOptions{EnableDeterministicFastPath: true})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Does Okta enforce MFA for access?",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	if len(llm.DraftRequests) != 0 {
+		t.Fatalf("DraftCypher called %#v, want deterministic graph retrieval before LLM summary", llm.DraftRequests)
+	}
+	if len(llm.SummaryRequests) != 1 {
+		t.Fatalf("Summary requests = %#v, want one grounded LLM summary", llm.SummaryRequests)
+	}
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Plan.Intent != IntentQuestionnaireEvidence || planEvent.Source != "deterministic_fast_path" {
+		t.Fatalf("query plan event = %#v, want questionnaire evidence fast path", planEvent)
+	}
+	if !strings.Contains(store.requests[0].Query, `questionnaire_match_text =~ '(?s).*\\bokta\\b.*'`) || !strings.Contains(store.requests[0].Query, "relation: 'has_evidence'") {
+		t.Fatalf("store request did not retrieve bounded questionnaire graph evidence:\n%s", store.requests[0].Query)
+	}
+	if store.requests[0].RowLimit != questionnaireEvidenceCandidateRowLimit {
+		t.Fatalf("store row limit = %d, want questionnaire candidate row limit %d", store.requests[0].RowLimit, questionnaireEvidenceCandidateRowLimit)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	for field, want := range map[string]any{
+		"control_status":                "monitored",
+		"support_status":                "active",
+		"evidence_type":                 "runtime_evidence",
+		"evidence_evidence_type":        "okta_policy",
+		"evidence_status":               "ready",
+		"direct_evidence_status":        "reviewed",
+		"direct_evidence_evidence_type": "okta_control",
+		"direct_evidence_source_system": "okta",
+		"source_status":                 "healthy",
+		"source_last_sync_at":           "2026-06-29T12:00:00Z",
+	} {
+		if got := rowsEvent.Rows[0][field]; got != want {
+			t.Fatalf("%s = %#v, want %#v in sanitized questionnaire row %#v", field, got, want, rowsEvent.Rows[0])
+		}
+	}
+	if got := rowsEvent.Rows[0]["status"]; got != nil {
+		t.Fatalf("status = %#v, want no unprefixed status collision in questionnaire row %#v", got, rowsEvent.Rows[0])
+	}
+	if _, leaked := rowsEvent.Rows[0]["source_attributes_json_internal"]; leaked {
+		t.Fatalf("rows leaked raw source attributes: %#v", rowsEvent.Rows[0])
+	}
+	if _, leaked := rowsEvent.Rows[0]["direct_evidence_attributes_json_internal"]; leaked {
+		t.Fatalf("rows leaked raw direct evidence attributes: %#v", rowsEvent.Rows[0])
+	}
+	summaryEvent := events[8].Data.(SummaryEvent)
+	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:writer:runtime_evidence:okta-mfa-snapshot" {
+		t.Fatalf("citations = %#v, want cited evidence urn", summaryEvent.Citations)
+	}
+}
+
+func TestPostProcessQuestionnaireEvidenceRowsDeduplicatesAndLimitsCandidates(t *testing.T) {
+	rows := []map[string]any{
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-1",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-1",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-1",
+		},
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-1",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-1",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-1",
+		},
+		{
+			"control_urn":  "urn:cerebro:writer:policy:control:ac-2",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:support-2",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:evidence-2",
+		},
+	}
+
+	result := postProcessQuestionnaireEvidenceRows(AskQueryPlan{Intent: IntentQuestionnaireEvidence, Limit: 2}, rows)
+	if len(result) != 2 {
+		t.Fatalf("rows = %#v, want two distinct questionnaire candidates", result)
+	}
+	if got := result[0]["control_urn"]; got != "urn:cerebro:writer:policy:control:ac-1" {
+		t.Fatalf("first control_urn = %#v, want first distinct candidate", got)
+	}
+	if got := result[1]["control_urn"]; got != "urn:cerebro:writer:policy:control:ac-2" {
+		t.Fatalf("second control_urn = %#v, want second distinct candidate", got)
+	}
+}
+
 func TestValidateRequestRejectsUnsupportedModel(t *testing.T) {
 	err := ValidateRequest(AskRequest{
 		TenantID: "writer",
@@ -213,6 +342,12 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	summary := events[5].Data.(SummaryEvent)
 	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "validator_refusal" || len(summary.UnsupportedQuery.SuggestedRewrites) == 0 {
 		t.Fatalf("unsupported query rescue = %#v, want validator refusal with structured suggestions", summary.UnsupportedQuery)
+	}
+	if !stringSliceContains(summary.UnsupportedQuery.SupportedIntents, IntentQuestionnaireEvidence) {
+		t.Fatalf("supported intents = %#v, want questionnaire evidence intent", summary.UnsupportedQuery.SupportedIntents)
+	}
+	if !stringSliceContains(summary.UnsupportedQuery.SuggestedRewrites, "Answer an Okta MFA questionnaire item from bounded graph evidence.") {
+		t.Fatalf("suggested rewrites = %#v, want questionnaire evidence rewrite", summary.UnsupportedQuery.SuggestedRewrites)
 	}
 	if !stringSliceContains(summary.UnsupportedQuery.SupportedIntents, IntentFailingControls) {
 		t.Fatalf("supported intents = %#v, want failing controls intent", summary.UnsupportedQuery.SupportedIntents)
@@ -766,6 +901,57 @@ func TestServiceSanitizesInternalSourceAttributes(t *testing.T) {
 	}
 	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "source_attributes_json_internal") {
 		t.Fatalf("store request = %#v, want internal source attributes", store.requests)
+	}
+}
+
+func TestServiceKeepsExceptionOnlyRowsOnNonQuestionnaireAttributePath(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"exception_urn":                      "urn:cerebro:writer:exception:exc-1",
+				"exception_label":                    "Accepted exception",
+				"exception_attributes_json_internal": `{"status":"accepted","exception_id":"exc-1","owner_id":"security"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Checking accepted exceptions.",
+			Cypher: `MATCH (exception:Entity {tenant_id: $tenant_id})
+RETURN exception.urn AS exception_urn,
+       coalesce(exception.label, exception.urn) AS exception_label,
+       coalesce(exception.attributes_json, '') AS exception_attributes_json_internal
+LIMIT 25`,
+		},
+		Summary: "Accepted exception is present.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show accepted exceptions",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	rowsEvent := events[6].Data.(RowsEvent)
+	row := rowsEvent.Rows[0]
+	if _, exists := row["exception_attributes_json_internal"]; exists {
+		t.Fatalf("internal exception attributes leaked in row: %#v", row)
+	}
+	if _, exists := row["status"]; exists {
+		t.Fatalf("exception-only non-questionnaire row used ambiguous status field: %#v", row)
+	}
+	if got := row["exception_status"]; got != "accepted" {
+		t.Fatalf("exception_status = %q, want accepted", got)
+	}
+	if got := row["exception_id"]; got != "exc-1" {
+		t.Fatalf("exception_id = %q, want exc-1", got)
 	}
 }
 
