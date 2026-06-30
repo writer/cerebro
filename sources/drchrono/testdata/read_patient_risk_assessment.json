@@ -37,7 +37,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/api/patient_risk_assessments",
-      "code": "open",
+      "code": "high",
       "description": "Drchrono Patient Risk Assessment Fixture finding",
       "event_id": "source-drchrono-patient_risk_assessment-1",
       "evidence_cas": {

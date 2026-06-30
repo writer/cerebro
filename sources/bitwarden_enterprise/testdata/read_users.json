@@ -7,7 +7,7 @@
       "department": "department-source-bitwarden_enterprise-users-1",
       "display_name": "Bitwarden Enterprise Users Fixture",
       "domain": "domain-source-bitwarden_enterprise-users-1",
-      "email": "user@bitwarden-enterprise.example.test",
+      "email": "email@bitwarden-enterprise.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-bitwarden_enterprise-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bitwarden_enterprise-users-1",

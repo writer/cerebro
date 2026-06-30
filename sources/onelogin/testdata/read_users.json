@@ -7,7 +7,7 @@
       "department": "department-source-onelogin-users-1",
       "display_name": "Onelogin Users Fixture",
       "domain": "domain-source-onelogin-users-1",
-      "email": "user@onelogin.example.test",
+      "email": "email@onelogin.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-onelogin-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-onelogin-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-meraki-merakiauthuser-1",
       "display_name": "Meraki Merakiauthuser Fixture",
       "domain": "domain-source-meraki-merakiauthuser-1",
-      "email": "user@meraki.example.test",
+      "email": "email@meraki.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-meraki-merakiauthuser-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-meraki-merakiauthuser-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@rippling.example.test",
-      "actor_id": "source-rippling-users-1",
+      "actor_email": "email@rippling.example.test",
+      "actor_id": "rippling-users-1",
       "actor_name": "actor-name-source-rippling-background_checks-1",
       "api_method": "GET",
       "api_path": "/background-checks",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@rippling.example.test",
-      "actor_id": "source-rippling-users-1",
+      "actor_id": "rippling-users-1",
       "actor_name": "actor-name-source-rippling-background_checks-1",
       "api_method": "GET",
       "api_path": "/background-checks",

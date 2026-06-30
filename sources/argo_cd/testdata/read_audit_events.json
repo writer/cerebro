@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@argo-cd.example.test",
-      "actor_id": "source-argo_cd-users-1",
+      "actor_email": "email@argo-cd.example.test",
+      "actor_id": "argo_cd-users-1",
       "actor_name": "actor-name-source-argo_cd-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@argo-cd.example.test",
-      "actor_id": "source-argo_cd-users-1",
+      "actor_id": "argo_cd-users-1",
       "actor_name": "actor-name-source-argo_cd-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",

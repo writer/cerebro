@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@teamwork-projects.example.test",
-      "actor_id": "source-teamwork_projects-users-1",
+      "actor_email": "email@teamwork-projects.example.test",
+      "actor_id": "teamwork_projects-users-1",
       "actor_name": "actor-name-source-teamwork_projects-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@teamwork-projects.example.test",
-      "actor_id": "source-teamwork_projects-users-1",
+      "actor_id": "teamwork_projects-users-1",
       "actor_name": "actor-name-source-teamwork_projects-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",

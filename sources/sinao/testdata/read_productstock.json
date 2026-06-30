@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@sinao.example.test",
-      "actor_id": "source-sinao-users-1",
+      "actor_email": "email@sinao.example.test",
+      "actor_id": "sinao-users-1",
       "actor_name": "actor-name-source-sinao-productstock-1",
       "api_method": "GET",
       "api_path": "/apps/${config.appid}/productstocks",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@sinao.example.test",
-      "actor_id": "source-sinao-users-1",
+      "actor_id": "sinao-users-1",
       "actor_name": "actor-name-source-sinao-productstock-1",
       "api_method": "GET",
       "api_path": "/apps/${config.appid}/productstocks",

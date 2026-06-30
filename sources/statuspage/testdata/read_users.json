@@ -7,7 +7,7 @@
       "department": "department-source-statuspage-users-1",
       "display_name": "Statuspage Users Fixture",
       "domain": "domain-source-statuspage-users-1",
-      "email": "user@statuspage.example.test",
+      "email": "email@statuspage.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-statuspage-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-statuspage-users-1",

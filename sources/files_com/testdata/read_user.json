@@ -7,7 +7,7 @@
       "department": "department-source-files_com-user-1",
       "display_name": "Files Com User Fixture",
       "domain": "domain-source-files_com-user-1",
-      "email": "user@files-com.example.test",
+      "email": "email@files-com.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-files_com-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-files_com-user-1",

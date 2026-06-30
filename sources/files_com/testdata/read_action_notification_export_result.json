@@ -46,7 +46,7 @@
       "alert_type": "action_notification_export_result",
       "api_method": "GET",
       "api_path": "/action_notification_export_results",
-      "created_at": "critical",
+      "created_at": "Files Com Action Notification Export Result Fixture",
       "description": "Files Com Action Notification Export Result Fixture alert",
       "event_id": "source-files_com-action_notification_export_result-1",
       "evidence_cas": {

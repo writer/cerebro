@@ -7,7 +7,7 @@
       "department": "department-source-anomalo-users-1",
       "display_name": "Anomalo Users Fixture",
       "domain": "domain-source-anomalo-users-1",
-      "email": "user@anomalo.example.test",
+      "email": "email@anomalo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-anomalo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-anomalo-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@lambdatest.example.test",
-      "actor_id": "source-lambdatest-users-1",
+      "actor_email": "email@lambdatest.example.test",
+      "actor_id": "lambdatest-users-1",
       "actor_name": "actor-name-source-lambdatest-profile-1",
       "api_method": "GET",
       "api_path": "/profiles",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@lambdatest.example.test",
-      "actor_id": "source-lambdatest-users-1",
+      "actor_id": "lambdatest-users-1",
       "actor_name": "actor-name-source-lambdatest-profile-1",
       "api_method": "GET",
       "api_path": "/profiles",

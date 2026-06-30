@@ -7,7 +7,7 @@
       "department": "department-source-zuora-email_template-1",
       "display_name": "Zuora Email Template Fixture",
       "domain": "domain-source-zuora-email_template-1",
-      "email": "user@zuora.example.test",
+      "email": "email@zuora.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-zuora-email_template-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zuora-email_template-1",

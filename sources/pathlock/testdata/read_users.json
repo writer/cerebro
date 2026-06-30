@@ -7,7 +7,7 @@
       "department": "department-source-pathlock-users-1",
       "display_name": "Pathlock Users Fixture",
       "domain": "domain-source-pathlock-users-1",
-      "email": "user@pathlock.example.test",
+      "email": "email@pathlock.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-pathlock-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-pathlock-users-1",

@@ -162,6 +162,11 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 				},
 				Projection: &connectordefinitions.ProjectionSpec{
 					Template: "identity_user",
+					Fields: map[string]string{
+						"id":    "id",
+						"email": "email",
+						"name":  "email",
+					},
 				},
 				Coverage: []connectordefinitions.CoverageDimensionSpec{{
 					Type:    "entity_family",
@@ -223,6 +228,19 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	}
 	if strings.Contains(readFixture, "Record One") {
 		t.Fatalf("read fixture still uses generic synthetic name:\n%s", readFixture)
+	}
+	var events []struct {
+		Payload    map[string]any    `json:"payload"`
+		Attributes map[string]string `json:"attributes"`
+	}
+	if err := json.Unmarshal([]byte(readFixture), &events); err != nil {
+		t.Fatalf("decode read fixture: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("read fixture events = %d, want 1", len(events))
+	}
+	if got, want := events[0].Payload["email"], events[0].Attributes["email"]; got != want {
+		t.Fatalf("read fixture email mismatch: payload=%q attributes=%q\n%s", got, want, readFixture)
 	}
 	discoverFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/discover_users.json")
 	if !strings.Contains(discoverFixture, "urn:cerebro:tenant:") {

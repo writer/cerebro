@@ -7,7 +7,7 @@
       "department": "department-source-onetrust-users-1",
       "display_name": "Onetrust Users Fixture",
       "domain": "domain-source-onetrust-users-1",
-      "email": "user@onetrust.example.test",
+      "email": "email@onetrust.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-onetrust-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-onetrust-users-1",

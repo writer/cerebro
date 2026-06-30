@@ -7,7 +7,7 @@
       "department": "department-source-concur-users-1",
       "display_name": "Concur Users Fixture",
       "domain": "domain-source-concur-users-1",
-      "email": "user@concur.example.test",
+      "email": "email@concur.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-concur-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-concur-users-1",

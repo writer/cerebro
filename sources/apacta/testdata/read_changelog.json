@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@apacta.example.test",
-      "actor_id": "source-apacta-users-1",
+      "actor_email": "email@apacta.example.test",
+      "actor_id": "apacta-users-1",
       "actor_name": "actor-name-source-apacta-changelog-1",
       "api_method": "GET",
       "api_path": "/offers/${config.offer_id}/changelog",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@apacta.example.test",
-      "actor_id": "source-apacta-users-1",
+      "actor_id": "apacta-users-1",
       "actor_name": "actor-name-source-apacta-changelog-1",
       "api_method": "GET",
       "api_path": "/offers/${config.offer_id}/changelog",

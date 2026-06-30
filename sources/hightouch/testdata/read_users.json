@@ -7,7 +7,7 @@
       "department": "department-source-hightouch-users-1",
       "display_name": "Hightouch Users Fixture",
       "domain": "domain-source-hightouch-users-1",
-      "email": "user@hightouch.example.test",
+      "email": "email@hightouch.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-hightouch-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-hightouch-users-1",

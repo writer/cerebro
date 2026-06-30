@@ -7,7 +7,7 @@
       "department": "department-source-vanta-users-1",
       "display_name": "Vanta Users Fixture",
       "domain": "domain-source-vanta-users-1",
-      "email": "user@vanta.example.test",
+      "email": "email@vanta.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-vanta-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-vanta-users-1",

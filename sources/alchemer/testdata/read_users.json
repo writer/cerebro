@@ -7,7 +7,7 @@
       "department": "department-source-alchemer-users-1",
       "display_name": "Alchemer Users Fixture",
       "domain": "domain-source-alchemer-users-1",
-      "email": "user@alchemer.example.test",
+      "email": "email@alchemer.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-alchemer-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-alchemer-users-1",

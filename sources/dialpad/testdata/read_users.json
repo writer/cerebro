@@ -7,7 +7,7 @@
       "department": "department-source-dialpad-users-1",
       "display_name": "Dialpad Users Fixture",
       "domain": "domain-source-dialpad-users-1",
-      "email": "user@dialpad.example.test",
+      "email": "email@dialpad.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dialpad-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dialpad-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-zoominfo-users-1",
       "display_name": "Zoominfo Users Fixture",
       "domain": "domain-source-zoominfo-users-1",
-      "email": "user@zoominfo.example.test",
+      "email": "email@zoominfo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-zoominfo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zoominfo-users-1",

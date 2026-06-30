@@ -7,7 +7,7 @@
       "department": "department-source-cloudflare_zero_trust-users-1",
       "display_name": "Cloudflare Zero Trust Users Fixture",
       "domain": "domain-source-cloudflare_zero_trust-users-1",
-      "email": "user@cloudflare-zero-trust.example.test",
+      "email": "email@cloudflare-zero-trust.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-cloudflare_zero_trust-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-cloudflare_zero_trust-users-1",

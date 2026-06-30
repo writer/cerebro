@@ -7,7 +7,7 @@
       "department": "department-source-basecamp-users-1",
       "display_name": "Basecamp Users Fixture",
       "domain": "domain-source-basecamp-users-1",
-      "email": "user@basecamp.example.test",
+      "email": "email@basecamp.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-basecamp-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-basecamp-users-1",

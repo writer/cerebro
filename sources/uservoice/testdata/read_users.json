@@ -7,7 +7,7 @@
       "department": "department-source-uservoice-users-1",
       "display_name": "Uservoice Users Fixture",
       "domain": "domain-source-uservoice-users-1",
-      "email": "user@uservoice.example.test",
+      "email": "email@uservoice.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-uservoice-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-uservoice-users-1",

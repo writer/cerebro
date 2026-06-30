@@ -7,7 +7,7 @@
       "department": "department-source-lucidscale-users-1",
       "display_name": "Lucidscale Users Fixture",
       "domain": "domain-source-lucidscale-users-1",
-      "email": "user@lucidscale.example.test",
+      "email": "email@lucidscale.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-lucidscale-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-lucidscale-users-1",

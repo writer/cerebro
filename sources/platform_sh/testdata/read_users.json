@@ -7,7 +7,7 @@
       "department": "department-source-platform_sh-users-1",
       "display_name": "Platform Sh Users Fixture",
       "domain": "domain-source-platform_sh-users-1",
-      "email": "user@platform-sh.example.test",
+      "email": "email@platform-sh.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-platform_sh-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-platform_sh-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-apacta-user_custom_field_value-1",
       "display_name": "Apacta User Custom Field Value Fixture",
       "domain": "domain-source-apacta-user_custom_field_value-1",
-      "email": "user@apacta.example.test",
+      "email": "email@apacta.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-apacta-user_custom_field_value-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-apacta-user_custom_field_value-1",

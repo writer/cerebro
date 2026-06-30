@@ -7,7 +7,7 @@
       "department": "department-source-heap-users-1",
       "display_name": "Heap Users Fixture",
       "domain": "domain-source-heap-users-1",
-      "email": "user@heap.example.test",
+      "email": "email@heap.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-heap-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-heap-users-1",

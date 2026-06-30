@@ -7,7 +7,7 @@
       "department": "department-source-brightflag-users-1",
       "display_name": "Brightflag Users Fixture",
       "domain": "domain-source-brightflag-users-1",
-      "email": "user@brightflag.example.test",
+      "email": "email@brightflag.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-brightflag-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-brightflag-users-1",

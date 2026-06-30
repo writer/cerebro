@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@iqualify.example.test",
-      "actor_id": "source-iqualify-users-1",
+      "actor_email": "email@iqualify.example.test",
+      "actor_id": "iqualify-users-1",
       "actor_name": "actor-name-source-iqualify-learners_progress-1",
       "api_method": "GET",
       "api_path": "/offerings/${config.offeringid}/analytics/learners-progress",
@@ -14,11 +14,11 @@
       "evidence_cas_uri": "cas://cases/iqualify/learners_progress/source-iqualify-learners_progress-1",
       "external_id": "source-iqualify-learners_progress-1",
       "family": "learners_progress",
-      "id": "source-iqualify-learners_progress-1",
-      "name": "Iqualify Learners Progress Fixture",
+      "id": "email@iqualify.example.test",
+      "name": "email@iqualify.example.test",
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "iqualify",
-      "provider_id": "provider-id-source-iqualify-learners_progress-1",
+      "provider_id": "email@iqualify.example.test",
       "record_class": "audit_event",
       "record_selector": "$[*]",
       "resource_email": "resource@iqualify.example.test",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@iqualify.example.test",
-      "actor_id": "source-iqualify-users-1",
+      "actor_id": "iqualify-users-1",
       "actor_name": "actor-name-source-iqualify-learners_progress-1",
       "api_method": "GET",
       "api_path": "/offerings/${config.offeringid}/analytics/learners-progress",

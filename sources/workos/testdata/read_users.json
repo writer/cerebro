@@ -7,7 +7,7 @@
       "department": "department-source-workos-users-1",
       "display_name": "Workos Users Fixture",
       "domain": "domain-source-workos-users-1",
-      "email": "user@workos.example.test",
+      "email": "email@workos.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-workos-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-workos-users-1",

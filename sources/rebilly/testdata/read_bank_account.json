@@ -7,7 +7,7 @@
       "department": "department-source-rebilly-bank_account-1",
       "display_name": "Rebilly Bank Account Fixture",
       "domain": "domain-source-rebilly-bank_account-1",
-      "email": "user@rebilly.example.test",
+      "email": "email@rebilly.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-rebilly-bank_account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-rebilly-bank_account-1",

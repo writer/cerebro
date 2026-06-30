@@ -7,7 +7,7 @@
       "department": "department-source-frontify-users-1",
       "display_name": "Frontify Users Fixture",
       "domain": "domain-source-frontify-users-1",
-      "email": "user@frontify.example.test",
+      "email": "email@frontify.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-frontify-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-frontify-users-1",

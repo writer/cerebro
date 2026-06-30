@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@twitter.example.test",
-      "actor_id": "source-twitter-users-1",
+      "actor_email": "email@twitter.example.test",
+      "actor_id": "twitter-users-1",
       "actor_name": "actor-name-source-twitter-dm_event-1",
       "api_method": "GET",
       "api_path": "/2/dm_events",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@twitter.example.test",
-      "actor_id": "source-twitter-users-1",
+      "actor_id": "twitter-users-1",
       "actor_name": "actor-name-source-twitter-dm_event-1",
       "api_method": "GET",
       "api_path": "/2/dm_events",

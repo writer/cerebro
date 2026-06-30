@@ -7,7 +7,7 @@
       "department": "department-source-airbase-users-1",
       "display_name": "Airbase Users Fixture",
       "domain": "domain-source-airbase-users-1",
-      "email": "user@airbase.example.test",
+      "email": "email@airbase.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-airbase-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-airbase-users-1",

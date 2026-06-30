@@ -7,7 +7,7 @@
       "department": "department-source-braintree-customers-1",
       "display_name": "Braintree Customers Fixture",
       "domain": "domain-source-braintree-customers-1",
-      "email": "user@braintree.example.test",
+      "email": "email@braintree.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-braintree-customers-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-braintree-customers-1",

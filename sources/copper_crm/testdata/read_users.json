@@ -7,7 +7,7 @@
       "department": "department-source-copper_crm-users-1",
       "display_name": "Copper Crm Users Fixture",
       "domain": "domain-source-copper_crm-users-1",
-      "email": "user@copper-crm.example.test",
+      "email": "email@copper-crm.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-copper_crm-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-copper_crm-users-1",

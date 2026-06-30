@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@hitrust-mycsf.example.test",
-      "actor_id": "source-hitrust_mycsf-users-1",
+      "actor_email": "email@hitrust-mycsf.example.test",
+      "actor_id": "hitrust_mycsf-users-1",
       "actor_name": "actor-name-source-hitrust_mycsf-evidence-1",
       "api_method": "GET",
       "api_path": "/api/v1/evidence",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@hitrust-mycsf.example.test",
-      "actor_id": "source-hitrust_mycsf-users-1",
+      "actor_id": "hitrust_mycsf-users-1",
       "actor_name": "actor-name-source-hitrust_mycsf-evidence-1",
       "api_method": "GET",
       "api_path": "/api/v1/evidence",

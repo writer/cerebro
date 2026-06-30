@@ -7,7 +7,7 @@
       "department": "department-source-workplace_from_meta-users-1",
       "display_name": "Workplace From Meta Users Fixture",
       "domain": "domain-source-workplace_from_meta-users-1",
-      "email": "user@workplace-from-meta.example.test",
+      "email": "email@workplace-from-meta.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-workplace_from_meta-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-workplace_from_meta-users-1",

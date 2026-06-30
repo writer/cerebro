@@ -7,7 +7,7 @@
       "department": "department-source-vitally-users-1",
       "display_name": "Vitally Users Fixture",
       "domain": "domain-source-vitally-users-1",
-      "email": "user@vitally.example.test",
+      "email": "email@vitally.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-vitally-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-vitally-users-1",

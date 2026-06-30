@@ -7,7 +7,7 @@
       "department": "department-source-raygun-users-1",
       "display_name": "Raygun Users Fixture",
       "domain": "domain-source-raygun-users-1",
-      "email": "user@raygun.example.test",
+      "email": "email@raygun.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-raygun-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-raygun-users-1",

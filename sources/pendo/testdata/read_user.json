@@ -7,7 +7,7 @@
       "department": "department-source-pendo-user-1",
       "display_name": "Pendo User Fixture",
       "domain": "domain-source-pendo-user-1",
-      "email": "user@pendo.example.test",
+      "email": "email@pendo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-pendo-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-pendo-user-1",

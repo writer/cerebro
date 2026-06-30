@@ -7,7 +7,7 @@
       "department": "department-source-catalyst-users-1",
       "display_name": "Catalyst Users Fixture",
       "domain": "domain-source-catalyst-users-1",
-      "email": "user@catalyst.example.test",
+      "email": "email@catalyst.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-catalyst-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-catalyst-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-keeper-users-1",
       "display_name": "Keeper Users Fixture",
       "domain": "domain-source-keeper-users-1",
-      "email": "user@keeper.example.test",
+      "email": "email@keeper.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-keeper-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-keeper-users-1",

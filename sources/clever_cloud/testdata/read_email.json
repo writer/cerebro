@@ -7,7 +7,7 @@
       "department": "department-source-clever_cloud-email-1",
       "display_name": "Clever Cloud Email Fixture",
       "domain": "domain-source-clever_cloud-email-1",
-      "email": "user@clever-cloud.example.test",
+      "email": "email@clever-cloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-clever_cloud-email-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-clever_cloud-email-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@motaword.example.test",
-      "actor_id": "source-motaword-users-1",
+      "actor_email": "email@motaword.example.test",
+      "actor_id": "motaword-users-1",
       "actor_name": "actor-name-source-motaword-projects_activity-1",
       "api_method": "GET",
       "api_path": "/projects/${config.projectid}/activities",
@@ -38,7 +38,7 @@
     "payload": {
       "activity_at": "Motaword Projects Activity Fixture",
       "actor_email": "email@motaword.example.test",
-      "actor_id": "source-motaword-users-1",
+      "actor_id": "motaword-users-1",
       "actor_name": "actor-name-source-motaword-projects_activity-1",
       "api_method": "GET",
       "api_path": "/projects/${config.projectid}/activities",

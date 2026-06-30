@@ -7,7 +7,7 @@
       "department": "department-source-pitch-users-1",
       "display_name": "Pitch Users Fixture",
       "domain": "domain-source-pitch-users-1",
-      "email": "user@pitch.example.test",
+      "email": "email@pitch.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-pitch-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-pitch-users-1",

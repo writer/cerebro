@@ -7,7 +7,7 @@
       "department": "department-source-dashlane_business-users-1",
       "display_name": "Dashlane Business Users Fixture",
       "domain": "domain-source-dashlane_business-users-1",
-      "email": "user@dashlane-business.example.test",
+      "email": "email@dashlane-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dashlane_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dashlane_business-users-1",

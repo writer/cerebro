@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@cloudsmith.example.test",
-      "actor_id": "source-cloudsmith-users-1",
+      "actor_email": "email@cloudsmith.example.test",
+      "actor_id": "cloudsmith-users-1",
       "actor_name": "actor-name-source-cloudsmith-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@cloudsmith.example.test",
-      "actor_id": "source-cloudsmith-users-1",
+      "actor_id": "cloudsmith-users-1",
       "actor_name": "actor-name-source-cloudsmith-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",

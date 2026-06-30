@@ -7,7 +7,7 @@
       "department": "department-source-census-users-1",
       "display_name": "Census Users Fixture",
       "domain": "domain-source-census-users-1",
-      "email": "user@census.example.test",
+      "email": "email@census.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-census-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-census-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-paylocity-users-1",
       "display_name": "Paylocity Users Fixture",
       "domain": "domain-source-paylocity-users-1",
-      "email": "user@paylocity.example.test",
+      "email": "email@paylocity.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-paylocity-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-paylocity-users-1",

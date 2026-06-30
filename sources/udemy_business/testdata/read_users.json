@@ -7,7 +7,7 @@
       "department": "department-source-udemy_business-users-1",
       "display_name": "Udemy Business Users Fixture",
       "domain": "domain-source-udemy_business-users-1",
-      "email": "user@udemy-business.example.test",
+      "email": "email@udemy-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-udemy_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-udemy_business-users-1",

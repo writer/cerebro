@@ -7,7 +7,7 @@
       "department": "department-source-sharefile-users-1",
       "display_name": "Sharefile Users Fixture",
       "domain": "domain-source-sharefile-users-1",
-      "email": "user@sharefile.example.test",
+      "email": "email@sharefile.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-sharefile-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sharefile-users-1",

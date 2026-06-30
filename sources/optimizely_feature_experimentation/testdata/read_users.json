@@ -7,7 +7,7 @@
       "department": "department-source-optimizely_feature_experimentation-users-1",
       "display_name": "Optimizely Feature Experimentation Users Fixture",
       "domain": "domain-source-optimizely_feature_experimentation-users-1",
-      "email": "user@optimizely-feature-experimentation.example.test",
+      "email": "email@optimizely-feature-experimentation.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-optimizely_feature_experimentation-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-optimizely_feature_experimentation-users-1",

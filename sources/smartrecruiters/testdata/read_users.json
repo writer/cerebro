@@ -7,7 +7,7 @@
       "department": "department-source-smartrecruiters-users-1",
       "display_name": "Smartrecruiters Users Fixture",
       "domain": "domain-source-smartrecruiters-users-1",
-      "email": "user@smartrecruiters.example.test",
+      "email": "email@smartrecruiters.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-smartrecruiters-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-smartrecruiters-users-1",

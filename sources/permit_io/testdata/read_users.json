@@ -7,7 +7,7 @@
       "department": "department-source-permit_io-users-1",
       "display_name": "Permit Io Users Fixture",
       "domain": "domain-source-permit_io-users-1",
-      "email": "user@permit-io.example.test",
+      "email": "email@permit-io.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-permit_io-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-permit_io-users-1",

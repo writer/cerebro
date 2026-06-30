@@ -7,7 +7,7 @@
       "department": "department-source-gong-users-1",
       "display_name": "Gong Users Fixture",
       "domain": "domain-source-gong-users-1",
-      "email": "user@gong.example.test",
+      "email": "email@gong.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gong-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gong-users-1",

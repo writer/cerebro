@@ -7,7 +7,7 @@
       "department": "department-source-lastpass_business-users-1",
       "display_name": "Lastpass Business Users Fixture",
       "domain": "domain-source-lastpass_business-users-1",
-      "email": "user@lastpass-business.example.test",
+      "email": "email@lastpass-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-lastpass_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-lastpass_business-users-1",

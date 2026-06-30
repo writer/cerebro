@@ -7,7 +7,7 @@
       "department": "department-source-stream_io_api-member-1",
       "display_name": "Stream Io Api Member Fixture",
       "domain": "domain-source-stream_io_api-member-1",
-      "email": "user@stream-io-api.example.test",
+      "email": "email@stream-io-api.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-stream_io_api-member-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-stream_io_api-member-1",

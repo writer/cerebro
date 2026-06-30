@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@mongodb-atlas.example.test",
-      "actor_id": "source-mongodb_atlas-users-1",
+      "actor_email": "email@mongodb-atlas.example.test",
+      "actor_id": "mongodb_atlas-users-1",
       "actor_name": "actor-name-source-mongodb_atlas-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@mongodb-atlas.example.test",
-      "actor_id": "source-mongodb_atlas-users-1",
+      "actor_id": "mongodb_atlas-users-1",
       "actor_name": "actor-name-source-mongodb_atlas-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",

@@ -7,7 +7,7 @@
       "department": "department-source-soda_cloud-users-1",
       "display_name": "Soda Cloud Users Fixture",
       "domain": "domain-source-soda_cloud-users-1",
-      "email": "user@soda-cloud.example.test",
+      "email": "email@soda-cloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-soda_cloud-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-soda_cloud-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@appgate.example.test",
-      "actor_id": "source-appgate-users-1",
+      "actor_email": "email@appgate.example.test",
+      "actor_id": "appgate-users-1",
       "actor_name": "actor-name-source-appgate-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@appgate.example.test",
-      "actor_id": "source-appgate-users-1",
+      "actor_id": "appgate-users-1",
       "actor_name": "actor-name-source-appgate-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",

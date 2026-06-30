@@ -7,7 +7,7 @@
       "department": "department-source-grammarly_business-users-1",
       "display_name": "Grammarly Business Users Fixture",
       "domain": "domain-source-grammarly_business-users-1",
-      "email": "user@grammarly-business.example.test",
+      "email": "email@grammarly-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-grammarly_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-grammarly_business-users-1",

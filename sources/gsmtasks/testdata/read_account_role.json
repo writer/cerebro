@@ -7,7 +7,7 @@
       "department": "department-source-gsmtasks-account_role-1",
       "display_name": "Gsmtasks Account Role Fixture",
       "domain": "domain-source-gsmtasks-account_role-1",
-      "email": "user@gsmtasks.example.test",
+      "email": "email@gsmtasks.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gsmtasks-account_role-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gsmtasks-account_role-1",

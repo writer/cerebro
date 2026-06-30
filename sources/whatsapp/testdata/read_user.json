@@ -7,7 +7,7 @@
       "department": "department-source-whatsapp-user-1",
       "display_name": "Whatsapp User Fixture",
       "domain": "domain-source-whatsapp-user-1",
-      "email": "user@whatsapp.example.test",
+      "email": "email@whatsapp.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-whatsapp-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-whatsapp-user-1",

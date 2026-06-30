@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@osisoft.example.test",
-      "actor_id": "source-osisoft-users-1",
+      "actor_email": "email@osisoft.example.test",
+      "actor_id": "osisoft-users-1",
       "actor_name": "actor-name-source-osisoft-elementtemplate-1",
       "api_method": "GET",
       "api_path": "/assetdatabases/${config.webid}/elementtemplates",
@@ -39,7 +39,7 @@
       "Id": "Id-source-osisoft-elementtemplate-1",
       "Name": "Osisoft Elementtemplate Fixture",
       "actor_email": "email@osisoft.example.test",
-      "actor_id": "source-osisoft-users-1",
+      "actor_id": "osisoft-users-1",
       "actor_name": "actor-name-source-osisoft-elementtemplate-1",
       "api_method": "GET",
       "api_path": "/assetdatabases/${config.webid}/elementtemplates",

@@ -7,7 +7,7 @@
       "department": "department-source-onepassword_business-users-1",
       "display_name": "Onepassword Business Users Fixture",
       "domain": "domain-source-onepassword_business-users-1",
-      "email": "user@onepassword-business.example.test",
+      "email": "email@onepassword-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-onepassword_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-onepassword_business-users-1",

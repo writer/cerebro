@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@beezup.example.test",
-      "actor_id": "source-beezup-users-1",
+      "actor_email": "email@beezup.example.test",
+      "actor_id": "beezup-users-1",
       "actor_name": "actor-name-source-beezup-category-1",
       "api_method": "GET",
       "api_path": "/v2/user/catalogs/${config.storeid}/categories",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@beezup.example.test",
-      "actor_id": "source-beezup-users-1",
+      "actor_id": "beezup-users-1",
       "actor_name": "actor-name-source-beezup-category-1",
       "api_method": "GET",
       "api_path": "/v2/user/catalogs/${config.storeid}/categories",

@@ -7,7 +7,7 @@
       "department": "department-source-grip_security-users-1",
       "display_name": "Grip Security Users Fixture",
       "domain": "domain-source-grip_security-users-1",
-      "email": "user@grip-security.example.test",
+      "email": "email@grip-security.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-grip_security-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-grip_security-users-1",

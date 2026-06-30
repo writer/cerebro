@@ -7,7 +7,7 @@
       "department": "department-source-mabl-users-1",
       "display_name": "Mabl Users Fixture",
       "domain": "domain-source-mabl-users-1",
-      "email": "user@mabl.example.test",
+      "email": "email@mabl.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-mabl-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-mabl-users-1",

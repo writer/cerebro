@@ -7,7 +7,7 @@
       "department": "department-source-immuta-users-1",
       "display_name": "Immuta Users Fixture",
       "domain": "domain-source-immuta-users-1",
-      "email": "user@immuta.example.test",
+      "email": "email@immuta.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-immuta-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-immuta-users-1",

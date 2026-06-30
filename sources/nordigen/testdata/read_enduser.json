@@ -7,7 +7,7 @@
       "department": "department-source-nordigen-enduser-1",
       "display_name": "Nordigen Enduser Fixture",
       "domain": "domain-source-nordigen-enduser-1",
-      "email": "user@nordigen.example.test",
+      "email": "email@nordigen.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-nordigen-enduser-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-nordigen-enduser-1",

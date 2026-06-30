@@ -7,7 +7,7 @@
       "department": "department-source-britive-users-1",
       "display_name": "Britive Users Fixture",
       "domain": "domain-source-britive-users-1",
-      "email": "user@britive.example.test",
+      "email": "email@britive.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-britive-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-britive-users-1",

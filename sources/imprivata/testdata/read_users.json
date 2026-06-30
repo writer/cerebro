@@ -7,7 +7,7 @@
       "department": "department-source-imprivata-users-1",
       "display_name": "Imprivata Users Fixture",
       "domain": "domain-source-imprivata-users-1",
-      "email": "user@imprivata.example.test",
+      "email": "email@imprivata.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-imprivata-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-imprivata-users-1",

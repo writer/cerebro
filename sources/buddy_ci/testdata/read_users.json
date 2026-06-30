@@ -7,7 +7,7 @@
       "department": "department-source-buddy_ci-users-1",
       "display_name": "Buddy Ci Users Fixture",
       "domain": "domain-source-buddy_ci-users-1",
-      "email": "user@buddy-ci.example.test",
+      "email": "email@buddy-ci.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-buddy_ci-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-buddy_ci-users-1",

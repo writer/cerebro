@@ -7,7 +7,7 @@
       "department": "department-source-thoughtspot-users-1",
       "display_name": "Thoughtspot Users Fixture",
       "domain": "domain-source-thoughtspot-users-1",
-      "email": "user@thoughtspot.example.test",
+      "email": "email@thoughtspot.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-thoughtspot-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-thoughtspot-users-1",

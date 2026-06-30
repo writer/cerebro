@@ -39,7 +39,7 @@
     "kind": "magento.search",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "active": "critical",
+      "active": "open",
       "alert_id": "source-magento-search-1",
       "alert_name": "Magento Search Fixture",
       "alert_severity": "critical",

@@ -7,7 +7,7 @@
       "department": "department-source-adp_workforce_now-users-1",
       "display_name": "Adp Workforce Now Users Fixture",
       "domain": "domain-source-adp_workforce_now-users-1",
-      "email": "user@adp-workforce-now.example.test",
+      "email": "email@adp-workforce-now.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-adp_workforce_now-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-adp_workforce_now-users-1",

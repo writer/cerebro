@@ -7,7 +7,7 @@
       "department": "department-source-hotjar-users-1",
       "display_name": "Hotjar Users Fixture",
       "domain": "domain-source-hotjar-users-1",
-      "email": "user@hotjar.example.test",
+      "email": "email@hotjar.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-hotjar-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-hotjar-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-bunq-user-1",
       "display_name": "Bunq User Fixture",
       "domain": "domain-source-bunq-user-1",
-      "email": "user@bunq.example.test",
+      "email": "email@bunq.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-bunq-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bunq-user-1",

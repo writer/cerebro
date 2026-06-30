@@ -7,7 +7,7 @@
       "department": "department-source-looker-users-1",
       "display_name": "Looker Users Fixture",
       "domain": "domain-source-looker-users-1",
-      "email": "user@looker.example.test",
+      "email": "email@looker.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-looker-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-looker-users-1",

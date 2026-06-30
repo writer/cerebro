@@ -7,7 +7,7 @@
       "department": "department-source-domo-users-1",
       "display_name": "Domo Users Fixture",
       "domain": "domain-source-domo-users-1",
-      "email": "user@domo.example.test",
+      "email": "email@domo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-domo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-domo-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-push_security-users-1",
       "display_name": "Push Security Users Fixture",
       "domain": "domain-source-push_security-users-1",
-      "email": "user@push-security.example.test",
+      "email": "email@push-security.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-push_security-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-push_security-users-1",

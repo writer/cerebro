@@ -7,7 +7,7 @@
       "department": "department-source-evernote_teams-users-1",
       "display_name": "Evernote Teams Users Fixture",
       "domain": "domain-source-evernote_teams-users-1",
-      "email": "user@evernote-teams.example.test",
+      "email": "email@evernote-teams.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-evernote_teams-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-evernote_teams-users-1",

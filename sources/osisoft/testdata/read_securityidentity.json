@@ -7,7 +7,7 @@
       "department": "department-source-osisoft-securityidentity-1",
       "display_name": "Osisoft Securityidentity Fixture",
       "domain": "domain-source-osisoft-securityidentity-1",
-      "email": "user@osisoft.example.test",
+      "email": "email@osisoft.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-osisoft-securityidentity-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-osisoft-securityidentity-1",

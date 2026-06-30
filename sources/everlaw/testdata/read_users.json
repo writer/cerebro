@@ -7,7 +7,7 @@
       "department": "department-source-everlaw-users-1",
       "display_name": "Everlaw Users Fixture",
       "domain": "domain-source-everlaw-users-1",
-      "email": "user@everlaw.example.test",
+      "email": "email@everlaw.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-everlaw-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-everlaw-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@clickmeter.example.test",
-      "actor_id": "source-clickmeter-users-1",
+      "actor_email": "email@clickmeter.example.test",
+      "actor_id": "clickmeter-users-1",
       "actor_name": "actor-name-source-clickmeter-clickstream-1",
       "api_method": "GET",
       "api_path": "/clickstream",
@@ -38,7 +38,7 @@
     "payload": {
       "accessTime": "accessTime-source-clickmeter-clickstream-1",
       "actor_email": "email@clickmeter.example.test",
-      "actor_id": "source-clickmeter-users-1",
+      "actor_id": "clickmeter-users-1",
       "actor_name": "actor-name-source-clickmeter-clickstream-1",
       "api_method": "GET",
       "api_path": "/clickstream",

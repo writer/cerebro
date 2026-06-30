@@ -7,7 +7,7 @@
       "department": "department-source-soti_mobicontrol-users-1",
       "display_name": "Soti Mobicontrol Users Fixture",
       "domain": "domain-source-soti_mobicontrol-users-1",
-      "email": "user@soti-mobicontrol.example.test",
+      "email": "email@soti-mobicontrol.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-soti_mobicontrol-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-soti_mobicontrol-users-1",

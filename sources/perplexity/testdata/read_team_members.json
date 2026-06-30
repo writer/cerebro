@@ -7,7 +7,7 @@
       "department": "department-source-perplexity-team_members-1",
       "display_name": "Perplexity Team Members Fixture",
       "domain": "domain-source-perplexity-team_members-1",
-      "email": "user@perplexity.example.test",
+      "email": "email@perplexity.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-perplexity-team_members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-perplexity-team_members-1",

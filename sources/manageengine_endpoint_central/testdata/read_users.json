@@ -7,7 +7,7 @@
       "department": "department-source-manageengine_endpoint_central-users-1",
       "display_name": "Manageengine Endpoint Central Users Fixture",
       "domain": "domain-source-manageengine_endpoint_central-users-1",
-      "email": "user@manageengine-endpoint-central.example.test",
+      "email": "email@manageengine-endpoint-central.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-manageengine_endpoint_central-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-manageengine_endpoint_central-users-1",

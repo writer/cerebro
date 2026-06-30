@@ -7,7 +7,7 @@
       "department": "department-source-five9-users-1",
       "display_name": "Five9 Users Fixture",
       "domain": "domain-source-five9-users-1",
-      "email": "user@five9.example.test",
+      "email": "email@five9.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-five9-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-five9-users-1",

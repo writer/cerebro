@@ -7,7 +7,7 @@
       "department": "department-source-sevenrooms-users-1",
       "display_name": "Sevenrooms Users Fixture",
       "domain": "domain-source-sevenrooms-users-1",
-      "email": "user@sevenrooms.example.test",
+      "email": "email@sevenrooms.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-sevenrooms-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sevenrooms-users-1",

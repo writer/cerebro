@@ -7,7 +7,7 @@
       "department": "department-source-teamwork_projects-users-1",
       "display_name": "Teamwork Projects Users Fixture",
       "domain": "domain-source-teamwork_projects-users-1",
-      "email": "user@teamwork-projects.example.test",
+      "email": "email@teamwork-projects.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-teamwork_projects-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-teamwork_projects-users-1",

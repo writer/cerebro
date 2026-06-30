@@ -7,7 +7,7 @@
       "department": "department-source-bigredcloud-bankaccount-1",
       "display_name": "Bigredcloud Bankaccount Fixture",
       "domain": "domain-source-bigredcloud-bankaccount-1",
-      "email": "user@bigredcloud.example.test",
+      "email": "email@bigredcloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-bigredcloud-bankaccount-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bigredcloud-bankaccount-1",

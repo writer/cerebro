@@ -7,7 +7,7 @@
       "department": "department-source-firefly-users-1",
       "display_name": "Firefly Users Fixture",
       "domain": "domain-source-firefly-users-1",
-      "email": "user@firefly.example.test",
+      "email": "email@firefly.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-firefly-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-firefly-users-1",

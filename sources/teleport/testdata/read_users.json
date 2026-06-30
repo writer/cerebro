@@ -7,7 +7,7 @@
       "department": "department-source-teleport-users-1",
       "display_name": "Teleport Users Fixture",
       "domain": "domain-source-teleport-users-1",
-      "email": "user@teleport.example.test",
+      "email": "email@teleport.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-teleport-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-teleport-users-1",

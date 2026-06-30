@@ -7,7 +7,7 @@
       "department": "department-source-wistia-users-1",
       "display_name": "Wistia Users Fixture",
       "domain": "domain-source-wistia-users-1",
-      "email": "user@wistia.example.test",
+      "email": "email@wistia.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-wistia-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-wistia-users-1",

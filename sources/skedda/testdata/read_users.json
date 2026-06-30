@@ -7,7 +7,7 @@
       "department": "department-source-skedda-users-1",
       "display_name": "Skedda Users Fixture",
       "domain": "domain-source-skedda-users-1",
-      "email": "user@skedda.example.test",
+      "email": "email@skedda.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-skedda-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-skedda-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-mesh_payments-users-1",
       "display_name": "Mesh Payments Users Fixture",
       "domain": "domain-source-mesh_payments-users-1",
-      "email": "user@mesh-payments.example.test",
+      "email": "email@mesh-payments.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-mesh_payments-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-mesh_payments-users-1",

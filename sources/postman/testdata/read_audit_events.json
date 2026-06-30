@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@postman.example.test",
-      "actor_id": "source-postman-users-1",
+      "actor_email": "email@postman.example.test",
+      "actor_id": "postman-users-1",
       "actor_name": "actor-name-source-postman-audit_events-1",
       "api_method": "GET",
       "api_path": "/audit/events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@postman.example.test",
-      "actor_id": "source-postman-users-1",
+      "actor_id": "postman-users-1",
       "actor_name": "actor-name-source-postman-audit_events-1",
       "api_method": "GET",
       "api_path": "/audit/events",

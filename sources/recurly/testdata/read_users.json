@@ -7,7 +7,7 @@
       "department": "department-source-recurly-users-1",
       "display_name": "Recurly Users Fixture",
       "domain": "domain-source-recurly-users-1",
-      "email": "user@recurly.example.test",
+      "email": "email@recurly.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-recurly-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-recurly-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-biapi-account-1",
       "display_name": "Biapi Account Fixture",
       "domain": "domain-source-biapi-account-1",
-      "email": "user@biapi.example.test",
+      "email": "email@biapi.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-biapi-account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-biapi-account-1",

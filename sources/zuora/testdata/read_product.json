@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@zuora.example.test",
-      "actor_id": "source-zuora-users-1",
+      "actor_email": "email@zuora.example.test",
+      "actor_id": "zuora-users-1",
       "actor_name": "actor-name-source-zuora-product-1",
       "api_method": "GET",
       "api_path": "/v1/catalog/products",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@zuora.example.test",
-      "actor_id": "source-zuora-users-1",
+      "actor_id": "zuora-users-1",
       "actor_name": "actor-name-source-zuora-product-1",
       "api_method": "GET",
       "api_path": "/v1/catalog/products",

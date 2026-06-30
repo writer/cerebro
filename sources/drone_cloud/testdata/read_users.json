@@ -7,7 +7,7 @@
       "department": "department-source-drone_cloud-users-1",
       "display_name": "Drone Cloud Users Fixture",
       "domain": "domain-source-drone_cloud-users-1",
-      "email": "user@drone-cloud.example.test",
+      "email": "email@drone-cloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-drone_cloud-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-drone_cloud-users-1",

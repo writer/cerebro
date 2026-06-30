@@ -7,7 +7,7 @@
       "department": "department-source-launchdarkly-users-1",
       "display_name": "Launchdarkly Users Fixture",
       "domain": "domain-source-launchdarkly-users-1",
-      "email": "user@launchdarkly.example.test",
+      "email": "email@launchdarkly.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-launchdarkly-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-launchdarkly-users-1",

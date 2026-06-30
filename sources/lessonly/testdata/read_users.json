@@ -7,7 +7,7 @@
       "department": "department-source-lessonly-users-1",
       "display_name": "Lessonly Users Fixture",
       "domain": "domain-source-lessonly-users-1",
-      "email": "user@lessonly.example.test",
+      "email": "email@lessonly.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-lessonly-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-lessonly-users-1",

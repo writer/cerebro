@@ -7,7 +7,7 @@
       "department": "department-source-quip-users-1",
       "display_name": "Quip Users Fixture",
       "domain": "domain-source-quip-users-1",
-      "email": "user@quip.example.test",
+      "email": "email@quip.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-quip-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-quip-users-1",

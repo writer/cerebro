@@ -7,7 +7,7 @@
       "department": "department-source-fairmarkit-users-1",
       "display_name": "Fairmarkit Users Fixture",
       "domain": "domain-source-fairmarkit-users-1",
-      "email": "user@fairmarkit.example.test",
+      "email": "email@fairmarkit.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-fairmarkit-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-fairmarkit-users-1",

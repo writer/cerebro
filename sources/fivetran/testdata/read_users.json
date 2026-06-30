@@ -7,7 +7,7 @@
       "department": "department-source-fivetran-users-1",
       "display_name": "Fivetran Users Fixture",
       "domain": "domain-source-fivetran-users-1",
-      "email": "user@fivetran.example.test",
+      "email": "email@fivetran.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-fivetran-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-fivetran-users-1",

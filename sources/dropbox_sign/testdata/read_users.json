@@ -7,7 +7,7 @@
       "department": "department-source-dropbox_sign-users-1",
       "display_name": "Dropbox Sign Users Fixture",
       "domain": "domain-source-dropbox_sign-users-1",
-      "email": "user@dropbox-sign.example.test",
+      "email": "email@dropbox-sign.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dropbox_sign-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dropbox_sign-users-1",

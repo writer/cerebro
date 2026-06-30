@@ -7,7 +7,7 @@
       "department": "department-source-apigee-users-1",
       "display_name": "Apigee Users Fixture",
       "domain": "domain-source-apigee-users-1",
-      "email": "user@apigee.example.test",
+      "email": "email@apigee.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-apigee-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-apigee-users-1",

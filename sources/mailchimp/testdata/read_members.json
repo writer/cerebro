@@ -7,7 +7,7 @@
       "department": "department-source-mailchimp-members-1",
       "display_name": "Mailchimp Members Fixture",
       "domain": "domain-source-mailchimp-members-1",
-      "email": "user@mailchimp.example.test",
+      "email": "email@mailchimp.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-mailchimp-members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-mailchimp-members-1",

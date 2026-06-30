@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@appwrite.example.test",
-      "actor_id": "source-appwrite-users-1",
+      "actor_email": "email@appwrite.example.test",
+      "actor_id": "appwrite-users-1",
       "actor_name": "actor-name-source-appwrite-log-1",
       "api_method": "GET",
       "api_path": "/account/logs",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@appwrite.example.test",
-      "actor_id": "source-appwrite-users-1",
+      "actor_id": "appwrite-users-1",
       "actor_name": "actor-name-source-appwrite-log-1",
       "api_method": "GET",
       "api_path": "/account/logs",

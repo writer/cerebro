@@ -7,7 +7,7 @@
       "department": "department-source-appgate-users-1",
       "display_name": "Appgate Users Fixture",
       "domain": "domain-source-appgate-users-1",
-      "email": "user@appgate.example.test",
+      "email": "email@appgate.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-appgate-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-appgate-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@docusign.example.test",
-      "actor_id": "source-docusign-users-1",
+      "actor_email": "email@docusign.example.test",
+      "actor_id": "docusign-users-1",
       "actor_name": "actor-name-source-docusign-request_log-1",
       "api_method": "GET",
       "api_path": "/v2.1/diagnostics/request_logs",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@docusign.example.test",
-      "actor_id": "source-docusign-users-1",
+      "actor_id": "docusign-users-1",
       "actor_name": "actor-name-source-docusign-request_log-1",
       "api_method": "GET",
       "api_path": "/v2.1/diagnostics/request_logs",

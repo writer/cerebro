@@ -7,7 +7,7 @@
       "department": "department-source-gitlab-users-1",
       "display_name": "Gitlab Users Fixture",
       "domain": "domain-source-gitlab-users-1",
-      "email": "user@gitlab.example.test",
+      "email": "email@gitlab.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gitlab-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gitlab-users-1",

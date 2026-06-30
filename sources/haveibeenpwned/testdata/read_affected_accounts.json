@@ -7,7 +7,7 @@
       "department": "department-source-haveibeenpwned-affected_accounts-1",
       "display_name": "Haveibeenpwned Affected Accounts Fixture",
       "domain": "domain-source-haveibeenpwned-affected_accounts-1",
-      "email": "user@haveibeenpwned.example.test",
+      "email": "email@haveibeenpwned.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-haveibeenpwned-affected_accounts-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-haveibeenpwned-affected_accounts-1",

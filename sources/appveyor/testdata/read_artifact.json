@@ -43,7 +43,7 @@
       "api_path": "/buildjobs/${config.jobid}/artifacts",
       "branch": "deployment-branch-source-appveyor-artifact-1",
       "commit_sha": "deployment-commit-sha-source-appveyor-artifact-1",
-      "created": "artifact",
+      "created": "open",
       "created_at": "2026-06-01T00:00:00Z",
       "deployment_id": "source-appveyor-artifact-1",
       "deployment_name": "Appveyor Artifact Fixture",

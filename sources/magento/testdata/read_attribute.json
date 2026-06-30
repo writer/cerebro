@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@magento.example.test",
-      "actor_id": "source-magento-users-1",
+      "actor_email": "email@magento.example.test",
+      "actor_id": "magento-users-1",
       "actor_name": "actor-name-source-magento-attribute-1",
       "api_method": "GET",
       "api_path": "/V1/categories/attributes",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@magento.example.test",
-      "actor_id": "source-magento-users-1",
+      "actor_id": "magento-users-1",
       "actor_name": "actor-name-source-magento-attribute-1",
       "api_method": "GET",
       "api_path": "/V1/categories/attributes",

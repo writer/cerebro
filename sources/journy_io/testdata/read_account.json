@@ -7,7 +7,7 @@
       "department": "department-source-journy_io-account-1",
       "display_name": "Journy Io Account Fixture",
       "domain": "domain-source-journy_io-account-1",
-      "email": "user@journy-io.example.test",
+      "email": "email@journy-io.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-journy_io-account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-journy_io-account-1",

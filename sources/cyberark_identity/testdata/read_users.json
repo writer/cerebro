@@ -7,7 +7,7 @@
       "department": "department-source-cyberark_identity-users-1",
       "display_name": "Cyberark Identity Users Fixture",
       "domain": "domain-source-cyberark_identity-users-1",
-      "email": "user@cyberark-identity.example.test",
+      "email": "email@cyberark-identity.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-cyberark_identity-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-cyberark_identity-users-1",

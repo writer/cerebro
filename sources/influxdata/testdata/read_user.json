@@ -7,7 +7,7 @@
       "department": "department-source-influxdata-user-1",
       "display_name": "Influxdata User Fixture",
       "domain": "domain-source-influxdata-user-1",
-      "email": "user@influxdata.example.test",
+      "email": "email@influxdata.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-influxdata-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-influxdata-user-1",

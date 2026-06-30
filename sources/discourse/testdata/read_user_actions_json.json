@@ -7,7 +7,7 @@
       "department": "department-source-discourse-user_actions_json-1",
       "display_name": "Discourse User Actions Json Fixture",
       "domain": "domain-source-discourse-user_actions_json-1",
-      "email": "user@discourse.example.test",
+      "email": "email@discourse.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-discourse-user_actions_json-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-discourse-user_actions_json-1",

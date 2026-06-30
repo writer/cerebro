@@ -7,7 +7,7 @@
       "department": "department-source-dynamics_365_sales-users-1",
       "display_name": "Dynamics 365 Sales Users Fixture",
       "domain": "domain-source-dynamics_365_sales-users-1",
-      "email": "user@dynamics-365-sales.example.test",
+      "email": "email@dynamics-365-sales.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dynamics_365_sales-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dynamics_365_sales-users-1",

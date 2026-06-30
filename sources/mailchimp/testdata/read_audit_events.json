@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@mailchimp.example.test",
-      "actor_id": "source-mailchimp-users-1",
+      "actor_email": "email@mailchimp.example.test",
+      "actor_id": "mailchimp-users-1",
       "actor_name": "actor-name-source-mailchimp-audit_events-1",
       "api_method": "GET",
       "api_path": "/activity-feed",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@mailchimp.example.test",
-      "actor_id": "source-mailchimp-users-1",
+      "actor_id": "mailchimp-users-1",
       "actor_name": "actor-name-source-mailchimp-audit_events-1",
       "api_method": "GET",
       "api_path": "/activity-feed",

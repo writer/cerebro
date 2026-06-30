@@ -7,7 +7,7 @@
       "department": "department-source-opal_security-users-1",
       "display_name": "Opal Security Users Fixture",
       "domain": "domain-source-opal_security-users-1",
-      "email": "user@opal-security.example.test",
+      "email": "email@opal-security.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-opal_security-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-opal_security-users-1",

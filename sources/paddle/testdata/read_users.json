@@ -7,7 +7,7 @@
       "department": "department-source-paddle-users-1",
       "display_name": "Paddle Users Fixture",
       "domain": "domain-source-paddle-users-1",
-      "email": "user@paddle.example.test",
+      "email": "email@paddle.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-paddle-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-paddle-users-1",

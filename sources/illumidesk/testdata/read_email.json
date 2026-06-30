@@ -7,7 +7,7 @@
       "department": "department-source-illumidesk-email-1",
       "display_name": "Illumidesk Email Fixture",
       "domain": "domain-source-illumidesk-email-1",
-      "email": "user@illumidesk.example.test",
+      "email": "email@illumidesk.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-illumidesk-email-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-illumidesk-email-1",

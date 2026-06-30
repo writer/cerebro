@@ -7,7 +7,7 @@
       "department": "department-source-canva_enterprise-users-1",
       "display_name": "Canva Enterprise Users Fixture",
       "domain": "domain-source-canva_enterprise-users-1",
-      "email": "user@canva-enterprise.example.test",
+      "email": "email@canva-enterprise.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-canva_enterprise-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-canva_enterprise-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@snowflake.example.test",
-      "actor_id": "source-snowflake-users-1",
+      "actor_email": "email@snowflake.example.test",
+      "actor_id": "snowflake-users-1",
       "actor_name": "actor-name-source-snowflake-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@snowflake.example.test",
-      "actor_id": "source-snowflake-users-1",
+      "actor_id": "snowflake-users-1",
       "actor_name": "actor-name-source-snowflake-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit/events",

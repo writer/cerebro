@@ -7,7 +7,7 @@
       "department": "department-source-gravitee_cloud-users-1",
       "display_name": "Gravitee Cloud Users Fixture",
       "domain": "domain-source-gravitee_cloud-users-1",
-      "email": "user@gravitee-cloud.example.test",
+      "email": "email@gravitee-cloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gravitee_cloud-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gravitee_cloud-users-1",

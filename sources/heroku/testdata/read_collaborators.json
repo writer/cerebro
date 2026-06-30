@@ -7,7 +7,7 @@
       "department": "department-source-heroku-collaborators-1",
       "display_name": "Heroku Collaborators Fixture",
       "domain": "domain-source-heroku-collaborators-1",
-      "email": "user@heroku.example.test",
+      "email": "email@heroku.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-heroku-collaborators-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-heroku-collaborators-1",

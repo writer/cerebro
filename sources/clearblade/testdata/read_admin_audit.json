@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@clearblade.example.test",
-      "actor_id": "source-clearblade-users-1",
+      "actor_email": "email@clearblade.example.test",
+      "actor_id": "clearblade-users-1",
       "actor_name": "actor-name-source-clearblade-admin_audit-1",
       "api_method": "GET",
       "api_path": "/admin/audit/${config.systemkey}",
@@ -15,7 +15,7 @@
       "external_id": "source-clearblade-admin_audit-1",
       "family": "admin_audit",
       "id": "source-clearblade-admin_audit-1",
-      "name": "Clearblade Admin Audit Fixture",
+      "name": "email@clearblade.example.test",
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "clearblade",
       "provider_id": "provider-id-source-clearblade-admin_audit-1",
@@ -37,11 +37,11 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@clearblade.example.test",
-      "actor_id": "source-clearblade-users-1",
+      "actor_id": "clearblade-users-1",
       "actor_name": "actor-name-source-clearblade-admin_audit-1",
       "api_method": "GET",
       "api_path": "/admin/audit/${config.systemkey}",
-      "email": "Clearblade Admin Audit Fixture",
+      "email": "email@clearblade.example.test",
       "event_id": "source-clearblade-admin_audit-1",
       "event_type": "clearblade.admin_audit.observed",
       "evidence_cas": {

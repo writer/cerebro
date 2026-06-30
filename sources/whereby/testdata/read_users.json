@@ -7,7 +7,7 @@
       "department": "department-source-whereby-users-1",
       "display_name": "Whereby Users Fixture",
       "domain": "domain-source-whereby-users-1",
-      "email": "user@whereby.example.test",
+      "email": "email@whereby.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-whereby-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-whereby-users-1",

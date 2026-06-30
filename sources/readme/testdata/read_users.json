@@ -7,7 +7,7 @@
       "department": "department-source-readme-users-1",
       "display_name": "Readme Users Fixture",
       "domain": "domain-source-readme-users-1",
-      "email": "user@readme.example.test",
+      "email": "email@readme.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-readme-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-readme-users-1",

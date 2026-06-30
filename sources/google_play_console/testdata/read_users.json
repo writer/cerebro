@@ -7,7 +7,7 @@
       "department": "department-source-google_play_console-users-1",
       "display_name": "Google Play Console Users Fixture",
       "domain": "domain-source-google_play_console-users-1",
-      "email": "user@google-play-console.example.test",
+      "email": "email@google-play-console.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-google_play_console-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-google_play_console-users-1",

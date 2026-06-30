@@ -7,7 +7,7 @@
       "department": "department-source-harness_platform-users-1",
       "display_name": "Harness Platform Users Fixture",
       "domain": "domain-source-harness_platform-users-1",
-      "email": "user@harness-platform.example.test",
+      "email": "email@harness-platform.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-harness_platform-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-harness_platform-users-1",

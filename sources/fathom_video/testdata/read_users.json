@@ -7,7 +7,7 @@
       "department": "department-source-fathom_video-users-1",
       "display_name": "Fathom Video Users Fixture",
       "domain": "domain-source-fathom_video-users-1",
-      "email": "user@fathom-video.example.test",
+      "email": "email@fathom-video.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-fathom_video-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-fathom_video-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@gsmtasks.example.test",
-      "actor_id": "source-gsmtasks-users-1",
+      "actor_email": "email@gsmtasks.example.test",
+      "actor_id": "gsmtasks-users-1",
       "actor_name": "actor-name-source-gsmtasks-users_on_duty_log-1",
       "api_method": "GET",
       "api_path": "/users_on_duty_log/",
@@ -38,7 +38,7 @@
     "payload": {
       "account": "account-source-gsmtasks-users_on_duty_log-1",
       "actor_email": "email@gsmtasks.example.test",
-      "actor_id": "source-gsmtasks-users-1",
+      "actor_id": "gsmtasks-users-1",
       "actor_name": "actor-name-source-gsmtasks-users_on_duty_log-1",
       "api_method": "GET",
       "api_path": "/users_on_duty_log/",

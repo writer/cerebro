@@ -7,7 +7,7 @@
       "department": "department-source-revenuecat-users-1",
       "display_name": "Revenuecat Users Fixture",
       "domain": "domain-source-revenuecat-users-1",
-      "email": "user@revenuecat.example.test",
+      "email": "email@revenuecat.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-revenuecat-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-revenuecat-users-1",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@victorops.example.test",
-      "actor_id": "source-victorops-users-1",
+      "actor_email": "email@victorops.example.test",
+      "actor_id": "victorops-users-1",
       "actor_name": "actor-name-source-victorops-log-1",
       "api_method": "GET",
       "api_path": "/api-reporting/v1/team/${config.team}/oncall/log",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@victorops.example.test",
-      "actor_id": "source-victorops-users-1",
+      "actor_id": "victorops-users-1",
       "actor_name": "actor-name-source-victorops-log-1",
       "adjustedTotal": "adjustedTotal-source-victorops-log-1",
       "api_method": "GET",

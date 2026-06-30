@@ -7,7 +7,7 @@
       "department": "department-source-sprout_social-users-1",
       "display_name": "Sprout Social Users Fixture",
       "domain": "domain-source-sprout_social-users-1",
-      "email": "user@sprout-social.example.test",
+      "email": "email@sprout-social.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-sprout_social-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sprout_social-users-1",

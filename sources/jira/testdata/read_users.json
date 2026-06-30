@@ -7,7 +7,7 @@
       "department": "department-source-jira-users-1",
       "display_name": "Jira Users Fixture",
       "domain": "domain-source-jira-users-1",
-      "email": "user@jira.example.test",
+      "email": "email@jira.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-jira-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-jira-users-1",

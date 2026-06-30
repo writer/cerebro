@@ -7,7 +7,7 @@
       "department": "department-source-perimeter81-users-1",
       "display_name": "Perimeter81 Users Fixture",
       "domain": "domain-source-perimeter81-users-1",
-      "email": "user@perimeter81.example.test",
+      "email": "email@perimeter81.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-perimeter81-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-perimeter81-users-1",

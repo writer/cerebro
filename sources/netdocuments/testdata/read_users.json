@@ -7,7 +7,7 @@
       "department": "department-source-netdocuments-users-1",
       "display_name": "Netdocuments Users Fixture",
       "domain": "domain-source-netdocuments-users-1",
-      "email": "user@netdocuments.example.test",
+      "email": "email@netdocuments.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-netdocuments-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-netdocuments-users-1",

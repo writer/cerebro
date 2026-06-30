@@ -7,7 +7,7 @@
       "department": "department-source-ada_support-users-1",
       "display_name": "Ada Support Users Fixture",
       "domain": "domain-source-ada_support-users-1",
-      "email": "user@ada-support.example.test",
+      "email": "email@ada-support.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-ada_support-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-ada_support-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-dracoon-user-1",
       "display_name": "Dracoon User Fixture",
       "domain": "domain-source-dracoon-user-1",
-      "email": "user@dracoon.example.test",
+      "email": "email@dracoon.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dracoon-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dracoon-user-1",

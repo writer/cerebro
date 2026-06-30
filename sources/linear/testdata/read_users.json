@@ -7,7 +7,7 @@
       "department": "department-source-linear-users-1",
       "display_name": "Linear Users Fixture",
       "domain": "domain-source-linear-users-1",
-      "email": "user@linear.example.test",
+      "email": "email@linear.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-linear-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-linear-users-1",

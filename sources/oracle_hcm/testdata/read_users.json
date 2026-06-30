@@ -7,7 +7,7 @@
       "department": "department-source-oracle_hcm-users-1",
       "display_name": "Oracle Hcm Users Fixture",
       "domain": "domain-source-oracle_hcm-users-1",
-      "email": "user@oracle-hcm.example.test",
+      "email": "email@oracle-hcm.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-oracle_hcm-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-oracle_hcm-users-1",

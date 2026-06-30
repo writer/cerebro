@@ -7,7 +7,7 @@
       "department": "department-source-ironclad-users-1",
       "display_name": "Ironclad Users Fixture",
       "domain": "domain-source-ironclad-users-1",
-      "email": "user@ironclad.example.test",
+      "email": "email@ironclad.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-ironclad-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-ironclad-users-1",

@@ -7,7 +7,7 @@
       "department": "department-source-bluejeans-users-1",
       "display_name": "Bluejeans Users Fixture",
       "domain": "domain-source-bluejeans-users-1",
-      "email": "user@bluejeans.example.test",
+      "email": "email@bluejeans.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-bluejeans-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bluejeans-users-1",

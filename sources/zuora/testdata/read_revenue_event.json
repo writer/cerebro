@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@zuora.example.test",
-      "actor_id": "source-zuora-users-1",
+      "actor_email": "email@zuora.example.test",
+      "actor_id": "zuora-users-1",
       "actor_name": "actor-name-source-zuora-revenue_event-1",
       "api_method": "GET",
       "api_path": "/v1/revenue-items/revenue-events/${config.event_number}",
@@ -38,7 +38,7 @@
     "payload": {
       "accountingPeriodEndDate": "accountingPeriodEndDate-source-zuora-revenue_event-1",
       "actor_email": "email@zuora.example.test",
-      "actor_id": "source-zuora-users-1",
+      "actor_id": "zuora-users-1",
       "actor_name": "actor-name-source-zuora-revenue_event-1",
       "api_method": "GET",
       "api_path": "/v1/revenue-items/revenue-events/${config.event_number}",

@@ -7,7 +7,7 @@
       "department": "department-source-stripe-users-1",
       "display_name": "Stripe Users Fixture",
       "domain": "domain-source-stripe-users-1",
-      "email": "user@stripe.example.test",
+      "email": "email@stripe.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-stripe-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-stripe-users-1",

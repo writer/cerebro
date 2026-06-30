@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@iqualify.example.test",
-      "actor_id": "source-iqualify-users-1",
+      "actor_email": "email@iqualify.example.test",
+      "actor_id": "iqualify-users-1",
       "actor_name": "actor-name-source-iqualify-responses-1",
       "api_method": "GET",
       "api_path": "/offerings/${config.offeringid}/analytics/activities/responses",
@@ -38,7 +38,7 @@
     "payload": {
       "activityId": "activityId-source-iqualify-responses-1",
       "actor_email": "email@iqualify.example.test",
-      "actor_id": "source-iqualify-users-1",
+      "actor_id": "iqualify-users-1",
       "actor_name": "actor-name-source-iqualify-responses-1",
       "api_method": "GET",
       "api_path": "/offerings/${config.offeringid}/analytics/activities/responses",

@@ -7,7 +7,7 @@
       "department": "department-source-workday-users-1",
       "display_name": "Workday Users Fixture",
       "domain": "domain-source-workday-users-1",
-      "email": "user@workday.example.test",
+      "email": "email@workday.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-workday-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-workday-users-1",

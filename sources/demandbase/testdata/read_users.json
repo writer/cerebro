@@ -7,7 +7,7 @@
       "department": "department-source-demandbase-users-1",
       "display_name": "Demandbase Users Fixture",
       "domain": "domain-source-demandbase-users-1",
-      "email": "user@demandbase.example.test",
+      "email": "email@demandbase.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-demandbase-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-demandbase-users-1",

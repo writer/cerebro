@@ -7,7 +7,7 @@
       "department": "department-source-multiplier-users-1",
       "display_name": "Multiplier Users Fixture",
       "domain": "domain-source-multiplier-users-1",
-      "email": "user@multiplier.example.test",
+      "email": "email@multiplier.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-multiplier-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-multiplier-users-1",

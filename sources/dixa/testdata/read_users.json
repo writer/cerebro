@@ -7,7 +7,7 @@
       "department": "department-source-dixa-users-1",
       "display_name": "Dixa Users Fixture",
       "domain": "domain-source-dixa-users-1",
-      "email": "user@dixa.example.test",
+      "email": "email@dixa.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dixa-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dixa-users-1",

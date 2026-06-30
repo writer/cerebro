@@ -7,7 +7,7 @@
       "department": "department-source-adobe_workfront-users-1",
       "display_name": "Adobe Workfront Users Fixture",
       "domain": "domain-source-adobe_workfront-users-1",
-      "email": "user@adobe-workfront.example.test",
+      "email": "email@adobe-workfront.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-adobe_workfront-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-adobe_workfront-users-1",

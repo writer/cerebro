@@ -7,7 +7,7 @@
       "department": "department-source-increase-external_account-1",
       "display_name": "Increase External Account Fixture",
       "domain": "domain-source-increase-external_account-1",
-      "email": "user@increase.example.test",
+      "email": "email@increase.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-increase-external_account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-increase-external_account-1",

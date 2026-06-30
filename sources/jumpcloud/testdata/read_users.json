@@ -7,7 +7,7 @@
       "department": "department-source-jumpcloud-users-1",
       "display_name": "Jumpcloud Users Fixture",
       "domain": "domain-source-jumpcloud-users-1",
-      "email": "user@jumpcloud.example.test",
+      "email": "email@jumpcloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-jumpcloud-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-jumpcloud-users-1",

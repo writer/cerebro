@@ -7,7 +7,7 @@
       "department": "department-source-egnyte-users-1",
       "display_name": "Egnyte Users Fixture",
       "domain": "domain-source-egnyte-users-1",
-      "email": "user@egnyte.example.test",
+      "email": "email@egnyte.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-egnyte-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-egnyte-users-1",

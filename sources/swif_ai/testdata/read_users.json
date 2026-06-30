@@ -7,7 +7,7 @@
       "department": "department-source-swif_ai-users-1",
       "display_name": "Swif Ai Users Fixture",
       "domain": "domain-source-swif_ai-users-1",
-      "email": "user@swif-ai.example.test",
+      "email": "email@swif-ai.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-swif_ai-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-swif_ai-users-1",

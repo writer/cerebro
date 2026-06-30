@@ -39,7 +39,7 @@
     "kind": "mastodon.notification",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "account": "critical",
+      "account": "Mastodon Notification Fixture",
       "alert_id": "source-mastodon-notification-1",
       "alert_name": "Mastodon Notification Fixture",
       "alert_severity": "critical",

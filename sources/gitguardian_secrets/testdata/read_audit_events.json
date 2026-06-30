@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@gitguardian-secrets.example.test",
-      "actor_id": "source-gitguardian_secrets-users-1",
+      "actor_email": "email@gitguardian-secrets.example.test",
+      "actor_id": "gitguardian_secrets-users-1",
       "actor_name": "actor-name-source-gitguardian_secrets-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_logs",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@gitguardian-secrets.example.test",
-      "actor_id": "source-gitguardian_secrets-users-1",
+      "actor_id": "gitguardian_secrets-users-1",
       "actor_name": "actor-name-source-gitguardian_secrets-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_logs",

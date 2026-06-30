@@ -7,7 +7,7 @@
       "department": "department-source-productiv-users-1",
       "display_name": "Productiv Users Fixture",
       "domain": "domain-source-productiv-users-1",
-      "email": "user@productiv.example.test",
+      "email": "email@productiv.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-productiv-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-productiv-users-1",

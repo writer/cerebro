@@ -7,7 +7,7 @@
       "department": "department-source-zoom-users-1",
       "display_name": "Zoom Users Fixture",
       "domain": "domain-source-zoom-users-1",
-      "email": "user@zoom.example.test",
+      "email": "email@zoom.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-zoom-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zoom-users-1",

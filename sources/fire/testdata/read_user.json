@@ -7,7 +7,7 @@
       "department": "department-source-fire-user-1",
       "display_name": "Fire User Fixture",
       "domain": "domain-source-fire-user-1",
-      "email": "user@fire.example.test",
+      "email": "email@fire.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-fire-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-fire-user-1",

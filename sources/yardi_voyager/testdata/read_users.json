@@ -7,7 +7,7 @@
       "department": "department-source-yardi_voyager-users-1",
       "display_name": "Yardi Voyager Users Fixture",
       "domain": "domain-source-yardi_voyager-users-1",
-      "email": "user@yardi-voyager.example.test",
+      "email": "email@yardi-voyager.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-yardi_voyager-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-yardi_voyager-users-1",

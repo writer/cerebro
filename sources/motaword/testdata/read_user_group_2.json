@@ -7,7 +7,7 @@
       "department": "department-source-motaword-user_group_2-1",
       "display_name": "Motaword User Group 2 Fixture",
       "domain": "domain-source-motaword-user_group_2-1",
-      "email": "user@motaword.example.test",
+      "email": "email@motaword.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-motaword-user_group_2-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-motaword-user_group_2-1",

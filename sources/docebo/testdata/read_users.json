@@ -7,7 +7,7 @@
       "department": "department-source-docebo-users-1",
       "display_name": "Docebo Users Fixture",
       "domain": "domain-source-docebo-users-1",
-      "email": "user@docebo.example.test",
+      "email": "email@docebo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-docebo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-docebo-users-1",

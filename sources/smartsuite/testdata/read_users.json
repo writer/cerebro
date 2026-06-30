@@ -7,7 +7,7 @@
       "department": "department-source-smartsuite-users-1",
       "display_name": "Smartsuite Users Fixture",
       "domain": "domain-source-smartsuite-users-1",
-      "email": "user@smartsuite.example.test",
+      "email": "email@smartsuite.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-smartsuite-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-smartsuite-users-1",

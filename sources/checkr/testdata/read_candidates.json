@@ -7,7 +7,7 @@
       "department": "department-source-checkr-candidates-1",
       "display_name": "Checkr Candidates Fixture",
       "domain": "domain-source-checkr-candidates-1",
-      "email": "user@checkr.example.test",
+      "email": "email@checkr.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-checkr-candidates-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-checkr-candidates-1",

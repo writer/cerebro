@@ -7,7 +7,7 @@
       "department": "department-source-openrouter-organization_members-1",
       "display_name": "Openrouter Organization Members Fixture",
       "domain": "domain-source-openrouter-organization_members-1",
-      "email": "user@openrouter.example.test",
+      "email": "email@openrouter.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-openrouter-organization_members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-openrouter-organization_members-1",

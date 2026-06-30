@@ -46,7 +46,7 @@
       "alert_type": "notification",
       "api_method": "GET",
       "api_path": "/notifications",
-      "attributes": "critical",
+      "attributes": "Exavault Notification Fixture",
       "description": "Exavault Notification Fixture alert",
       "event_id": "source-exavault-notification-1",
       "evidence_cas": {

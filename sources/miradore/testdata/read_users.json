@@ -7,7 +7,7 @@
       "department": "department-source-miradore-users-1",
       "display_name": "Miradore Users Fixture",
       "domain": "domain-source-miradore-users-1",
-      "email": "user@miradore.example.test",
+      "email": "email@miradore.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-miradore-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-miradore-users-1",

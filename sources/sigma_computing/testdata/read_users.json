@@ -7,7 +7,7 @@
       "department": "department-source-sigma_computing-users-1",
       "display_name": "Sigma Computing Users Fixture",
       "domain": "domain-source-sigma_computing-users-1",
-      "email": "user@sigma-computing.example.test",
+      "email": "email@sigma-computing.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-sigma_computing-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sigma_computing-users-1",

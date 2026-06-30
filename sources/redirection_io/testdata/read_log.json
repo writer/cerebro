@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@redirection-io.example.test",
-      "actor_id": "source-redirection_io-users-1",
+      "actor_email": "email@redirection-io.example.test",
+      "actor_id": "redirection_io-users-1",
       "actor_name": "actor-name-source-redirection_io-log-1",
       "api_method": "GET",
       "api_path": "/logs",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@redirection-io.example.test",
-      "actor_id": "source-redirection_io-users-1",
+      "actor_id": "redirection_io-users-1",
       "actor_name": "actor-name-source-redirection_io-log-1",
       "api_method": "GET",
       "api_path": "/logs",

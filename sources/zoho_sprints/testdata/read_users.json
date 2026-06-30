@@ -7,7 +7,7 @@
       "department": "department-source-zoho_sprints-users-1",
       "display_name": "Zoho Sprints Users Fixture",
       "domain": "domain-source-zoho_sprints-users-1",
-      "email": "user@zoho-sprints.example.test",
+      "email": "email@zoho-sprints.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-zoho_sprints-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zoho_sprints-users-1",

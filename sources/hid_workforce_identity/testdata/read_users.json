@@ -7,7 +7,7 @@
       "department": "department-source-hid_workforce_identity-users-1",
       "display_name": "Hid Workforce Identity Users Fixture",
       "domain": "domain-source-hid_workforce_identity-users-1",
-      "email": "user@hid-workforce-identity.example.test",
+      "email": "email@hid-workforce-identity.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-hid_workforce_identity-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-hid_workforce_identity-users-1",

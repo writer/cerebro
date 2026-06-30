@@ -7,7 +7,7 @@
       "department": "department-source-procurify-users-1",
       "display_name": "Procurify Users Fixture",
       "domain": "domain-source-procurify-users-1",
-      "email": "user@procurify.example.test",
+      "email": "email@procurify.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-procurify-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-procurify-users-1",

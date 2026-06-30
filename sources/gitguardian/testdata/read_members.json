@@ -7,7 +7,7 @@
       "department": "department-source-gitguardian-members-1",
       "display_name": "Gitguardian Members Fixture",
       "domain": "domain-source-gitguardian-members-1",
-      "email": "user@gitguardian.example.test",
+      "email": "email@gitguardian.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gitguardian-members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gitguardian-members-1",

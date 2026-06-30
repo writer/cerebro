@@ -7,7 +7,7 @@
       "department": "department-source-velopayments-sourceaccount-1",
       "display_name": "Velopayments Sourceaccount Fixture",
       "domain": "domain-source-velopayments-sourceaccount-1",
-      "email": "user@velopayments.example.test",
+      "email": "email@velopayments.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-velopayments-sourceaccount-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-velopayments-sourceaccount-1",

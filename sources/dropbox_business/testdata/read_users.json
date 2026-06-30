@@ -7,7 +7,7 @@
       "department": "department-source-dropbox_business-users-1",
       "display_name": "Dropbox Business Users Fixture",
       "domain": "domain-source-dropbox_business-users-1",
-      "email": "user@dropbox-business.example.test",
+      "email": "email@dropbox-business.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dropbox_business-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dropbox_business-users-1",

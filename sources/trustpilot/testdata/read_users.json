@@ -7,7 +7,7 @@
       "department": "department-source-trustpilot-users-1",
       "display_name": "Trustpilot Users Fixture",
       "domain": "domain-source-trustpilot-users-1",
-      "email": "user@trustpilot.example.test",
+      "email": "email@trustpilot.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-trustpilot-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-trustpilot-users-1",

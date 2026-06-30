@@ -46,7 +46,7 @@
       "alert_type": "notification_channel",
       "api_method": "GET",
       "api_path": "/notification_channels",
-      "channel_destination": "open",
+      "channel_destination": "Telnyx Notification Channel Fixture",
       "description": "Telnyx Notification Channel Fixture alert",
       "event_id": "source-telnyx-notification_channel-1",
       "evidence_cas": {

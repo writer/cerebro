@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@svix.example.test",
-      "actor_id": "source-svix-users-1",
+      "actor_email": "email@svix.example.test",
+      "actor_id": "svix-users-1",
       "actor_name": "actor-name-source-svix-event_type-1",
       "api_method": "GET",
       "api_path": "/api/v1/event-type/",
@@ -37,7 +37,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@svix.example.test",
-      "actor_id": "source-svix-users-1",
+      "actor_id": "svix-users-1",
       "actor_name": "actor-name-source-svix-event_type-1",
       "api_method": "GET",
       "api_path": "/api/v1/event-type/",

@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@bunq.example.test",
-      "actor_id": "source-bunq-users-1",
+      "actor_email": "email@bunq.example.test",
+      "actor_id": "bunq-users-1",
       "actor_name": "actor-name-source-bunq-event-1",
       "api_method": "GET",
       "api_path": "/user/${config.userid}/event",
@@ -38,7 +38,7 @@
     "payload": {
       "action": "Bunq Event Fixture",
       "actor_email": "email@bunq.example.test",
-      "actor_id": "source-bunq-users-1",
+      "actor_id": "bunq-users-1",
       "actor_name": "actor-name-source-bunq-event-1",
       "api_method": "GET",
       "api_path": "/user/${config.userid}/event",

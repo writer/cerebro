@@ -7,7 +7,7 @@
       "department": "department-source-apollo-users-1",
       "display_name": "Apollo Users Fixture",
       "domain": "domain-source-apollo-users-1",
-      "email": "user@apollo.example.test",
+      "email": "email@apollo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-apollo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-apollo-users-1",

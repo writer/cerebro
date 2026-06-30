@@ -7,7 +7,7 @@
       "department": "department-source-apideck-ledger_account-1",
       "display_name": "Apideck Ledger Account Fixture",
       "domain": "domain-source-apideck-ledger_account-1",
-      "email": "user@apideck.example.test",
+      "email": "email@apideck.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-apideck-ledger_account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-apideck-ledger_account-1",

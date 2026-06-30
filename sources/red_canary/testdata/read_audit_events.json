@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@red-canary.example.test",
-      "actor_id": "source-red_canary-users-1",
+      "actor_email": "email@red-canary.example.test",
+      "actor_id": "red_canary-users-1",
       "actor_name": "actor-name-source-red_canary-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@red-canary.example.test",
-      "actor_id": "source-red_canary-users-1",
+      "actor_id": "red_canary-users-1",
       "actor_name": "actor-name-source-red_canary-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",

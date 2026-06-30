@@ -7,7 +7,7 @@
       "department": "department-source-statsig-users-1",
       "display_name": "Statsig Users Fixture",
       "domain": "domain-source-statsig-users-1",
-      "email": "user@statsig.example.test",
+      "email": "email@statsig.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-statsig-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-statsig-users-1",

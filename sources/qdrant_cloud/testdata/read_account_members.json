@@ -5,9 +5,9 @@
       "api_path": "/api/account/v1/accounts/${config.account_id}/members",
       "created_at": "2026-06-01T00:00:00Z",
       "department": "department-source-qdrant_cloud-account_members-1",
-      "display_name": "Qdrant Cloud Account Members Fixture",
+      "display_name": "email@qdrant-cloud.example.test",
       "domain": "domain-source-qdrant_cloud-account_members-1",
-      "email": "user@qdrant-cloud.example.test",
+      "email": "email@qdrant-cloud.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-qdrant_cloud-account_members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-qdrant_cloud-account_members-1",
@@ -41,7 +41,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "account_member": {
-        "email": "Qdrant Cloud Account Members Fixture",
+        "email": "email@qdrant-cloud.example.test",
         "id": "account-member.id-source-qdrant_cloud-account_members-1"
       },
       "api_method": "GET",

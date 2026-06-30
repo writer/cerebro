@@ -7,7 +7,7 @@
       "department": "department-source-customer_io-users-1",
       "display_name": "Customer Io Users Fixture",
       "domain": "domain-source-customer_io-users-1",
-      "email": "user@customer-io.example.test",
+      "email": "email@customer-io.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-customer_io-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-customer_io-users-1",

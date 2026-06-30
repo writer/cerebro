@@ -7,7 +7,7 @@
       "department": "department-source-otter_ai-users-1",
       "display_name": "Otter Ai Users Fixture",
       "domain": "domain-source-otter_ai-users-1",
-      "email": "user@otter-ai.example.test",
+      "email": "email@otter-ai.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-otter_ai-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-otter_ai-users-1",

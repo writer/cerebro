@@ -7,7 +7,7 @@
       "department": "department-source-salesforce_cpq-users-1",
       "display_name": "Salesforce Cpq Users Fixture",
       "domain": "domain-source-salesforce_cpq-users-1",
-      "email": "user@salesforce-cpq.example.test",
+      "email": "email@salesforce-cpq.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-salesforce_cpq-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-salesforce_cpq-users-1",

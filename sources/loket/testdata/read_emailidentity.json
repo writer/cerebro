@@ -7,7 +7,7 @@
       "department": "department-source-loket-emailidentity-1",
       "display_name": "Loket Emailidentity Fixture",
       "domain": "domain-source-loket-emailidentity-1",
-      "email": "user@loket.example.test",
+      "email": "email@loket.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-loket-emailidentity-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-loket-emailidentity-1",

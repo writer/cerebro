@@ -7,7 +7,7 @@
       "department": "department-source-lever-users-1",
       "display_name": "Lever Users Fixture",
       "domain": "domain-source-lever-users-1",
-      "email": "user@lever.example.test",
+      "email": "email@lever.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-lever-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-lever-users-1",

@@ -38,7 +38,7 @@
       "api_method": "GET",
       "api_path": "/accounts/{account_id}/members",
       "display_name": "Cloudflare Member Fixture",
-      "email": "user@example.test",
+      "email": "email@cloudflare.example.test",
       "event_id": "source-cloudflare-member-1",
       "evidence_cas": {
         "digest": "sha256:test",

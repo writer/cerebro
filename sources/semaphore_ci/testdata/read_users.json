@@ -7,7 +7,7 @@
       "department": "department-source-semaphore_ci-users-1",
       "display_name": "Semaphore Ci Users Fixture",
       "domain": "domain-source-semaphore_ci-users-1",
-      "email": "user@semaphore-ci.example.test",
+      "email": "email@semaphore-ci.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-semaphore_ci-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-semaphore_ci-users-1",

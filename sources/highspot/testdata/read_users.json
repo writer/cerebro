@@ -7,7 +7,7 @@
       "department": "department-source-highspot-users-1",
       "display_name": "Highspot Users Fixture",
       "domain": "domain-source-highspot-users-1",
-      "email": "user@highspot.example.test",
+      "email": "email@highspot.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-highspot-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-highspot-users-1",

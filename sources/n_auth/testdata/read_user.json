@@ -7,7 +7,7 @@
       "department": "department-source-n_auth-user-1",
       "display_name": "N Auth User Fixture",
       "domain": "domain-source-n_auth-user-1",
-      "email": "user@n-auth.example.test",
+      "email": "email@n-auth.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-n_auth-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-n_auth-user-1",

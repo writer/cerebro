@@ -7,7 +7,7 @@
       "department": "department-source-autotask-userdefinedfield-1",
       "display_name": "Autotask Userdefinedfield Fixture",
       "domain": "domain-source-autotask-userdefinedfield-1",
-      "email": "user@autotask.example.test",
+      "email": "email@autotask.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-autotask-userdefinedfield-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-autotask-userdefinedfield-1",

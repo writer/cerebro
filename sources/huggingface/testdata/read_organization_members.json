@@ -7,7 +7,7 @@
       "department": "department-source-huggingface-organization_members-1",
       "display_name": "Huggingface Organization Members Fixture",
       "domain": "domain-source-huggingface-organization_members-1",
-      "email": "user@huggingface.example.test",
+      "email": "email@huggingface.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-huggingface-organization_members-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-huggingface-organization_members-1",

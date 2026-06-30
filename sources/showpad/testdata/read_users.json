@@ -7,7 +7,7 @@
       "department": "department-source-showpad-users-1",
       "display_name": "Showpad Users Fixture",
       "domain": "domain-source-showpad-users-1",
-      "email": "user@showpad.example.test",
+      "email": "email@showpad.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-showpad-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-showpad-users-1",

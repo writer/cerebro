@@ -14,7 +14,7 @@
       "provider": "stability_ai",
       "record_class": "asset",
       "resource_id": "source-stability_ai-account-1",
-      "resource_name": "Stability Ai Account Fixture",
+      "resource_name": "email@stability-ai.example.test",
       "resource_type": "account",
       "resource_urn": "urn:cerebro:tenant:stability_ai_account:source-stability_ai-account-1",
       "schema": "account",
@@ -29,7 +29,7 @@
     "payload": {
       "api_method": "GET",
       "api_path": "/v1/user/account",
-      "email": "Stability Ai Account Fixture",
+      "email": "email@stability-ai.example.test",
       "event_id": "source-stability_ai-account-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-stability_ai-account-1",

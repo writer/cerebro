@@ -7,7 +7,7 @@
       "department": "department-source-uptimerobot-alert_contacts-1",
       "display_name": "Uptimerobot Alert Contacts Fixture",
       "domain": "domain-source-uptimerobot-alert_contacts-1",
-      "email": "user@uptimerobot.example.test",
+      "email": "email@uptimerobot.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-uptimerobot-alert_contacts-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-uptimerobot-alert_contacts-1",

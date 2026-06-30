@@ -7,7 +7,7 @@
       "department": "department-source-stytch-users-1",
       "display_name": "Stytch Users Fixture",
       "domain": "domain-source-stytch-users-1",
-      "email": "user@stytch.example.test",
+      "email": "email@stytch.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-stytch-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-stytch-users-1",

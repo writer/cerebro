@@ -7,7 +7,7 @@
       "department": "department-source-learnifier-user-1",
       "display_name": "Learnifier User Fixture",
       "domain": "domain-source-learnifier-user-1",
-      "email": "user@learnifier.example.test",
+      "email": "email@learnifier.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-learnifier-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-learnifier-user-1",

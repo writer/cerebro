@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@heroku.example.test",
-      "actor_id": "source-heroku-users-1",
+      "actor_email": "email@heroku.example.test",
+      "actor_id": "heroku-users-1",
       "actor_name": "actor-name-source-heroku-audit_events-1",
       "api_method": "GET",
       "api_path": "/audit-events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@heroku.example.test",
-      "actor_id": "source-heroku-users-1",
+      "actor_id": "heroku-users-1",
       "actor_name": "actor-name-source-heroku-audit_events-1",
       "api_method": "GET",
       "api_path": "/audit-events",

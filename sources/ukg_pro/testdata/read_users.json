@@ -7,7 +7,7 @@
       "department": "department-source-ukg_pro-users-1",
       "display_name": "Ukg Pro Users Fixture",
       "domain": "domain-source-ukg_pro-users-1",
-      "email": "user@ukg-pro.example.test",
+      "email": "email@ukg-pro.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-ukg_pro-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-ukg_pro-users-1",

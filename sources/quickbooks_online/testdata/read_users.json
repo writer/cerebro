@@ -7,7 +7,7 @@
       "department": "department-source-quickbooks_online-users-1",
       "display_name": "Quickbooks Online Users Fixture",
       "domain": "domain-source-quickbooks_online-users-1",
-      "email": "user@quickbooks-online.example.test",
+      "email": "email@quickbooks-online.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-quickbooks_online-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-quickbooks_online-users-1",

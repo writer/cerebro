@@ -7,7 +7,7 @@
       "department": "department-source-workable-users-1",
       "display_name": "Workable Users Fixture",
       "domain": "domain-source-workable-users-1",
-      "email": "user@workable.example.test",
+      "email": "email@workable.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-workable-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-workable-users-1",

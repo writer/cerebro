@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@env0.example.test",
-      "actor_id": "source-env0-users-1",
+      "actor_email": "email@env0.example.test",
+      "actor_id": "env0-users-1",
       "actor_name": "actor-name-source-env0-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@env0.example.test",
-      "actor_id": "source-env0-users-1",
+      "actor_id": "env0-users-1",
       "actor_name": "actor-name-source-env0-audit_events-1",
       "api_method": "GET",
       "api_path": "/v1/audit_events",

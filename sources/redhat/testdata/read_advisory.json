@@ -38,7 +38,7 @@
       "advisory_type": "open",
       "api_method": "GET",
       "api_path": "/api/patch/v1/export/advisories",
-      "description": "Redhat Advisory Fixture finding",
+      "description": "Redhat Advisory Fixture",
       "event_id": "source-redhat-advisory-1",
       "evidence_cas": {
         "commit_id": "evidence-cas-commit-id-source-redhat-advisory-1",

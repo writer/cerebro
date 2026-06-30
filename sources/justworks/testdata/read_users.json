@@ -7,7 +7,7 @@
       "department": "department-source-justworks-users-1",
       "display_name": "Justworks Users Fixture",
       "domain": "domain-source-justworks-users-1",
-      "email": "user@justworks.example.test",
+      "email": "email@justworks.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-justworks-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-justworks-users-1",

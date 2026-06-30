@@ -7,7 +7,7 @@
       "department": "department-source-loom-users-1",
       "display_name": "Loom Users Fixture",
       "domain": "domain-source-loom-users-1",
-      "email": "user@loom.example.test",
+      "email": "email@loom.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-loom-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-loom-users-1",

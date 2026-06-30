@@ -7,7 +7,7 @@
       "department": "department-source-klaviyo-users-1",
       "display_name": "Klaviyo Users Fixture",
       "domain": "domain-source-klaviyo-users-1",
-      "email": "user@klaviyo.example.test",
+      "email": "email@klaviyo.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-klaviyo-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-klaviyo-users-1",

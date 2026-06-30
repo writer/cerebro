@@ -7,7 +7,7 @@
       "department": "department-source-chili_piper-users-1",
       "display_name": "Chili Piper Users Fixture",
       "domain": "domain-source-chili_piper-users-1",
-      "email": "user@chili-piper.example.test",
+      "email": "email@chili-piper.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-chili_piper-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-chili_piper-users-1",

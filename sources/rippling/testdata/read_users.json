@@ -7,7 +7,7 @@
       "department": "department-source-rippling-users-1",
       "display_name": "Rippling Users Fixture",
       "domain": "domain-source-rippling-users-1",
-      "email": "user@rippling.example.test",
+      "email": "email@rippling.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-rippling-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-rippling-users-1",

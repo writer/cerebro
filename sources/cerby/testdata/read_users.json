@@ -7,7 +7,7 @@
       "department": "department-source-cerby-users-1",
       "display_name": "Cerby Users Fixture",
       "domain": "domain-source-cerby-users-1",
-      "email": "user@cerby.example.test",
+      "email": "email@cerby.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-cerby-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-cerby-users-1",

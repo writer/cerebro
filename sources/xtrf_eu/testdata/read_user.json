@@ -7,7 +7,7 @@
       "department": "department-source-xtrf_eu-user-1",
       "display_name": "Xtrf Eu User Fixture",
       "domain": "domain-source-xtrf_eu-user-1",
-      "email": "user@xtrf-eu.example.test",
+      "email": "email@xtrf-eu.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-xtrf_eu-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-xtrf_eu-user-1",

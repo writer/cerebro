@@ -7,7 +7,7 @@
       "department": "department-source-avaza-projectmember-1",
       "display_name": "Avaza Projectmember Fixture",
       "domain": "domain-source-avaza-projectmember-1",
-      "email": "user@avaza.example.test",
+      "email": "email@avaza.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-avaza-projectmember-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-avaza-projectmember-1",

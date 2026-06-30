@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@drchrono.example.test",
-      "actor_id": "source-drchrono-users-1",
+      "actor_email": "email@drchrono.example.test",
+      "actor_id": "drchrono-users-1",
       "actor_name": "actor-name-source-drchrono-patient_payment_log-1",
       "api_method": "GET",
       "api_path": "/api/patient_payment_log",
@@ -38,7 +38,7 @@
     "payload": {
       "action": "Drchrono Patient Payment Log Fixture",
       "actor_email": "email@drchrono.example.test",
-      "actor_id": "source-drchrono-users-1",
+      "actor_id": "drchrono-users-1",
       "actor_name": "actor-name-source-drchrono-patient_payment_log-1",
       "api_method": "GET",
       "api_path": "/api/patient_payment_log",

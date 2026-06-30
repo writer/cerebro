@@ -7,7 +7,7 @@
       "department": "department-source-mercury-users-1",
       "display_name": "Mercury Users Fixture",
       "domain": "domain-source-mercury-users-1",
-      "email": "user@mercury.example.test",
+      "email": "email@mercury.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-mercury-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-mercury-users-1",

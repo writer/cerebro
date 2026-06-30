@@ -7,7 +7,7 @@
       "department": "department-source-gitpod-users-1",
       "display_name": "Gitpod Users Fixture",
       "domain": "domain-source-gitpod-users-1",
-      "email": "user@gitpod.example.test",
+      "email": "email@gitpod.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-gitpod-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gitpod-users-1",

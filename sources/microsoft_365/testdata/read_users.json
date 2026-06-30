@@ -7,7 +7,7 @@
       "department": "department-source-microsoft_365-users-1",
       "display_name": "Microsoft 365 Users Fixture",
       "domain": "domain-source-microsoft_365-users-1",
-      "email": "user@microsoft-365.example.test",
+      "email": "email@microsoft-365.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-microsoft_365-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-microsoft_365-users-1",

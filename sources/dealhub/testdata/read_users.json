@@ -7,7 +7,7 @@
       "department": "department-source-dealhub-users-1",
       "display_name": "Dealhub Users Fixture",
       "domain": "domain-source-dealhub-users-1",
-      "email": "user@dealhub.example.test",
+      "email": "email@dealhub.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-dealhub-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-dealhub-users-1",

@@ -39,7 +39,7 @@
     "kind": "zuora.notification_definition",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "active": "open",
+      "active": "critical",
       "alert_id": "source-zuora-notification_definition-1",
       "alert_name": "Zuora Notification Definition Fixture",
       "alert_severity": "critical",

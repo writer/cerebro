@@ -7,7 +7,7 @@
       "department": "department-source-zapier_enterprise-users-1",
       "display_name": "Zapier Enterprise Users Fixture",
       "domain": "domain-source-zapier_enterprise-users-1",
-      "email": "user@zapier-enterprise.example.test",
+      "email": "email@zapier-enterprise.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-zapier_enterprise-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-zapier_enterprise-users-1",

@@ -1581,9 +1581,7 @@ func renderReadFixture(request normalizedRequest, family familyData) string {
 			continue
 		}
 		setFixturePayloadMappedField(payload, path, value)
-		if strings.TrimSpace(attributes[attr]) == "" || attr == "resource_type" {
-			attributes[attr] = value
-		}
+		attributes[attr] = value
 	}
 	for _, field := range family.RequiredPayloadFields {
 		setFixturePayloadField(payload, field, fixturePayloadValue(request, field, family))
@@ -1844,12 +1842,31 @@ func fixtureAttributeValue(request normalizedRequest, attr string, family family
 }
 
 func fixtureAttributeValueForMapping(request normalizedRequest, attr string, path string, family familyData) string {
+	if localPart, ok := fixtureEmailLocalPartForPayloadPath(path); ok {
+		return fixtureEmail(request, firstNonEmptyString(localPart, attr))
+	}
 	if attr == "resource_type" {
 		if value := fixtureLiteralResourceType(path); value != "" {
 			return value
 		}
 	}
 	return fixtureAttributeValue(request, attr, family)
+}
+
+func fixtureEmailLocalPartForPayloadPath(rawPath string) (string, bool) {
+	for _, candidate := range fixturePayloadPathCandidates(rawPath) {
+		parts := strings.Split(candidate, ".")
+		if len(parts) == 0 {
+			continue
+		}
+		field := strings.TrimSpace(parts[len(parts)-1])
+		switch field {
+		case "email", "primary_email", "login", "actor_email", "group_email", "member_email", "resource_email":
+			local := strings.TrimSuffix(strings.TrimPrefix(field, "actor_"), "_email")
+			return local, true
+		}
+	}
+	return "", false
 }
 
 func fixtureLiteralResourceType(rawPath string) string {
@@ -1874,7 +1891,7 @@ func fixtureRecordID(request normalizedRequest, family familyData) string {
 }
 
 func fixtureEventID(request normalizedRequest, family familyData) string {
-	return request.SourceID + "-" + family.Name + "-event-1"
+	return "source-" + request.SourceID + "-" + family.Name + "-event-1"
 }
 
 func fixtureRelatedRecordID(request normalizedRequest, familyName string) string {

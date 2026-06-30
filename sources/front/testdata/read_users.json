@@ -7,7 +7,7 @@
       "department": "department-source-front-users-1",
       "display_name": "Front Users Fixture",
       "domain": "domain-source-front-users-1",
-      "email": "user@front.example.test",
+      "email": "email@front.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-front-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-front-users-1",

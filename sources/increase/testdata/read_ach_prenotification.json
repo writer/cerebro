@@ -39,7 +39,7 @@
     "kind": "increase.ach_prenotification",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "account_number": "Increase Ach Prenotification Fixture",
+      "account_number": "critical",
       "alert_id": "source-increase-ach_prenotification-1",
       "alert_name": "Increase Ach Prenotification Fixture",
       "alert_severity": "critical",

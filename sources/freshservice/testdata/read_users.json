@@ -7,7 +7,7 @@
       "department": "department-source-freshservice-users-1",
       "display_name": "Freshservice Users Fixture",
       "domain": "domain-source-freshservice-users-1",
-      "email": "user@freshservice.example.test",
+      "email": "email@freshservice.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-freshservice-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-freshservice-users-1",

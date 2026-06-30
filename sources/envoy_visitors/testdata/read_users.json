@@ -7,7 +7,7 @@
       "department": "department-source-envoy_visitors-users-1",
       "display_name": "Envoy Visitors Users Fixture",
       "domain": "domain-source-envoy_visitors-users-1",
-      "email": "user@envoy-visitors.example.test",
+      "email": "email@envoy-visitors.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-envoy_visitors-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-envoy_visitors-users-1",

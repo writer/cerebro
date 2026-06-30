@@ -7,7 +7,7 @@
       "department": "department-source-secureframe-users-1",
       "display_name": "Secureframe Users Fixture",
       "domain": "domain-source-secureframe-users-1",
-      "email": "user@secureframe.example.test",
+      "email": "email@secureframe.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-secureframe-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-secureframe-users-1",

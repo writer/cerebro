@@ -7,7 +7,7 @@
       "department": "department-source-drata-users-1",
       "display_name": "Drata Users Fixture",
       "domain": "domain-source-drata-users-1",
-      "email": "user@drata.example.test",
+      "email": "email@drata.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-drata-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-drata-users-1",

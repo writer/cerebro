@@ -7,7 +7,7 @@
       "department": "department-source-ceridian_dayforce-users-1",
       "display_name": "Ceridian Dayforce Users Fixture",
       "domain": "domain-source-ceridian_dayforce-users-1",
-      "email": "user@ceridian-dayforce.example.test",
+      "email": "email@ceridian-dayforce.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-ceridian_dayforce-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-ceridian_dayforce-users-1",

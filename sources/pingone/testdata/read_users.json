@@ -7,7 +7,7 @@
       "department": "department-source-pingone-users-1",
       "display_name": "Pingone Users Fixture",
       "domain": "domain-source-pingone-users-1",
-      "email": "user@pingone.example.test",
+      "email": "email@pingone.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-pingone-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-pingone-users-1",

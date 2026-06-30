@@ -7,7 +7,7 @@
       "department": "department-source-xero-users-1",
       "display_name": "Xero Users Fixture",
       "domain": "domain-source-xero-users-1",
-      "email": "user@xero.example.test",
+      "email": "email@xero.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-xero-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-xero-users-1",

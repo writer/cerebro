@@ -39,7 +39,7 @@
     "kind": "illumidesk.entity",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor": "Illumidesk Entity Fixture",
+      "actor": "critical",
       "alert_id": "source-illumidesk-entity-1",
       "alert_name": "Illumidesk Entity Fixture",
       "alert_severity": "critical",

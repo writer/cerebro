@@ -7,7 +7,7 @@
       "department": "department-source-probely-user-1",
       "display_name": "Probely User Fixture",
       "domain": "domain-source-probely-user-1",
-      "email": "user@probely.example.test",
+      "email": "email@probely.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-probely-user-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-probely-user-1",

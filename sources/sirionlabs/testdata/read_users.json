@@ -7,7 +7,7 @@
       "department": "department-source-sirionlabs-users-1",
       "display_name": "Sirionlabs Users Fixture",
       "domain": "domain-source-sirionlabs-users-1",
-      "email": "user@sirionlabs.example.test",
+      "email": "email@sirionlabs.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-sirionlabs-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sirionlabs-users-1",

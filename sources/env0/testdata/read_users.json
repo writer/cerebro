@@ -7,7 +7,7 @@
       "department": "department-source-env0-users-1",
       "display_name": "Env0 Users Fixture",
       "domain": "domain-source-env0-users-1",
-      "email": "user@env0.example.test",
+      "email": "email@env0.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-env0-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-env0-users-1",

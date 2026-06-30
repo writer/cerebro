@@ -7,7 +7,7 @@
       "department": "department-source-pipedrive-users-1",
       "display_name": "Pipedrive Users Fixture",
       "domain": "domain-source-pipedrive-users-1",
-      "email": "user@pipedrive.example.test",
+      "email": "email@pipedrive.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-pipedrive-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-pipedrive-users-1",

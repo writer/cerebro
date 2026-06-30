@@ -7,7 +7,7 @@
       "department": "department-source-paychex_flex-users-1",
       "display_name": "Paychex Flex Users Fixture",
       "domain": "domain-source-paychex_flex-users-1",
-      "email": "user@paychex-flex.example.test",
+      "email": "email@paychex-flex.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-paychex_flex-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-paychex_flex-users-1",

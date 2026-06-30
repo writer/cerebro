@@ -1,8 +1,8 @@
 [
   {
     "attributes": {
-      "actor_email": "user@fastly.example.test",
-      "actor_id": "source-fastly-users-1",
+      "actor_email": "email@fastly.example.test",
+      "actor_id": "fastly-users-1",
       "actor_name": "actor-name-source-fastly-audit_events-1",
       "api_method": "GET",
       "api_path": "/events",
@@ -35,7 +35,7 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "actor_email": "email@fastly.example.test",
-      "actor_id": "source-fastly-users-1",
+      "actor_id": "fastly-users-1",
       "actor_name": "actor-name-source-fastly-audit_events-1",
       "api_method": "GET",
       "api_path": "/events",

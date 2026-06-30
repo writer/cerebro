@@ -7,7 +7,7 @@
       "department": "department-source-envkey-users-1",
       "display_name": "Envkey Users Fixture",
       "domain": "domain-source-envkey-users-1",
-      "email": "user@envkey.example.test",
+      "email": "email@envkey.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-envkey-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-envkey-users-1",

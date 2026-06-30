@@ -7,7 +7,7 @@
       "department": "department-source-document360-users-1",
       "display_name": "Document360 Users Fixture",
       "domain": "domain-source-document360-users-1",
-      "email": "user@document360.example.test",
+      "email": "email@document360.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-document360-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-document360-users-1",

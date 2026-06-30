@@ -7,7 +7,7 @@
       "department": "department-source-alteryx-users-1",
       "display_name": "Alteryx Users Fixture",
       "domain": "domain-source-alteryx-users-1",
-      "email": "user@alteryx.example.test",
+      "email": "email@alteryx.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-alteryx-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-alteryx-users-1",

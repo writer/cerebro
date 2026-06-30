@@ -7,7 +7,7 @@
       "department": "department-source-callfire-account-1",
       "display_name": "Callfire Account Fixture",
       "domain": "domain-source-callfire-account-1",
-      "email": "user@callfire.example.test",
+      "email": "email@callfire.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-callfire-account-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-callfire-account-1",

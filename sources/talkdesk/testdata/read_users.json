@@ -7,7 +7,7 @@
       "department": "department-source-talkdesk-users-1",
       "display_name": "Talkdesk Users Fixture",
       "domain": "domain-source-talkdesk-users-1",
-      "email": "user@talkdesk.example.test",
+      "email": "email@talkdesk.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-talkdesk-users-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-talkdesk-users-1",

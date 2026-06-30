@@ -44,7 +44,7 @@
       "api_path": "/compliance/apps/projects/{project_id}/collaborators",
       "created_at": "2026-06-01T00:00:00Z",
       "display_name": "Anthropic Compliance Project Collaborator Fixture",
-      "email": "user@example.test",
+      "email": "email@anthropic.example.test",
       "event_id": "source-anthropic-compliance_project_collaborator-1",
       "evidence_cas": {
         "digest": "sha256:test",

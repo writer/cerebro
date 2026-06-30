@@ -7,7 +7,7 @@
       "department": "department-source-noosh-clientworkgroups_projecthomeuserfield-1",
       "display_name": "Noosh Clientworkgroups Projecthomeuserfield Fixture",
       "domain": "domain-source-noosh-clientworkgroups_projecthomeuserfield-1",
-      "email": "user@noosh.example.test",
+      "email": "email@noosh.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-noosh-clientworkgroups_projecthomeuserfield-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-noosh-clientworkgroups_projecthomeuserfield-1",

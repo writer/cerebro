@@ -7,7 +7,7 @@
       "department": "department-source-runscope-people-1",
       "display_name": "Runscope People Fixture",
       "domain": "domain-source-runscope-people-1",
-      "email": "user@runscope.example.test",
+      "email": "email@runscope.example.test",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-runscope-people-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-runscope-people-1",
