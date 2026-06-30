@@ -272,10 +272,11 @@ func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
 
 func questionnaireEvidenceTopic(question string) string {
 	terms := newQuestionnaireEvidenceTerms(question)
-	if terms.hasFindingRetrievalContext() {
+	if terms.hasFindingRetrievalContext() || terms.hasInventoryContext() {
 		return ""
 	}
-	oktaContext := terms.hasAnswerContext() || terms.has("evidence") || terms.startsWith("does", "can", "do")
+	answerContext := terms.hasQuestionnaireAnswerContext()
+	oktaContext := answerContext || terms.startsWith("show")
 	evidencePacketCoverageContext := terms.hasPhrase("evidence packet") &&
 		(terms.has("coverage") || terms.has("gap") || terms.has("gaps") || terms.has("control") || terms.has("controls"))
 	switch {
@@ -285,8 +286,32 @@ func questionnaireEvidenceTopic(question string) string {
 		return "okta_lifecycle"
 	case terms.has("okta") && terms.has("access") && oktaContext:
 		return "okta_access"
+	case (terms.has("mfa") || terms.hasPhrase("multi factor") || terms.has("multifactor")) && answerContext:
+		return "identity_mfa"
+	case (terms.hasPhrase("access review") ||
+		terms.has("sso") ||
+		terms.has("permission") ||
+		terms.has("permissions") ||
+		terms.has("provision") ||
+		terms.has("deprovision") ||
+		(terms.has("access") && terms.hasAnswerContext())) && answerContext:
+		return "access_review"
+	case (terms.has("encrypt") || terms.has("encryption") || terms.has("encrypted") || terms.has("key") || terms.has("keys") || terms.has("kms") || terms.has("tls")) && answerContext:
+		return "encryption"
+	case (terms.has("incident") || terms.has("breach") || terms.hasPhrase("incident response")) && answerContext:
+		return "incident_response"
+	case (terms.has("vendor") || terms.has("vendors") || terms.hasPhrase("third party")) && (terms.hasPhrase("due diligence") || terms.has("diligence") || terms.has("assurance") || terms.has("review")) && (answerContext || terms.startsWith("show")):
+		return "vendor_due_diligence"
+	case (terms.has("subprocessor") || terms.has("subprocessors") || terms.hasPhrase("third party")) && answerContext:
+		return "subprocessors"
+	case (terms.has("soc") || terms.has("soc2") || terms.hasPhrase("soc 2") || terms.has("iso") || terms.has("audit") || terms.has("assurance")) && (terms.has("report") || terms.has("reports") || answerContext):
+		return "audit_report"
 	case (terms.hasPhrase("policy doc") || terms.hasPhrase("policy document")) && terms.hasAnswerContext():
 		return "policy_documents"
+	case (terms.has("policy") || terms.has("policies") || terms.has("document") || terms.has("documents")) && answerContext:
+		return "policy_documents"
+	case (terms.has("ai") || terms.has("model") || terms.has("models") || terms.has("training") || terms.hasPhrase("data use") || terms.has("retention")) && answerContext:
+		return "ai_data_use"
 	case (terms.hasPhrase("control coverage") ||
 		terms.hasPhrase("coverage gap") ||
 		terms.hasPhrase("evidence gap") ||
@@ -357,9 +382,25 @@ func (terms questionnaireEvidenceTerms) hasAnswerContext() bool {
 		terms.has("questionnaire")
 }
 
+func (terms questionnaireEvidenceTerms) hasQuestionnaireAnswerContext() bool {
+	return terms.hasAnswerContext() ||
+		terms.has("evidence") ||
+		terms.has("proof") ||
+		terms.has("review") ||
+		terms.startsWith("does", "can", "do", "is", "are", "provide", "explain")
+}
+
 func (terms questionnaireEvidenceTerms) hasFindingRetrievalContext() bool {
 	return (terms.has("finding") || terms.has("findings")) &&
 		(terms.has("show") || terms.has("list") || terms.has("source") || terms.has("evidence"))
+}
+
+func (terms questionnaireEvidenceTerms) hasInventoryContext() bool {
+	return terms.has("inventory") ||
+		terms.has("catalog") ||
+		terms.has("count") ||
+		terms.has("counts") ||
+		terms.hasPhrase("list all")
 }
 
 func containsWord(haystack string, needle string) bool {
@@ -842,13 +883,94 @@ func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
         WHEN ` + questionnaireMatchWordPredicate("group") + ` THEN true
         ELSE false
       END`
+	case "identity_mfa":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("mfa"),
+			"questionnaire_match_text CONTAINS 'multi factor'",
+			"questionnaire_match_text CONTAINS 'multi-factor'",
+			questionnaireMatchWordPredicate("multifactor"),
+		)
+	case "access_review":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'access review'",
+			questionnaireMatchWordPredicate("access"),
+			questionnaireMatchWordPredicate("sso"),
+			questionnaireMatchWordPredicate("permission"),
+			questionnaireMatchWordPredicate("permissions"),
+			questionnaireMatchWordPredicate("provision"),
+			questionnaireMatchWordPredicate("deprovision"),
+		)
+	case "encryption":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("encrypt"),
+			questionnaireMatchWordPredicate("encryption"),
+			questionnaireMatchWordPredicate("encrypted"),
+			questionnaireMatchWordPredicate("key"),
+			questionnaireMatchWordPredicate("keys"),
+			questionnaireMatchWordPredicate("kms"),
+			questionnaireMatchWordPredicate("tls"),
+		)
+	case "incident_response":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'incident response'",
+			questionnaireMatchWordPredicate("incident"),
+			questionnaireMatchWordPredicate("breach"),
+			questionnaireMatchWordPredicate("response"),
+		)
+	case "subprocessors":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("subprocessor"),
+			questionnaireMatchWordPredicate("subprocessors"),
+			"questionnaire_match_text CONTAINS 'third party'",
+			"questionnaire_match_text CONTAINS 'third-party'",
+		)
+	case "audit_report":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("soc"),
+			questionnaireMatchWordPredicate("soc2"),
+			"questionnaire_match_text CONTAINS 'soc 2'",
+			questionnaireMatchWordPredicate("iso"),
+			questionnaireMatchWordPredicate("audit"),
+			questionnaireMatchWordPredicate("assurance"),
+			questionnaireMatchWordPredicate("report"),
+		)
 	case "policy_documents":
 		return "WHERE questionnaire_match_text CONTAINS 'policy document' OR questionnaire_match_text CONTAINS 'policy_document' OR " + questionnaireMatchWordPredicate("document")
+	case "ai_data_use":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("ai"),
+			questionnaireMatchWordPredicate("model"),
+			questionnaireMatchWordPredicate("models"),
+			questionnaireMatchWordPredicate("training"),
+			"questionnaire_match_text CONTAINS 'data use'",
+			"questionnaire_match_text CONTAINS 'data-use'",
+			questionnaireMatchWordPredicate("retention"),
+		)
+	case "vendor_due_diligence":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'due diligence'",
+			questionnaireMatchWordPredicate("vendor"),
+			questionnaireMatchWordPredicate("vendors"),
+			questionnaireMatchWordPredicate("assurance"),
+			questionnaireMatchWordPredicate("subprocessor"),
+			"questionnaire_match_text CONTAINS 'third party'",
+			"questionnaire_match_text CONTAINS 'third-party'",
+		)
 	case "control_coverage":
 		return "WHERE " + questionnaireMatchWordPredicate("coverage") + " OR questionnaire_match_text CONTAINS 'coverage_gap' OR " + questionnaireMatchWordPredicate("gap") + " OR " + questionnaireMatchWordPredicate("missing")
 	default:
 		return ""
 	}
+}
+
+func questionnaireAnyMatchPredicate(predicates ...string) string {
+	nonEmpty := make([]string, 0, len(predicates))
+	for _, predicate := range predicates {
+		if strings.TrimSpace(predicate) != "" {
+			nonEmpty = append(nonEmpty, predicate)
+		}
+	}
+	return strings.Join(nonEmpty, " OR ")
 }
 
 func questionnaireMatchWordPredicate(word string) string {

@@ -1351,11 +1351,11 @@ func answerText(control ControlPosture, request EvidenceRequest, state string, s
 	}
 	switch state {
 	case "supported":
-		return fmt.Sprintf("Supported for %s: %s. Freshness: %s.", subject, evidence, freshnessStatus)
+		return fmt.Sprintf("Current citations cover %s. Evidence: %s. Freshness: %s.", subject, evidence, freshnessStatus)
 	case "manual_review":
-		return fmt.Sprintf("Reviewer approval required for %s: %s. Freshness: %s.", subject, evidence, freshnessStatus)
+		return fmt.Sprintf("Review required for %s. Evidence: %s. Freshness: %s.", subject, evidence, freshnessStatus)
 	case "partial":
-		return fmt.Sprintf("Partial support for %s: %s. Open gaps: %d.", subject, evidence, len(gaps))
+		return fmt.Sprintf("Some evidence is available for %s. Evidence: %s. Open gaps: %d.", subject, evidence, len(gaps))
 	case "not_required":
 		return "No answer required for " + subject + " in this evidence packet."
 	default:

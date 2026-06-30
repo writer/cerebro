@@ -34,7 +34,13 @@ func (a *App) grcUploadHandler(target grcupload.Target) http.Handler {
 		JobStore:  jobStore(a.deps.StateStore),
 		ResolveScope: func(r *http.Request) (grcuploadhttp.Scope, error) {
 			scope, err := grcScopeFromRequest(r)
-			return grcuploadhttp.Scope(scope), err
+			return grcuploadhttp.Scope{
+				TenantID:   scope.TenantID,
+				RuntimeID:  scope.RuntimeID,
+				RuntimeIDs: scope.RuntimeIDs,
+				SourceID:   scope.SourceID,
+				Limit:      scope.Limit,
+			}, err
 		},
 		AuthorizeTenant: authorizeTenantID,
 		ActorUserID:     customDashboardActorID,

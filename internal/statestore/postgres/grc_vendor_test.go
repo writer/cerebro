@@ -30,35 +30,37 @@ func TestGRCVendorDiscoveryDecisionAdvisoryLockSerializesUpserts(t *testing.T) {
 	}
 }
 
-func TestGRCVendorQuestionnaireReviewSchemaSerializesEvents(t *testing.T) {
-	joined := strings.Join(ensureGRCVendorQuestionnaireStatements, "\n")
+func TestQuestionnaireRunSchemaSerializesEvents(t *testing.T) {
+	joined := strings.Join(ensureQuestionnaireRunStatements, "\n")
 	for _, fragment := range []string{
-		"grc_vendor_questionnaire_reviews",
-		"grc_vendor_questionnaire_review_events",
+		"grc_questionnaire_runs",
+		"grc_questionnaire_run_events",
+		"questions_json JSONB",
+		"answers_json JSONB",
 		"assignments_json JSONB",
-		"evidence_matches_json JSONB",
-		"missing_questions_json JSONB",
-		"answer_suggestions_json JSONB",
+		"decisions_json JSONB",
 		"timeline_json JSONB",
-		"grc_vendor_questionnaire_review_events_review_version_uidx",
-		"(tenant_id, review_id, version)",
-		"grc_vendor_questionnaire_reviews_tenant_status_idx",
+		"grc_questionnaire_run_events_run_version_uidx",
+		"(tenant_id, run_id, version)",
+		"grc_questionnaire_runs_tenant_status_idx",
+		"grc_questionnaire_runs_tenant_direction_idx",
+		"grc_questionnaire_runs_tenant_vendor_idx",
 	} {
 		if !strings.Contains(joined, fragment) {
-			t.Fatalf("vendor questionnaire review schema missing %q:\n%s", fragment, joined)
+			t.Fatalf("questionnaire run schema missing %q:\n%s", fragment, joined)
 		}
 	}
 }
 
-func TestGRCVendorQuestionnaireReviewAdvisoryLockSerializesUpserts(t *testing.T) {
-	query := grcVendorQuestionnaireReviewAdvisoryLockSQL()
+func TestQuestionnaireRunAdvisoryLockSerializesUpserts(t *testing.T) {
+	query := questionnaireRunAdvisoryLockSQL()
 	for _, fragment := range []string{
 		"pg_advisory_xact_lock",
-		"hashtext('grc_vendor_questionnaire_review')",
+		"hashtext('grc_questionnaire_run')",
 		"hashtext($1)",
 	} {
 		if !strings.Contains(query, fragment) {
-			t.Fatalf("vendor questionnaire review advisory lock query missing %q:\n%s", fragment, query)
+			t.Fatalf("questionnaire run advisory lock query missing %q:\n%s", fragment, query)
 		}
 	}
 }
