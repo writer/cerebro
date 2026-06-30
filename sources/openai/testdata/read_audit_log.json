@@ -1,38 +1,193 @@
 [
   {
     "attributes": {
-      "actor_email": "user@example.test",
-      "actor_id": "user-1",
-      "audit_log_id": "audit-log-id-1",
-      "event_id": "event-1",
+      "actor_api_key_id": "actor-api-key-id-openai-audit_log-1",
+      "actor_city": "actor-city-openai-audit_log-1",
+      "actor_country": "actor-country-openai-audit_log-1",
+      "actor_email": "email@openai.example.test",
+      "actor_id": "actor-id-openai-audit_log-1",
+      "actor_ip_address": "actor-ip-address-openai-audit_log-1",
+      "actor_region": "actor-region-openai-audit_log-1",
+      "actor_service_account_id": "actor-service-account-id-openai-audit_log-1",
+      "actor_type": "actor-type-openai-audit_log-1",
+      "actor_user_agent": "actor-user-agent-openai-audit_log-1",
+      "actor_user_id": "actor-user-id-openai-audit_log-1",
+      "api_key_id": "api-key-id-openai-audit_log-1",
+      "api_method": "GET",
+      "api_path": "/organization/audit_logs",
+      "audit_log_id": "audit-log-id-openai-audit_log-1",
+      "certificate_id": "certificate-id-openai-audit_log-1",
+      "certificate_name": "Openai Audit Log Fixture",
+      "effective_at": "2026-06-01T00:00:00Z",
+      "event_id": "event-id-openai-audit_log-1",
       "event_type": "user.login",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
+      "evidence_cas_uri": "cas://cases/openai/audit_log/openai-audit_log-1",
+      "external_id": "openai-audit_log-1",
+      "external_key_id": "external-key-id-openai-audit_log-1",
       "family": "audit_log",
+      "group_id": "group-id-openai-audit_log-1",
+      "group_name": "Openai Audit Log Fixture",
+      "invite_email": "invite@openai.example.test",
+      "invite_id": "invite-id-openai-audit_log-1",
+      "invite_role": "invite-role-openai-audit_log-1",
+      "ip_allowlist_id": "ip-allowlist-id-openai-audit_log-1",
+      "ip_allowlist_name": "ip-allowlist-name-openai-audit_log-1",
       "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
+      "organization_id": "organization-id-openai-audit_log-1",
+      "principal_id": "principal-id-openai-audit_log-1",
+      "principal_type": "principal-type-openai-audit_log-1",
+      "project_id": "project-id-openai-audit_log-1",
+      "provider": "openai",
+      "rate_limit_id": "rate-limit-id-openai-audit_log-1",
+      "resource_id": "openai-audit_log-1",
+      "resource_name": "Openai Audit Log Fixture",
       "resource_type": "audit_event",
-      "resource_urn": "urn:cerebro:tenant:runtime_audit_log:record-1",
-      "source_event_id": "record-1",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:openai_audit_log:openai-audit_log-1",
+      "role_assignment_id": "role-assignment-id-openai-audit_log-1",
+      "role_id": "role-id-openai-audit_log-1",
+      "role_name": "Openai Audit Log Fixture",
+      "service_account_id": "service-account-id-openai-audit_log-1",
+      "source_event_id": "openai-audit_log-1",
+      "source_product": "openai",
+      "source_provider": "openai",
+      "source_system": "openai",
+      "tenant_id": "tenant",
+      "user_id": "user-id-openai-audit_log-1"
     },
-    "id": "openai-audit_log-record-1",
+    "id": "openai-audit_log-event-1",
     "kind": "openai.audit_log",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor_id": "user-1",
-      "event_id": "event-1",
+      "actor": {
+        "api_key": {
+          "id": "actor-api-key-id-openai-audit_log-1",
+          "service_account": {
+            "id": "actor-service-account-id-openai-audit_log-1"
+          }
+        },
+        "session": {
+          "ip_address": "actor-ip-address-openai-audit_log-1",
+          "ip_address_details": {
+            "city": "actor-city-openai-audit_log-1",
+            "country": "actor-country-openai-audit_log-1",
+            "region": "actor-region-openai-audit_log-1"
+          },
+          "user": {
+            "email": "email@openai.example.test",
+            "id": "actor-user-id-openai-audit_log-1"
+          },
+          "user_agent": "actor-user-agent-openai-audit_log-1"
+        },
+        "type": "actor-type-openai-audit_log-1"
+      },
+      "actor_id": "openai-user-1",
+      "api_key": {
+        "created": {
+          "id": "api-key-id-openai-audit_log-1"
+        }
+      },
+      "api_method": "GET",
+      "api_path": "/organization/audit_logs",
+      "certificate": {
+        "created": {
+          "id": "certificate-id-openai-audit_log-1",
+          "name": "Openai Audit Log Fixture"
+        }
+      },
+      "effective_at": "2026-06-01T00:00:00Z",
+      "event_id": "openai-audit_log-1",
       "event_type": "user.login",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openai/audit_log/openai-audit_log-1"
+      },
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
+      "evidence_cas_uri": "cas://cases/openai/audit_log/openai-audit_log-1",
+      "external_key": {
+        "registered": {
+          "id": "external-key-id-openai-audit_log-1"
+        }
+      },
+      "family": "audit_log",
+      "group": {
+        "created": {
+          "data": {
+            "group_name": "Openai Audit Log Fixture"
+          },
+          "id": "group-id-openai-audit_log-1"
+        }
+      },
+      "id": "audit-log-id-openai-audit_log-1",
+      "invite": {
+        "sent": {
+          "data": {
+            "email": "invite@openai.example.test",
+            "role": "invite-role-openai-audit_log-1"
+          },
+          "id": "invite-id-openai-audit_log-1"
+        }
+      },
+      "ip_allowlist": {
+        "created": {
+          "id": "ip-allowlist-id-openai-audit_log-1",
+          "name": "ip-allowlist-name-openai-audit_log-1"
+        }
+      },
+      "name": "Openai Audit Log Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "organization": {
+        "updated": {
+          "id": "organization-id-openai-audit_log-1"
+        }
+      },
+      "project": {
+        "created": {
+          "id": "project-id-openai-audit_log-1"
+        }
+      },
+      "rate_limit": {
+        "updated": {
+          "id": "rate-limit-id-openai-audit_log-1"
+        }
+      },
+      "resource_id": "openai-audit_log-1",
       "resource_type": "audit_event",
-      "resource_urn": "urn:cerebro:tenant:runtime_audit_log:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "resource_urn": "urn:cerebro:tenant:openai_audit_log:openai-audit_log-1",
+      "role": {
+        "assignment": {
+          "created": {
+            "id": "role-assignment-id-openai-audit_log-1",
+            "principal_id": "principal-id-openai-audit_log-1",
+            "principal_type": "principal-type-openai-audit_log-1",
+            "resource_id": "openai-audit_log-1",
+            "resource_type": "audit_event"
+          }
+        },
+        "created": {
+          "data": {
+            "role_name": "Openai Audit Log Fixture"
+          },
+          "id": "role-id-openai-audit_log-1"
+        }
+      },
+      "schema_ref": "openai/audit_log/v1",
+      "service_account": {
+        "created": {
+          "id": "service-account-id-openai-audit_log-1"
+        }
+      },
+      "source_id": "openai",
+      "tenant_id": "tenant",
+      "type": "user.login",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user": {
+        "added": {
+          "id": "user-id-openai-audit_log-1"
+        }
+      }
     },
     "schema_ref": "openai/audit_log/v1",
     "source_id": "openai",
