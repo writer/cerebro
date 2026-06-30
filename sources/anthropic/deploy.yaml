@@ -70,12 +70,14 @@ runtimes:
   - localId: compliance-role
     config:
       family: compliance_role
+      organization_uuid: organization-uuid
       per_page: "100"
       tenant_id: tenant
       token: env:ANTHROPIC_TOKEN
   - localId: compliance-role-permission
     config:
       family: compliance_role_permission
+      organization_uuid: organization-uuid
       per_page: "100"
       tenant_id: tenant
       token: env:ANTHROPIC_TOKEN
