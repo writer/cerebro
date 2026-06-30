@@ -9,6 +9,41 @@ emitted_kinds:
   - pagerduty.escalation_policy
   - pagerduty.integration
   - pagerduty.vendor
+provider_api:
+  status: verified
+  transport: rest
+  auth: pagerduty_api_token
+  base_url: https://api.pagerduty.com
+  references:
+    - https://github.com/PagerDuty/api-schema/blob/main/reference/REST/openapiv3.json
+    - https://developer.pagerduty.com/api-reference
+    - https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgx-authentication
+  families:
+    - id: user
+      method: GET
+      path: /users
+    - id: team
+      method: GET
+      path: /teams
+    - id: service
+      method: GET
+      path: /services
+    - id: schedule
+      method: GET
+      path: /schedules
+    - id: escalation_policy
+      method: GET
+      path: /escalation_policies
+    - id: vendor
+      method: GET
+      path: /vendors
+runtime_families:
+  - user
+  - team
+  - service
+  - schedule
+  - escalation_policy
+  - vendor
 families:
   - id: user
     incremental: cursor
