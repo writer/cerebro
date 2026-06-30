@@ -1,6 +1,10 @@
 package connectordefinitions
 
-import "testing"
+import (
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
 
 func TestNormalizeBuildsValidatedDefinition(t *testing.T) {
 	definition, err := Normalize(Definition{
@@ -75,6 +79,81 @@ func TestNormalizeTrimsTokenHeaderAndScheme(t *testing.T) {
 	}
 	if definition.Auth.TokenHeader != "x-api-key" || definition.Auth.TokenScheme != "Token" {
 		t.Fatalf("auth header/scheme = %q/%q, want trimmed values", definition.Auth.TokenHeader, definition.Auth.TokenScheme)
+	}
+}
+
+func TestNormalizePreservesProviderAPIMapping(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        AuthSpec{Model: "none"},
+		Transport:   &TransportSpec{BaseURL: "https://api.example.test"},
+		ProviderAPI: &ProviderAPISpec{
+			Status:     " verified ",
+			Transport:  " rest ",
+			Auth:       " none ",
+			BaseURL:    " https://api.example.test ",
+			References: []string{" https://docs.example.test/openapi.yaml ", "https://docs.example.test/openapi.yaml"},
+			Families: []ProviderAPIFamilySpec{{
+				ID:     " Assets ",
+				Method: " get ",
+				Path:   " /v1/assets ",
+			}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "assets",
+			Path:           "/v1/assets",
+			IDField:        "id",
+			RecordSelector: "$.data[*]",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if definition.ProviderAPI == nil {
+		t.Fatal("provider API = nil")
+	}
+	if definition.ProviderAPI.Status != "verified" || definition.ProviderAPI.Transport != "rest" || definition.ProviderAPI.Auth != "none" {
+		t.Fatalf("provider API = %#v", definition.ProviderAPI)
+	}
+	if len(definition.ProviderAPI.References) != 1 || definition.ProviderAPI.References[0] != "https://docs.example.test/openapi.yaml" {
+		t.Fatalf("provider API references = %#v", definition.ProviderAPI.References)
+	}
+	if len(definition.ProviderAPI.Families) != 1 || definition.ProviderAPI.Families[0].ID != "assets" || definition.ProviderAPI.Families[0].Method != "GET" || definition.ProviderAPI.Families[0].Path != "/v1/assets" {
+		t.Fatalf("provider API families = %#v", definition.ProviderAPI.Families)
+	}
+}
+
+func TestDefinitionYAMLDecodesProviderAPIMapping(t *testing.T) {
+	var definition Definition
+	if err := yaml.Unmarshal([]byte(`
+source_id: example
+auth:
+  model: none
+provider_api:
+  status: verified
+  transport: rest
+  auth: none
+  base_url: https://api.example.test
+  references:
+    - https://docs.example.test/openapi.yaml
+  families:
+    - id: assets
+      method: GET
+      path: /v1/assets
+      operation: listAssets
+`), &definition); err != nil {
+		t.Fatalf("yaml.Unmarshal() error = %v", err)
+	}
+	if definition.ProviderAPI == nil {
+		t.Fatal("provider API = nil")
+	}
+	if definition.ProviderAPI.BaseURL != "https://api.example.test" {
+		t.Fatalf("provider API base URL = %q", definition.ProviderAPI.BaseURL)
+	}
+	if len(definition.ProviderAPI.Families) != 1 || definition.ProviderAPI.Families[0].Operation != "listAssets" {
+		t.Fatalf("provider API families = %#v", definition.ProviderAPI.Families)
 	}
 }
 

@@ -22,6 +22,7 @@ func main() {
 	var categories string
 	var baseURL string
 	var authModel string
+	var providerAPIReferences string
 	var maxFamilies int
 	var allFamilies bool
 	flag.StringVar(&specPath, "spec", "", "OpenAPI document path")
@@ -34,6 +35,7 @@ func main() {
 	flag.StringVar(&categories, "categories", "", "comma-separated connector categories")
 	flag.StringVar(&baseURL, "base-url", "", "provider API base URL; inferred from OpenAPI servers when empty")
 	flag.StringVar(&authModel, "auth-model", "", "auth model override")
+	flag.StringVar(&providerAPIReferences, "provider-api-references", "", "comma-separated provider-owned API spec or reference URLs")
 	flag.IntVar(&maxFamilies, "max-families", 4, "maximum selected resource families; ignored when -all-families is set")
 	flag.BoolVar(&allFamilies, "all-families", false, "select every sourcegen-ready endpoint instead of proof-gate top families")
 	flag.Parse()
@@ -47,15 +49,16 @@ func main() {
 		fail(err)
 	}
 	definition, report, err := openapigen.Generate(doc, openapigen.Request{
-		SourceID:    sourceID,
-		TenantID:    tenantID,
-		DisplayName: displayName,
-		Description: description,
-		Categories:  splitList(categories),
-		BaseURL:     baseURL,
-		AuthModel:   authModel,
-		MaxFamilies: maxFamilies,
-		AllFamilies: allFamilies,
+		SourceID:              sourceID,
+		TenantID:              tenantID,
+		DisplayName:           displayName,
+		Description:           description,
+		Categories:            splitList(categories),
+		BaseURL:               baseURL,
+		AuthModel:             authModel,
+		ProviderAPIReferences: splitList(providerAPIReferences),
+		MaxFamilies:           maxFamilies,
+		AllFamilies:           allFamilies,
 	})
 	if err != nil {
 		fail(err)
@@ -91,7 +94,7 @@ func writeJSON(path string, value any) error {
 		_, err = os.Stdout.Write(payload)
 		return err
 	}
-	return os.WriteFile(path, payload, 0o644)
+	return os.WriteFile(path, payload, 0o600)
 }
 
 func fail(err error) {

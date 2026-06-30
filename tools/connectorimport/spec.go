@@ -39,6 +39,38 @@ func resolveSpec(f *fetcher, registry apisGuruRegistry, entry manifestTarget) (*
 	}
 }
 
+func providerAPIReferences(registry apisGuruRegistry, entry manifestTarget) []string {
+	values := append([]string(nil), entry.ProviderAPIReferences...)
+	switch {
+	case strings.TrimSpace(entry.SpecURL) != "":
+		values = append(values, strings.TrimSpace(entry.SpecURL))
+	case strings.TrimSpace(entry.SpecFile) != "":
+		values = append(values, strings.TrimSpace(entry.SpecFile))
+	case strings.TrimSpace(entry.APIsGuru) != "":
+		if specURL, err := registry.specURL(entry.APIsGuru); err == nil {
+			values = append(values, specURL)
+		}
+	}
+	return uniqueReferences(values)
+}
+
+func uniqueReferences(values []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func loadSpecFromURL(f *fetcher, loader *openapi3.Loader, specURL string) (*openapi3.T, error) {
 	payload, err := f.get(specURL)
 	if err != nil {

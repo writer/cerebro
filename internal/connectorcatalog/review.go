@@ -18,6 +18,7 @@ type ReviewReport struct {
 	PromotionQueues    []PromotionQueue        `json:"promotion_queues,omitempty"`
 	FidelityQueue      []FidelityCandidate     `json:"fidelity_queue,omitempty"`
 	RuntimeDepthQueue  []RuntimeDepthCandidate `json:"runtime_depth_queue,omitempty"`
+	APIDiscoveryQueue  []APIDiscoveryCandidate `json:"api_discovery_queue,omitempty"`
 	CleanupFindings    []ReviewFinding         `json:"cleanup_findings,omitempty"`
 	Questions          []ReviewQuestion        `json:"questions,omitempty"`
 	SourceReviews      []SourceReview          `json:"source_reviews,omitempty"`
@@ -54,6 +55,7 @@ type RuntimeDepthSummary struct {
 	NeedsRuntimeDepth                int `json:"needs_runtime_depth"`
 	SourcesWithReadFixtures          int `json:"sources_with_read_fixtures"`
 	SourcesWithDiscoverFixtures      int `json:"sources_with_discover_fixtures"`
+	NeedsProviderAPIDiscovery        int `json:"needs_provider_api_discovery"`
 	SourcesWithProviderAPIContract   int `json:"sources_with_provider_api_contract"`
 	SourcesWithProviderAPIMapping    int `json:"sources_with_provider_api_mapping"`
 	SourcesWithRuntimeTransportMatch int `json:"sources_with_runtime_transport_match"`
@@ -95,6 +97,22 @@ type RuntimeDepthCandidate struct {
 	Score       int      `json:"score"`
 	Missing     []string `json:"missing,omitempty"`
 	NextAction  string   `json:"next_action"`
+}
+
+type APIDiscoveryCandidate struct {
+	SourceID           string   `json:"source_id"`
+	DisplayName        string   `json:"display_name,omitempty"`
+	Path               string   `json:"path,omitempty"`
+	PackagePath        string   `json:"package_path,omitempty"`
+	RuntimeFamilies    []string `json:"runtime_families,omitempty"`
+	MissingFamilies    []string `json:"missing_families,omitempty"`
+	ExistingReferences []string `json:"existing_references,omitempty"`
+	Transport          string   `json:"transport,omitempty"`
+	Auth               string   `json:"auth,omitempty"`
+	BaseURL            string   `json:"base_url,omitempty"`
+	Endpoint           string   `json:"endpoint,omitempty"`
+	SearchQueries      []string `json:"search_queries,omitempty"`
+	NextAction         string   `json:"next_action"`
 }
 
 type ReviewFinding struct {
@@ -164,8 +182,19 @@ type RuntimeDepthFields struct {
 	HasProviderAPIContract     bool     `json:"has_provider_api_contract,omitempty"`
 	HasProviderAPIMapping      bool     `json:"has_provider_api_mapping,omitempty"`
 	HasRuntimeTransportMatch   bool     `json:"has_runtime_transport_match,omitempty"`
+	ProviderAPIReviewFields
+	RuntimeFamilies []string `json:"runtime_families,omitempty"`
+}
+
+type ProviderAPIReviewFields struct {
+	ProviderAPIStatus          string   `json:"provider_api_status,omitempty"`
 	ProviderAPITransport       string   `json:"provider_api_transport,omitempty"`
-	RuntimeFamilies            []string `json:"runtime_families,omitempty"`
+	ProviderAPIAuth            string   `json:"provider_api_auth,omitempty"`
+	ProviderAPIBaseURL         string   `json:"provider_api_base_url,omitempty"`
+	ProviderAPIEndpoint        string   `json:"provider_api_endpoint,omitempty"`
+	ProviderAPIReferences      []string `json:"provider_api_references,omitempty"`
+	ProviderAPIMappedFamilies  []string `json:"provider_api_mapped_families,omitempty"`
+	ProviderAPIMissingFamilies []string `json:"provider_api_missing_families,omitempty"`
 }
 
 type SourceFamilyReadinessFields struct {
@@ -289,6 +318,10 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			if sourceReview.HasProjectorTests {
 				review.Summary.RuntimeDepth.SourcesWithProjectorTests++
 			}
+			if needsProviderAPIDiscovery(sourceReview) {
+				review.Summary.RuntimeDepth.NeedsProviderAPIDiscovery++
+				review.APIDiscoveryQueue = append(review.APIDiscoveryQueue, providerAPIDiscoveryCandidate(entry, sourceReview))
+			}
 		}
 		if sourceReview.ProjectedFamilies > 0 {
 			review.Summary.SourcesWithProjection++
@@ -399,7 +432,14 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.HasProviderAPIContract = runtimeDepth.ProviderAPI.HasContract
 		review.HasProviderAPIMapping = runtimeDepth.ProviderAPI.HasMapping
 		review.HasRuntimeTransportMatch = runtimeDepth.ProviderAPI.HasRuntimeTransport
+		review.ProviderAPIStatus = runtimeDepth.ProviderAPI.Status
 		review.ProviderAPITransport = runtimeDepth.ProviderAPI.Transport
+		review.ProviderAPIAuth = runtimeDepth.ProviderAPI.Auth
+		review.ProviderAPIBaseURL = runtimeDepth.ProviderAPI.BaseURL
+		review.ProviderAPIEndpoint = runtimeDepth.ProviderAPI.Endpoint
+		review.ProviderAPIReferences = append([]string(nil), runtimeDepth.ProviderAPI.References...)
+		review.ProviderAPIMappedFamilies = append([]string(nil), runtimeDepth.ProviderAPI.MappedFamilies...)
+		review.ProviderAPIMissingFamilies = append([]string(nil), runtimeDepth.ProviderAPI.MissingFamilyMappings...)
 		review.RuntimeFamilies = append([]string(nil), runtimeDepth.RuntimeFamilies...)
 		switch {
 		case review.RuntimeDepthScore >= runtimeDepthReviewThreshold:
@@ -415,6 +455,9 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 	}
 	sort.Strings(review.ProjectionTemplates)
 	sort.Strings(review.ProjectionGapFamilies)
+	sort.Strings(review.ProviderAPIReferences)
+	sort.Strings(review.ProviderAPIMappedFamilies)
+	sort.Strings(review.ProviderAPIMissingFamilies)
 	sort.Strings(review.RuntimeFamilies)
 	sort.Strings(review.RuntimeDepthGaps)
 	review.PromotionQueue, review.NextAction = promotionQueueAndAction(entry, review)
@@ -515,6 +558,17 @@ func sourceQuestions(source SourceReview, entry Entry, includeRuntimeDepth bool)
 			Question:   "Does this source have a source package at the reference runtime bar?",
 			Answer:     fmt.Sprintf("Score %d of 100. Level: %s. Missing: %s.", source.RuntimeDepthScore, source.RuntimeDepthLevel, listOrNone(limitStrings(source.RuntimeDepthGaps, 8))),
 			NextAction: runtimeDepthNextAction(),
+		})
+	}
+	if includeRuntimeDepth && needsProviderAPIDiscovery(source) {
+		questions = append(questions, ReviewQuestion{
+			ID:         questionID(source.SourceID, "provider_api_discovery"),
+			SourceID:   source.SourceID,
+			Path:       source.Path,
+			Category:   "provider_api_discovery",
+			Question:   "Which provider-owned API source proves the runtime mappings?",
+			Answer:     fmt.Sprintf("Missing provider API coverage for families: %s.", listOrNoFamilies(providerAPIMissingFamilies(source, entry))),
+			NextAction: providerAPIDiscoveryNextAction(source.SourceID),
 		})
 	}
 	return questions
@@ -679,6 +733,124 @@ func fidelityNextAction() string {
 
 func runtimeDepthNextAction() string {
 	return "Complete runtime depth: add a Source CDK package when missing, then add read and discover fixtures for every family, projector tests for every emitted kind, deploy manifest coverage, and source package validation."
+}
+
+func providerAPIDiscoveryNextAction(sourceID string) string {
+	packagePath := "sources/" + strings.TrimSpace(sourceID)
+	if strings.TrimSpace(sourceID) == "" {
+		packagePath = "the source package"
+	}
+	return "Find a provider-owned API spec or reference, add provider_api status/auth/base_url/references under " + packagePath + "/catalog.yaml, and map every runtime family to the documented method/path or operation before adding fixtures."
+}
+
+func needsProviderAPIDiscovery(source SourceReview) bool {
+	return !source.HasProviderAPIContract || !source.HasProviderAPIMapping
+}
+
+func providerAPIDiscoveryCandidate(entry Entry, source SourceReview) APIDiscoveryCandidate {
+	families := providerAPIRuntimeFamilies(source, entry)
+	missingFamilies := providerAPIMissingFamilies(source, entry)
+	baseURL := strings.TrimSpace(source.ProviderAPIBaseURL)
+	if baseURL == "" && entry.Definition.Transport != nil {
+		baseURL = strings.TrimSpace(entry.Definition.Transport.BaseURL)
+	}
+	auth := strings.TrimSpace(source.ProviderAPIAuth)
+	if auth == "" {
+		auth = strings.TrimSpace(entry.Definition.Auth.Model)
+	}
+	return APIDiscoveryCandidate{
+		SourceID:           source.SourceID,
+		DisplayName:        source.DisplayName,
+		Path:               source.Path,
+		PackagePath:        source.RuntimePackagePath,
+		RuntimeFamilies:    families,
+		MissingFamilies:    missingFamilies,
+		ExistingReferences: append([]string(nil), source.ProviderAPIReferences...),
+		Transport:          strings.TrimSpace(source.ProviderAPITransport),
+		Auth:               auth,
+		BaseURL:            baseURL,
+		Endpoint:           strings.TrimSpace(source.ProviderAPIEndpoint),
+		SearchQueries:      providerAPISearchQueries(entry, source, families),
+		NextAction:         providerAPIDiscoveryNextAction(source.SourceID),
+	}
+}
+
+func providerAPIMissingFamilies(source SourceReview, entry Entry) []string {
+	if len(source.ProviderAPIMissingFamilies) > 0 {
+		return append([]string(nil), source.ProviderAPIMissingFamilies...)
+	}
+	if !source.HasProviderAPIContract || !source.HasProviderAPIMapping {
+		return providerAPIRuntimeFamilies(source, entry)
+	}
+	return nil
+}
+
+func providerAPIRuntimeFamilies(source SourceReview, entry Entry) []string {
+	if len(source.RuntimeFamilies) > 0 {
+		return append([]string(nil), source.RuntimeFamilies...)
+	}
+	if len(entry.ResourceFamilyIDs) > 0 {
+		return append([]string(nil), entry.ResourceFamilyIDs...)
+	}
+	families := make([]string, 0, len(entry.Definition.ResourceFamilies))
+	for _, family := range entry.Definition.ResourceFamilies {
+		if id := strings.TrimSpace(family.ID); id != "" {
+			families = append(families, id)
+		}
+	}
+	sort.Strings(families)
+	return families
+}
+
+func providerAPISearchQueries(entry Entry, source SourceReview, families []string) []string {
+	display := strings.TrimSpace(entry.Definition.DisplayName)
+	if display == "" {
+		display = displayName(source)
+	}
+	sourceID := strings.TrimSpace(entry.Definition.SourceID)
+	if sourceID == "" {
+		sourceID = strings.TrimSpace(source.SourceID)
+	}
+	familyHint := strings.Join(limitSearchTerms(families, 4), " ")
+	values := []string{
+		"gh search code " + shellQuote(display+" openapi") + " --filename openapi.yaml --limit 20",
+		"gh search code " + shellQuote(display+" openapi") + " --filename openapi.json --limit 20",
+		"gh search code " + shellQuote(display+" swagger") + " --limit 20",
+		"gh search repos " + shellQuote(display+" api sdk") + " --limit 20",
+	}
+	if sourceID != "" && sourceID != normalizedDisplayName(display) {
+		values = append(values,
+			"gh search code "+shellQuote(sourceID+" openapi")+" --limit 20",
+			"gh search repos "+shellQuote(sourceID+" api sdk")+" --limit 20",
+		)
+	}
+	if familyHint != "" {
+		values = append(values, "web search: "+display+" API reference "+familyHint)
+	} else {
+		values = append(values, "web search: "+display+" API reference")
+	}
+	return normalizedOrderedList(values)
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func normalizedOrderedList(values []string) []string {
+	seen := map[string]struct{}{}
+	ordered := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		ordered = append(ordered, value)
+	}
+	return ordered
 }
 
 func familyHasHighValueCoverage(family connectordefinitions.ResourceFamily) bool {
@@ -918,6 +1090,12 @@ func sortReview(review *ReviewReport) {
 		}
 		return review.RuntimeDepthQueue[i].SourceID < review.RuntimeDepthQueue[j].SourceID
 	})
+	sort.SliceStable(review.APIDiscoveryQueue, func(i int, j int) bool {
+		if len(review.APIDiscoveryQueue[i].MissingFamilies) != len(review.APIDiscoveryQueue[j].MissingFamilies) {
+			return len(review.APIDiscoveryQueue[i].MissingFamilies) > len(review.APIDiscoveryQueue[j].MissingFamilies)
+		}
+		return review.APIDiscoveryQueue[i].SourceID < review.APIDiscoveryQueue[j].SourceID
+	})
 	sort.SliceStable(review.CleanupFindings, func(i int, j int) bool {
 		if review.CleanupFindings[i].SourceID != review.CleanupFindings[j].SourceID {
 			return review.CleanupFindings[i].SourceID < review.CleanupFindings[j].SourceID
@@ -1028,6 +1206,13 @@ func listOrNone(values []string) string {
 	return strings.Join(values, ", ")
 }
 
+func listOrNoFamilies(values []string) string {
+	if len(values) == 0 {
+		return "no runtime families"
+	}
+	return strings.Join(values, ", ")
+}
+
 func limitStrings(values []string, maxItems int) []string {
 	if maxItems <= 0 || len(values) <= maxItems {
 		return values
@@ -1035,4 +1220,11 @@ func limitStrings(values []string, maxItems int) []string {
 	limited := append([]string(nil), values[:maxItems]...)
 	limited = append(limited, fmt.Sprintf("%d more", len(values)-maxItems))
 	return limited
+}
+
+func limitSearchTerms(values []string, maxItems int) []string {
+	if maxItems <= 0 || len(values) <= maxItems {
+		return append([]string(nil), values...)
+	}
+	return append([]string(nil), values[:maxItems]...)
 }

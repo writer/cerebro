@@ -15,15 +15,16 @@ type manifest struct {
 }
 
 type manifestTarget struct {
-	SourceID    string   `yaml:"source_id"`
-	DisplayName string   `yaml:"display_name"`
-	Description string   `yaml:"description"`
-	Domain      string   `yaml:"domain"`
-	Categories  []string `yaml:"categories"`
-	BaseURL     string   `yaml:"base_url"`
-	AuthModel   string   `yaml:"auth_model"`
-	MaxFamilies int      `yaml:"max_families"`
-	AllFamilies bool     `yaml:"all_families"`
+	SourceID              string   `yaml:"source_id"`
+	DisplayName           string   `yaml:"display_name"`
+	Description           string   `yaml:"description"`
+	Domain                string   `yaml:"domain"`
+	Categories            []string `yaml:"categories"`
+	BaseURL               string   `yaml:"base_url"`
+	AuthModel             string   `yaml:"auth_model"`
+	ProviderAPIReferences []string `yaml:"provider_api_references"`
+	MaxFamilies           int      `yaml:"max_families"`
+	AllFamilies           bool     `yaml:"all_families"`
 
 	APIsGuru string `yaml:"apis_guru"`
 	SpecURL  string `yaml:"spec_url"`
@@ -32,15 +33,16 @@ type manifestTarget struct {
 
 func (t manifestTarget) target() connectorimport.Target {
 	return connectorimport.Target{
-		SourceID:    t.SourceID,
-		DisplayName: t.DisplayName,
-		Description: t.Description,
-		Domain:      t.Domain,
-		Categories:  t.Categories,
-		BaseURL:     t.BaseURL,
-		AuthModel:   t.AuthModel,
-		MaxFamilies: t.MaxFamilies,
-		AllFamilies: t.AllFamilies,
+		SourceID:              t.SourceID,
+		DisplayName:           t.DisplayName,
+		Description:           t.Description,
+		Domain:                t.Domain,
+		Categories:            t.Categories,
+		BaseURL:               t.BaseURL,
+		AuthModel:             t.AuthModel,
+		ProviderAPIReferences: t.ProviderAPIReferences,
+		MaxFamilies:           t.MaxFamilies,
+		AllFamilies:           t.AllFamilies,
 	}
 }
 

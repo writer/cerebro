@@ -1,6 +1,51 @@
 id: akeneo
 name: "Akeneo"
 description: "Collects attribute, attribute group, option, reference entities attribute, attributes option, and asset from Akeneo and projects them into the Cerebro graph as assets and groups for inventory, access review, audit, risk, and operational context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://{tenant}.akeneo.com
+  references:
+    - https://storage.googleapis.com/akecld-prd-pim-saas-shared-openapi-spec/openapi.yaml
+    - https://api.akeneo.com/
+  families:
+    - id: attribute
+      method: GET
+      path: /api/rest/v1/asset-families/{asset_family_code}/attributes
+    - id: attribute_group
+      method: GET
+      path: /api/rest/v1/attribute-groups/{code}
+    - id: option
+      method: GET
+      path: /api/rest/v1/asset-families/{asset_family_code}/attributes/{attribute_code}/options
+    - id: reference_entities_attribute
+      method: GET
+      path: /api/rest/v1/reference-entities/{reference_entity_code}/attributes
+    - id: attributes_option
+      method: GET
+      path: /api/rest/v1/reference-entities/{reference_entity_code}/attributes/{attribute_code}/options
+    - id: asset
+      method: GET
+      path: /api/rest/v1/assets/{code}
+    - id: asset_family
+      method: GET
+      path: /api/rest/v1/asset-families/{code}
+    - id: draft
+      method: GET
+      path: /api/rest/v1/product-models/{code}/draft
+    - id: products_uuid_draft
+      method: GET
+      path: /api/rest/v1/products-uuid/{uuid}/draft
+    - id: products_draft
+      method: GET
+      path: /api/rest/v1/products/{code}/draft
+    - id: asset_families_attribute
+      method: GET
+      path: /api/rest/v1/asset-families/{asset_family_code}/attributes/{code}
+    - id: v1_attribute
+      method: GET
+      path: /api/rest/v1/attributes/{code}
 emitted_kinds:
   - akeneo.attribute
   - akeneo.attribute_group
