@@ -1,0 +1,19 @@
+{
+  "family": "findings",
+  "items": [
+    {
+      "description": "A production workload is reachable from the internet and lacks the expected network boundary.",
+      "evidence_cas_digest": "sha256:wiz-finding",
+      "evidence_cas_uri": "cas://cases/wiz-finding-1",
+      "id": "finding-1",
+      "resource_id": "asset-1",
+      "resource_name": "prod-payment-instance",
+      "resource_type": "compute_instance",
+      "resource_urn": "urn:cerebro:tenant:runtime_compute_instance:asset-1",
+      "severity": "high",
+      "status": "open",
+      "title": "Public exposure on production workload",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

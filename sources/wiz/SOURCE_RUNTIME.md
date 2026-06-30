@@ -24,5 +24,6 @@ Generated Source Runtime SDK scaffold for `wiz`.
 
 ## Tests
 
+- Fixture pairs cover discover and read payloads for `assets`, `findings`, and `vulnerabilities`.
 - `go test ./sources/wiz ./internal/sourceprojection -count=1`
 - `make catalog-check`

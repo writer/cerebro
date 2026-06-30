@@ -1,0 +1,19 @@
+{
+  "family": "vulnerabilities",
+  "items": [
+    {
+      "description": "A package version on the workload is affected by a critical vulnerability.",
+      "evidence_cas_digest": "sha256:wiz-vuln",
+      "evidence_cas_uri": "cas://cases/wiz-vuln-1",
+      "id": "vuln-1",
+      "resource_id": "asset-1",
+      "resource_name": "prod-payment-instance",
+      "resource_type": "compute_instance",
+      "resource_urn": "urn:cerebro:tenant:runtime_compute_instance:asset-1",
+      "severity": "critical",
+      "status": "open",
+      "title": "Critical package vulnerability",
+      "updated_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

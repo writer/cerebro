@@ -5,6 +5,13 @@ emitted_kinds:
   - wiz.assets
   - wiz.findings
   - wiz.vulnerabilities
+families:
+  - id: assets
+    incremental: cursor
+  - id: findings
+    incremental: cursor
+  - id: vulnerabilities
+    incremental: cursor
 kind_lifecycle:
   - kind: wiz.assets
     status: active

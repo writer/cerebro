@@ -1,0 +1,13 @@
+{
+  "family": "assets",
+  "items": [
+    {
+      "cloud_provider": "aws",
+      "id": "asset-1",
+      "last_seen_at": "2026-06-01T00:00:00Z",
+      "name": "prod-payment-instance",
+      "resource_type": "compute_instance",
+      "sync_operation": "discover"
+    }
+  ]
+}
