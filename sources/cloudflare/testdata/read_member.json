@@ -1,63 +1,63 @@
 [
   {
     "attributes": {
-      "account_id": "account-id-cloudflare-member-1",
+      "account_id": "account-id-source-cloudflare-member-1",
       "api_method": "GET",
       "api_path": "/accounts/{account_id}/members",
       "display_name": "Cloudflare Member Fixture",
       "email": "email@cloudflare.example.test",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/cloudflare/member/cloudflare-member-1",
-      "external_id": "cloudflare-member-1",
+      "evidence_cas_uri": "cas://cases/cloudflare/member/source-cloudflare-member-1",
+      "external_id": "source-cloudflare-member-1",
       "family": "member",
       "list_keys": "result",
-      "member_id": "member-id-cloudflare-member-1",
+      "member_id": "member-id-source-cloudflare-member-1",
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "cloudflare",
-      "resource_id": "cloudflare-member-1",
+      "resource_id": "source-cloudflare-member-1",
       "resource_name": "Cloudflare Member Fixture",
       "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_member:cloudflare-member-1",
-      "roles": "roles-cloudflare-member-1",
-      "source_event_id": "cloudflare-member-1",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_member:source-cloudflare-member-1",
+      "roles": "roles-source-cloudflare-member-1",
+      "source_event_id": "source-cloudflare-member-1",
       "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "status": "open",
       "tenant_id": "tenant",
-      "user_id": "cloudflare-user-1"
+      "user_id": "source-cloudflare-user-1"
     },
-    "id": "cloudflare-member-event-1",
+    "id": "source-cloudflare-member-event-1",
     "kind": "cloudflare.member",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "account": {
-        "id": "account-id-cloudflare-member-1"
+        "id": "account-id-source-cloudflare-member-1"
       },
       "api_method": "GET",
       "api_path": "/accounts/{account_id}/members",
       "display_name": "Cloudflare Member Fixture",
       "email": "user@example.test",
-      "event_id": "cloudflare-member-1",
+      "event_id": "source-cloudflare-member-1",
       "evidence_cas": {
         "digest": "sha256:test",
         "ref_type": "source_fixture",
-        "uri": "cas://cases/cloudflare/member/cloudflare-member-1"
+        "uri": "cas://cases/cloudflare/member/source-cloudflare-member-1"
       },
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/cloudflare/member/cloudflare-member-1",
+      "evidence_cas_uri": "cas://cases/cloudflare/member/source-cloudflare-member-1",
       "family": "member",
-      "id": "member-id-cloudflare-member-1",
+      "id": "member-id-source-cloudflare-member-1",
       "list_keys": [
         "result"
       ],
       "name": "Cloudflare Member Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "cloudflare-member-1",
+      "resource_id": "source-cloudflare-member-1",
       "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_member:cloudflare-member-1",
-      "roles": "roles-cloudflare-member-1",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_member:source-cloudflare-member-1",
+      "roles": "roles-source-cloudflare-member-1",
       "schema_ref": "cloudflare/member/v1",
       "source_id": "cloudflare",
       "status": "open",
@@ -66,7 +66,7 @@
       "user": {
         "email": "email@cloudflare.example.test"
       },
-      "user_id": "cloudflare-user-1"
+      "user_id": "source-cloudflare-user-1"
     },
     "schema_ref": "cloudflare/member/v1",
     "source_id": "cloudflare",

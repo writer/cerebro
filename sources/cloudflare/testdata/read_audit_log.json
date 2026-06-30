@@ -1,81 +1,81 @@
 [
   {
     "attributes": {
-      "account_id": "account-id-cloudflare-audit_log-1",
-      "action": "action-cloudflare-audit_log-1",
+      "account_id": "account-id-source-cloudflare-audit_log-1",
+      "action": "action-source-cloudflare-audit_log-1",
       "actor_email": "email@cloudflare.example.test",
-      "actor_id": "cloudflare-user-1",
-      "actor_ip": "actor-ip-cloudflare-audit_log-1",
+      "actor_id": "source-cloudflare-user-1",
+      "actor_ip": "actor-ip-source-cloudflare-audit_log-1",
       "api_method": "GET",
       "api_path": "/accounts/{account_id}/audit_logs",
-      "audit_id": "audit-id-cloudflare-audit_log-1",
-      "event_id": "event-id-cloudflare-audit_log-1",
+      "audit_id": "audit-id-source-cloudflare-audit_log-1",
+      "event_id": "event-id-source-cloudflare-audit_log-1",
       "event_type": "user.login",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/cloudflare/audit_log/cloudflare-audit_log-1",
-      "external_id": "cloudflare-audit_log-1",
+      "evidence_cas_uri": "cas://cases/cloudflare/audit_log/source-cloudflare-audit_log-1",
+      "external_id": "source-cloudflare-audit_log-1",
       "family": "audit_log",
       "list_keys": "result",
       "observed_at": "2026-06-01T00:00:00Z",
       "provider": "cloudflare",
-      "resource_id": "cloudflare-audit_log-1",
+      "resource_id": "source-cloudflare-audit_log-1",
       "resource_name": "Cloudflare Audit Log Fixture",
       "resource_type": "audit_event",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_audit_log:cloudflare-audit_log-1",
-      "source_event_id": "cloudflare-audit_log-1",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_audit_log:source-cloudflare-audit_log-1",
+      "source_event_id": "source-cloudflare-audit_log-1",
       "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tenant_id": "tenant",
-      "zone_id": "zone-id-cloudflare-audit_log-1"
+      "zone_id": "zone-id-source-cloudflare-audit_log-1"
     },
-    "id": "cloudflare-audit_log-event-1",
+    "id": "source-cloudflare-audit_log-event-1",
     "kind": "cloudflare.audit_log",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "account": {
-        "id": "account-id-cloudflare-audit_log-1"
+        "id": "account-id-source-cloudflare-audit_log-1"
       },
       "action": {
-        "type": "action-cloudflare-audit_log-1"
+        "type": "action-source-cloudflare-audit_log-1"
       },
       "actor": {
         "email": "email@cloudflare.example.test",
-        "ip": "actor-ip-cloudflare-audit_log-1"
+        "ip": "actor-ip-source-cloudflare-audit_log-1"
       },
-      "actor_id": "cloudflare-user-1",
+      "actor_id": "source-cloudflare-user-1",
       "api_method": "GET",
       "api_path": "/accounts/{account_id}/audit_logs",
-      "event_id": "cloudflare-audit_log-1",
+      "event_id": "source-cloudflare-audit_log-1",
       "event_type": "user.login",
       "evidence_cas": {
         "digest": "sha256:test",
         "ref_type": "source_fixture",
-        "uri": "cas://cases/cloudflare/audit_log/cloudflare-audit_log-1"
+        "uri": "cas://cases/cloudflare/audit_log/source-cloudflare-audit_log-1"
       },
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/cloudflare/audit_log/cloudflare-audit_log-1",
+      "evidence_cas_uri": "cas://cases/cloudflare/audit_log/source-cloudflare-audit_log-1",
       "family": "audit_log",
-      "id": "audit-id-cloudflare-audit_log-1",
+      "id": "audit-id-source-cloudflare-audit_log-1",
       "list_keys": [
         "result"
       ],
       "name": "Cloudflare Audit Log Fixture",
       "observed_at": "2026-06-01T00:00:00Z",
       "resource": {
-        "id": "cloudflare-audit_log-1",
+        "id": "source-cloudflare-audit_log-1",
         "type": "audit_event"
       },
-      "resource_id": "cloudflare-audit_log-1",
+      "resource_id": "source-cloudflare-audit_log-1",
       "resource_type": "audit_event",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_audit_log:cloudflare-audit_log-1",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_audit_log:source-cloudflare-audit_log-1",
       "schema_ref": "cloudflare/audit_log/v1",
       "source_id": "cloudflare",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z",
       "zone": {
-        "id": "zone-id-cloudflare-audit_log-1"
+        "id": "zone-id-source-cloudflare-audit_log-1"
       }
     },
     "schema_ref": "cloudflare/audit_log/v1",

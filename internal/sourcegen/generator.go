@@ -1870,7 +1870,7 @@ func fixtureLiteralResourceType(rawPath string) string {
 }
 
 func fixtureRecordID(request normalizedRequest, family familyData) string {
-	return request.SourceID + "-" + family.Name + "-1"
+	return "source-" + request.SourceID + "-" + family.Name + "-1"
 }
 
 func fixtureEventID(request normalizedRequest, family familyData) string {

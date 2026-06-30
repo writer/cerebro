@@ -215,7 +215,7 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 		`"schema_ref": "example_idp/user/v1"`,
 		`"source_id": "example_idp"`,
 		`"user_id":`,
-		`example_idp-users-1`,
+		`source-example_idp-users-1`,
 	} {
 		if !strings.Contains(readFixture, want) {
 			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
