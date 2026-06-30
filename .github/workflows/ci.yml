@@ -31,8 +31,6 @@ jobs:
             command: make script-test
           - name: mcp
             command: make mcp-contract-check mcp-sdk-compat
-          - name: lint
-            command: make lint
           - name: proto
             command: make proto-lint proto-generate-check proto-breaking
             checkout_fetch_depth: '0'
@@ -75,16 +73,47 @@ jobs:
             go.sum
             tools/linters/go.sum
 
+      - name: Run ${{ matrix.name }}
+        run: ${{ matrix.command }}
+
+  go-lint-shard:
+    name: lint-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api-cmd
+            command: make lint-api-cmd
+          - name: internal
+            command: make lint-internal
+          - name: sources
+            command: make lint-sources
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/linters/go.sum
+
       - name: Cache golangci-lint
-        if: matrix.name == 'lint'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: ~/.cache/golangci-lint
-          key: ${{ runner.os }}-golangci-lint-${{ hashFiles('go.sum', '.golangci.yml') }}
+          path: |
+            ~/.cache/golangci-lint
+            ~/go/bin/golangci-lint
+          key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
           restore-keys: |
-            ${{ runner.os }}-golangci-lint-
+            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-
 
-      - name: Run ${{ matrix.name }}
+      - name: Run ${{ matrix.name }} lint
         run: ${{ matrix.command }}
 
   go-test-shard:
@@ -120,7 +149,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3]
+        shard_index: [0, 1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -137,7 +166,7 @@ jobs:
 
       - name: Run Go race shard ${{ matrix.shard_index }}
         env:
-          GO_TEST_SHARD_TOTAL: 4
+          GO_TEST_SHARD_TOTAL: 6
           GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
         run: make test-race
 
@@ -167,9 +196,22 @@ jobs:
           fi
           echo "All Go race shards passed"
 
+  lint:
+    runs-on: ubuntu-latest
+    needs: [go-lint-shard]
+    if: always()
+    steps:
+      - name: Check Go lint shards
+        run: |
+          if [ "${{ needs.go-lint-shard.result }}" != "success" ]; then
+            echo "One or more Go lint shards failed"
+            exit 1
+          fi
+          echo "All Go lint shards passed"
+
   verify:
     runs-on: ubuntu-latest
-    needs: [verify-shard, test, race]
+    needs: [verify-shard, test, race, lint]
     if: always()
     steps:
       - name: Check verify shards
@@ -184,6 +226,10 @@ jobs:
           fi
           if [ "${{ needs.race.result }}" != "success" ]; then
             echo "One or more Go race shards failed"
+            exit 1
+          fi
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "One or more Go lint shards failed"
             exit 1
           fi
           echo "All verify shards passed"

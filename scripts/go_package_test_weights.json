@@ -1,0 +1,14 @@
+{
+  "github.com/writer/cerebro/cmd/cerebro": 44,
+  "github.com/writer/cerebro/internal/bootstrap": 16,
+  "github.com/writer/cerebro/internal/compliance": 6,
+  "github.com/writer/cerebro/internal/connectorcatalog": 8,
+  "github.com/writer/cerebro/internal/evidencepackets": 3,
+  "github.com/writer/cerebro/internal/findings": 3,
+  "github.com/writer/cerebro/internal/sourceprojection": 7,
+  "github.com/writer/cerebro/internal/sourceregistry": 9,
+  "github.com/writer/cerebro/sources/aws": 3,
+  "github.com/writer/cerebro/tools/archtests": 4,
+  "github.com/writer/cerebro/tools/detectioncatalog": 30,
+  "github.com/writer/cerebro/tools/policymappingexport": 48
+}

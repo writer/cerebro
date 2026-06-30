@@ -234,12 +234,24 @@ def run_govulncheck(packages: list[str]) -> ToolResult:
     return ToolResult("govulncheck", ", ".join(package_args), "completed", findings, notes)
 
 
-def run_semgrep(lines_by_file: dict[str, set[int]]) -> ToolResult:
+def semgrep_targets(files: list[str]) -> list[str]:
+    targets = []
+    for file_path in files:
+        normalized = normalize_repo_path(file_path)
+        if normalized and Path(normalized).is_file():
+            targets.append(normalized)
+    return sorted(set(targets))
+
+
+def run_semgrep(files: list[str], lines_by_file: dict[str, set[int]]) -> ToolResult:
     config = Path(".semgrep/cerebro.yml")
     if not config.exists():
         return ToolResult("semgrep", "repo-specific rules", "skipped", [], ["No .semgrep/cerebro.yml config found."])
+    targets = semgrep_targets(files)
+    if not targets:
+        return ToolResult("semgrep", str(config), "skipped", [], ["No changed files to scan."])
     completed = run_command(
-        ["semgrep", "--config", str(config), "--json", "--quiet"],
+        ["semgrep", "--config", str(config), "--json", "--quiet", *targets],
         timeout=240,
     )
     if completed.returncode == 127:
@@ -273,7 +285,7 @@ def run_semgrep(lines_by_file: dict[str, set[int]]) -> ToolResult:
     notes = []
     if completed.returncode not in (0, 1):
         notes.append((completed.stderr or completed.stdout).strip()[:800])
-    return ToolResult("semgrep", str(config), "completed", findings, notes)
+    return ToolResult("semgrep", ", ".join(targets), "completed", findings, notes)
 
 
 def run_deepsec_scan(files: list[str], lines_by_file: dict[str, set[int]]) -> ToolResult:
@@ -677,7 +689,7 @@ def main() -> int:
     results = [
         run_gosec(packages, lines_by_file),
         run_govulncheck(packages),
-        run_semgrep(lines_by_file),
+        run_semgrep(files, lines_by_file),
         run_deepsec_scan(files, lines_by_file),
     ]
     markdown = render_markdown(args.base, args.head, files, packages, results)
