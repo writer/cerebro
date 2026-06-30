@@ -57,6 +57,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"created_at": "created_at", "display_name": "email|first_name|last_name", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "first_name": "first_name", "last_name": "last_name", "login": "email", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "email", "resource_id": "id", "resource_name": "email|id", "resource_urn": "resource_urn|urn|metadata.resource_urn", "role": "role", "source_event_id": "id", "status": "role", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "organization_members", "source_system": "openrouter"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "openrouter_organization_members"},
 			},
 			{
 				Name:             familyApiKeys,
@@ -68,6 +69,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"api_key_disabled": "disabled", "api_key_hash": "hash", "creator_user_id": "creator_user_id", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "expires_at": "expires_at", "label": "label", "limit": "limit", "limit_remaining": "limit_remaining", "limit_reset": "limit_reset", "observed_at": "updated_at|created_at", "resource_id": "hash", "resource_name": "name|label", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "created_at", "secret_id": "hash", "secret_name": "name|label", "secret_status": "disabled", "source_event_id": "hash", "tenant_id": "tenant_id|metadata.tenant_id", "usage": "usage", "usage_daily": "usage_daily", "usage_monthly": "usage_monthly", "usage_weekly": "usage_weekly", "workspace_id": "workspace_id"},
 				StaticAttributes: map[string]string{"record_class": "secret", "schema": "api_keys", "secret_type": "openrouter_api_key", "source_system": "openrouter"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "openrouter_api_keys"},
 			},
 			{
 				Name:             familyProviderKeys,
@@ -79,6 +81,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"allowed_api_key_hashes": "allowed_api_key_hashes", "allowed_models": "allowed_models", "allowed_user_ids": "allowed_user_ids", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "is_fallback": "is_fallback", "label": "label", "observed_at": "created_at", "provider_key_disabled": "disabled", "provider_key_provider": "provider", "resource_id": "id", "resource_name": "name|label|provider", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "created_at", "secret_id": "id", "secret_name": "name|label|provider", "secret_status": "disabled", "source_event_id": "id", "tenant_id": "tenant_id|metadata.tenant_id", "workspace_id": "workspace_id"},
 				StaticAttributes: map[string]string{"record_class": "secret", "schema": "provider_keys", "secret_type": "byok_provider_credential", "source_system": "openrouter"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "openrouter_provider_keys"},
 			},
 			{
 				Name:             familyUsageReports,
@@ -90,6 +93,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "date"},
 				Attributes:       map[string]string{"byok_usage_inference": "byok_usage_inference", "completion_tokens": "completion_tokens", "date": "date", "endpoint_id": "endpoint_id", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "model": "model", "model_permaslug": "model_permaslug", "observed_at": "observed_at|updated_at|last_seen_at|date", "prompt_tokens": "prompt_tokens", "provider_name": "provider_name", "reasoning_tokens": "reasoning_tokens", "requests": "requests", "resource_id": "endpoint_id", "resource_name": "model|model_permaslug|endpoint_id", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "endpoint_id", "tenant_id": "tenant_id|metadata.tenant_id", "usage": "usage"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "openrouter_activity_endpoint", "schema": "usage_reports", "source_system": "openrouter"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "openrouter_usage_reports"},
 			},
 		},
 	})

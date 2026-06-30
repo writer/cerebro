@@ -62,6 +62,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["role"]; got != "org:admin" {
 		t.Fatalf("role = %q", got)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:openrouter_organization_members:user_2dHFtVWx2n56w6HkM0000000000" {
+		t.Fatalf("resource_urn = %q", got)
+	}
 }
 
 func TestSourceReadsProviderShapedFamilies(t *testing.T) {
@@ -72,6 +75,7 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 		kind   string
 		attr   string
 		want   string
+		urn    string
 	}{
 		{
 			family: familyApiKeys,
@@ -102,6 +106,7 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 			kind: "openrouter.api_keys",
 			attr: "secret_id",
 			want: "fixture-openrouter-key-hash-1",
+			urn:  "urn:cerebro:tenant:openrouter_api_keys:fixture-openrouter-key-hash-1",
 		},
 		{
 			family: familyProviderKeys,
@@ -126,6 +131,7 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 			kind: "openrouter.provider_keys",
 			attr: "provider_key_provider",
 			want: "openai",
+			urn:  "urn:cerebro:tenant:openrouter_provider_keys:11111111-2222-3333-4444-555555555555",
 		},
 		{
 			family: familyUsageReports,
@@ -146,6 +152,7 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 			kind: "openrouter.usage_reports",
 			attr: "resource_type",
 			want: "openrouter_activity_endpoint",
+			urn:  "urn:cerebro:tenant:openrouter_usage_reports:550e8400-e29b-41d4-a716-446655440000",
 		},
 	}
 
@@ -175,6 +182,9 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 			}
 			if got := event.Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+			if got := event.Attributes["resource_urn"]; got != tt.urn {
+				t.Fatalf("resource_urn = %q, want %q", got, tt.urn)
 			}
 		})
 	}
