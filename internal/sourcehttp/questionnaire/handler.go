@@ -19,6 +19,7 @@ import (
 )
 
 const maxQuestionnaireBodyBytes = 512 << 10
+const maxQuestionnaireCreateBodyBytes = 16 << 20
 const defaultLimit uint32 = 100
 
 var (
@@ -175,6 +176,10 @@ type createRequest struct {
 	IntakeRows     []intakeRow                   `json:"intake_rows,omitempty"`
 	IntakeText     string                        `json:"intake_text,omitempty"`
 	IntakeFormat   string                        `json:"intake_format,omitempty"`
+	IntakeFile     string                        `json:"intake_file_base64,omitempty"`
+	IntakeMimeType string                        `json:"intake_content_type,omitempty"`
+	PortalURL      string                        `json:"portal_url,omitempty"`
+	PortalNotes    string                        `json:"portal_instructions,omitempty"`
 	Attributes     map[string]string             `json:"attributes,omitempty"`
 }
 
@@ -272,7 +277,7 @@ func (h *Handler) ListRuns(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 	var request createRequest
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSONWithLimit(w, r, &request, maxQuestionnaireCreateBodyBytes); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -298,7 +303,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	if len(questions) == 0 {
+	if len(questions) == 0 && !allowsPortalCaptureWithoutQuestions(request) {
 		h.writeError(w, fmt.Errorf("%w: at least one question is required", ErrInvalidRequest))
 		return
 	}
@@ -312,6 +317,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 	if uploadID == "" {
 		uploadID = fmt.Sprintf("intake-%d", now.UnixNano())
 	}
+	attributes := createRunAttributes(request, len(questions))
 	record := questionnairedomain.NewRunRecord(questionnairedomain.NewRunRequest{
 		TenantID:       scope.TenantID,
 		Direction:      request.Direction,
@@ -329,7 +335,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		AssignedTeam:   request.AssignedTeam,
 		DueAt:          dueAt,
 		Questions:      questions,
-		Attributes:     request.Attributes,
+		Attributes:     attributes,
 	}, now)
 	event := questionnairedomain.Event(record, ports.QuestionnaireEventCreated, h.actorID(r.Context()), "Questionnaire run created", map[string]string{"direction": record.Direction, "question_count": strconv.Itoa(len(record.Questions)), "source_format": record.SourceFormat}, now)
 	created, err := h.store.UpsertQuestionnaireRun(r.Context(), record, event)
@@ -411,7 +417,7 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 		Status:     firstNonEmpty(request.Status, "open"),
 		Reason:     strings.TrimSpace(request.Reason),
 	}
-	if err := validateQuestionReference(record, assignment.QuestionID, true); err != nil {
+	if err := validateQuestionReference(record, assignment.QuestionID, false); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -549,7 +555,7 @@ func (h *Handler) CommentRun(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, fmt.Errorf("%w: comment body is required", ErrInvalidRequest))
 		return
 	}
-	if err := validateQuestionReference(record, comment.QuestionID, true); err != nil {
+	if err := validateQuestionReference(record, comment.QuestionID, false); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -761,7 +767,11 @@ func questionnaireStatusIsOpenWork(status string) bool {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionnaireBodyBytes))
+	return decodeJSONWithLimit(w, r, target, maxQuestionnaireBodyBytes)
+}
+
+func decodeJSONWithLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("%w: decode questionnaire request: %w", ErrInvalidRequest, err)
@@ -873,6 +883,13 @@ func questionsForCreate(request createRequest) ([]ports.QuestionnaireQuestion, e
 	for _, row := range request.IntakeRows {
 		questions = append(questions, questionFromIntakeRow(row))
 	}
+	if strings.TrimSpace(request.IntakeFile) != "" {
+		parsed, err := parseIntakeAttachment(request)
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, parsed...)
+	}
 	if strings.TrimSpace(request.IntakeText) != "" {
 		parsed, err := parseIntakeText(request.IntakeText, firstNonEmpty(request.IntakeFormat, request.SourceFormat))
 		if err != nil {
@@ -881,6 +898,11 @@ func questionsForCreate(request createRequest) ([]ports.QuestionnaireQuestion, e
 		questions = append(questions, parsed...)
 	}
 	return questionnairedomain.NormalizeQuestionsForIntake(questions), nil
+}
+
+func allowsPortalCaptureWithoutQuestions(request createRequest) bool {
+	format := canonicalIntakeFormat(firstNonEmpty(request.IntakeFormat, request.SourceFormat))
+	return format == "portal" && strings.TrimSpace(request.PortalURL) != ""
 }
 
 func parseIntakeText(value string, format string) ([]ports.QuestionnaireQuestion, error) {
@@ -894,10 +916,16 @@ func parseIntakeText(value string, format string) ([]ports.QuestionnaireQuestion
 		return parseJSONIntake(trimmed)
 	case "csv", "tsv":
 		return parseDelimitedIntake(trimmed, format)
+	case "portal":
+		return parsePortalIntake(trimmed)
+	case "pdf":
+		return parsePDFPromptText(trimmed)
+	case "xlsx", "xlsm":
+		return nil, fmt.Errorf("%w: xlsx intake requires intake_file_base64", ErrInvalidRequest)
 	case "", "text", "txt", "plain":
 		return parsePlainTextIntake(trimmed), nil
 	default:
-		return nil, fmt.Errorf("%w: intake_format must be csv, tsv, json, or text", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: intake_format must be csv, tsv, json, text, portal, pdf, or xlsx", ErrInvalidRequest)
 	}
 }
 
@@ -973,6 +1001,30 @@ func parsePlainTextIntake(value string) []ports.QuestionnaireQuestion {
 		rows = append(rows, intakeRow{Question: line})
 	}
 	return questionsFromIntakeRows(rows)
+}
+
+func parsePortalIntake(value string) ([]ports.QuestionnaireQuestion, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	rows := []intakeRow{}
+	section := ""
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = normalizePortalQuestionLine(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasSuffix(line, ":") && !strings.Contains(line, "?") && len(line) <= 80 {
+			section = strings.TrimSuffix(line, ":")
+			continue
+		}
+		if !looksLikeQuestionnairePrompt(line) {
+			continue
+		}
+		rows = append(rows, intakeRow{Question: line, Section: section})
+	}
+	return questionsFromIntakeRows(rows), nil
 }
 
 func questionsFromIntakeRows(rows []intakeRow) []ports.QuestionnaireQuestion {

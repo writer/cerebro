@@ -2277,7 +2277,7 @@ export type GRCQuestionnaireAssignment = {
 export type GRCQuestionnaireAssignmentRequest = {
   due_at?: string;
   owner_id?: string;
-  question_id: string;
+  question_id?: string;
   reason?: string;
   status?: string;
   team?: string;
@@ -2306,7 +2306,7 @@ export type GRCQuestionnaireComment = {
 
 export type GRCQuestionnaireCommentRequest = {
   body: string;
-  question_id: string;
+  question_id?: string;
   tenant_id?: string;
 };
 
@@ -2325,10 +2325,14 @@ export type GRCQuestionnaireCreateRunRequest = {
   customer_name?: string;
   direction: "customer_security_review" | "vendor_review";
   due_at?: string;
-  intake_format?: "json" | "csv" | "tsv" | "text";
+  intake_content_type?: string;
+  intake_file_base64?: string;
+  intake_format?: "json" | "csv" | "tsv" | "text" | "portal" | "pdf" | "xlsx" | "xlsm";
   intake_rows?: GRCQuestionnaireIntakeRow[];
   intake_text?: string;
   owner_id?: string;
+  portal_instructions?: string;
+  portal_url?: string;
   questions?: GRCQuestionnaireQuestion[];
   requester?: string;
   runtime_id?: string;

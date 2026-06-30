@@ -1,7 +1,10 @@
 package questionnaire
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -42,6 +45,188 @@ func TestCreateRunParsesCSVIntakeText(t *testing.T) {
 	}
 	if store.saved.Questions[0].Question == "" || store.saved.Questions[0].OwnerID != "security@example.com" {
 		t.Fatalf("first question not mapped from CSV: %#v", store.saved.Questions[0])
+	}
+}
+
+func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
+	store := &processRunStore{}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+	})
+	body := mustJSON(t, map[string]any{
+		"tenant_id":           "tenant-1",
+		"direction":           "customer_security_review",
+		"title":               "Acme security review",
+		"customer_name":       "Acme",
+		"source_filename":     "security-questionnaire.xlsx",
+		"source_format":       "xlsx",
+		"intake_format":       "xlsx",
+		"intake_content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"intake_file_base64":  base64.StdEncoding.EncodeToString(testXLSXWorkbook(t)),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if len(store.saved.Questions) != 2 {
+		t.Fatalf("questions = %d, want 2: %#v", len(store.saved.Questions), store.saved.Questions)
+	}
+	if store.saved.Questions[0].Question != "Do you enforce MFA?" || store.saved.Questions[0].Section != "Access" {
+		t.Fatalf("first question = %#v, want mapped XLSX question", store.saved.Questions[0])
+	}
+	if got := store.saved.Questions[0].RequiredSlots; len(got) != 1 || got[0] != "identity_mfa" {
+		t.Fatalf("required slots = %#v, want identity_mfa", got)
+	}
+	if store.saved.Attributes["intake_file_attached"] != "true" || store.saved.Attributes["intake_format"] != "xlsx" {
+		t.Fatalf("attributes = %#v, want xlsx attachment metadata", store.saved.Attributes)
+	}
+}
+
+func TestCreateRunInfersXLSXFromFilenameWhenMimeTypeIsGeneric(t *testing.T) {
+	store := &processRunStore{}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+	})
+	body := mustJSON(t, map[string]any{
+		"tenant_id":           "tenant-1",
+		"direction":           "customer_security_review",
+		"title":               "Acme security review",
+		"source_filename":     "security-questionnaire.xlsx",
+		"intake_content_type": "application/octet-stream",
+		"intake_file_base64":  base64.StdEncoding.EncodeToString(testXLSXWorkbook(t)),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if len(store.saved.Questions) != 2 {
+		t.Fatalf("questions = %d, want 2: %#v", len(store.saved.Questions), store.saved.Questions)
+	}
+	if store.saved.Attributes["intake_format"] != "xlsx" {
+		t.Fatalf("intake format attribute = %q, want xlsx", store.saved.Attributes["intake_format"])
+	}
+}
+
+func TestCreateRunParsesPDFIntakeFile(t *testing.T) {
+	store := &processRunStore{}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+	})
+	body := mustJSON(t, map[string]any{
+		"tenant_id":           "tenant-1",
+		"direction":           "customer_security_review",
+		"title":               "Acme security review",
+		"source_filename":     "security-questionnaire.pdf",
+		"source_format":       "pdf",
+		"intake_format":       "pdf",
+		"intake_content_type": "application/pdf",
+		"intake_file_base64":  base64.StdEncoding.EncodeToString(testPDFWithPrompts()),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if len(store.saved.Questions) != 2 {
+		t.Fatalf("questions = %d, want 2: %#v", len(store.saved.Questions), store.saved.Questions)
+	}
+	if store.saved.Questions[0].Question != "Do you enforce MFA?" || store.saved.Questions[1].Question != "Attach SOC 2 report." {
+		t.Fatalf("questions = %#v, want extracted PDF prompts", store.saved.Questions)
+	}
+}
+
+func TestCreateRunStoresPortalMetadataAndParsesPortalText(t *testing.T) {
+	store := &processRunStore{}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+	})
+	body := mustJSON(t, map[string]any{
+		"tenant_id":           "tenant-1",
+		"direction":           "customer_security_review",
+		"title":               "Portal review",
+		"source_format":       "portal",
+		"intake_format":       "portal",
+		"portal_url":          "https://portal.example.test/review/123",
+		"portal_instructions": "Use SSO and route missing access to sales ops.",
+		"intake_text":         "Access:\nQuestion 1: Do you enforce MFA?\nSave\nAudit:\nQuestion: Attach SOC 2 report.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if len(store.saved.Questions) != 2 {
+		t.Fatalf("questions = %d, want 2: %#v", len(store.saved.Questions), store.saved.Questions)
+	}
+	if store.saved.Questions[0].Section != "Access" || store.saved.Questions[1].Section != "Audit" {
+		t.Fatalf("sections = %#v, want portal sections", store.saved.Questions)
+	}
+	if store.saved.Attributes["portal_url"] != "https://portal.example.test/review/123" ||
+		store.saved.Attributes["portal_status"] != "questions_captured" ||
+		store.saved.Attributes["portal_instructions"] != "Use SSO and route missing access to sales ops." {
+		t.Fatalf("attributes = %#v, want portal metadata", store.saved.Attributes)
+	}
+}
+
+func TestCreateRunAllowsPortalCaptureWithoutQuestions(t *testing.T) {
+	store := &processRunStore{}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+	})
+	body := mustJSON(t, map[string]any{
+		"tenant_id":           "tenant-1",
+		"direction":           "customer_security_review",
+		"title":               "Portal review",
+		"source_format":       "portal",
+		"intake_format":       "portal",
+		"portal_url":          "https://portal.example.test/review/123",
+		"portal_instructions": "Capture questions after account access is granted.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if len(store.saved.Questions) != 0 {
+		t.Fatalf("questions = %#v, want none before portal capture", store.saved.Questions)
+	}
+	if store.saved.Status != ports.QuestionnaireStatusIntake {
+		t.Fatalf("status = %q, want intake", store.saved.Status)
+	}
+	if store.saved.Attributes["portal_status"] != "needs_capture" || store.saved.Attributes["portal_url"] == "" {
+		t.Fatalf("attributes = %#v, want portal capture metadata", store.saved.Attributes)
 	}
 }
 
@@ -88,6 +273,40 @@ func TestCommentRunRecordsComment(t *testing.T) {
 	}
 }
 
+func TestCommentRunAllowsRunLevelComment(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Portal review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusIntake},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"portal_status": "needs_capture"},
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "security@example.com" },
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/comments", strings.NewReader(`{"body":"Portal access requested from account owner."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.CommentRun(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if len(store.saved.Comments) != 1 || store.saved.Comments[0].QuestionID != "" {
+		t.Fatalf("comments = %#v, want run-level comment", store.saved.Comments)
+	}
+}
+
 func TestCommentRunRejectsForgedActorAndUnknownQuestion(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	store := &processRunStore{
@@ -125,6 +344,37 @@ func TestCommentRunRejectsForgedActorAndUnknownQuestion(t *testing.T) {
 	}
 }
 
+func TestCommentRunRejectsOversizedBody(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Customer review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{ID: "q-1", Question: "Attach SOC 2 report."}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: "tenant-1", Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "security@example.com" },
+	})
+	body := `{"question_id":"q-1","body":"` + strings.Repeat("a", 600<<10) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/comments", strings.NewReader(body))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.CommentRun(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestAssignRunRejectsEmptyOwnerAndNestedBody(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	store := &processRunStore{
@@ -159,6 +409,40 @@ func TestAssignRunRejectsEmptyOwnerAndNestedBody(t *testing.T) {
 	handler.AssignRun(recorder, req)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("nested assignment status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestAssignRunAllowsRunLevelAssignment(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Portal review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusIntake},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"portal_status": "needs_capture"},
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "security@example.com" },
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/assignments", strings.NewReader(`{"owner_id":"sales-ops@example.com","reason":"Capture portal questions."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.AssignRun(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if len(store.saved.Assignments) != 1 || store.saved.Assignments[0].QuestionID != "" || store.saved.Assignments[0].OwnerID != "sales-ops@example.com" {
+		t.Fatalf("assignments = %#v, want run-level assignment", store.saved.Assignments)
 	}
 }
 
@@ -430,6 +714,73 @@ func TestRunViewJSONStaysFlat(t *testing.T) {
 			t.Fatalf("missing flat JSON key %q in %s", key, payload)
 		}
 	}
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(payload)
+}
+
+func testXLSXWorkbook(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	writeZipFile(t, writer, "xl/worksheets/sheet1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="inlineStr"><is><t>section</t></is></c>
+      <c r="B1" t="inlineStr"><is><t>question</t></is></c>
+      <c r="C1" t="inlineStr"><is><t>required_evidence_slots</t></is></c>
+      <c r="D1" t="inlineStr"><is><t>mapped_controls</t></is></c>
+      <c r="E1" t="inlineStr"><is><t>owner_id</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Access</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>Do you enforce MFA?</t></is></c>
+      <c r="C2" t="inlineStr"><is><t>identity_mfa</t></is></c>
+      <c r="D2" t="inlineStr"><is><t>SOC2-CC6.1</t></is></c>
+      <c r="E2" t="inlineStr"><is><t>security@example.com</t></is></c>
+    </row>
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Audit</t></is></c>
+      <c r="B3" t="inlineStr"><is><t>Attach SOC 2 report.</t></is></c>
+      <c r="C3" t="inlineStr"><is><t>audit_report</t></is></c>
+      <c r="D3" t="inlineStr"><is><t>SOC2-CC7.2</t></is></c>
+      <c r="E3" t="inlineStr"><is><t>security@example.com</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func writeZipFile(t *testing.T, writer *zip.Writer, name string, body string) {
+	t.Helper()
+	file, err := writer.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testPDFWithPrompts() []byte {
+	return []byte(`%PDF-1.4
+1 0 obj
+<< /Length 66 >>
+stream
+BT (Do you enforce MFA?) Tj (Attach SOC 2 report.) Tj ET
+endstream
+endobj
+%%EOF`)
 }
 
 type processRunStore struct {
