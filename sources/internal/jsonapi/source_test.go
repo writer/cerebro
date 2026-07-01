@@ -1247,6 +1247,70 @@ func TestReadUsesOffsetTotalZeroBeforeHasMore(t *testing.T) {
 	}
 }
 
+func TestReadUsesOneIndexedPageCursorWithOffsetMetadata(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("per_page"); got != "2" {
+			t.Fatalf("per_page = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-1"}, {"id": "item-2"}},
+				"limit":  2,
+				"offset": 0,
+				"total":  3,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-3"}},
+				"limit":  2,
+				"offset": 2,
+				"total":  3,
+			})
+		default:
+			t.Fatalf("page = %q, want 1 or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		CursorParam:     "page",
+		PageFirstCursor: "1",
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		PageSizeParams:  []string{"per_page"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[0].URL.Query().Get("page") != "1" || requests[1].URL.Query().Get("page") != "2" {
+		t.Fatalf("requests = %#v, want page 1 then page 2", requests)
+	}
+}
+
 func TestReadUsesDottedFamilyCursorKey(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
