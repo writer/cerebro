@@ -139,12 +139,13 @@ func boxGroupsFamily() jsonapi.Family {
 
 func boxGroupMembershipsFamily() jsonapi.Family {
 	return boxOffsetFamily(jsonapi.Family{
-		Name:       FamilyGroupMemberships,
-		Path:       "/groups/{group_id}/memberships",
-		PathParams: []string{"group_id"},
-		URNKind:    "box_group_memberships",
-		IDKeys:     []string{"id", "user.id", "user.login"},
-		ListKeys:   []string{"entries"},
+		Name:          FamilyGroupMemberships,
+		Path:          "/groups/{group_id}/memberships",
+		PathParams:    []string{"group_id"},
+		URNKind:       "box_group_memberships",
+		IDKeys:        []string{"id", "user.id", "user.login"},
+		ListKeys:      []string{"entries"},
+		TimestampKeys: []string{"modified_at", "created_at", "observed_at", "updated_at", "last_seen_at"},
 		Attributes: map[string]string{
 			"membership_id":   "id",
 			"source_event_id": "id|user.id",

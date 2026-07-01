@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/boxapi"
@@ -98,11 +99,12 @@ func TestRuntimeUsesBoxAPIPathsAndCursors(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"entries": []map[string]any{{
-					"id":    "membership-1",
-					"type":  "group_membership",
-					"role":  "member",
-					"group": map[string]string{"id": "group-1", "type": "group", "name": "Engineering"},
-					"user":  map[string]string{"id": "user-1", "type": "user", "login": "user@example.test", "name": "User One"},
+					"id":          "membership-1",
+					"type":        "group_membership",
+					"role":        "member",
+					"modified_at": "2026-06-02T03:04:05Z",
+					"group":       map[string]string{"id": "group-1", "type": "group", "name": "Engineering"},
+					"user":        map[string]string{"id": "user-1", "type": "user", "login": "user@example.test", "name": "User One"},
 				}},
 				"offset":      0,
 				"limit":       100,
@@ -162,6 +164,12 @@ func TestRuntimeUsesBoxAPIPathsAndCursors(t *testing.T) {
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if tt.family == familyGroupMemberships {
+				wantOccurredAt := time.Date(2026, time.June, 2, 3, 4, 5, 0, time.UTC)
+				if got := pull.Events[0].GetOccurredAt().AsTime(); !got.Equal(wantOccurredAt) {
+					t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), wantOccurredAt.Format(time.RFC3339))
+				}
 			}
 			if tt.cursor != "" && (pull.NextCursor == nil || pull.NextCursor.GetOpaque() != tt.cursor) {
 				t.Fatalf("NextCursor = %#v, want %s", pull.NextCursor, tt.cursor)
