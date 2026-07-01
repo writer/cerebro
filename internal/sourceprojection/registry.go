@@ -5182,6 +5182,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"snowflake.vulnerabilities":        snowflakeVulnerabilitiesProjections,
 
 	// snyk generated projectors (sourcegen promotion)
+	"snyk.groups":          genericInventoryProjections,
+	"snyk.orgs":            genericInventoryProjections,
+	"snyk.projects":        genericInventoryProjections,
+	"snyk.targets":         genericInventoryProjections,
 	"snyk.assets":          snykAssetsProjections,
 	"snyk.findings":        snykFindingsProjections,
 	"snyk.vulnerabilities": snykVulnerabilitiesProjections,

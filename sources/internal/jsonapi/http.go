@@ -427,7 +427,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 	}
 	for _, key := range responseCursorKeys(family) {
 		if value := rawStringAtPath(object, key); value != "" {
-			return value
+			return responseCursorValue(family, value)
 		}
 	}
 	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "result_info", "resultInfo"} {
@@ -437,7 +437,7 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		}
 		for _, nestedKey := range responseCursorKeys(family) {
 			if value := valueString(nested[nestedKey]); value != "" {
-				return value
+				return responseCursorValue(family, value)
 			}
 		}
 		if value := nextPageCursor(nested); value != "" {
@@ -445,6 +445,21 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+func responseCursorValue(family Family, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || isAbsoluteHTTPURL(value) {
+		return value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+	if cursor := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); cursor != "" {
+		return cursor
+	}
+	return value
 }
 
 func rawStringAtPath(object map[string]json.RawMessage, path string) string {

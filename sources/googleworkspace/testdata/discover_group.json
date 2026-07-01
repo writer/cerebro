@@ -1,0 +1,10 @@
+[
+  {
+    "id": "group-1",
+    "email": "security@writer.com",
+    "name": "Security",
+    "description": "Security team",
+    "adminCreated": true,
+    "directMembersCount": "2"
+  }
+]

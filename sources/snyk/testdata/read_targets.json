@@ -1,0 +1,33 @@
+[
+  {
+    "id": "snyk-target-target-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.targets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/targets/v1",
+    "payload": {
+      "id": "target-1",
+      "type": "target",
+      "attributes": {
+        "display_name": "writer/cerebro",
+        "source_type": "github",
+        "url": "https://github.com/writer/cerebro"
+      }
+    },
+    "attributes": {
+      "external_id": "target-1",
+      "family": "targets",
+      "org_id": "org-1",
+      "target_id": "target-1",
+      "display_name": "writer/cerebro",
+      "source_type": "github",
+      "url": "https://github.com/writer/cerebro",
+      "resource_id": "target-1",
+      "resource_name": "writer/cerebro",
+      "resource_type": "snyk_target",
+      "source_event_id": "target-1",
+      "source_provider": "snyk"
+    }
+  }
+]

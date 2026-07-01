@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -17,6 +19,70 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 	if source.Spec().Id != "google_workspace" {
 		t.Fatalf("Spec().Id = %q, want google_workspace", source.Spec().Id)
+	}
+}
+
+func TestCatalogDeclaresVerifiedGoogleWorkspaceProviderAPI(t *testing.T) {
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	var catalog struct {
+		Description     string   `yaml:"description"`
+		RuntimeFamilies []string `yaml:"runtime_families"`
+		ProviderAPI     struct {
+			Status     string   `yaml:"status"`
+			Transport  string   `yaml:"transport"`
+			Auth       string   `yaml:"auth"`
+			BaseURL    string   `yaml:"base_url"`
+			References []string `yaml:"references"`
+			Families   []struct {
+				ID     string `yaml:"id"`
+				Method string `yaml:"method"`
+				Path   string `yaml:"path"`
+			} `yaml:"families"`
+		} `yaml:"provider_api"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog: %v", err)
+	}
+	for _, text := range []string{"Directory users", "group memberships", "admin role assignments", "Reports API admin activity"} {
+		if !strings.Contains(catalog.Description, text) {
+			t.Fatalf("description = %q, want source-specific text %q", catalog.Description, text)
+		}
+	}
+	assertStringSet(t, catalog.RuntimeFamilies, []string{familyAudit, familyGroup, familyGroupMember, familyRoleAssign, familyUser})
+	if catalog.ProviderAPI.Status != "verified" || catalog.ProviderAPI.Transport != "rest" || catalog.ProviderAPI.Auth != "bearer_token" || catalog.ProviderAPI.BaseURL != defaultBaseURL {
+		t.Fatalf("provider_api = %#v, want verified REST bearer-token API at %s", catalog.ProviderAPI, defaultBaseURL)
+	}
+	for _, ref := range []string{
+		"https://raw.githubusercontent.com/googleapis/google-api-go-client/main/admin/directory/v1/admin-api.json",
+		"https://raw.githubusercontent.com/googleapis/google-api-go-client/main/admin/reports/v1/admin-api.json",
+		"https://developers.google.com/workspace/admin/directory/reference/rest/v1/users/list",
+		"https://developers.google.com/workspace/admin/reports/reference/rest/v1/activities/list",
+	} {
+		if !hasString(catalog.ProviderAPI.References, ref) {
+			t.Fatalf("provider references = %v, want %s", catalog.ProviderAPI.References, ref)
+		}
+	}
+	wantPaths := map[string]string{
+		familyAudit:       "/admin/reports/v1/activity/users/{userKey}/applications/{applicationName}",
+		familyGroup:       "/admin/directory/v1/groups",
+		familyGroupMember: "/admin/directory/v1/groups/{groupKey}/members",
+		familyRoleAssign:  "/admin/directory/v1/customer/{customer}/roleassignments",
+		familyUser:        "/admin/directory/v1/users",
+	}
+	gotPaths := map[string]string{}
+	for _, family := range catalog.ProviderAPI.Families {
+		if family.Method != http.MethodGet {
+			t.Fatalf("provider family %s method = %q, want GET", family.ID, family.Method)
+		}
+		gotPaths[family.ID] = family.Path
+	}
+	for family, want := range wantPaths {
+		if got := gotPaths[family]; got != want {
+			t.Fatalf("provider path for %s = %q, want %q", family, got, want)
+		}
 	}
 }
 
@@ -299,4 +365,25 @@ func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {
 			http.NotFound(w, r)
 		}
 	})
+}
+
+func assertStringSet(t *testing.T, got []string, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("strings = %v, want %v", got, want)
+	}
+	for _, value := range want {
+		if !hasString(got, value) {
+			t.Fatalf("strings = %v, want %q", got, value)
+		}
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

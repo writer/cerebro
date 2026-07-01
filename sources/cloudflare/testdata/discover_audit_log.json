@@ -1,3 +1,1 @@
-[
-  "urn:cerebro:tenant:cloudflare_audit_log:source-cloudflare-audit_log-1"
-]
+["urn:cerebro:writer:cloudflare_audit_log:audit-1"]
