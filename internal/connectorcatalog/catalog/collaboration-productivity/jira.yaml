@@ -358,7 +358,6 @@ entries:
               - source_event_id
               - event_type
               - actor_id
-              - resource_id
             required_payload_fields:
               - id
               - created

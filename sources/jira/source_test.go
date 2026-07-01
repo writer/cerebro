@@ -270,6 +270,59 @@ func TestReadMapsJiraManagementFamilies(t *testing.T) {
 	}
 }
 
+func TestReadAuditEventsAllowsMissingObjectItem(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/auditing/record" {
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"offset": 0,
+			"limit":  100,
+			"total":  1,
+			"records": []map[string]any{{
+				"id":              "audit-2",
+				"created":         "2026-05-01T12:34:56.789+0000",
+				"summary":         "Global configuration updated",
+				"category":        "configuration",
+				"authorAccountId": "acct-1",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    jiraapi.FamilyAuditEvents,
+		"username":  "alice@example.test",
+		"password":  "api-token",
+		"site_url":  "example.atlassian.net",
+		"per_page":  "100",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["resource_id"]; got != "" {
+		t.Fatalf("resource_id = %q, want empty for audit record without objectItem", got)
+	}
+	if got := event.Attributes["event_type"]; got != "Global configuration updated" {
+		t.Fatalf("event_type = %q, want summary", got)
+	}
+	if got := event.Attributes["source_event_id"]; got != "audit-2" {
+		t.Fatalf("source_event_id = %q, want audit-2", got)
+	}
+}
+
 func TestReadGroupMembersFansOutConfiguredGroupIDs(t *testing.T) {
 	source, err := New()
 	if err != nil {

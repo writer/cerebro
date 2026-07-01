@@ -84,6 +84,33 @@ func TestJiraProjectRoleProjectionLinksRoleActors(t *testing.T) {
 	assertJiraLink(t, links, groupURN, relationCanAdmin, roleURN)
 }
 
+func TestJiraProjectRoleProjectionKeepsNonAdminAdministratorNameScoped(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "jira",
+		Kind:     "jira.project_roles",
+		Attributes: map[string]string{
+			"admin":       "false",
+			"project_id":  "10001",
+			"project_key": "ENG",
+			"role_id":     "10002",
+			"role_name":   "Administrators",
+		},
+		Payload: []byte(`{"id":10002,"name":"Administrators","actors":[{"id":20001,"type":"atlassian-user-role-actor","displayName":"User One","actorUser":{"accountId":"acct-1"}}]}`),
+	}
+	entities, links, err := jiraProjectRolesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	roleURN := projectionURN("tenant", "jira_role", "10001:10002")
+	adminRoleURN := projectionURN("tenant", "jira_admin_role", "10001:10002")
+	userURN := projectionURN("tenant", "jira_user", "acct-1")
+	assertJiraEntity(t, entities, roleURN, "jira.role")
+	assertJiraLink(t, links, userURN, relationAssignedTo, roleURN)
+	assertJiraMissingLink(t, links, userURN, relationCanAdmin, adminRoleURN)
+}
+
 func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{
 		Id:       "event-1",
@@ -161,4 +188,13 @@ func assertJiraLink(t *testing.T, links []*ports.ProjectedLink, from string, rel
 		}
 	}
 	t.Fatalf("missing link %s --%s--> %s in %#v", from, relation, to, links)
+}
+
+func assertJiraMissingLink(t *testing.T, links []*ports.ProjectedLink, from string, relation string, to string) {
+	t.Helper()
+	for _, link := range links {
+		if link.FromURN == from && link.Relation == relation && link.ToURN == to {
+			t.Fatalf("unexpected link %s --%s--> %s in %#v", from, relation, to, links)
+		}
+	}
 }

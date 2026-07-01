@@ -128,6 +128,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			continue
 		}
 		assignmentAttrs := cloneStringMap(attributes)
+		assignmentAttrs["role"] = scopedRoleID
 		assignmentAttrs["role_id"] = scopedRoleID
 		assignmentAttrs["role_name"] = firstNonEmpty(attributes["role_name"], attributes["resource_name"], roleID)
 		assignmentAttrs["role_type"] = "project_role"
