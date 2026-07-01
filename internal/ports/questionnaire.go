@@ -242,6 +242,24 @@ type QuestionnaireRunFilter struct {
 	Limit     uint32
 }
 
+type QuestionnaireVendorRollupFilter struct {
+	TenantID   string
+	VendorURNs []string
+	Now        time.Time
+}
+
+type QuestionnaireVendorRollupRecord struct {
+	VendorURN          string
+	QuestionnaireCount int
+	ReadyAnswers       int
+	BlockedAnswers     int
+	ReviewAnswers      int
+	MissingEvidence    int
+	StaleEvidence      int
+	DueQuestionnaires  int
+	OpenAssignments    int
+}
+
 type QuestionnaireRunEventFilter struct {
 	TenantID string
 	RunID    string
@@ -266,6 +284,7 @@ type QuestionnaireRunStore interface {
 	GetQuestionnaireRun(context.Context, QuestionnaireRunFilter) (*QuestionnaireRunRecord, error)
 	ListQuestionnaireRuns(context.Context, QuestionnaireRunFilter) ([]*QuestionnaireRunRecord, error)
 	SummarizeQuestionnaireRuns(context.Context, QuestionnaireRunFilter) (QuestionnaireRunSummary, error)
+	ListQuestionnaireVendorRollups(context.Context, QuestionnaireVendorRollupFilter) ([]QuestionnaireVendorRollupRecord, error)
 	ListQuestionnaireRunEvents(context.Context, QuestionnaireRunEventFilter) ([]*QuestionnaireRunEventRecord, error)
 }
 

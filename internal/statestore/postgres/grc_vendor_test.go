@@ -3,6 +3,9 @@ package postgres
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestGRCVendorDiscoveryDecisionSchemaSerializesEvents(t *testing.T) {
@@ -62,5 +65,29 @@ func TestQuestionnaireRunAdvisoryLockSerializesUpserts(t *testing.T) {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("questionnaire run advisory lock query missing %q:\n%s", fragment, query)
 		}
+	}
+}
+
+func TestQuestionnaireVendorRollupQueryBatchesVendors(t *testing.T) {
+	now := time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)
+	query, args := questionnaireVendorRollupQuery(ports.QuestionnaireVendorRollupFilter{
+		TenantID:   "writer",
+		VendorURNs: []string{"urn:cerebro:writer:vendor:one", "urn:cerebro:writer:vendor:two"},
+		Now:        now,
+	})
+	for _, fragment := range []string{
+		"vendor_urn IN ($2, $3)",
+		"due_at <= $4",
+		"status NOT IN ('approved', 'rejected')",
+		"jsonb_array_elements(assignments_json)",
+		"GROUP BY vendor_urn",
+		"ORDER BY vendor_urn ASC",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("questionnaire vendor rollup query missing %q:\n%s", fragment, query)
+		}
+	}
+	if len(args) != 4 || args[0] != "writer" || args[3] != now {
+		t.Fatalf("args = %#v, want tenant, two vendors, and cutoff", args)
 	}
 }

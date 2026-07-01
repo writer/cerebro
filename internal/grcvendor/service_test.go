@@ -221,8 +221,8 @@ func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
 	if rollup.QuestionnaireCount != 2 || rollup.DueQuestionnaires != 1 || rollup.ReadyAnswers != 2 || rollup.BlockedAnswers != 1 || rollup.ReviewAnswers != 3 || rollup.MissingEvidence != 4 || rollup.StaleEvidence != 5 || rollup.OpenAssignments != 2 {
 		t.Fatalf("rollup = %#v", rollup)
 	}
-	if len(store.filters) != 2 || !hasQuestionnaireVendorFilter(store.filters, vendorURN) || !hasQuestionnaireVendorFilter(store.filters, "urn:cerebro:writer:vendor:missing") {
-		t.Fatalf("filters = %#v, want one query per vendor", store.filters)
+	if len(store.rollupFilters) != 1 || !hasQuestionnaireVendorRollupFilter(store.rollupFilters[0], vendorURN) || !hasQuestionnaireVendorRollupFilter(store.rollupFilters[0], "urn:cerebro:writer:vendor:missing") {
+		t.Fatalf("rollup filters = %#v, want one batch query for requested vendors", store.rollupFilters)
 	}
 
 	vendor := ApplyQuestionnaireVendorRollup(Vendor{
@@ -495,9 +495,10 @@ func TestListDiscoveriesAppliesSourceStatusAndOverlay(t *testing.T) {
 
 type stubQuestionnaireRunStore struct {
 	ports.StateStore
-	records []*ports.QuestionnaireRunRecord
-	filters []ports.QuestionnaireRunFilter
-	err     error
+	records       []*ports.QuestionnaireRunRecord
+	filters       []ports.QuestionnaireRunFilter
+	rollupFilters []ports.QuestionnaireVendorRollupFilter
+	err           error
 }
 
 func (s *stubQuestionnaireRunStore) UpsertQuestionnaireRun(context.Context, ports.QuestionnaireRunRecord, ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
@@ -526,13 +527,63 @@ func (s *stubQuestionnaireRunStore) SummarizeQuestionnaireRuns(context.Context, 
 	return ports.QuestionnaireRunSummary{}, s.err
 }
 
+func (s *stubQuestionnaireRunStore) ListQuestionnaireVendorRollups(_ context.Context, filter ports.QuestionnaireVendorRollupFilter) ([]ports.QuestionnaireVendorRollupRecord, error) {
+	s.rollupFilters = append(s.rollupFilters, filter)
+	vendorSet := map[string]struct{}{}
+	for _, vendorURN := range filter.VendorURNs {
+		vendorURN = strings.TrimSpace(vendorURN)
+		if vendorURN != "" {
+			vendorSet[vendorURN] = struct{}{}
+		}
+	}
+	seen := map[string]struct{}{}
+	rollups := map[string]ports.QuestionnaireVendorRollupRecord{}
+	for _, record := range s.records {
+		if record == nil {
+			continue
+		}
+		vendorURN := strings.TrimSpace(record.VendorURN)
+		if _, ok := vendorSet[vendorURN]; !ok {
+			continue
+		}
+		rollup := rollups[vendorURN]
+		rollup.VendorURN = vendorURN
+		key := vendorURN + "\x00" + firstNonEmpty(record.Attributes["questionnaire_urn"], record.RunID)
+		if _, ok := seen[key]; !ok {
+			rollup.QuestionnaireCount++
+			seen[key] = struct{}{}
+		}
+		if !questionnaireTerminal(record.Status) {
+			if record.DueAt != nil && !record.DueAt.After(filter.Now) {
+				rollup.DueQuestionnaires++
+			}
+			rollup.ReadyAnswers += record.ReadyAnswerCount
+			rollup.BlockedAnswers += record.BlockedAnswerCount
+			rollup.ReviewAnswers += record.ReviewAnswerCount
+			rollup.MissingEvidence += record.MissingEvidence
+			rollup.StaleEvidence += record.StaleEvidence
+			for _, assignment := range record.Assignments {
+				if strings.TrimSpace(assignment.Status) == "" || assignment.Status == "open" {
+					rollup.OpenAssignments++
+				}
+			}
+		}
+		rollups[vendorURN] = rollup
+	}
+	records := make([]ports.QuestionnaireVendorRollupRecord, 0, len(rollups))
+	for _, record := range rollups {
+		records = append(records, record)
+	}
+	return records, s.err
+}
+
 func (s *stubQuestionnaireRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
 	return nil, s.err
 }
 
-func hasQuestionnaireVendorFilter(filters []ports.QuestionnaireRunFilter, vendorURN string) bool {
-	for _, filter := range filters {
-		if filter.VendorURN == vendorURN {
+func hasQuestionnaireVendorRollupFilter(filter ports.QuestionnaireVendorRollupFilter, vendorURN string) bool {
+	for _, filteredVendorURN := range filter.VendorURNs {
+		if filteredVendorURN == vendorURN {
 			return true
 		}
 	}

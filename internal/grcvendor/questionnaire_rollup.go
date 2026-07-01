@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/ports"
-	questionnairedomain "github.com/writer/cerebro/internal/questionnaire"
 )
 
 type QuestionnaireVendorRollup struct {
@@ -39,53 +38,33 @@ func QuestionnaireVendorRollups(ctx context.Context, store ports.QuestionnaireRu
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	seen := map[string]struct{}{}
 	vendorList := make([]string, 0, len(vendorSet))
 	for vendorURN := range vendorSet {
 		vendorList = append(vendorList, vendorURN)
 	}
 	sort.Strings(vendorList)
-	for _, requestedVendorURN := range vendorList {
-		records, err := store.ListQuestionnaireRuns(ctx, ports.QuestionnaireRunFilter{
-			TenantID:  strings.TrimSpace(tenantID),
-			VendorURN: requestedVendorURN,
-			Limit:     500,
-		})
-		if err != nil {
-			return nil, err
+	records, err := store.ListQuestionnaireVendorRollups(ctx, ports.QuestionnaireVendorRollupFilter{
+		TenantID:   strings.TrimSpace(tenantID),
+		VendorURNs: vendorList,
+		Now:        now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		vendorURN := strings.TrimSpace(record.VendorURN)
+		if _, ok := vendorSet[vendorURN]; !ok {
+			continue
 		}
-		for _, record := range records {
-			if record == nil {
-				continue
-			}
-			vendorURN := strings.TrimSpace(record.VendorURN)
-			if vendorURN != requestedVendorURN {
-				continue
-			}
-			key := vendorURN + "\x00" + firstNonEmpty(record.Attributes[questionnairedomain.QuestionnaireAttributeQuestionnaireURN], record.RunID)
-			rollup := result[vendorURN]
-			if _, ok := seen[key]; !ok {
-				rollup.QuestionnaireCount++
-				seen[key] = struct{}{}
-			}
-			if questionnaireTerminal(record.Status) {
-				result[vendorURN] = rollup
-				continue
-			}
-			if record.DueAt != nil && !record.DueAt.After(now) {
-				rollup.DueQuestionnaires++
-			}
-			rollup.ReadyAnswers += record.ReadyAnswerCount
-			rollup.BlockedAnswers += record.BlockedAnswerCount
-			rollup.ReviewAnswers += record.ReviewAnswerCount
-			rollup.MissingEvidence += record.MissingEvidence
-			rollup.StaleEvidence += record.StaleEvidence
-			for _, assignment := range record.Assignments {
-				if strings.TrimSpace(assignment.Status) == "" || assignment.Status == "open" {
-					rollup.OpenAssignments++
-				}
-			}
-			result[vendorURN] = rollup
+		result[vendorURN] = QuestionnaireVendorRollup{
+			QuestionnaireCount: record.QuestionnaireCount,
+			ReadyAnswers:       record.ReadyAnswers,
+			BlockedAnswers:     record.BlockedAnswers,
+			ReviewAnswers:      record.ReviewAnswers,
+			MissingEvidence:    record.MissingEvidence,
+			StaleEvidence:      record.StaleEvidence,
+			DueQuestionnaires:  record.DueQuestionnaires,
+			OpenAssignments:    record.OpenAssignments,
 		}
 	}
 	return result, nil

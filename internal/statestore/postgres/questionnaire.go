@@ -276,6 +276,90 @@ WHERE %s`, strings.Join(clauses, " AND "))
 	return summary, nil
 }
 
+func (s *Store) ListQuestionnaireVendorRollups(ctx context.Context, filter ports.QuestionnaireVendorRollupFilter) ([]ports.QuestionnaireVendorRollupRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureQuestionnaireRunTables(ctx); err != nil {
+		return nil, err
+	}
+	filter.VendorURNs = normalizedNonEmptyStrings(filter.VendorURNs)
+	if len(filter.VendorURNs) == 0 {
+		return nil, nil
+	}
+	if filter.Now.IsZero() {
+		filter.Now = time.Now().UTC()
+	}
+	query, args := questionnaireVendorRollupQuery(filter)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list questionnaire vendor rollups: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	records := []ports.QuestionnaireVendorRollupRecord{}
+	for rows.Next() {
+		var record ports.QuestionnaireVendorRollupRecord
+		if err := rows.Scan(
+			&record.VendorURN,
+			&record.QuestionnaireCount,
+			&record.DueQuestionnaires,
+			&record.ReadyAnswers,
+			&record.BlockedAnswers,
+			&record.ReviewAnswers,
+			&record.MissingEvidence,
+			&record.StaleEvidence,
+			&record.OpenAssignments,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func questionnaireVendorRollupQuery(filter ports.QuestionnaireVendorRollupFilter) (string, []any) {
+	clauses := []string{"vendor_urn <> ''"}
+	args := []any{}
+	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
+	addStringInFilter(&clauses, &args, "vendor_urn", filter.VendorURNs)
+	args = append(args, filter.Now)
+	nowPlaceholder := len(args)
+	questionnaireID := "COALESCE(NULLIF(attributes_json->>'questionnaire_urn', ''), run_id)"
+	activeRun := "status NOT IN ('approved', 'rejected')"
+	// #nosec G201 -- clauses are fixed column predicates and values remain parameterized.
+	query := fmt.Sprintf(`
+SELECT
+  vendor_urn,
+  COUNT(DISTINCT %s),
+  COUNT(DISTINCT CASE WHEN due_at IS NOT NULL AND due_at <= $%d AND %s THEN %s END),
+  COALESCE(SUM(CASE WHEN %s THEN ready_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN blocked_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN review_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN missing_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN stale_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN (
+    SELECT COUNT(*)
+    FROM jsonb_array_elements(assignments_json) AS assignment
+    WHERE COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open'
+  ) ELSE 0 END), 0)
+FROM grc_questionnaire_runs
+WHERE %s
+GROUP BY vendor_urn
+ORDER BY vendor_urn ASC`,
+		questionnaireID,
+		nowPlaceholder,
+		activeRun,
+		questionnaireID,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		strings.Join(clauses, " AND "))
+	return query, args
+}
+
 func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any) {
 	clauses := []string{"1=1"}
 	args := []any{}

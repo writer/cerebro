@@ -931,6 +931,10 @@ func (s *processRunStore) SummarizeQuestionnaireRuns(context.Context, ports.Ques
 	return s.summary, nil
 }
 
+func (s *processRunStore) ListQuestionnaireVendorRollups(context.Context, ports.QuestionnaireVendorRollupFilter) ([]ports.QuestionnaireVendorRollupRecord, error) {
+	return nil, nil
+}
+
 func (s *processRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
 	return nil, nil
 }
