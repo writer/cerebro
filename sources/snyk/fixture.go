@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/snykapi"
 )
 
 //go:embed testdata/*.json
@@ -18,15 +19,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, err
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{
-		familyOrgs,
-		familyGroups,
-		familyProjects,
-		familyTargets,
-		familyAssets,
-		familyFindings,
-		familyVulnerabilities,
-	} {
+	for _, family := range snykapi.FamilyNames() {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err

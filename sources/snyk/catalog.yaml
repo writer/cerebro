@@ -1,6 +1,6 @@
 id: snyk
 name: "Snyk"
-description: "Snyk application security source covering organizations, groups, projects, targets, inventory assets, issues, and package vulnerabilities. The runtime reads Snyk REST JSON:API endpoints with versioned requests and org-scoped paths, then projects asset inventory and remediation state into the graph."
+description: "Snyk application security source covering tenant inventory, organization and group access, service accounts, projects, targets, collections, cloud inventory, asset-to-project relationships, audit logs, issues, and package vulnerabilities. The runtime reads Snyk REST JSON:API endpoints with date-versioned requests, cursor pagination, org-scoped paths, group-scoped fanout, and configured asset relationship fanout, then projects identities, access, assets, findings, and relationships into the graph."
 emitted_kinds:
   - snyk.orgs
   - snyk.groups
@@ -9,6 +9,18 @@ emitted_kinds:
   - snyk.assets
   - snyk.findings
   - snyk.vulnerabilities
+  - snyk.org_memberships
+  - snyk.service_accounts
+  - snyk.audit_logs
+  - snyk.collections
+  - snyk.cloud_environments
+  - snyk.cloud_resources
+  - snyk.cloud_scans
+  - snyk.group_memberships
+  - snyk.group_service_accounts
+  - snyk.group_audit_logs
+  - snyk.asset_project_relationships
+  - snyk.asset_target_relationships
 provider_api:
   status: verified
   transport: rest
@@ -22,24 +34,79 @@ provider_api:
     - id: orgs
       method: GET
       path: /orgs
+      description: Lists Snyk organizations visible to the token.
     - id: groups
       method: GET
       path: /groups
+      description: Lists Snyk groups visible to the token.
     - id: projects
       method: GET
       path: /orgs/{org_id}/projects
+      description: Lists projects in a configured Snyk organization.
     - id: targets
       method: GET
       path: /orgs/{org_id}/targets
+      description: Lists import targets in a configured Snyk organization.
     - id: assets
       method: GET
       path: /orgs/{org_id}/inventory/assets
+      description: Lists Snyk inventory assets in a configured organization.
     - id: findings
       method: GET
       path: /orgs/{org_id}/issues
+      description: Lists Snyk issues for remediation state and affected scan items.
     - id: vulnerabilities
       method: GET
       path: /orgs/{org_id}/issues
+      description: Lists package vulnerability issues using the provider issue type filter.
+    - id: org_memberships
+      method: GET
+      path: /orgs/{org_id}/memberships
+      description: Lists organization membership records with user and role relationships.
+    - id: service_accounts
+      method: GET
+      path: /orgs/{org_id}/service_accounts
+      description: Lists organization service accounts and role assignments.
+    - id: audit_logs
+      method: GET
+      path: /orgs/{org_id}/audit_logs/search
+      description: Searches organization audit events with cursor and size pagination.
+    - id: collections
+      method: GET
+      path: /orgs/{org_id}/collections
+      description: Lists organization collections and issue counters.
+    - id: cloud_environments
+      method: GET
+      path: /orgs/{org_id}/cloud/environments
+      description: Lists Snyk cloud environments and related projects.
+    - id: cloud_resources
+      method: GET
+      path: /orgs/{org_id}/cloud/resources
+      description: Lists cloud resources discovered by Snyk Cloud.
+    - id: cloud_scans
+      method: GET
+      path: /orgs/{org_id}/cloud/scans
+      description: Lists Snyk Cloud scan records and environment relationships.
+    - id: group_memberships
+      method: GET
+      path: /groups/{group_id}/memberships
+      description: Lists group membership records for configured group IDs.
+    - id: group_service_accounts
+      method: GET
+      path: /groups/{group_id}/service_accounts
+      description: Lists group service accounts for configured group IDs.
+    - id: group_audit_logs
+      method: GET
+      path: /groups/{group_id}/audit_logs/search
+      description: Searches group audit events with cursor and size pagination.
+    - id: asset_project_relationships
+      method: GET
+      path: /orgs/{org_id}/inventory/assets/{asset_id}/relationships/projects
+      description: Lists projects related to configured Snyk inventory asset IDs.
+    - id: asset_target_relationships
+      method: GET
+      path: /orgs/{org_id}/inventory/assets/{asset_id}/relationships/targets
+      description: Lists targets related to configured Snyk inventory asset IDs.
 runtime_families:
   - orgs
   - groups
@@ -48,6 +115,18 @@ runtime_families:
   - assets
   - findings
   - vulnerabilities
+  - org_memberships
+  - service_accounts
+  - audit_logs
+  - collections
+  - cloud_environments
+  - cloud_resources
+  - cloud_scans
+  - group_memberships
+  - group_service_accounts
+  - group_audit_logs
+  - asset_project_relationships
+  - asset_target_relationships
 kind_lifecycle:
   - kind: snyk.orgs
     status: active
@@ -63,161 +142,187 @@ kind_lifecycle:
     status: active
   - kind: snyk.vulnerabilities
     status: active
+  - kind: snyk.org_memberships
+    status: active
+  - kind: snyk.service_accounts
+    status: active
+  - kind: snyk.audit_logs
+    status: active
+  - kind: snyk.collections
+    status: active
+  - kind: snyk.cloud_environments
+    status: active
+  - kind: snyk.cloud_resources
+    status: active
+  - kind: snyk.cloud_scans
+    status: active
+  - kind: snyk.group_memberships
+    status: active
+  - kind: snyk.group_service_accounts
+    status: active
+  - kind: snyk.group_audit_logs
+    status: active
+  - kind: snyk.asset_project_relationships
+    status: active
+  - kind: snyk.asset_target_relationships
+    status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: snyk
   dimensions:
-    - id: orgs
+    - id: tenant_inventory
       type: entity_family
-      title: "Organizations"
-      families: [orgs]
+      title: "Tenant inventory"
+      families: [orgs, groups]
       support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads `GET /orgs` with Snyk REST versioning and preserves organization IDs, names, slugs, and group references.
-    - id: groups
-      type: entity_family
-      title: "Groups"
-      families: [groups]
+        - Reads `/orgs` and `/groups` with Snyk REST versioning and preserves organization and group IDs, names, slugs, and relationships.
+    - id: org_access
+      type: app_entitlement
+      title: "Organization access"
+      families: [org_memberships, service_accounts]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [access_review]
+      control_domains: [identity_access]
       notes:
-        - Reads `GET /groups` and preserves group IDs, names, and slugs for tenant-level Snyk inventory context.
-    - id: projects
+        - Reads `/orgs/{org_id}/memberships` and `/orgs/{org_id}/service_accounts` to project users, service accounts, groups, and role assignments.
+    - id: group_access
+      type: app_entitlement
+      title: "Group access"
+      families: [group_memberships, group_service_accounts]
+      support: supported
+      high_value: true
+      evidence_types: [access_review]
+      control_domains: [identity_access]
+      notes:
+        - Fans out across configured group IDs for `/groups/{group_id}/memberships` and `/groups/{group_id}/service_accounts`.
+    - id: audit_activity
+      type: audit_event
+      title: "Audit activity"
+      families: [audit_logs, group_audit_logs]
+      support: supported
+      high_value: true
+      evidence_types: [audit_log]
+      control_domains: [audit_logging, identity_access]
+      notes:
+        - Reads Snyk audit search endpoints using `cursor` and `size` pagination and projects actors to acted-on resources.
+    - id: application_inventory
       type: entity_family
-      title: "Projects"
-      families: [projects]
+      title: "Application inventory"
+      families: [projects, targets, collections]
       support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory, remediation]
       notes:
-        - Reads `GET /orgs/{org_id}/projects` and records project IDs, names, origins, types, and target references.
-    - id: targets
+        - Reads projects, targets, and collections for Snyk application scope and remediation grouping.
+    - id: cloud_inventory
       type: entity_family
-      title: "Targets"
-      families: [targets]
+      title: "Cloud inventory"
+      families: [assets, cloud_environments, cloud_resources, cloud_scans, asset_project_relationships, asset_target_relationships]
       support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads `GET /orgs/{org_id}/targets` and records target display name, URL, source type, and privacy state.
-    - id: assets
-      type: entity_family
-      title: "Assets"
-      families: [assets]
-      support: supported
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Reads `GET /orgs/{org_id}/inventory/assets` and keeps Snyk asset IDs, display names, types, and org scope for inventory review.
-    - id: findings
+        - Reads Snyk inventory assets, cloud environments, cloud resources, cloud scans, and configured asset relationships to connect assets to projects and targets.
+    - id: remediation_state
       type: remediation_state
-      title: "Findings"
-      families: [findings]
+      title: "Issues and vulnerabilities"
+      families: [findings, vulnerabilities]
       support: supported
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Reads `GET /orgs/{org_id}/issues` and records issue IDs, titles, severity, status, type, and scan item references for remediation state.
-    - id: vulnerabilities
-      type: remediation_state
-      title: "Vulnerabilities"
-      families: [vulnerabilities]
-      support: supported
-      high_value: true
-      evidence_types: [remediation_state]
-      control_domains: [remediation]
-      notes:
-        - Reads `GET /orgs/{org_id}/issues` filtered to package vulnerability issues for vulnerability review.
+        - Reads `/orgs/{org_id}/issues` for Snyk issues and package vulnerabilities, preserving severity, status, title, type, and scan item references.
     - id: incremental_sync
       type: incremental_sync
-      title: Incremental cursor sync
-      families: [orgs, groups, projects, targets, assets, findings, vulnerabilities]
+      title: "Incremental cursor sync"
+      families: [orgs, groups, projects, targets, assets, findings, vulnerabilities, org_memberships, service_accounts, audit_logs, collections, cloud_environments, cloud_resources, cloud_scans, group_memberships, group_service_accounts, group_audit_logs, asset_project_relationships, asset_target_relationships]
       support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
       notes:
-        - Uses Snyk REST `version`, `limit`, and `starting_after` pagination, storing `links.next` as the Source CDK cursor when returned.
+        - Uses Snyk REST `version`, `links.next`, `starting_after`/`limit`, and audit `cursor`/`size` pagination through the Source CDK cursor envelope.
 event_contracts:
   - kind: snyk.orgs
     schema_ref: snyk/orgs/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id]
+    required_payload_fields: [id]
   - kind: snyk.groups
     schema_ref: snyk/groups/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - group_id
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, group_id]
+    required_payload_fields: [id]
   - kind: snyk.projects
     schema_ref: snyk/projects/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-      - project_id
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id, project_id]
+    required_payload_fields: [id]
   - kind: snyk.targets
     schema_ref: snyk/targets/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-      - target_id
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id, target_id]
+    required_payload_fields: [id]
   - kind: snyk.assets
     schema_ref: snyk/assets/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id, resource_type, resource_id]
+    required_payload_fields: [id]
   - kind: snyk.findings
     schema_ref: snyk/findings/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-      - finding_id
-      - severity
-      - status
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id, finding_id, severity, status]
+    required_payload_fields: [id]
   - kind: snyk.vulnerabilities
     schema_ref: snyk/vulnerabilities/v1
-    required_attributes:
-      - external_id
-      - family
-      - source_provider
-      - org_id
-      - finding_id
-      - severity
-      - status
-    required_payload_fields:
-      - id
+    required_attributes: [external_id, family, source_provider, org_id, finding_id, severity, status]
+    required_payload_fields: [id]
+  - kind: snyk.org_memberships
+    schema_ref: snyk/org_memberships/v1
+    required_attributes: [external_id, family, source_provider, org_id, membership_id, member_user_id]
+    required_payload_fields: [id]
+  - kind: snyk.service_accounts
+    schema_ref: snyk/service_accounts/v1
+    required_attributes: [external_id, family, source_provider, org_id, service_account_id, resource_id]
+    required_payload_fields: [id]
+  - kind: snyk.audit_logs
+    schema_ref: snyk/audit_logs/v1
+    required_attributes: [external_id, family, source_provider, org_id, event_type, actor_id]
+    required_payload_fields: [created, event]
+  - kind: snyk.collections
+    schema_ref: snyk/collections/v1
+    required_attributes: [external_id, family, source_provider, org_id, collection_id, resource_id]
+    required_payload_fields: [id]
+  - kind: snyk.cloud_environments
+    schema_ref: snyk/cloud_environments/v1
+    required_attributes: [external_id, family, source_provider, org_id, environment_id, resource_id]
+    required_payload_fields: [id]
+  - kind: snyk.cloud_resources
+    schema_ref: snyk/cloud_resources/v1
+    required_attributes: [external_id, family, source_provider, org_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: snyk.cloud_scans
+    schema_ref: snyk/cloud_scans/v1
+    required_attributes: [external_id, family, source_provider, org_id, scan_id, status]
+    required_payload_fields: [id]
+  - kind: snyk.group_memberships
+    schema_ref: snyk/group_memberships/v1
+    required_attributes: [external_id, family, source_provider, group_id, membership_id, member_user_id]
+    required_payload_fields: [id]
+  - kind: snyk.group_service_accounts
+    schema_ref: snyk/group_service_accounts/v1
+    required_attributes: [external_id, family, source_provider, group_id, service_account_id, resource_id]
+    required_payload_fields: [id]
+  - kind: snyk.group_audit_logs
+    schema_ref: snyk/group_audit_logs/v1
+    required_attributes: [external_id, family, source_provider, group_id, event_type, actor_id]
+    required_payload_fields: [created, event]
+  - kind: snyk.asset_project_relationships
+    schema_ref: snyk/asset_project_relationships/v1
+    required_attributes: [external_id, family, source_provider, org_id, asset_id, project_id]
+    required_payload_fields: [id]
+  - kind: snyk.asset_target_relationships
+    schema_ref: snyk/asset_target_relationships/v1
+    required_attributes: [external_id, family, source_provider, org_id, asset_id, target_id]
+    required_payload_fields: [id]

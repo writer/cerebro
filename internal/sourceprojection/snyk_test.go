@@ -55,6 +55,90 @@ func TestSnykVulnerabilitiesProjection(t *testing.T) {
 	}
 }
 
+func TestSnykGroupMembershipProjectionLinksMemberToGroup(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.group_memberships", Attributes: map[string]string{"group_id": "group-1", "member_user_id": "user-1", "member_type": "user", "role": "collaborator"}}
+	entities, links, err := snykGroupMembershipsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.group") {
+		t.Fatalf("expected projected Snyk user and group entities; entities=%#v", entities)
+	}
+	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", ""), relationMemberOf, identityGroupURN("tenant", "snyk", "group-1", "")) {
+		t.Fatalf("expected member_of link; links=%#v", links)
+	}
+}
+
+func TestSnykServiceAccountProjectionLinksRole(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.service_accounts", Attributes: map[string]string{"service_account_id": "service-account-1", "name": "CI scanner", "role_id": "admin", "level": "org"}}
+	entities, links, err := snykServiceAccountsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "snyk.service_account") || !hasProjectedEntityType(entities, "snyk.admin.role") {
+		t.Fatalf("expected service account and admin role entities; entities=%#v", entities)
+	}
+	if !hasSnykProjectedLink(links, identityPrincipalURN("tenant", "snyk", "service_account", "service-account-1", ""), relationCanAdmin, projectionURN("tenant", "snyk_admin_role", "admin")) {
+		t.Fatalf("expected service account admin role link; links=%#v", links)
+	}
+}
+
+func TestSnykAuditProjectionLinksActorToResource(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.audit_logs", Attributes: map[string]string{"actor_id": "user-1", "actor_email": "alice@example.test", "resource_id": "project-1", "resource_type": "project", "event_type": "org.project.create"}}
+	entities, links, err := snykAuditLogsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.project") {
+		t.Fatalf("expected audit actor and resource entities; entities=%#v", entities)
+	}
+	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", "snyk_project", "project-1")) {
+		t.Fatalf("expected acted_on link; links=%#v", links)
+	}
+}
+
+func TestSnykAssetRelationshipProjectionLinksAssetToProjectAndTarget(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		kind       string
+		projector  func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+		attributes map[string]string
+		wantType   string
+		wantURN    string
+	}{
+		{
+			name:       "project",
+			kind:       "snyk.asset_project_relationships",
+			projector:  snykAssetProjectRelationshipProjections,
+			attributes: map[string]string{"asset_id": "asset-1", "project_id": "project-1", "resource_name": "Checkout API"},
+			wantType:   "snyk.projects",
+			wantURN:    projectionURN("tenant", "snyk_projects", "project-1"),
+		},
+		{
+			name:       "target",
+			kind:       "snyk.asset_target_relationships",
+			projector:  snykAssetTargetRelationshipProjections,
+			attributes: map[string]string{"asset_id": "asset-1", "target_id": "target-1", "resource_name": "writer/cerebro"},
+			wantType:   "snyk.targets",
+			wantURN:    projectionURN("tenant", "snyk_targets", "target-1"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: tt.kind, Attributes: tt.attributes}
+			entities, links, err := tt.projector(event)
+			if err != nil {
+				t.Fatalf("projection error = %v", err)
+			}
+			if !hasProjectedEntityType(entities, "snyk.assets") || !hasProjectedEntityType(entities, tt.wantType) {
+				t.Fatalf("expected Snyk asset and related entity; entities=%#v", entities)
+			}
+			if !hasSnykProjectedLink(links, projectionURN("tenant", "snyk_assets", "asset-1"), relationAssociatedWith, tt.wantURN) {
+				t.Fatalf("expected asset relationship link; links=%#v", links)
+			}
+		})
+	}
+}
+
 func TestSnykRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
 	cases := []struct {
 		event      *cerebrov1.EventEnvelope
@@ -92,6 +176,54 @@ func TestSnykRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-vulnerability-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.vulnerabilities", Attributes: map[string]string{"finding_id": "vuln-1", "title": "CVE-2026-0001", "severity": "high", "status": "open"}},
 			entityType: "finding",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-org-membership-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.org_memberships", Attributes: map[string]string{"group_id": "org-1", "member_user_id": "user-1", "member_type": "user"}},
+			entityType: "snyk.user",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-service-account-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.service_accounts", Attributes: map[string]string{"service_account_id": "service-account-1", "role_id": "admin"}},
+			entityType: "snyk.service_account",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-audit-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.audit_logs", Attributes: map[string]string{"actor_id": "user-1", "resource_id": "project-1", "resource_type": "project"}},
+			entityType: "snyk.user",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-collection-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.collections", Attributes: map[string]string{"collection_id": "collection-1", "name": "Tier 0 services"}},
+			entityType: "snyk.collections",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-cloud-environment-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.cloud_environments", Attributes: map[string]string{"environment_id": "environment-1", "resource_name": "aws-prod"}},
+			entityType: "snyk.cloud_environments",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-cloud-resource-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.cloud_resources", Attributes: map[string]string{"resource_id": "arn:aws:s3:::prod-bucket", "resource_type": "aws_s3_bucket", "resource_name": "prod-bucket"}},
+			entityType: "runtime.aws.s3.bucket",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-cloud-scan-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.cloud_scans", Attributes: map[string]string{"scan_id": "scan-1", "status": "finished"}},
+			entityType: "snyk.cloud_scans",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-group-membership-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.group_memberships", Attributes: map[string]string{"group_id": "group-1", "member_user_id": "user-1", "member_type": "user"}},
+			entityType: "snyk.user",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-group-service-account-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.group_service_accounts", Attributes: map[string]string{"service_account_id": "group-service-account-1", "role_id": "admin"}},
+			entityType: "snyk.service_account",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-group-audit-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.group_audit_logs", Attributes: map[string]string{"actor_id": "user-1", "resource_id": "group-1", "resource_type": "membership"}},
+			entityType: "snyk.user",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-asset-project-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.asset_project_relationships", Attributes: map[string]string{"asset_id": "asset-1", "project_id": "project-1"}},
+			entityType: "snyk.projects",
+		},
+		{
+			event:      &cerebrov1.EventEnvelope{Id: "snyk-asset-target-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.asset_target_relationships", Attributes: map[string]string{"asset_id": "asset-1", "target_id": "target-1"}},
+			entityType: "snyk.targets",
 		},
 	}
 	registered := make(map[string]struct{})
@@ -147,6 +279,15 @@ func TestSnykOrgProjectionUsesOrgIDWhenGroupIDPresent(t *testing.T) {
 func hasProjectedEntityURN(entities []*ports.ProjectedEntity, urn string) bool {
 	for _, entity := range entities {
 		if entity != nil && entity.URN == urn {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSnykProjectedLink(links []*ports.ProjectedLink, from string, relation string, to string) bool {
+	for _, link := range links {
+		if link != nil && link.FromURN == from && link.Relation == relation && link.ToURN == to {
 			return true
 		}
 	}

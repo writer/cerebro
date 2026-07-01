@@ -2,6 +2,8 @@ sourceId: snyk
 secretKeys:
   - SNYK_TOKEN
   - SNYK_ORG_ID
+  - SNYK_GROUP_IDS
+  - SNYK_ASSET_IDS
 runtimes:
   - localId: orgs
     config:
@@ -59,6 +61,116 @@ runtimes:
     config:
       family: vulnerabilities
       org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: org-memberships
+    config:
+      family: org_memberships
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: service-accounts
+    config:
+      family: service_accounts
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: audit-logs
+    config:
+      family: audit_logs
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: collections
+    config:
+      family: collections
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: cloud-environments
+    config:
+      family: cloud_environments
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: cloud-resources
+    config:
+      family: cloud_resources
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: cloud-scans
+    config:
+      family: cloud_scans
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: group-memberships
+    config:
+      family: group_memberships
+      group_ids: env:SNYK_GROUP_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: group-service-accounts
+    config:
+      family: group_service_accounts
+      group_ids: env:SNYK_GROUP_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: group-audit-logs
+    config:
+      family: group_audit_logs
+      group_ids: env:SNYK_GROUP_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: asset-project-relationships
+    config:
+      family: asset_project_relationships
+      org_id: env:SNYK_ORG_ID
+      asset_ids: env:SNYK_ASSET_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: asset-target-relationships
+    config:
+      family: asset_target_relationships
+      org_id: env:SNYK_ORG_ID
+      asset_ids: env:SNYK_ASSET_IDS
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"

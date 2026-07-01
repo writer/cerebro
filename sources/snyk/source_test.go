@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/snykapi"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -83,6 +84,9 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 		record    map[string]any
 		wantAttrs map[string]string
 		wantQuery map[string]string
+		config    map[string]string
+		pageParam string
+		wrapItems bool
 	}{
 		{
 			family: familyOrgs,
@@ -170,6 +174,163 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			},
 			wantQuery: map[string]string{"type": "package_vulnerability"},
 		},
+		{
+			family: familyOrgMemberships,
+			kind:   "snyk.org_memberships",
+			path:   "/orgs/org-1/memberships",
+			record: map[string]any{"id": "membership-1", "attributes": map[string]any{"created_at": "2026-06-01T00:00:00Z"}, "relationships": map[string]any{"user": map[string]any{"data": map[string]string{"id": "user-1", "type": "user"}}, "role": map[string]any{"data": map[string]string{"id": "admin"}}}},
+			wantAttrs: map[string]string{
+				"org_id":         "org-1",
+				"membership_id":  "membership-1",
+				"member_user_id": "user-1",
+				"role":           "admin",
+				"resource_type":  "user",
+			},
+		},
+		{
+			family: familyServiceAccounts,
+			kind:   "snyk.service_accounts",
+			path:   "/orgs/org-1/service_accounts",
+			record: map[string]any{"id": "service-account-1", "attributes": map[string]any{"name": "CI scanner", "auth_type": "api_key", "level": "org", "role_id": "admin", "client_id": "client-1"}},
+			wantAttrs: map[string]string{
+				"org_id":             "org-1",
+				"service_account_id": "service-account-1",
+				"name":               "CI scanner",
+				"role_id":            "admin",
+			},
+		},
+		{
+			family: familyAuditLogs,
+			kind:   "snyk.audit_logs",
+			path:   "/orgs/org-1/audit_logs/search",
+			record: map[string]any{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "project"}},
+			wantAttrs: map[string]string{
+				"org_id":        "org-1",
+				"event_type":    "org.project.create",
+				"actor_id":      "user-1",
+				"actor_email":   "alice@example.test",
+				"resource_type": "project",
+			},
+			pageParam: "size",
+			wrapItems: true,
+		},
+		{
+			family: familyCollections,
+			kind:   "snyk.collections",
+			path:   "/orgs/org-1/collections",
+			record: map[string]any{"id": "collection-1", "attributes": map[string]any{"name": "Tier 0 services", "is_generated": false}, "relationships": map[string]any{"created_by_user": map[string]any{"data": map[string]string{"id": "user-1"}}, "org": map[string]any{"data": map[string]string{"id": "org-1"}}}, "meta": map[string]any{"projects_count": 4, "issues_critical_count": 2}},
+			wantAttrs: map[string]string{
+				"org_id":                "org-1",
+				"collection_id":         "collection-1",
+				"name":                  "Tier 0 services",
+				"projects_count":        "4",
+				"issues_critical_count": "2",
+			},
+		},
+		{
+			family: familyCloudEnvs,
+			kind:   "snyk.cloud_environments",
+			path:   "/orgs/org-1/cloud/environments",
+			record: map[string]any{"id": "environment-1", "attributes": map[string]any{"name": "aws-prod", "kind": "aws", "native_id": "123456789012"}, "relationships": map[string]any{"organization": map[string]any{"data": map[string]string{"id": "org-1"}}, "project": map[string]any{"data": map[string]string{"id": "project-1"}}}},
+			wantAttrs: map[string]string{
+				"org_id":         "org-1",
+				"environment_id": "environment-1",
+				"resource_name":  "aws-prod",
+				"kind":           "aws",
+				"native_id":      "123456789012",
+			},
+		},
+		{
+			family: familyCloudResources,
+			kind:   "snyk.cloud_resources",
+			path:   "/orgs/org-1/cloud/resources",
+			record: map[string]any{"id": "resource-1", "attributes": map[string]any{"name": "prod-bucket", "resource_type": "aws_s3_bucket", "native_id": "arn:aws:s3:::prod-bucket", "platform": "aws", "location": "us-east-1"}, "relationships": map[string]any{"organization": map[string]any{"data": map[string]string{"id": "org-1"}}, "environment": map[string]any{"data": map[string]string{"id": "environment-1"}}}},
+			wantAttrs: map[string]string{
+				"org_id":         "org-1",
+				"resource_id":    "arn:aws:s3:::prod-bucket",
+				"resource_name":  "prod-bucket",
+				"resource_type":  "aws_s3_bucket",
+				"environment_id": "environment-1",
+			},
+		},
+		{
+			family: familyCloudScans,
+			kind:   "snyk.cloud_scans",
+			path:   "/orgs/org-1/cloud/scans",
+			record: map[string]any{"id": "scan-1", "attributes": map[string]any{"status": "finished", "kind": "scheduled", "created_at": "2026-06-01T00:00:00Z", "finished_at": "2026-06-01T00:05:00Z"}, "relationships": map[string]any{"environment": map[string]any{"data": map[string]string{"id": "environment-1"}}}},
+			wantAttrs: map[string]string{
+				"org_id":         "org-1",
+				"scan_id":        "scan-1",
+				"status":         "finished",
+				"kind":           "scheduled",
+				"environment_id": "environment-1",
+			},
+		},
+		{
+			family: familyGroupMemberships,
+			kind:   "snyk.group_memberships",
+			path:   "/groups/group-1/memberships",
+			record: map[string]any{"id": "group-membership-1", "attributes": map[string]any{"created_at": "2026-06-01T00:00:00Z"}, "relationships": map[string]any{"user": map[string]any{"data": map[string]string{"id": "user-1", "type": "user"}}, "role": map[string]any{"data": map[string]string{"id": "collaborator"}}}},
+			wantAttrs: map[string]string{
+				"group_id":       "group-1",
+				"membership_id":  "group-membership-1",
+				"member_user_id": "user-1",
+				"role":           "collaborator",
+			},
+			config: map[string]string{"group_ids": "group-1"},
+		},
+		{
+			family: familyGroupSvcAccounts,
+			kind:   "snyk.group_service_accounts",
+			path:   "/groups/group-1/service_accounts",
+			record: map[string]any{"id": "group-service-account-1", "attributes": map[string]any{"name": "Group scanner", "auth_type": "api_key", "level": "group", "role_id": "admin"}},
+			wantAttrs: map[string]string{
+				"group_id":           "group-1",
+				"service_account_id": "group-service-account-1",
+				"name":               "Group scanner",
+				"level":              "group",
+			},
+			config: map[string]string{"group_ids": "group-1"},
+		},
+		{
+			family: familyGroupAuditLogs,
+			kind:   "snyk.group_audit_logs",
+			path:   "/groups/group-1/audit_logs/search",
+			record: map[string]any{"created": "2026-06-01T00:00:00Z", "event": "group.member.add", "group_id": "group-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "membership"}},
+			wantAttrs: map[string]string{
+				"group_id":      "group-1",
+				"event_type":    "group.member.add",
+				"actor_id":      "user-1",
+				"resource_type": "membership",
+			},
+			config:    map[string]string{"group_ids": "group-1"},
+			pageParam: "size",
+			wrapItems: true,
+		},
+		{
+			family: familyAssetProjects,
+			kind:   "snyk.asset_project_relationships",
+			path:   "/orgs/org-1/inventory/assets/asset-1/relationships/projects",
+			record: map[string]any{"id": "project-1", "type": "project", "attributes": map[string]any{"name": "Checkout API", "project_type": "sast", "target_id": "target-1", "risk_score": 890}},
+			wantAttrs: map[string]string{
+				"org_id":     "org-1",
+				"asset_id":   "asset-1",
+				"project_id": "project-1",
+			},
+			config: map[string]string{"asset_ids": "asset-1"},
+		},
+		{
+			family: familyAssetTargets,
+			kind:   "snyk.asset_target_relationships",
+			path:   "/orgs/org-1/inventory/assets/asset-1/relationships/targets",
+			record: map[string]any{"id": "target-1", "type": "target", "attributes": map[string]any{"display_name": "writer/cerebro", "target_origin": "github", "imported_at": "2026-06-01T00:00:00Z"}},
+			wantAttrs: map[string]string{
+				"org_id":    "org-1",
+				"asset_id":  "asset-1",
+				"target_id": "target-1",
+			},
+			config: map[string]string{"asset_ids": "asset-1"},
+		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			source, err := New()
@@ -187,19 +348,27 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 				if got := r.Method; got != http.MethodGet {
 					t.Fatalf("method = %q, want GET", got)
 				}
-				assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, "100", tt.wantQuery)
+				assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, tt.pageParam, "100", tt.wantQuery)
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{tt.record}})
+				response := map[string]any{"data": []map[string]any{tt.record}}
+				if tt.wrapItems {
+					response = map[string]any{"data": map[string]any{"items": []map[string]any{tt.record}}}
+				}
+				_ = json.NewEncoder(w).Encode(response)
 			}))
 			defer server.Close()
 
-			cfg := sourcecdk.NewConfig(map[string]string{
+			values := map[string]string{
 				"base_url":  server.URL,
 				"family":    tt.family,
 				"org_id":    "org-1",
 				"tenant_id": "tenant",
 				"token":     "test-token",
-			})
+			}
+			for key, value := range tt.config {
+				values[key] = value
+			}
+			cfg := sourcecdk.NewConfig(values)
 			pull, err := source.Read(context.Background(), cfg, nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
@@ -292,20 +461,19 @@ func TestNewFixtureReplaysSnykFamilies(t *testing.T) {
 		t.Fatalf("NewFixture() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
-	for _, family := range []string{
-		familyOrgs,
-		familyGroups,
-		familyProjects,
-		familyTargets,
-		familyAssets,
-		familyFindings,
-		familyVulnerabilities,
-	} {
-		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+	for _, family := range snykapi.FamilyNames() {
+		values := map[string]string{
 			"family":    family,
 			"org_id":    "org-1",
 			"tenant_id": "tenant",
-		})
+		}
+		switch family {
+		case familyGroupMemberships, familyGroupSvcAccounts, familyGroupAuditLogs:
+			values["group_ids"] = "group-1"
+		case familyAssetProjects, familyAssetTargets:
+			values["asset_ids"] = "asset-1"
+		}
+		familyConfigs[family] = sourcecdk.NewConfig(values)
 	}
 	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
 		Source:          source,
@@ -314,13 +482,16 @@ func TestNewFixtureReplaysSnykFamilies(t *testing.T) {
 	})
 }
 
-func assertSnykQuery(t *testing.T, query url.Values, wantVersion string, wantLimit string, want map[string]string) {
+func assertSnykQuery(t *testing.T, query url.Values, wantVersion string, pageParam string, wantPageSize string, want map[string]string) {
 	t.Helper()
 	if got := query.Get("version"); got != wantVersion {
 		t.Fatalf("version = %q, want %q", got, wantVersion)
 	}
-	if got := query.Get("limit"); got != wantLimit {
-		t.Fatalf("limit = %q, want %q", got, wantLimit)
+	if pageParam == "" {
+		pageParam = "limit"
+	}
+	if got := query.Get(pageParam); got != wantPageSize {
+		t.Fatalf("%s = %q, want %q", pageParam, got, wantPageSize)
 	}
 	for key, value := range want {
 		if got := query.Get(key); got != value {

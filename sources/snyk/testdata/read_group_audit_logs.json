@@ -1,0 +1,28 @@
+[
+  {
+    "id": "snyk-group-audit-log-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.group_audit_logs",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/group_audit_logs/v1",
+    "payload": {
+      "created": "2026-06-01T00:00:00Z",
+      "event": "group.member.add",
+      "group_id": "group-1"
+    },
+    "attributes": {
+      "external_id": "2026-06-01T00:00:00Z-group.member.add",
+      "family": "group_audit_logs",
+      "group_id": "group-1",
+      "event_type": "group.member.add",
+      "actor_id": "user-1",
+      "actor_email": "alice@example.test",
+      "record_class": "audit_event",
+      "resource_id": "group-1",
+      "resource_type": "membership",
+      "source_event_id": "2026-06-01T00:00:00Z-group.member.add",
+      "source_provider": "snyk"
+    }
+  }
+]

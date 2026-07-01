@@ -1,0 +1,31 @@
+[
+  {
+    "id": "snyk-collection-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.collections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/collections/v1",
+    "payload": {
+      "id": "collection-1",
+      "attributes": {
+        "name": "Tier 0 services",
+        "is_generated": false
+      }
+    },
+    "attributes": {
+      "external_id": "collection-1",
+      "family": "collections",
+      "org_id": "org-1",
+      "collection_id": "collection-1",
+      "resource_id": "collection-1",
+      "resource_name": "Tier 0 services",
+      "resource_type": "snyk_collection",
+      "name": "Tier 0 services",
+      "is_generated": "false",
+      "projects_count": "4",
+      "source_event_id": "collection-1",
+      "source_provider": "snyk"
+    }
+  }
+]

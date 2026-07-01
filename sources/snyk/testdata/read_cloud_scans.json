@@ -1,0 +1,30 @@
+[
+  {
+    "id": "snyk-cloud-scan-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.cloud_scans",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/cloud_scans/v1",
+    "payload": {
+      "id": "scan-1",
+      "attributes": {
+        "status": "finished",
+        "kind": "scheduled"
+      }
+    },
+    "attributes": {
+      "external_id": "scan-1",
+      "family": "cloud_scans",
+      "org_id": "org-1",
+      "scan_id": "scan-1",
+      "status": "finished",
+      "kind": "scheduled",
+      "resource_id": "scan-1",
+      "resource_type": "snyk_cloud_scan",
+      "environment_id": "environment-1",
+      "source_event_id": "scan-1",
+      "source_provider": "snyk"
+    }
+  }
+]

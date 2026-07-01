@@ -1,0 +1,31 @@
+[
+  {
+    "id": "snyk-cloud-resource-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.cloud_resources",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/cloud_resources/v1",
+    "payload": {
+      "id": "resource-1",
+      "attributes": {
+        "name": "prod-bucket",
+        "native_id": "arn:aws:s3:::prod-bucket",
+        "resource_type": "aws_s3_bucket",
+        "platform": "aws"
+      }
+    },
+    "attributes": {
+      "external_id": "arn:aws:s3:::prod-bucket",
+      "family": "cloud_resources",
+      "org_id": "org-1",
+      "resource_id": "arn:aws:s3:::prod-bucket",
+      "resource_name": "prod-bucket",
+      "resource_type": "aws_s3_bucket",
+      "platform": "aws",
+      "environment_id": "environment-1",
+      "source_event_id": "resource-1",
+      "source_provider": "snyk"
+    }
+  }
+]

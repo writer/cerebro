@@ -1,0 +1,30 @@
+[
+  {
+    "id": "snyk-audit-log-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.audit_logs",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/audit_logs/v1",
+    "payload": {
+      "created": "2026-06-01T00:00:00Z",
+      "event": "org.project.create",
+      "org_id": "org-1",
+      "project_id": "project-1"
+    },
+    "attributes": {
+      "external_id": "2026-06-01T00:00:00Z-org.project.create",
+      "family": "audit_logs",
+      "org_id": "org-1",
+      "project_id": "project-1",
+      "event_type": "org.project.create",
+      "actor_id": "user-1",
+      "actor_email": "alice@example.test",
+      "record_class": "audit_event",
+      "resource_id": "project-1",
+      "resource_type": "project",
+      "source_event_id": "2026-06-01T00:00:00Z-org.project.create",
+      "source_provider": "snyk"
+    }
+  }
+]

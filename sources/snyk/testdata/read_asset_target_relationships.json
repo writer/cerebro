@@ -1,0 +1,25 @@
+[
+  {
+    "id": "snyk-asset-target-relationship-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.asset_target_relationships",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/asset_target_relationships/v1",
+    "payload": {
+      "id": "target-1",
+      "type": "target"
+    },
+    "attributes": {
+      "external_id": "target-1",
+      "family": "asset_target_relationships",
+      "org_id": "org-1",
+      "asset_id": "asset-1",
+      "target_id": "target-1",
+      "resource_id": "target-1",
+      "resource_type": "snyk_target",
+      "source_event_id": "target-1",
+      "source_provider": "snyk"
+    }
+  }
+]

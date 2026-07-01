@@ -1,0 +1,25 @@
+[
+  {
+    "id": "snyk-asset-project-relationship-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.asset_project_relationships",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/asset_project_relationships/v1",
+    "payload": {
+      "id": "project-1",
+      "type": "project"
+    },
+    "attributes": {
+      "external_id": "project-1",
+      "family": "asset_project_relationships",
+      "org_id": "org-1",
+      "asset_id": "asset-1",
+      "project_id": "project-1",
+      "resource_id": "project-1",
+      "resource_type": "snyk_project",
+      "source_event_id": "project-1",
+      "source_provider": "snyk"
+    }
+  }
+]
