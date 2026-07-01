@@ -25,11 +25,11 @@ func TestSourceCheckAndRead(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/users" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"gid": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
@@ -50,6 +50,89 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+}
+
+func TestRuntimeUsesAsanaAPIPathsAndOffsetPagination(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/users":
+			if got := r.URL.Query().Get("workspace"); got != "workspace-1" {
+				t.Fatalf("users workspace = %q, want workspace-1", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]string{{"gid": "user-1", "name": "User One", "email": "user@example.test"}},
+				"next_page": map[string]string{
+					"offset": "cursor-2",
+				},
+			})
+		case "/projects":
+			if got := r.URL.Query().Get("workspace"); got != "workspace-1" {
+				t.Fatalf("projects workspace = %q, want workspace-1", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"gid": "project-1", "name": "Security Evidence"}}})
+		case "/workspaces/workspace-1/audit_log_events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
+				"gid":        "audit-1",
+				"event_type": "project.created",
+				"actor":      map[string]string{"gid": "user-1", "email": "user@example.test", "name": "User One"},
+				"resource":   map[string]string{"gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
+			}}})
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	baseCfg := map[string]string{
+		"base_url":      server.URL,
+		"tenant_id":     "tenant",
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}
+	for _, tt := range []struct {
+		family string
+		kind   string
+	}{
+		{family: familyUsers, kind: "asana.users"},
+		{family: familyProjects, kind: "asana.projects"},
+		{family: familyAuditEvents, kind: "asana.audit_events"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			cfgValues := map[string]string{}
+			for key, value := range baseCfg {
+				cfgValues[key] = value
+			}
+			cfgValues["family"] = tt.family
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(cfgValues), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("event kind = %q, want %q", got, tt.kind)
+			}
+			if tt.family == familyUsers && (pull.NextCursor == nil || pull.NextCursor.GetOpaque() != "cursor-2") {
+				t.Fatalf("users NextCursor = %#v, want cursor-2", pull.NextCursor)
+			}
+		})
+	}
+	if got := strings.Join(requests, "\n"); !strings.Contains(got, "/users?") || !strings.Contains(got, "/projects?") || !strings.Contains(got, "/workspaces/workspace-1/audit_log_events?") {
+		t.Fatalf("requests = %s, want Asana collection paths", got)
 	}
 }
 
