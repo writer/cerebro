@@ -11844,9 +11844,13 @@ components:
           type: string
         source:
           type: string
+        resource_urn:
+          type: string
         evidence_packet_id:
           type: string
         evidence_id:
+          type: string
+        evidence_type:
           type: string
         control_id:
           type: string
@@ -11870,6 +11874,8 @@ components:
         control_id:
           type: string
         evidence_packet_id:
+          type: string
+        review_state:
           type: string
     GRCQuestionnaireFreshness:
       type: object
@@ -11941,6 +11947,10 @@ components:
         id:
           type: string
         question_id:
+          type: string
+        gap_id:
+          type: string
+        slot_id:
           type: string
         team:
           type: string
@@ -12257,6 +12267,10 @@ components:
         tenant_id:
           type: string
         question_id:
+          type: string
+        gap_id:
+          type: string
+        slot_id:
           type: string
         owner_id:
           type: string

@@ -44,6 +44,9 @@ func createRunAttributes(request createRequest, questionCount int) map[string]st
 	attributes := map[string]string{}
 	for key, value := range request.Attributes {
 		if key = strings.TrimSpace(key); key != "" {
+			if key == "questionnaire_urn" || key == "source_artifact_urn" {
+				continue
+			}
 			attributes[key] = strings.TrimSpace(value)
 		}
 	}

@@ -150,8 +150,10 @@ type QuestionnaireCitation struct {
 	ID               string `json:"id"`
 	Label            string `json:"label,omitempty"`
 	Source           string `json:"source,omitempty"`
+	ResourceURN      string `json:"resource_urn,omitempty"`
 	EvidencePacketID string `json:"evidence_packet_id,omitempty"`
 	EvidenceID       string `json:"evidence_id,omitempty"`
+	EvidenceType     string `json:"evidence_type,omitempty"`
 	ControlID        string `json:"control_id,omitempty"`
 	FreshnessStatus  string `json:"freshness_status,omitempty"`
 	ObservedAt       string `json:"observed_at,omitempty"`
@@ -159,12 +161,13 @@ type QuestionnaireCitation struct {
 }
 
 type QuestionnaireEvidenceGap struct {
-	ID        string `json:"id"`
-	Code      string `json:"code"`
-	Reason    string `json:"reason,omitempty"`
-	SlotID    string `json:"slot_id,omitempty"`
-	ControlID string `json:"control_id,omitempty"`
-	PacketID  string `json:"evidence_packet_id,omitempty"`
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	Reason      string `json:"reason,omitempty"`
+	SlotID      string `json:"slot_id,omitempty"`
+	ControlID   string `json:"control_id,omitempty"`
+	PacketID    string `json:"evidence_packet_id,omitempty"`
+	ReviewState string `json:"review_state,omitempty"`
 }
 
 type QuestionnaireFreshness struct {
@@ -177,6 +180,8 @@ type QuestionnaireFreshness struct {
 type QuestionnaireAssignment struct {
 	ID         string     `json:"id"`
 	QuestionID string     `json:"question_id,omitempty"`
+	GapID      string     `json:"gap_id,omitempty"`
+	SlotID     string     `json:"slot_id,omitempty"`
 	Team       string     `json:"team,omitempty"`
 	OwnerID    string     `json:"owner_id,omitempty"`
 	Status     string     `json:"status"`
@@ -237,6 +242,24 @@ type QuestionnaireRunFilter struct {
 	Limit     uint32
 }
 
+type QuestionnaireVendorRollupFilter struct {
+	TenantID   string
+	VendorURNs []string
+	Now        time.Time
+}
+
+type QuestionnaireVendorRollupRecord struct {
+	VendorURN          string
+	QuestionnaireCount int
+	ReadyAnswers       int
+	BlockedAnswers     int
+	ReviewAnswers      int
+	MissingEvidence    int
+	StaleEvidence      int
+	DueQuestionnaires  int
+	OpenAssignments    int
+}
+
 type QuestionnaireRunEventFilter struct {
 	TenantID string
 	RunID    string
@@ -261,6 +284,7 @@ type QuestionnaireRunStore interface {
 	GetQuestionnaireRun(context.Context, QuestionnaireRunFilter) (*QuestionnaireRunRecord, error)
 	ListQuestionnaireRuns(context.Context, QuestionnaireRunFilter) ([]*QuestionnaireRunRecord, error)
 	SummarizeQuestionnaireRuns(context.Context, QuestionnaireRunFilter) (QuestionnaireRunSummary, error)
+	ListQuestionnaireVendorRollups(context.Context, QuestionnaireVendorRollupFilter) ([]QuestionnaireVendorRollupRecord, error)
 	ListQuestionnaireRunEvents(context.Context, QuestionnaireRunEventFilter) ([]*QuestionnaireRunEventRecord, error)
 }
 

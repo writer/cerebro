@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/evidencepackets"
+	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -86,6 +88,111 @@ func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
 	}
 	if store.saved.Attributes["intake_file_attached"] != "true" || store.saved.Attributes["intake_format"] != "xlsx" {
 		t.Fatalf("attributes = %#v, want xlsx attachment metadata", store.saved.Attributes)
+	}
+}
+
+func TestCreateRunAttributesIgnoreReservedGraphAttributes(t *testing.T) {
+	attrs := createRunAttributes(createRequest{
+		Attributes: map[string]string{
+			"questionnaire_urn":   "urn:cerebro:tenant-1:vendor:core-sso",
+			"source_artifact_urn": "urn:cerebro:tenant-1:vendor:core-sso",
+			"business_unit":       "enterprise",
+		},
+	}, 1)
+	if _, ok := attrs["questionnaire_urn"]; ok {
+		t.Fatalf("attributes = %#v, want questionnaire_urn filtered", attrs)
+	}
+	if _, ok := attrs["source_artifact_urn"]; ok {
+		t.Fatalf("attributes = %#v, want source_artifact_urn filtered", attrs)
+	}
+	if attrs["business_unit"] != "enterprise" {
+		t.Fatalf("attributes = %#v, want non-reserved attributes retained", attrs)
+	}
+}
+
+func TestCreateRunSucceedsWhenProjectionFailsAfterSave(t *testing.T) {
+	store := &processRunStore{}
+	var bumpedTenant string
+	projectionAttempted := make(chan struct{}, 1)
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor:           func(context.Context) string { return "grc@example.com" },
+		BumpCache:       func(_ context.Context, tenantID string) { bumpedTenant = tenantID },
+		ProjectionState: failingQuestionnaireProjectionStore{attempted: projectionAttempted},
+	})
+	body := `{
+		"tenant_id": "tenant-1",
+		"direction": "customer_security_review",
+		"title": "Acme security review",
+		"source_format": "csv",
+		"intake_text": "question\nDo you enforce MFA?"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateRun(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if store.saved.RunID == "" {
+		t.Fatalf("saved run is empty: %#v", store.saved)
+	}
+	if bumpedTenant != "tenant-1" {
+		t.Fatalf("bumped tenant = %q, want tenant-1", bumpedTenant)
+	}
+	select {
+	case <-projectionAttempted:
+	case <-time.After(time.Second):
+		t.Fatal("projection writer was not called")
+	}
+}
+
+func TestCreateRunDoesNotWaitForProjection(t *testing.T) {
+	store := &processRunStore{}
+	releaseProjection := make(chan struct{})
+	defer close(releaseProjection)
+	projectionStarted := make(chan struct{}, 1)
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor: func(context.Context) string { return "grc@example.com" },
+		ProjectionState: blockingQuestionnaireProjectionStore{
+			started: projectionStarted,
+			release: releaseProjection,
+		},
+	})
+	body := `{
+		"tenant_id": "tenant-1",
+		"direction": "customer_security_review",
+		"title": "Acme security review",
+		"source_format": "csv",
+		"intake_text": "question\nDo you enforce MFA?"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+	done := make(chan struct{})
+
+	go func() {
+		handler.CreateRun(recorder, req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("CreateRun waited for projection writer")
+	}
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	select {
+	case <-projectionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("projection writer was not called")
 	}
 }
 
@@ -482,6 +589,60 @@ func TestUpdateQuestionMapsRequiredEvidenceSlots(t *testing.T) {
 	}
 	if store.saved.Questions[0].OwnerID != "security@example.com" {
 		t.Fatalf("owner = %q, want security@example.com", store.saved.Questions[0].OwnerID)
+	}
+}
+
+func TestUpdateQuestionRemovesStaleControlProjectionLinks(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	deletedLinks := make(chan *ports.ProjectedLink, 4)
+	store := &processRunStore{
+		record: ports.QuestionnaireRunRecord{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "tenant-1", RunID: "run-1", Title: "Customer review"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{Direction: ports.QuestionnaireDirectionCustomerSecurityReview},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{
+				Questions: []ports.QuestionnaireQuestion{{
+					ID:             "q-1",
+					Question:       "Attach SOC 2 report.",
+					MappedControls: []string{"SOC2-CC6.1"},
+					AnswerState:    ports.QuestionnaireAnswerNeedsReview,
+					ReviewState:    ports.QuestionnaireReviewNeedsReview,
+				}},
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	handler := NewHandler(store, Options{
+		Scope: func(r *http.Request) (Scope, error) {
+			return Scope{TenantID: firstNonEmpty(r.URL.Query().Get("tenant_id"), "tenant-1"), Limit: 25}, nil
+		},
+		Actor:           func(context.Context) string { return "security@example.com" },
+		ProjectionState: recordingQuestionnaireProjectionStore{deleted: deletedLinks},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grc/questionnaire-runs/run-1/questions", strings.NewReader(`{"question_id":"q-1","mapped_controls":["SOC2-CC7.2"],"reason":"Remapped from review."}`))
+	req.SetPathValue("runID", "run-1")
+	recorder := httptest.NewRecorder()
+
+	handler.UpdateQuestion(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := store.record.Questions[0].MappedControls; len(got) != 1 || got[0] != "SOC2-CC6.1" {
+		t.Fatalf("stored baseline controls = %#v, want original control", got)
+	}
+	if got := store.saved.Questions[0].MappedControls; len(got) != 1 || got[0] != "SOC2-CC7.2" {
+		t.Fatalf("saved controls = %#v, want remapped control", got)
+	}
+	for {
+		select {
+		case link := <-deletedLinks:
+			if link.Relation == fabriccontract.RelationSupports && link.Attributes["control_id"] == "SOC2-CC6.1" {
+				return
+			}
+		case <-time.After(time.Second):
+			t.Fatal("stale control projection link was not removed")
+		}
 	}
 }
 
@@ -931,6 +1092,84 @@ func (s *processRunStore) SummarizeQuestionnaireRuns(context.Context, ports.Ques
 	return s.summary, nil
 }
 
+func (s *processRunStore) ListQuestionnaireVendorRollups(context.Context, ports.QuestionnaireVendorRollupFilter) ([]ports.QuestionnaireVendorRollupRecord, error) {
+	return nil, nil
+}
+
 func (s *processRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
 	return nil, nil
+}
+
+type failingQuestionnaireProjectionStore struct {
+	ports.StateStore
+	attempted chan struct{}
+}
+
+func (s failingQuestionnaireProjectionStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
+	s.signal()
+	return errors.New("projection unavailable")
+}
+
+func (s failingQuestionnaireProjectionStore) UpsertProjectedLink(context.Context, *ports.ProjectedLink) error {
+	s.signal()
+	return errors.New("projection unavailable")
+}
+
+func (s failingQuestionnaireProjectionStore) signal() {
+	if s.attempted == nil {
+		return
+	}
+	select {
+	case s.attempted <- struct{}{}:
+	default:
+	}
+}
+
+type blockingQuestionnaireProjectionStore struct {
+	ports.StateStore
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s blockingQuestionnaireProjectionStore) UpsertProjectedEntity(ctx context.Context, _ *ports.ProjectedEntity) error {
+	if s.started != nil {
+		select {
+		case s.started <- struct{}{}:
+		default:
+		}
+	}
+	select {
+	case <-s.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s blockingQuestionnaireProjectionStore) UpsertProjectedLink(context.Context, *ports.ProjectedLink) error {
+	return nil
+}
+
+type recordingQuestionnaireProjectionStore struct {
+	ports.StateStore
+	deleted chan *ports.ProjectedLink
+}
+
+func (s recordingQuestionnaireProjectionStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
+	return nil
+}
+
+func (s recordingQuestionnaireProjectionStore) UpsertProjectedLink(context.Context, *ports.ProjectedLink) error {
+	return nil
+}
+
+func (s recordingQuestionnaireProjectionStore) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.deleted == nil {
+		return nil
+	}
+	select {
+	case s.deleted <- link:
+	default:
+	}
+	return nil
 }
