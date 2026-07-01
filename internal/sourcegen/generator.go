@@ -30,6 +30,8 @@ const (
 	AuthModelSignature              = "signature"
 	AuthModelAWSSigV4               = "aws_sigv4"
 	AuthModelTwoStep                = "two_step"
+	AuthModelDuoHMAC                = "duo_hmac"
+	AuthModelDuoHMACV5              = "duo_hmac_v5"
 
 	defaultFreshnessExpectation = 24 * time.Hour
 	defaultHealthPath           = "/healthz"
@@ -111,6 +113,7 @@ type familyData struct {
 	ProjectorName         string
 	Path                  string
 	Method                string
+	AuthModel             string
 	RecordSelector        string
 	URNKind               string
 	EventKind             string
@@ -439,6 +442,8 @@ func authModelConfig(authModel string) (string, string, error) {
 		return "AWS4-HMAC-SHA256", "client_id", nil
 	case AuthModelTwoStep:
 		return "Bearer", "api_key", nil
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return "Basic", "client_id", nil
 	default:
 		return "", "", fmt.Errorf("auth_model %q must be executable by a JSON API runtime", authModel)
 	}
@@ -464,6 +469,10 @@ func executableAuthModel(authModel string) (string, error) {
 		return AuthModelAWSSigV4, nil
 	case AuthModelTwoStep:
 		return AuthModelTwoStep, nil
+	case AuthModelDuoHMAC:
+		return AuthModelDuoHMAC, nil
+	case AuthModelDuoHMACV5:
+		return AuthModelDuoHMACV5, nil
 	default:
 		return "", fmt.Errorf("%w: auth model %q needs provider auth runtime support before sourcegen can emit executable code", errUnsupportedDefinition, authModel)
 	}
@@ -691,6 +700,14 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 		if len(requiredPayloadFields) == 0 {
 			requiredPayloadFields = []string{firstNonEmptyString(resource.IDField, "id")}
 		}
+		authModel := strings.TrimSpace(resource.AuthModel)
+		if authModel != "" {
+			var err error
+			authModel, err = executableAuthModel(authModel)
+			if err != nil {
+				return nil, err
+			}
+		}
 		families = append(families, familyData{
 			Name:                  name,
 			Schema:                schemaNameFromRef(schemaRef, name),
@@ -699,6 +716,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
 			Path:                  resource.Path,
 			Method:                methodForResource(resource),
+			AuthModel:             authModel,
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
@@ -1085,7 +1103,7 @@ func renderDeploy(request normalizedRequest) string {
 	}
 	for _, key := range authConfigKeys {
 		envName := envNameForConfigKey(request, key)
-		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
+		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 && !isDuoHMACAuthModel(request.AuthModel) {
 			envName = tokenEnv
 		}
 		secretKeys = append(secretKeys, envName)
@@ -1117,7 +1135,7 @@ func renderDeploy(request normalizedRequest) string {
 			}
 			writtenConfigKeys[key] = struct{}{}
 			envName := envNameForConfigKey(request, key)
-			if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
+			if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 && !isDuoHMACAuthModel(request.AuthModel) {
 				envName = tokenEnv
 			}
 			fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
@@ -1198,6 +1216,16 @@ func deployAuthConfigKeys(request normalizedRequest) []string {
 		}
 		if !hasSecretKey {
 			keys = append(keys, "secret_key")
+		}
+		return uniqueStrings(keys)
+	}
+	if isDuoHMACAuthModel(request.AuthModel) {
+		keys := uniqueStrings(request.CredentialKeys)
+		if !hasString(keys, "client_id") {
+			keys = append(keys, "client_id")
+		}
+		if !hasString(keys, "client_secret") {
+			keys = append(keys, "client_secret")
 		}
 		return uniqueStrings(keys)
 	}
@@ -1282,6 +1310,9 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
+		if strings.TrimSpace(family.AuthModel) != "" {
+			fmt.Fprintf(&b, "\t\t\t\tAuthModel: %s,\n", strconv.Quote(family.AuthModel))
+		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1543,7 +1574,11 @@ func familyConstList(families []familyData) string {
 func renderSourceTestGo(request normalizedRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
-	fmt.Fprintf(&b, "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
+	fmt.Fprintf(&b, "import (\n\t\"context\"\n")
+	if isDuoHMACAuthModel(request.AuthModel) {
+		fmt.Fprintf(&b, "\t\"encoding/base64\"\n")
+	}
+	fmt.Fprintf(&b, "\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
 	fmt.Fprintf(&b, "func TestSourceCheckAndRead(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
 	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n\t\tresponseBody json.RawMessage\n\t}{\n")
@@ -1591,6 +1626,9 @@ func renderSourceTestGo(request normalizedRequest) string {
 	} else if request.AuthModel == AuthModelAWSSigV4 {
 		emitCfgValue("access_key", strconv.Quote("test-access-key"))
 		emitCfgValue("secret_key", strconv.Quote("test-secret-key"))
+	} else if isDuoHMACAuthModel(request.AuthModel) {
+		emitCfgValue("client_id", strconv.Quote("DIXXXXXXXXXXXXXXXXXX"))
+		emitCfgValue("client_secret", strconv.Quote("deadbeefsecret"))
 	} else {
 		emitCfgValue(request.TokenConfigKey, strconv.Quote("test-token"))
 	}
@@ -1740,11 +1778,36 @@ func generatedTestAuthHeader(request normalizedRequest) (string, string) {
 }
 
 func generatedTestAuthAssertion(request normalizedRequest) string {
+	if isDuoHMACAuthModel(request.AuthModel) {
+		wantSignatureLength := 40
+		if request.AuthModel == AuthModelDuoHMACV5 {
+			wantSignatureLength = 128
+		}
+		return fmt.Sprintf("\t\tdecodedAuth, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get(\"Authorization\"), \"Basic \"))\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"decode Authorization: %%v\", err)\n\t\t}\n\t\tusername, signature, ok := strings.Cut(string(decodedAuth), \":\")\n\t\tif !ok {\n\t\t\tt.Fatalf(\"Authorization payload = %%q\", decodedAuth)\n\t\t}\n\t\tif username != \"DIXXXXXXXXXXXXXXXXXX\" {\n\t\t\tt.Fatalf(\"Duo integration key = %%q\", username)\n\t\t}\n\t\tif len(signature) != %d {\n\t\t\tt.Fatalf(\"Duo signature length = %%d\", len(signature))\n\t\t}\n", wantSignatureLength)
+	}
 	header, value := generatedTestAuthHeader(request)
 	if request.AuthModel != AuthModelAWSSigV4 {
 		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\thttp.Error(w, %s+\" mismatch\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header))
 	}
 	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing SigV4 prefix\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing credential scope\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
+}
+
+func isDuoHMACAuthModel(authModel string) bool {
+	switch strings.TrimSpace(authModel) {
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return true
+	default:
+		return false
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}

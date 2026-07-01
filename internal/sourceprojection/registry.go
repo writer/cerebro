@@ -700,7 +700,12 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"cloudflare.zone_ruleset":                       cloudflareZoneScopedInventoryProjections,
 	"duo.endpoint":                                  duoEndpointProjections,
 	"duo.group":                                     duoGroupProjections,
+	"duo.administrator":                             duoAdministratorProjections,
+	"duo.application":                               duoApplicationProjections,
+	"duo.audit_event":                               duoAuditEventProjections,
+	"duo.authentication_log":                        duoAuthenticationLogProjections,
 	"duo.phone":                                     duoPhoneProjections,
+	"duo.role":                                      duoRoleProjections,
 	"duo.token":                                     duoTokenProjections,
 	"duo.user":                                      duoUserProjections,
 	"duo.web_authn_credential":                      duoWebAuthnCredentialProjections,
@@ -2432,13 +2437,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"dropbox_sign.groups":       dropboxSignGroupsProjections,
 	"dropbox_sign.users":        dropboxSignUsersProjections,
 	"dropbox_sign.workspaces":   dropboxSignWorkspacesProjections,
-
-	// duo_security generated projectors (sourcegen promotion)
-	"duo_security.applications": duoSecurityApplicationsProjections,
-	"duo_security.audit_events": duoSecurityAuditEventsProjections,
-	"duo_security.groups":       duoSecurityGroupsProjections,
-	"duo_security.roles":        duoSecurityRolesProjections,
-	"duo_security.users":        duoSecurityUsersProjections,
 
 	// dynamics_365_sales generated projectors (sourcegen promotion)
 	"dynamics_365_sales.accounts":     dynamics365SalesAccountsProjections,

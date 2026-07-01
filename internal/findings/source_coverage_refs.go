@@ -286,8 +286,7 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 
 var identityProviderCoverageAliases = map[string][]string{
 	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"duo":                {"duo", "duo_security"},
-	"duo_security":       {"duo", "duo_security"},
+	"duo":                {"duo"},
 	"github":             {"github", "github_org", "github_organization"},
 	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
 	"jumpcloud":          {"jumpcloud", "jump_cloud"},

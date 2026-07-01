@@ -248,7 +248,6 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `dropbox_business` | Dropbox Business source | dropbox_business.audit_events, dropbox_business.content_assets, dropbox_business.users |
 | `dropbox_sign` | Dropbox Sign source | dropbox_sign.audit_events, dropbox_sign.documents, dropbox_sign.groups, dropbox_sign.users, dropbox_sign.workspaces |
 | `duo` | Duo identity and MFA source | users, groups, endpoints, phones, tokens, WebAuthn credentials |
-| `duo_security` | Duo Security source | duo_security.applications, duo_security.audit_events, duo_security.groups, duo_security.roles, duo_security.users |
 | `dynamics_365_sales` | Dynamics 365 Sales source | dynamics_365_sales.accounts, dynamics_365_sales.audit_events, dynamics_365_sales.policies, dynamics_365_sales.records, dynamics_365_sales.users |
 | `dynatrace` | Dynatrace source | dynatrace.alerts, dynatrace.audit_events, dynatrace.dashboards, dynatrace.incidents, dynatrace.monitors |
 | `easyllama` | Easyllama source | easyllama.accounts, easyllama.audit_events, easyllama.policies, easyllama.records, easyllama.users |

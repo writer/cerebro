@@ -1,0 +1,476 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: client_id
+            label: Integration key
+            reference_only: true
+            required: true
+            secret: true
+          - key: client_secret
+            label: Secret key
+            reference_only: true
+            required: true
+            secret: true
+        model: duo_hmac
+        requires_references: true
+      categories:
+        - saas
+        - identity_access_secrets
+      config_fields:
+        - help: Duo API host, such as https://api-XXXXXXXX.duosecurity.com.
+          key: base_url
+          label: API host
+          required: true
+      description: Collects users, groups, administrators, endpoints, phones, and hardware tokens from Duo and projects them into the Cerebro graph as assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context.
+      display_name: Duo
+      id: builtin-duo
+      ingest:
+        mode: pull
+      resource_families:
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - user
+              high_value: true
+              id: users
+              support: supported
+              title: Users
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.user
+            required_payload_fields:
+              - user_id
+            schema_ref: duo/user/v1
+            urn_kind: duo_user
+          id: user
+          id_field: user_id
+          label: Users
+          method: GET
+          name_field: username
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/users
+          projection:
+            fields:
+              email: email
+              is_enrolled: is_enrolled
+              status: status
+              user_id: user_id
+              username: username
+            template: identity_user
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - group
+              high_value: true
+              id: groups
+              support: supported
+              title: Groups
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.group
+            required_payload_fields:
+              - group_id
+            schema_ref: duo/group/v1
+            urn_kind: duo_group
+          id: group
+          id_field: group_id
+          label: Groups
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/groups
+          projection:
+            fields:
+              group_id: group_id
+              group_name: name
+              status: status
+            template: identity_group
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - administrator
+              high_value: true
+              id: administrators
+              support: supported
+              title: Administrators
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.administrator
+            required_payload_fields:
+              - admin_id
+            schema_ref: duo/administrator/v1
+            urn_kind: duo_administrator
+          id: administrator
+          id_field: admin_id
+          label: Administrators
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/admins
+          projection:
+            fields:
+              admin_id: admin_id
+              email: email
+              role: role
+              status: status
+            template: identity_user
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - device_posture
+              evidence_types:
+                - source_snapshot
+              families:
+                - endpoint
+              high_value: true
+              id: endpoints
+              support: supported
+              title: Endpoints
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.endpoint
+            required_payload_fields:
+              - endpoint_id
+            schema_ref: duo/endpoint/v1
+            urn_kind: duo_endpoint
+          id: endpoint
+          id_field: endpoint_id
+          label: Endpoints
+          method: GET
+          name_field: hostname
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/endpoints
+          projection:
+            fields:
+              endpoint_id: endpoint_id
+              hostname: hostname
+              os: os
+              os_version: os_version
+            template: asset
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - phone
+              high_value: true
+              id: phones
+              support: supported
+              title: Phones
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.phone
+            required_payload_fields:
+              - phone_id
+            schema_ref: duo/phone/v1
+            urn_kind: duo_phone
+          id: phone
+          id_field: phone_id
+          label: Phones
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/phones
+          projection:
+            fields:
+              factor_type: phone
+              phone_id: phone_id
+              platform: platform
+              user_id: user_id
+            template: asset
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - token
+              high_value: true
+              id: tokens
+              support: supported
+              title: Hardware tokens
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.token
+            required_payload_fields:
+              - token_id
+            schema_ref: duo/token/v1
+            urn_kind: duo_token
+          id: token
+          id_field: token_id
+          label: Hardware tokens
+          method: GET
+          name_field: serial
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/tokens
+          projection:
+            fields:
+              factor_type: hardware_token
+              serial: serial
+              token_id: token_id
+              user_id: user_id
+            template: asset
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - access_review
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - web_authn_credential
+              high_value: true
+              id: web_authn_credentials
+              support: supported
+              title: WebAuthn credentials
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.web_authn_credential
+            required_payload_fields:
+              - webauthnkey
+            schema_ref: duo/web_authn_credential/v1
+            urn_kind: duo_web_authn_credential
+          id: web_authn_credential
+          id_field: webauthnkey
+          label: WebAuthn credentials
+          method: GET
+          name_field: label
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/webauthncredentials
+          projection:
+            fields:
+              credential_id: webauthnkey
+              factor_type: webauthn
+              label: label
+              user_id: user_id
+            template: asset
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - security_operations
+              evidence_types:
+                - configuration_state
+              families:
+                - role
+              high_value: true
+              id: roles
+              support: supported
+              title: Administrator roles
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: duo.role
+            required_payload_fields:
+              - role_id
+            schema_ref: duo/role/v1
+            urn_kind: duo_role
+          id: role
+          id_field: role_id
+          label: Administrator roles
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v1/admin_roles
+          projection:
+            fields:
+              policy_id: role_id
+              policy_name: name
+              policy_type: administrator_role
+            template: policy
+          record_selector: $.response[*]
+        - auth_model: duo_hmac_v5
+          coverage:
+            - control_domains:
+                - asset_inventory
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - application
+              high_value: true
+              id: applications
+              support: supported
+              title: Protected applications
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: duo.application
+            required_payload_fields:
+              - integration_key
+            schema_ref: duo/application/v1
+            urn_kind: duo_application
+          id: application
+          id_field: integration_key
+          label: Protected applications
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: offset
+            page_size: 100
+            page_size_param: limit
+            type: offset
+          path: /admin/v3/integrations
+          projection:
+            fields:
+              integration_key: integration_key
+              resource_id: integration_key
+              resource_name: name
+              resource_type: type
+            template: asset
+          record_selector: $.response[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_event
+              high_value: true
+              id: activity_logs
+              support: supported
+              title: Activity logs
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: duo.audit_event
+            required_payload_fields:
+              - activity_id
+            schema_ref: duo/audit_event/v1
+            urn_kind: duo_audit_event
+          id: audit_event
+          id_field: activity_id
+          label: Activity logs
+          method: GET
+          name_field: action
+          pagination:
+            cursor_json_path: $.response.metadata.next_offset
+            cursor_param: next_offset
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /admin/v2/logs/activity
+          projection:
+            fields:
+              actor_id: actor.key
+              actor_name: actor.name
+              event_type: action
+              resource_id: target.key
+              resource_type: target.type
+            template: audit_event
+          record_selector: $.response.items[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - authentication_log
+              high_value: true
+              id: authentication_logs
+              support: supported
+              title: Authentication logs
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: duo.authentication_log
+            required_payload_fields:
+              - txid
+            schema_ref: duo/authentication_log/v1
+            urn_kind: duo_authentication_log
+          id: authentication_log
+          id_field: txid
+          label: Authentication logs
+          method: GET
+          name_field: event_type
+          pagination:
+            cursor_json_path: $.response.metadata.next_offset
+            cursor_param: next_offset
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /admin/v2/logs/authentication
+          projection:
+            fields:
+              actor_id: user.key
+              actor_name: user.name
+              event_type: event_type
+              factor: factor
+              resource_id: application.key
+              resource_name: application.name
+              result: result
+            template: audit_event
+          record_selector: $.response.authlogs[*]
+      schema_version: cerebro.integration/v1
+      source_id: duo
+      tenant_id: builtin_catalog
+      transport:
+        base_url: ${config.base_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /admin/v1/users

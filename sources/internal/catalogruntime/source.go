@@ -164,6 +164,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		Attributes:            attributePaths(resource, class),
 		StaticAttributes:      staticAttributes(sourceID, name, class),
 		Config:                config,
+		AuthModel:             strings.TrimSpace(resource.AuthModel),
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
 		ListKeys:              listKeys(resource),

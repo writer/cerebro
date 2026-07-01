@@ -1,0 +1,96 @@
+sourceId: duo
+runtime:
+  defaultFamily: user
+  families:
+    - family: user
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: group
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: administrator
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: endpoint
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: phone
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: token
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: web_authn_credential
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: role
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: application
+      enabled: true
+      interval: 24h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+    - family: audit_event
+      enabled: true
+      interval: 1h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+        mintime: env:DUO_ACTIVITY_MINTIME
+        maxtime: env:DUO_ACTIVITY_MAXTIME
+    - family: authentication_log
+      enabled: true
+      interval: 1h
+      config:
+        tenant_id: env:DUO_TENANT_ID
+        base_url: env:DUO_BASE_URL
+        client_id: env:DUO_CLIENT_ID
+        client_secret: env:DUO_CLIENT_SECRET
+        mintime: env:DUO_AUTH_MINTIME
+        maxtime: env:DUO_AUTH_MAXTIME

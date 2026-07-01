@@ -19,6 +19,7 @@ type Family struct {
 	DetailPath            string
 	AllowBareDetailRecord bool
 	PathParams            []string
+	AuthModel             string
 	CursorParam           string
 	NextCursorKeys        []string
 	NextCursorHeaders     []string

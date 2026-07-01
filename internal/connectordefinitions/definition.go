@@ -89,6 +89,8 @@ var (
 		"jwt":                      {},
 		"signature":                {},
 		"aws_sigv4":                {},
+		"duo_hmac":                 {},
+		"duo_hmac_v5":              {},
 	}
 )
 
@@ -306,6 +308,7 @@ type ResourceFamily struct {
 	Label                 string                  `json:"label,omitempty"`
 	Path                  string                  `json:"path"`
 	Method                string                  `json:"method,omitempty"`
+	AuthModel             string                  `json:"auth_model,omitempty"`
 	RecordSelector        string                  `json:"record_selector,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
 	Read                  *ResourceReadSpec       `json:"read,omitempty"`
@@ -538,6 +541,14 @@ func Validate(definition Definition) ValidationResult {
 				add(blocking("method_"+family.ID, "Read-only method", "Generic connector reads support GET and POST list/search endpoints."))
 			}
 		}
+		if authModel := strings.TrimSpace(family.AuthModel); authModel != "" {
+			if _, ok := authModels[authModel]; !ok {
+				add(blocking("auth_"+family.ID, "Family auth model", fmt.Sprintf("Auth model %q is not supported.", authModel)))
+			}
+			if (authModel == "duo_hmac" || authModel == "duo_hmac_v5") && (!hasCredentialField(definition.Auth.CredentialFields, "client_id") || !hasCredentialField(definition.Auth.CredentialFields, "client_secret")) {
+				add(blocking("auth_fields_"+family.ID, "Family signing credentials", "Family Duo HMAC auth requires client_id and client_secret credential fields."))
+			}
+		}
 		if strings.TrimSpace(family.IDField) == "" {
 			add(blocking("id_field_"+family.ID, "Resource identity", "Each resource family needs a stable id field."))
 		}
@@ -748,6 +759,10 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	case "signature", "aws_sigv4":
 		if len(auth.CredentialFields) == 0 {
 			add(blocking("auth_signing_fields", "Signing credentials", "Signed request auth requires explicit credential fields."))
+		}
+	case "duo_hmac", "duo_hmac_v5":
+		if !hasCredentialField(auth.CredentialFields, "client_id") || !hasCredentialField(auth.CredentialFields, "client_secret") {
+			add(blocking("auth_duo_hmac_fields", "Duo signing credentials", "Duo HMAC auth requires client_id and client_secret credential fields."))
 		}
 	}
 	if auth.TokenExpirationBufferSeconds < 0 {
@@ -1142,6 +1157,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		if family.Method == "" {
 			family.Method = "GET"
 		}
+		family.AuthModel = strings.TrimSpace(family.AuthModel)
 		family.ListKey = strings.TrimSpace(family.ListKey)
 		family.RecordSelector = strings.TrimSpace(family.RecordSelector)
 		family.IDField = strings.TrimSpace(family.IDField)

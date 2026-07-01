@@ -1,0 +1,20 @@
+{
+  "auth_model": "duo_hmac",
+  "evidence_cas_reference_kind": "duo.evidence_cas_reference",
+  "families": [
+    "user",
+    "group",
+    "administrator",
+    "endpoint",
+    "phone",
+    "token",
+    "web_authn_credential",
+    "role",
+    "application",
+    "audit_event",
+    "authentication_log"
+  ],
+  "health_endpoint": "/source-runtimes/health?source_id=duo",
+  "provider_api_status": "verified",
+  "source_id": "duo"
+}
