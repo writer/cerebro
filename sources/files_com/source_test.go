@@ -176,10 +176,10 @@ func TestIdentityFamiliesUseStaticResourceType(t *testing.T) {
 		payload      map[string]any
 		resourceType string
 	}{
-		{family: familyGroup, path: "/groups", resourceType: "group", payload: map[string]any{"id": 3001, "name": "Operations"}},
-		{family: familyGroupUser, path: "/group_users", resourceType: "group_user", payload: map[string]any{"group_id": 3001, "id": 7001, "user_id": 501, "username": "ada"}},
-		{family: familyUserGroup, path: "/user/groups", resourceType: "group", payload: map[string]any{"id": 3002, "name": "Finance"}},
-		{family: familyUser, path: "/users", resourceType: "user", payload: map[string]any{"email": "ada@example.test", "id": 501, "name": "Ada"}},
+		{family: familyGroup, path: "/groups", resourceType: "group", payload: map[string]any{"id": 3001, "name": "Operations", "type": "unexpected"}},
+		{family: familyGroupUser, path: "/group_users", resourceType: "group_user", payload: map[string]any{"group_id": 3001, "id": 7001, "type": "unexpected", "user_id": 501, "username": "ada"}},
+		{family: familyUserGroup, path: "/user/groups", resourceType: "group", payload: map[string]any{"id": 3002, "name": "Finance", "type": "unexpected"}},
+		{family: familyUser, path: "/users", resourceType: "user", payload: map[string]any{"email": "ada@example.test", "id": 501, "name": "Ada", "type": "unexpected"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.family, func(t *testing.T) {
