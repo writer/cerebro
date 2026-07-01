@@ -85,6 +85,58 @@ func TestSourceCheckAndReadDefinition(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesFamilyBaseURLOverride(t *testing.T) {
+	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("default server received family override request at %q", r.URL.Path)
+	}))
+	defer defaultServer.Close()
+	auditServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/audit/v1/logs" {
+			t.Fatalf("audit path = %q, want /audit/v1/logs", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries": []map[string]any{{"id": "A1", "action": "user_login"}},
+		})
+	}))
+	defer auditServer.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: defaultServer.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "audit_log",
+			Path:           "/logs",
+			RecordSelector: "$.entries[*]",
+			IDField:        "id",
+			Config:         &connectordefinitions.FamilyConfigSpec{BaseURL: auditServer.URL + "/audit/v1"},
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.audit_log",
+				SchemaRef: "example/audit_log/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "supported"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"family":    "audit_log",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "example.audit_log" {
+		t.Fatalf("events = %#v, want example.audit_log event", pull.Events)
+	}
+}
+
 func TestSourceDefinitionReadsSingletonFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/account" {
@@ -518,6 +570,52 @@ func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
 	}
 	if len(pull.Events) != 1 || pull.Events[0].Kind != "huggingface.repositories" {
 		t.Fatalf("events = %#v, want huggingface.repositories event", pull.Events)
+	}
+}
+
+func TestSourceDefinitionUsesFamilyIdentityKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/sessions" {
+			t.Fatalf("path = %q, want /sessions", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{
+			{"user_id": "user-1", "ip": "203.0.113.10"},
+			{"user_id": "user-1", "ip": "198.51.100.25"},
+		}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "sessions",
+			Path:           "/sessions",
+			RecordSelector: "$.data[*]",
+			IDField:        "user_id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.sessions", SchemaRef: "example/sessions/v1"},
+			Config:         &connectordefinitions.FamilyConfigSpec{IdentityKeys: []string{"ip"}},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want 2 identity-scoped events", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs collapsed across identity keys: %q", pull.Events[0].Id)
 	}
 }
 

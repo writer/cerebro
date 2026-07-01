@@ -3,31 +3,41 @@ package slack
 import (
 	"context"
 	"embed"
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
+	"sync"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
+	"github.com/writer/cerebro/sources/internal/slackapi"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const (
-	sourceID        = "slack"
-	defaultFamily   = familyUser
-	familyTeam      = "team"
-	familyUser      = "user"
-	familyChannel   = "channel"
-	familyUserGroup = "user_group"
+	sourceID              = slackapi.SourceID
+	defaultFamily         = familyUser
+	familyTeam            = "team"
+	familyUser            = "user"
+	familyChannel         = "channel"
+	familyUserGroup       = "user_group"
+	familyChannelMember   = slackapi.FamilyChannelMember
+	familyUserGroupMember = slackapi.FamilyUserGroupMember
+	familyAccessLog       = "access_log"
+	familyAuditLog        = slackapi.FamilyAuditLog
 
-	slackNextCursor = "response_metadata.next_cursor"
+	slackNextCursor      = "response_metadata.next_cursor"
+	defaultWebAPIBaseURL = slackapi.DefaultWebAPIBaseURL
 )
 
-type Source struct{ inner *jsonapi.Source }
+type Source struct {
+	inner                    *jsonapi.Source
+	slackClientMu            sync.Mutex
+	slackClient              *http.Client
+	slackClientAllowLoopback bool
+}
 
 func New() (*Source, error) {
 	spec, err := loadSpec()
@@ -36,11 +46,11 @@ func New() (*Source, error) {
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
 		SourceID:        sourceID,
-		DefaultBaseURL:  "https://slack.com/api",
+		DefaultBaseURL:  defaultWebAPIBaseURL,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
-		ResponseError:   slackResponseError,
+		ResponseError:   slackapi.ResponseError,
 		Families:        slackFamilies(),
 	})
 	if err != nil {
@@ -51,16 +61,51 @@ func New() (*Source, error) {
 
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.inner.Spec() }
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
+	if slackapi.CustomFamily(sourcecdk.ConfigValue(cfg, "family")) {
+		_, err := slackapi.Read(ctx, cfg, nil, s.slackOptions(1))
+		return err
+	}
 	return s.inner.Check(ctx, cfg)
 }
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	if slackapi.CustomFamily(sourcecdk.ConfigValue(cfg, "family")) {
+		return slackapi.Discover(ctx, cfg, s.slackOptions(slackapi.PageSize(cfg, 100)))
+	}
 	return s.inner.Discover(ctx, cfg)
 }
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	if slackapi.CustomFamily(sourcecdk.ConfigValue(cfg, "family")) {
+		return slackapi.Read(ctx, cfg, cursor, s.slackOptions(slackapi.PageSize(cfg, 100)))
+	}
 	return s.inner.Read(ctx, cfg, cursor)
 }
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
+}
+
+func (s *Source) slackOptions(pageSize int) slackapi.Options {
+	allowLoopback := s != nil && s.inner != nil && s.inner.AllowLoopbackBaseURL
+	return slackapi.Options{
+		AllowLoopback: allowLoopback,
+		Client:        s.slackHTTPClient(allowLoopback),
+		PageSize:      pageSize,
+	}
+}
+
+func (s *Source) slackHTTPClient(allowLoopback bool) *http.Client {
+	if s == nil {
+		return nil
+	}
+	s.slackClientMu.Lock()
+	defer s.slackClientMu.Unlock()
+	if s.slackClient == nil || s.slackClientAllowLoopback != allowLoopback {
+		s.slackClient = sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:      sourceID,
+			AllowLoopback: allowLoopback,
+		})
+		s.slackClientAllowLoopback = allowLoopback
+	}
+	return s.slackClient
 }
 
 func slackFamilies() []jsonapi.Family {
@@ -69,6 +114,7 @@ func slackFamilies() []jsonapi.Family {
 		slackUserFamily(),
 		slackChannelFamily(),
 		slackUserGroupFamily(),
+		slackAccessLogFamily(),
 	}
 }
 
@@ -164,6 +210,42 @@ func slackUserGroupFamily() jsonapi.Family {
 	}
 }
 
+func slackAccessLogFamily() jsonapi.Family {
+	return jsonapi.Family{
+		Name:            familyAccessLog,
+		Path:            "/team.accessLogs",
+		URNKind:         "slack_access_log",
+		IDKeys:          []string{"user_id"},
+		ListKeys:        []string{"logins"},
+		CursorParam:     "page",
+		PageFirstCursor: "1",
+		PageSizeParams:  []string{"count"},
+		TimestampKeys:   []string{"date_last", "date_first"},
+		Attributes: map[string]string{
+			"actor_id":      "user_id",
+			"actor_name":    "username",
+			"user_id":       "user_id",
+			"username":      "username",
+			"ip_address":    "ip",
+			"user_agent":    "user_agent",
+			"isp":           "isp",
+			"country":       "country",
+			"region":        "region",
+			"login_count":   "count",
+			"first_seen_at": "date_first",
+			"last_seen_at":  "date_last",
+		},
+		StaticAttributes: map[string]string{
+			"event_type":     "team_access",
+			"source_product": "slack",
+		},
+		Config: jsonapi.FamilyConfig{
+			ConfigQuery:  map[string]string{"before": "before"},
+			IdentityKeys: []string{"ip"},
+		},
+	}
+}
+
 func slackPagedFamily(family jsonapi.Family) jsonapi.Family {
 	family.NextCursorKeys = []string{slackNextCursor}
 	family.PageSizeParams = []string{"limit"}
@@ -172,34 +254,4 @@ func slackPagedFamily(family jsonapi.Family) jsonapi.Family {
 
 func slackStaticAttributes() map[string]string {
 	return map[string]string{"source_product": "slack"}
-}
-
-func slackResponseError(body []byte) error {
-	var payload struct {
-		OK       *bool  `json:"ok"`
-		Error    string `json:"error"`
-		Needed   string `json:"needed"`
-		Provided string `json:"provided"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return fmt.Errorf("decode slack response: %w", err)
-	}
-	if payload.OK == nil || *payload.OK {
-		return nil
-	}
-	message := strings.TrimSpace(payload.Error)
-	if message == "" {
-		message = "request_failed"
-	}
-	details := []string{}
-	if needed := strings.TrimSpace(payload.Needed); needed != "" {
-		details = append(details, "needed="+needed)
-	}
-	if provided := strings.TrimSpace(payload.Provided); provided != "" {
-		details = append(details, "provided="+provided)
-	}
-	if len(details) != 0 {
-		return fmt.Errorf("slack API returned ok=false: %s (%s)", message, strings.Join(details, ", "))
-	}
-	return fmt.Errorf("slack API returned ok=false: %s", message)
 }
