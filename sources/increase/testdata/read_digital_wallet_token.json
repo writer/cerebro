@@ -44,7 +44,6 @@
       "created_at": "2020-01-31T23:59:59Z",
       "status": "active",
       "resource_id": "digital_wallet_token_izi62go3h51p369jrie0",
-      "resource_name": "card_oubs0hwk5rn6knuecxg2",
       "resource_urn": "urn:cerebro:tenant:increase_digital_wallet_token:digital_wallet_token_izi62go3h51p369jrie0",
       "secret_created_at": "2020-01-31T23:59:59Z",
       "secret_id": "digital_wallet_token_izi62go3h51p369jrie0",

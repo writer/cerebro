@@ -107,6 +107,12 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				if got := event.Attributes["secret_type"]; got != "digital_wallet_token" {
 					t.Fatalf("secret_type = %q, want digital_wallet_token", got)
 				}
+				if got := event.Attributes["secret_name"]; got != "card_oubs0hwk5rn6knuecxg2" {
+					t.Fatalf("secret_name = %q, want provider card id", got)
+				}
+				if got := event.Attributes["resource_name"]; got != "" {
+					t.Fatalf("resource_name = %q, want empty without provider resource name", got)
+				}
 			}
 			if tc.family == familyAchPrenotification {
 				if got := event.Attributes["alert_name"]; got != "Account Funding" {
