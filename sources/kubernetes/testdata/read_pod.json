@@ -1,35 +1,47 @@
 [
   {
     "attributes": {
-      "cluster_id": "cluster-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
       "family": "pod",
-      "namespace": "default",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
-      "resource_type": "pod",
-      "resource_urn": "urn:cerebro:tenant:runtime_pod:record-1",
-      "source_event_id": "record-1",
       "tenant_id": "tenant",
-      "workload_uid": "workload-uid-1"
+      "provider": "kubernetes",
+      "source_provider": "kubernetes",
+      "resource_id": "pod-uid-payments-api",
+      "resource_name": "payments-api-7d6f5b7d9b-jx4pt",
+      "resource_type": "pod",
+      "resource_urn": "urn:cerebro:tenant:kubernetes_workload:prod-eks-us-east-1:payments:pod-uid-payments-api",
+      "cluster_id": "prod-eks-us-east-1",
+      "cluster_name": "prod-us-east-1",
+      "namespace": "payments",
+      "workload_uid": "pod-uid-payments-api",
+      "workload_kind": "Pod",
+      "workload_name": "payments-api-7d6f5b7d9b-jx4pt",
+      "service_account_name": "payments-api",
+      "node_name": "ip-10-0-1-10",
+      "image": "registry.example.com/payments/api:v2026.06.01",
+      "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
-    "id": "kubernetes-pod-record-1",
+    "id": "kubernetes-pod-pod-uid-payments-api",
     "kind": "kubernetes.pod",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "namespace": "default",
-      "resource_id": "record-1",
-      "resource_type": "pod",
-      "resource_urn": "urn:cerebro:tenant:runtime_pod:record-1",
-      "uid": "uid-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "uid": "pod-uid-payments-api",
+      "name": "payments-api-7d6f5b7d9b-jx4pt",
+      "namespace": "payments",
+      "service_account_name": "payments-api",
+      "node_name": "ip-10-0-1-10",
+      "host_network": false,
+      "host_pid": false,
+      "host_ipc": false,
+      "images": [
+        "registry.example.com/payments/api:v2026.06.01"
+      ],
+      "image_digests": [
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "labels": {
+        "app": "payments-api",
+        "pod-template-hash": "7d6f5b7d9b"
+      }
     },
     "schema_ref": "kubernetes/pod/v1",
     "source_id": "kubernetes",

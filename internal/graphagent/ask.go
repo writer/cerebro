@@ -850,20 +850,47 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 
 func postProcessQuestionnaireEvidenceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
 	limit := postProcessedRowLimit(plan)
-	result := make([]map[string]any, 0, limit)
 	seen := map[string]struct{}{}
+	groups := map[string][]map[string]any{}
+	groupOrder := []string{}
 	for index, row := range rows {
 		key := questionnaireEvidenceCandidateKey(row, index)
 		if _, ok := seen[key]; ok {
 			continue
 		}
 		seen[key] = struct{}{}
-		result = append(result, row)
-		if len(result) >= limit {
+		groupKey := questionnaireEvidenceControlKey(row, key)
+		if _, ok := groups[groupKey]; !ok {
+			groupOrder = append(groupOrder, groupKey)
+		}
+		groups[groupKey] = append(groups[groupKey], row)
+	}
+	result := make([]map[string]any, 0, limit)
+	for offset := 0; len(result) < limit; offset++ {
+		added := false
+		for _, groupKey := range groupOrder {
+			group := groups[groupKey]
+			if offset >= len(group) {
+				continue
+			}
+			result = append(result, group[offset])
+			added = true
+			if len(result) >= limit {
+				break
+			}
+		}
+		if !added {
 			break
 		}
 	}
 	return result
+}
+
+func questionnaireEvidenceControlKey(row map[string]any, fallback string) string {
+	if controlURN := strings.TrimSpace(stringRowValue(row, "control_urn")); controlURN != "" {
+		return controlURN
+	}
+	return fallback
 }
 
 func questionnaireEvidenceCandidateKey(row map[string]any, index int) string {
@@ -1254,13 +1281,15 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentQuestionnaireEvidence},
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
 			"Show controls with open findings and cite the affected resources.",
 			"Count findings by source family.",
 			"Show source health and freshness for security integrations.",
 			"Explain the evidence for a specific finding URN.",
+			"List privileged Okta users without strong MFA evidence.",
+			"List dormant Okta users that still have app or admin access.",
 			"Answer an Okta MFA questionnaire item from bounded graph evidence.",
 		},
 		TraceID: traceID,

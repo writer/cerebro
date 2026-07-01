@@ -1,3 +1,3 @@
 [
-  "urn:cerebro:tenant:runtime_rbac_role:record-1"
+  "urn:cerebro:tenant:kubernetes_rbac_role:prod-eks-us-east-1:Role:payments:secret-reader"
 ]

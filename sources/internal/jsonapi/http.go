@@ -105,6 +105,9 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 	for _, original := range records {
 		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.request.pathParams, original.Values)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail path: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
@@ -115,16 +118,25 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail read: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
 		raw, err := detailRecordRaw(body, family.AllowBareDetailRecord)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail record: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
 		next, err := mergedRecord(family, original, raw)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail merge: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
@@ -181,7 +193,7 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 
 func synthesizedPageCursorStep(family Family, pageSize int) int {
 	switch cursorParam(family) {
-	case "offset", "start":
+	case "offset", "start", "startAt":
 		return pageSize
 	default:
 		return 1
@@ -625,7 +637,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -833,7 +845,7 @@ func parseTime(raw string) (time.Time, bool) {
 		whole, fraction := math.Modf(seconds)
 		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
 			return parsed.UTC(), true
@@ -1080,18 +1092,9 @@ func dedupeEventRecords(records []record) []record {
 	return out
 }
 
-func recordIdentity(id string, values map[string]any) string {
+func recordIdentity(id string, values map[string]any, identityKeys []string) string {
 	parts := []string{strings.TrimSpace(id)}
-	for _, key := range []string{
-		"device_id",
-		"device.id",
-		"serial_number",
-		"agent_id",
-		"agent.uuid",
-		"device_uuid",
-		"installed_version",
-		"version",
-	} {
+	for _, key := range recordIdentityKeys(identityKeys) {
 		if value := firstValueString(values, key); value != "" {
 			parts = append(parts, key+"="+value)
 		}
@@ -1104,6 +1107,32 @@ func recordIdentity(id string, values map[string]any) string {
 		return parts[0]
 	}
 	return parts[0] + "-" + stableID(strings.Join(parts, "\x00"))
+}
+
+func recordIdentityKeys(identityKeys []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(identityKeys)+8)
+	for _, key := range append(append([]string{}, identityKeys...), []string{
+		"device_id",
+		"device.id",
+		"serial_number",
+		"agent_id",
+		"agent.uuid",
+		"device_uuid",
+		"installed_version",
+		"version",
+	}...) {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
 }
 
 func nonEmpty(values []string) []string {

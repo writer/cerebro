@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -156,5 +157,33 @@ func TestReadTailscaleTailnetSettingsFallsBackToTenantID(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["external_id"]; got != "writer" {
 		t.Fatalf("external_id = %q, want tenant_id fallback writer", got)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/tailnet/-/devices" {
+			t.Fatalf("request path = %q, want /tailnet/-/devices", got)
+		}
+		http.Error(w, `{"message":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    "device",
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "tailscale API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
 	}
 }

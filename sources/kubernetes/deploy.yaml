@@ -12,6 +12,16 @@ runtimes:
       family: namespace
       kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
       per_page: "100"
+  - localId: ingress
+    config:
+      family: ingress
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: node
+    config:
+      family: node
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
   - localId: pod
     config:
       family: pod
@@ -30,6 +40,11 @@ runtimes:
   - localId: rbac-binding
     config:
       family: rbac_binding
+      kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
+      per_page: "100"
+  - localId: service
+    config:
+      family: service
       kubeconfig_path: env:KUBERNETES_KUBECONFIG_PATH
       per_page: "100"
   - localId: service-account

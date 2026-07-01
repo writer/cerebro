@@ -1,0 +1,31 @@
+[
+  {
+    "id": "jira-groups-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.groups",
+    "schema_ref": "jira/groups/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "external_id": "group-1",
+      "family": "groups",
+      "group_id": "group-1",
+      "group_name": "jira-administrators",
+      "provider": "jira",
+      "record_class": "identity_group",
+      "resource_id": "group-1",
+      "resource_name": "jira-administrators",
+      "resource_type": "identity_group",
+      "resource_urn": "urn:cerebro:tenant:jira_groups:group-1",
+      "schema": "groups",
+      "source_event_id": "group-1",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "tenant_id": "tenant"
+    },
+    "payload": {
+      "groupId": "group-1",
+      "name": "jira-administrators"
+    }
+  }
+]

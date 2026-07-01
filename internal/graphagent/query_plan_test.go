@@ -97,6 +97,30 @@ func TestOntologyEntityPropertiesStayWithinProjectedContract(t *testing.T) {
 	}
 }
 
+func TestOntologyEntityTypesAreUnique(t *testing.T) {
+	seen := map[string]struct{}{}
+	for _, entity := range canonicalGraphOntology.Entities {
+		if _, ok := seen[entity.Type]; ok {
+			t.Fatalf("ontology entity type %q is documented more than once", entity.Type)
+		}
+		seen[entity.Type] = struct{}{}
+	}
+}
+
+func TestOntologyRelationEndpointTypesAreDocumented(t *testing.T) {
+	entityTypes := map[string]struct{}{"*": {}}
+	for _, entity := range canonicalGraphOntology.Entities {
+		entityTypes[entity.Type] = struct{}{}
+	}
+	for _, relation := range canonicalGraphOntology.Relations {
+		for _, entityType := range append(relation.FromTypes, relation.ToTypes...) {
+			if _, ok := entityTypes[entityType]; !ok {
+				t.Fatalf("relation %q references undocumented entity type %q", relation.Relation, entityType)
+			}
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -110,6 +134,22 @@ func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	}
 	if strings.Contains(hint, "Entity `connector`:") || strings.Contains(hint, "Useful properties: source_id, runtime_id, status, last_sync_minutes") {
 		t.Fatalf("PromptHint() still advertises connector node shape:\n%s", hint)
+	}
+}
+
+func TestOntologyPromptDocumentsOktaAccessReviewGraphShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"Entity `okta.user`",
+		"Entity `okta.role`",
+		"Okta access-review evidence is graph-shaped",
+		"`okta.user` -> `okta.group` via `member_of`",
+		"`mfa_phishing_resistant`",
+		"do not treat missing factor detail as proof of weak MFA",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
 	}
 }
 
@@ -141,6 +181,29 @@ func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
 	}
 }
 
+func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
+	cases := []struct {
+		question string
+		want     string
+	}{
+		{question: "Which privileged Okta users lack strong MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which privileged Okta users lack MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which dormant Okta users still have app or admin access?", want: IntentOktaDormantAccess},
+		{question: "Which Okta group memberships create compliance risk?", want: IntentOktaGroupAccessRisk},
+	}
+	for _, tc := range cases {
+		if got := inferIntent(tc.question, ""); got != tc.want {
+			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
+		}
+	}
+	if got := inferIntent("Which privileged Okta users have Slack app access?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(Slack access) = %q, want non-MFA intent", got)
+	}
+	if got := inferIntent("Which privileged Okta users lack app assignments?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(lack app assignments) = %q, want non-MFA intent", got)
+	}
+}
+
 func TestInferIntentDetectsFailingControls(t *testing.T) {
 	for _, question := range []string{
 		"Which controls are failing?",
@@ -150,6 +213,101 @@ func TestInferIntentDetectsFailingControls(t *testing.T) {
 	} {
 		if got := inferIntent(question, ""); got != IntentFailingControls {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentFailingControls)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaPrivilegedWeakMFA, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentOktaPrivilegedWeakMFA || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta privileged weak MFA template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.user'",
+		"relation: 'can_admin'",
+		"entity_type: 'okta.admin_role'",
+		"user.mfa_disabled = true OR toLower(mfa_phishing_resistant) = 'false'",
+		"mfa_factor_types",
+		"overclaim_guard",
+		"LIMIT 25",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryClearsNoisyOktaFilters(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
+		Plan: &AskQueryPlan{
+			Intent:  IntentOktaPrivilegedWeakMFA,
+			Limit:   25,
+			Filters: map[string]string{"entity_type": "okta.user"},
+		},
+	})
+
+	if result.Plan.Intent != IntentOktaPrivilegedWeakMFA || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta privileged weak MFA template", result)
+	}
+	if len(result.Plan.Filters) != 0 {
+		t.Fatalf("filters = %#v, want cleared Okta deterministic filters", result.Plan.Filters)
+	}
+	if !strings.Contains(result.Cypher, "relation: 'can_admin'") {
+		t.Fatalf("converted cypher missing Okta template:\n%s", result.Cypher)
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaDormantAccessTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which dormant Okta users still have app or admin access?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaDormantAccess, Limit: 30},
+	})
+
+	if result.Plan.Intent != IntentOktaDormantAccess || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta dormant access template", result)
+	}
+	for _, want := range []string{
+		"last_login_at",
+		"duration('P90D')",
+		"direct_app_assignment",
+		"group_app_assignment",
+		"admin_role_assignment",
+		"membership_event_id",
+		"overclaim_guard",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaGroupAccessRiskTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which Okta group memberships create compliance risk?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaGroupAccessRisk, Limit: 10},
+	})
+
+	if result.Plan.Intent != IntentOktaGroupAccessRisk || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta group access risk template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.group'",
+		"entity_type: 'okta.application'",
+		"relation: 'member_of'",
+		"direct_member_count",
+		"grants_entitlement",
+		"confers_capability",
+		"privileged_group_app_access",
+		"enumerate members from member_of edges or okta.group_membership events",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{"direct_members", "direct_members_count"} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("converted cypher should not expose Okta group attribute %q:\n%s", forbidden, result.Cypher)
 		}
 	}
 }
@@ -553,6 +711,13 @@ func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 		"Answer the Okta access control question",
 		"Explain Okta lifecycle evidence for user deprovisioning",
 		"Answer this policy document questionnaire item",
+		"Answer the access review questionnaire item",
+		"Do we encrypt customer data at rest?",
+		"Can you provide incident response evidence?",
+		"Do we maintain a subprocessor list?",
+		"Do we have a current SOC 2 report?",
+		"Do we train AI models on customer data?",
+		"Show vendor due diligence evidence",
 		"Show control coverage evidence gaps",
 		"Show the control evidence packet coverage",
 	} {
@@ -578,10 +743,10 @@ func TestInferIntentLeavesGenericControlEvidencePromptsForLLMPlanning(t *testing
 		"Show the evidence packet export status",
 		"List all policy documents",
 		"Show policy doc count",
+		"Policy document inventory",
+		"Show Okta findings",
 		"Answer this security questionnaire item",
-		"Is data encrypted at rest in S3?",
 		"Show source evidence for Okta access findings",
-		"Audit answer for access posture",
 	} {
 		if got := inferIntent(question, ""); got != IntentRawCypher {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentRawCypher)
@@ -620,8 +785,15 @@ func TestQuestionnairePromptsUseDeterministicGraphRetrieval(t *testing.T) {
 		{name: "okta mfa", question: "Does Okta enforce MFA for access?", wantTopic: "okta_mfa", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bmfa\\b.*'`},
 		{name: "okta access", question: "Answer the Okta access control question", wantTopic: "okta_access", wantSnippet: `questionnaire_match_text =~ '(?s).*\\baccess\\b.*'`},
 		{name: "okta lifecycle", question: "Explain Okta lifecycle evidence for deprovisioning", wantTopic: "okta_lifecycle", wantSnippet: `questionnaire_match_text =~ '(?s).*\\blifecycle\\b.*'`},
+		{name: "access review", question: "Answer the access review questionnaire item", wantTopic: "access_review", wantSnippet: "questionnaire_match_text CONTAINS 'access review'"},
+		{name: "encryption", question: "Do we encrypt customer data at rest?", wantTopic: "encryption", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bencrypt\\b.*'`},
+		{name: "incident response", question: "Can you provide incident response evidence?", wantTopic: "incident_response", wantSnippet: "questionnaire_match_text CONTAINS 'incident response'"},
+		{name: "subprocessors", question: "Do we maintain a subprocessor list?", wantTopic: "subprocessors", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bsubprocessor\\b.*'`},
+		{name: "audit report", question: "Do we have a current SOC 2 report?", wantTopic: "audit_report", wantSnippet: "questionnaire_match_text CONTAINS 'soc 2'"},
 		{name: "policy docs", question: "Answer this policy document questionnaire item", wantTopic: "policy_documents", wantSnippet: "questionnaire_match_text CONTAINS 'policy_document'"},
 		{name: "hyphenated policy docs", question: "Answer this policy-document questionnaire item", wantTopic: "policy_documents", wantSnippet: "questionnaire_match_text CONTAINS 'policy_document'"},
+		{name: "ai data use", question: "Do we train AI models on customer data?", wantTopic: "ai_data_use", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bai\\b.*'`},
+		{name: "vendor due diligence", question: "Show vendor due diligence evidence", wantTopic: "vendor_due_diligence", wantSnippet: "questionnaire_match_text CONTAINS 'due diligence'"},
 		{name: "coverage gap", question: "Show control coverage evidence gaps", wantTopic: "control_coverage", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bcoverage\\b.*'`},
 		{name: "hyphenated coverage gap", question: "Show control-coverage evidence-gaps", wantTopic: "control_coverage", wantSnippet: `questionnaire_match_text =~ '(?s).*\\bcoverage\\b.*'`},
 	} {

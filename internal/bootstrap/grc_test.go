@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	grcuploadhttp "github.com/writer/cerebro/internal/sourcehttp/grcupload"
+	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -36,6 +37,31 @@ func TestJoinGRCErrorsPreservesAllFailures(t *testing.T) {
 	}
 	if !errors.Is(err, ports.ErrFindingNotFound) {
 		t.Fatalf("joined error = %v, want finding not found", err)
+	}
+}
+
+func TestGRCQuestionnaireRuntimeUnavailableMapsToServiceUnavailable(t *testing.T) {
+	if got := grcHTTPStatusCode(questionnairehttp.ErrRuntimeUnavailable); got != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", got, http.StatusServiceUnavailable)
+	}
+}
+
+func TestGRCScopeDoesNotReadQuestionnaireVendorURN(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/grc/control-packets?tenant_id=writer&vendor_urn=urn:cerebro:writer:vendor:okta", nil)
+	scope, err := grcScopeFromRequest(req)
+	if err != nil {
+		t.Fatalf("grcScopeFromRequest error = %v", err)
+	}
+	if scope.VendorURN != "" {
+		t.Fatalf("scope vendor = %q, want empty shared GRC scope", scope.VendorURN)
+	}
+
+	questionnaireScope, err := grcQuestionnaireScopeFromRequest(req)
+	if err != nil {
+		t.Fatalf("grcQuestionnaireScopeFromRequest error = %v", err)
+	}
+	if questionnaireScope.VendorURN != "urn:cerebro:writer:vendor:okta" {
+		t.Fatalf("questionnaire vendor = %q, want vendor urn", questionnaireScope.VendorURN)
 	}
 }
 

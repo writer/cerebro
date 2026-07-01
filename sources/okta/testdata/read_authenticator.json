@@ -1,0 +1,38 @@
+[
+  {
+    "id": "okta-authenticator-aut-password-1776925200000",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "id": "aut-password",
+      "domain": "writer.okta.com",
+      "name": "Password",
+      "key": "okta_password",
+      "status": "ACTIVE",
+      "type": "password",
+      "raw": {
+        "id": "aut-password",
+        "key": "okta_password",
+        "name": "Password",
+        "status": "ACTIVE",
+        "type": "password",
+        "created": "2026-04-20T00:00:00.000Z",
+        "lastUpdated": "2026-04-23T01:00:00.000Z"
+      }
+    },
+    "attributes": {
+      "authenticator_id": "aut-password",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "okta_password",
+      "name": "Password",
+      "resource_id": "aut-password",
+      "resource_type": "Authenticator",
+      "status": "ACTIVE",
+      "type": "password"
+    }
+  }
+]

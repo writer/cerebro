@@ -237,6 +237,34 @@ func TestSourceRejectsMissingProviderListKey(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/datasets" {
+			t.Fatalf("path = %q, want /v1/datasets", r.URL.Path)
+		}
+		http.Error(w, `{"message":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    familyDatasets,
+		"token":     "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "cohere API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func TestFixtureSourceUsesProviderPayloads(t *testing.T) {
 	fixture, err := NewFixture()
 	if err != nil {

@@ -1,0 +1,43 @@
+[
+  {
+    "id": "jira-project-roles-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.project_roles",
+    "schema_ref": "jira/project_roles/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "admin": "true",
+      "external_id": "10002",
+      "family": "project_roles",
+      "project_id": "10001",
+      "project_id_or_key": "ENG",
+      "project_key": "ENG",
+      "provider": "jira",
+      "record_class": "identity_role_assignment",
+      "resource_id": "10002",
+      "resource_name": "Administrators",
+      "resource_type": "project_role",
+      "resource_urn": "urn:cerebro:tenant:jira_project_roles:10002",
+      "role_id": "10002",
+      "role_name": "Administrators",
+      "schema": "project_roles",
+      "self_url": "https://example.com/rest/api/3/project/ENG/role/10002",
+      "source_event_id": "10002",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "tenant_id": "tenant"
+    },
+    "payload": {
+      "actors": [
+        {"id": 20001, "type": "atlassian-user-role-actor", "displayName": "User One", "actorUser": {"accountId": "acct-1"}},
+        {"id": 20002, "type": "atlassian-group-role-actor", "displayName": "jira-administrators", "actorGroup": {"groupId": "group-1", "name": "jira-administrators"}}
+      ],
+      "id": 10002,
+      "name": "Administrators",
+      "project_id_or_key": "ENG",
+      "scope": {"type": "PROJECT", "project": {"id": "10001", "key": "ENG"}},
+      "self": "https://example.com/rest/api/3/project/ENG/role/10002"
+    }
+  }
+]
