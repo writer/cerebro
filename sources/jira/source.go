@@ -58,11 +58,18 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	if param, values := jiraapi.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		value := firstNonEmpty(values...)
+		if value == "" {
+			return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+		}
+		if err := s.checkHealth(ctx, configWithValue(runtimeCfg, param, value)); err != nil {
+			return err
+		}
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
-	}
-	if param, values := jiraapi.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
-		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Check(ctx, runtimeCfg)
 }
@@ -120,6 +127,12 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func configWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.Config {
+	values := cfg.Values()
+	values[key] = value
+	return sourcecdk.NewConfig(values)
 }
 
 func (s *Source) allowLoopbackForTest() {

@@ -114,6 +114,23 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	assertJiraLink(t, links, roleURN, relationCanPerform, roleGrantURN)
 }
 
+func TestJiraPermissionGrantFallbackIDUsesCanonicalJSON(t *testing.T) {
+	first := jiraPermissionGrantID(map[string]any{
+		"holder": map[string]any{"type": "group", "value": "jira-administrators"},
+		"scope":  "fallback",
+	})
+	second := jiraPermissionGrantID(map[string]any{
+		"scope":  "fallback",
+		"holder": map[string]any{"value": "jira-administrators", "type": "group"},
+	})
+	if first == "" {
+		t.Fatal("fallback grant ID is empty")
+	}
+	if first != second {
+		t.Fatalf("fallback grant IDs differ: %q != %q", first, second)
+	}
+}
+
 func TestJiraAuditProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "jira", Kind: "jira.audit_events", Attributes: map[string]string{"event_type": "Project updated", "actor_id": "acct-1", "resource_id": "10001", "resource_name": "Engineering", "resource_type": "project"}}
 	entities, links, err := jiraAuditEventsProjections(event)

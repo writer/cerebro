@@ -93,6 +93,44 @@ func TestSourceCheckAndReadUsersUsesJiraREST(t *testing.T) {
 	}
 }
 
+func TestSourceCheckProjectRolesUsesConfiguredFanoutProjectKey(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rest/api/3/myself":
+			_ = json.NewEncoder(w).Encode(map[string]any{"accountId": "current-user"})
+		case "/rest/api/3/project/ENG/roledetails":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":          "tenant",
+		"base_url":           server.URL,
+		"family":             jiraapi.FamilyProjectRoles,
+		"project_id_or_keys": "ENG",
+		"username":           "alice@example.test",
+		"password":           "api-token",
+		"site_url":           "example.atlassian.net",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if strings.Join(requests, ",") != "/rest/api/3/myself,/rest/api/3/project/ENG/roledetails" {
+		t.Fatalf("requests = %v, want health then scoped project roles check", requests)
+	}
+}
+
 func TestReadMapsJiraManagementFamilies(t *testing.T) {
 	source, err := New()
 	if err != nil {

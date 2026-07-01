@@ -186,7 +186,7 @@ func jiraPermissionSchemesProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		},
 	})
 	for _, grant := range jiraPermissionGrants(event) {
-		grantID := firstNonEmpty(jiraAnyString(grant["id"]), jiraAnyString(grant["permission"]), jiraStableID(fmt.Sprint(grant)))
+		grantID := jiraPermissionGrantID(grant)
 		permission := jiraAnyString(grant["permission"])
 		grantURN := projectionURN(tenantID, "jira_permission_grant", policyID, grantID)
 		addEntity(entities, &ports.ProjectedEntity{
@@ -256,6 +256,17 @@ func jiraPermissionGrants(event *cerebrov1.EventEnvelope) []map[string]any {
 		}
 	}
 	return grants
+}
+
+func jiraPermissionGrantID(grant map[string]any) string {
+	if grantID := firstNonEmpty(jiraAnyString(grant["id"]), jiraAnyString(grant["permission"])); grantID != "" {
+		return grantID
+	}
+	encoded, err := json.Marshal(grant)
+	if err != nil {
+		return jiraStableID("permission_grant")
+	}
+	return jiraStableID(string(encoded))
 }
 
 func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, string, string) {
