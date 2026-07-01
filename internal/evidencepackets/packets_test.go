@@ -304,6 +304,7 @@ func TestBuildAddsEvidenceBackedQuestionnaireAnswers(t *testing.T) {
 			ClaimIds:       []string{"claim-okta"},
 			EventIds:       []string{"event-okta"},
 			GraphRootUrns:  []string{"urn:cerebro:test:identity:admin"},
+			GraphPathUrns:  []string{"urn:cerebro:test:okta:principal:00u123", "urn:cerebro:test:okta:application:payroll"},
 			LastObservedAt: timestamppb.New(observedAt),
 		}, {
 			Id:             "ev-policy",
@@ -341,6 +342,11 @@ func TestBuildAddsEvidenceBackedQuestionnaireAnswers(t *testing.T) {
 	}
 	if len(supported.SourceEvidence) != 1 || supported.SourceEvidence[0].SourceID != "okta" {
 		t.Fatalf("source evidence = %#v, want Okta source evidence", supported.SourceEvidence)
+	}
+	if !containsString(supported.SourceEvidence[0].SourceEventIDs, "event-okta") ||
+		!containsString(supported.SourceEvidence[0].GraphRootURNs, "urn:cerebro:test:identity:admin") ||
+		!containsString(supported.SourceEvidence[0].GraphPathIDs, "urn:cerebro:test:okta:application:payroll") {
+		t.Fatalf("source evidence provenance = %#v, want graph source provenance", supported.SourceEvidence[0])
 	}
 	if len(supported.PolicyDocuments) != 1 || supported.PolicyDocuments[0].SourceID != "grc" {
 		t.Fatalf("policy documents = %#v, want policy document evidence", supported.PolicyDocuments)

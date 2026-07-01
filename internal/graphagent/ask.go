@@ -850,20 +850,47 @@ func postProcessFailingControlRows(plan AskQueryPlan, rows []map[string]any) []m
 
 func postProcessQuestionnaireEvidenceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
 	limit := postProcessedRowLimit(plan)
-	result := make([]map[string]any, 0, limit)
 	seen := map[string]struct{}{}
+	groups := map[string][]map[string]any{}
+	groupOrder := []string{}
 	for index, row := range rows {
 		key := questionnaireEvidenceCandidateKey(row, index)
 		if _, ok := seen[key]; ok {
 			continue
 		}
 		seen[key] = struct{}{}
-		result = append(result, row)
-		if len(result) >= limit {
+		groupKey := questionnaireEvidenceControlKey(row, key)
+		if _, ok := groups[groupKey]; !ok {
+			groupOrder = append(groupOrder, groupKey)
+		}
+		groups[groupKey] = append(groups[groupKey], row)
+	}
+	result := make([]map[string]any, 0, limit)
+	for offset := 0; len(result) < limit; offset++ {
+		added := false
+		for _, groupKey := range groupOrder {
+			group := groups[groupKey]
+			if offset >= len(group) {
+				continue
+			}
+			result = append(result, group[offset])
+			added = true
+			if len(result) >= limit {
+				break
+			}
+		}
+		if !added {
 			break
 		}
 	}
 	return result
+}
+
+func questionnaireEvidenceControlKey(row map[string]any, fallback string) string {
+	if controlURN := strings.TrimSpace(stringRowValue(row, "control_urn")); controlURN != "" {
+		return controlURN
+	}
+	return fallback
 }
 
 func questionnaireEvidenceCandidateKey(row map[string]any, index int) string {
