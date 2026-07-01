@@ -40,7 +40,6 @@ const (
 )
 
 const (
-	apiVersionConfig       = APIVersionConfig
 	orgIDConfig            = OrgIDConfig
 	groupIDConfig          = GroupIDConfig
 	assetIDConfig          = AssetIDConfig
