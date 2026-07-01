@@ -61,6 +61,39 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 }
 
+func TestCallEventsDoNotDedupeSameCallLeg(t *testing.T) {
+	source := newTestSource(t)
+	first := callEventRecord()
+	second := callEventRecord()
+	second["event_timestamp"] = "2019-03-29T11:11:19.127783Z"
+	second["name"] = "call.answered"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireTelnyxAuth(t, r)
+		if r.URL.Path != "/call_events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{"data": []map[string]any{first, second}})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), testConfig(server.URL, familyCallEvent), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(pull.Events))
+	}
+	gotTypes := map[string]bool{}
+	for _, event := range pull.Events {
+		gotTypes[event.Attributes["event_type"]] = true
+	}
+	for _, want := range []string{"call.hangup", "call.answered"} {
+		if !gotTypes[want] {
+			t.Fatalf("missing event_type %q from %#v", want, gotTypes)
+		}
+	}
+}
+
 func TestSourceCheckAndReadFamilies(t *testing.T) {
 	tests := []struct {
 		family string
@@ -131,12 +164,27 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				if got := event.Attributes["resource_type"]; got != "notification_channel" {
 					t.Fatalf("resource_type = %q, want notification_channel", got)
 				}
+			case familyNotificationEvent:
+				if got := event.Attributes["resource_type"]; got != "notification_event" {
+					t.Fatalf("resource_type = %q, want notification_event", got)
+				}
+			case familyNotificationEventCondition:
+				if got := event.Attributes["resource_type"]; got != "notification_event_condition" {
+					t.Fatalf("resource_type = %q, want notification_event_condition", got)
+				}
 			case familySimCardGroup:
 				if got := event.Attributes["resource_type"]; got != "sim_card_group" {
 					t.Fatalf("resource_type = %q, want sim_card_group", got)
 				}
 				if got := event.Attributes["resource_id"]; got != testSIMCardGroupID {
 					t.Fatalf("resource_id = %q, want SIM card group id", got)
+				}
+			case familyWirelessConnectivityLog:
+				if got := event.Attributes["resource_id"]; got != "137509451" {
+					t.Fatalf("resource_id = %q, want wireless log id", got)
+				}
+				if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:telnyx_wireless_connectivity_log:137509451" {
+					t.Fatalf("resource_urn = %q, want wireless log URN", got)
 				}
 			}
 			if got := event.Attributes["tenant_id"]; got != "tenant" {

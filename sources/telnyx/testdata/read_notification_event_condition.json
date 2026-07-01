@@ -12,7 +12,7 @@
       "record_class": "audit_event",
       "resource_id": "00000000-0000-4000-8000-000000000007",
       "resource_name": "from phone number",
-      "resource_type": "phone_number",
+      "resource_type": "notification_event_condition",
       "resource_urn": "urn:cerebro:tenant:telnyx_notification_event_condition:00000000-0000-4000-8000-000000000007",
       "schema": "notification_event_condition",
       "source_event_id": "00000000-0000-4000-8000-000000000007",

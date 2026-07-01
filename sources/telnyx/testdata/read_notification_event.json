@@ -12,7 +12,7 @@
       "record_class": "audit_event",
       "resource_id": "00000000-0000-4000-8000-000000000006",
       "resource_name": "Emergency Number Dialed",
-      "resource_type": "Calls",
+      "resource_type": "notification_event",
       "resource_urn": "urn:cerebro:tenant:telnyx_notification_event:00000000-0000-4000-8000-000000000006",
       "schema": "notification_event",
       "source_event_id": "00000000-0000-4000-8000-000000000006",
