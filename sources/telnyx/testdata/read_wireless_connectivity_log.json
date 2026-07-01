@@ -13,7 +13,7 @@
       "resource_id": "00000000-0000-4000-8000-000000000010",
       "resource_name": "data00.telnyx",
       "resource_type": "wireless_connectivity_log",
-      "resource_urn": "urn:cerebro:tenant:telnyx_wireless_connectivity_log:137509451",
+      "resource_urn": "urn:cerebro:tenant:telnyx_wireless_connectivity_log:00000000-0000-4000-8000-000000000010",
       "schema": "wireless_connectivity_log",
       "source_event_id": "137509451",
       "source_provider": "telnyx",

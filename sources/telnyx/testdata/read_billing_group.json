@@ -8,6 +8,7 @@
       "name": "Primary billing",
       "observed_at": "2019-10-15T10:07:15.527Z",
       "provider": "telnyx",
+      "provider_id": "00000000-0000-4000-8000-000000000001",
       "record_class": "identity_group",
       "resource_id": "00000000-0000-4000-8000-000000000001",
       "resource_name": "Primary billing",
