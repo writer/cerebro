@@ -187,7 +187,7 @@ func TestSanitizeEventIDPreservesProviderIdentifiers(t *testing.T) {
 	}{
 		{name: "case preserved", input: "new_relic-tenant-findings-ISSUE-1", want: "new_relic-tenant-findings-ISSUE-1"},
 		{name: "underscore preserved", input: "new_relic-tenant-assets-NR_ENTITY_1", want: "new_relic-tenant-assets-NR_ENTITY_1"},
-		{name: "delimiters normalized", input: " new_relic/tenant:findings ISSUE-1 ", want: "new_relic-tenant-findings-ISSUE-1"},
+		{name: "delimiters encoded", input: " new_relic/tenant:findings ISSUE-1 ", want: "new_relic%2Ftenant%3Afindings%20ISSUE-1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -201,6 +201,26 @@ func TestSanitizeEventIDPreservesProviderIdentifiers(t *testing.T) {
 	}
 	if newrelicapi.SanitizeEventID("A_B") == newrelicapi.SanitizeEventID("A-B") {
 		t.Fatalf("sanitizeEventID collapsed underscore-distinct IDs")
+	}
+	if newrelicapi.SanitizeEventID("A:B") == newrelicapi.SanitizeEventID("A-B") {
+		t.Fatalf("sanitizeEventID collapsed colon-distinct IDs")
+	}
+	if newrelicapi.SanitizeEventID("A/B") == newrelicapi.SanitizeEventID("A-B") {
+		t.Fatalf("sanitizeEventID collapsed slash-distinct IDs")
+	}
+	if got, want := newrelicapi.ProjectionURN("tenant", "runtime_new_relic_entity", "A/B:C"), "urn:cerebro:tenant:runtime_new_relic_entity:A%2FB%3AC"; got != want {
+		t.Fatalf("ProjectionURN() = %q, want %q", got, want)
+	}
+}
+
+func TestNewFindingEventKeepsRequiredAttributesForPartialIssue(t *testing.T) {
+	event := newrelicapi.NewFindingEvent(newrelicapi.Settings{TenantID: "tenant"}, newrelicapi.Record{
+		"issueId": "ISSUE-1",
+	})
+	for _, attr := range []string{"severity", "status"} {
+		if got := event.Attributes[attr]; got != "unknown" {
+			t.Fatalf("%s = %q, want unknown", attr, got)
+		}
 	}
 }
 

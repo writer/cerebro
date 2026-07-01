@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -178,11 +179,11 @@ func NewFindingEvent(settings Settings, issue Record) *primitives.Event {
 		"resource_type":   FirstNonEmpty(stringValue(issue, "entityType"), "new_relic_entity"),
 		"resource_urn":    ProjectionURN(settings.TenantID, "runtime_new_relic_entity", resourceID),
 		"schema":          FamilyFindings,
-		"severity":        FirstNonEmpty(stringValue(issue, "priority"), stringValue(issue, "severity")),
+		"severity":        FirstNonEmpty(stringValue(issue, "priority"), stringValue(issue, "severity"), "unknown"),
 		"source_event_id": findingID,
 		"source_provider": SourceID,
 		"source_system":   SourceID,
-		"status":          FirstNonEmpty(stringValue(issue, "state"), stringValue(issue, "status")),
+		"status":          FirstNonEmpty(stringValue(issue, "state"), stringValue(issue, "status"), "unknown"),
 		"tenant_id":       settings.TenantID,
 		"title":           FirstNonEmpty(stringValue(issue, "title"), findingID),
 	}
@@ -303,7 +304,7 @@ func stableHash(value any) string {
 }
 
 func ProjectionURN(tenantID string, kind string, id string) string {
-	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", tenantID, kind, id))
+	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", tenantID, kind, cerebrourn.EncodeSegment(id)))
 	if err != nil {
 		return ""
 	}
@@ -315,8 +316,7 @@ func SanitizeEventID(value string) string {
 	if value == "" {
 		return SourceID + "-event"
 	}
-	replacer := strings.NewReplacer(":", "-", "/", "-", " ", "-")
-	return strings.Trim(replacer.Replace(value), "-")
+	return cerebrourn.EncodeSegment(value)
 }
 
 func TrimEmptyAttributes(attrs map[string]string) {

@@ -51,6 +51,7 @@ entries:
         - coverage:
             - control_domains:
                 - remediation
+                - security_operations
               evidence_types:
                 - remediation_state
               families:
