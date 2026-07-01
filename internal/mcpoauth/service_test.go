@@ -283,6 +283,47 @@ func TestEntitlementForIdentitySubjectGrantDoesNotRequireVerifiedEmail(t *testin
 	}
 }
 
+func TestAuthorizationCodeSubjectRequiresVerifiedEmail(t *testing.T) {
+	cases := []struct {
+		name     string
+		identity Identity
+		want     string
+	}{
+		{
+			name: "verified email keeps legacy email subject",
+			identity: Identity{
+				Subject:       "user-1",
+				Email:         "user@example.com",
+				EmailVerified: true,
+			},
+			want: "user@example.com",
+		},
+		{
+			name: "unverified email uses oidc subject",
+			identity: Identity{
+				Subject: "user-1",
+				Email:   "user@example.com",
+			},
+			want: "user-1",
+		},
+		{
+			name: "missing email uses oidc subject",
+			identity: Identity{
+				Subject: "user-1",
+			},
+			want: "user-1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := authorizationCodeSubject(tc.identity); got != tc.want {
+				t.Fatalf("authorizationCodeSubject() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T) {
 	service := &Service{cfg: config.MCPOAuthConfig{
 		Entitlements: []config.MCPOAuthEntitlement{{
