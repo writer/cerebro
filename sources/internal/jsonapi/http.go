@@ -625,7 +625,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.IdentityKeys)}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {

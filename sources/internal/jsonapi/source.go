@@ -26,7 +26,6 @@ type Family struct {
 	PageFirstCursor       string
 	URNKind               string
 	IDKeys                []string
-	IdentityKeys          []string
 	TimestampKeys         []string
 	Attributes            map[string]string
 	StaticAttributes      map[string]string
@@ -48,6 +47,7 @@ type FamilyConfig struct {
 	ConfigQuery      map[string]string
 	ConfigAttributes map[string]string
 	EncodeURNID      bool
+	IdentityKeys     []string
 	ResourceURNKind  string
 	TotalKeys        []string
 	OffsetKeys       []string

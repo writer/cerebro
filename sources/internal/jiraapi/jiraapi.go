@@ -118,7 +118,6 @@ func groupMembersFamily() jsonapi.Family {
 		PathParams:      []string{"group_id"},
 		URNKind:         "jira_group_members",
 		IDKeys:          []string{"accountId", "account_id", "user_id", "emailAddress"},
-		IdentityKeys:    []string{"group_id"},
 		CursorParam:     "startAt",
 		NextCursorKeys:  []string{"nextPage"},
 		PageFirstCursor: "0",
@@ -142,6 +141,7 @@ func groupMembersFamily() jsonapi.Family {
 		StaticAttributes: map[string]string{"member_type": "user", "record_class": "identity_group_membership", "resource_type": "group_membership", "schema": FamilyGroupMembers, "source_system": SourceID},
 		Config: jsonapi.FamilyConfig{
 			ConfigQuery:     map[string]string{"groupId": "group_id"},
+			IdentityKeys:    []string{"group_id"},
 			StaticQuery:     map[string]string{"includeInactiveUsers": "true"},
 			ResourceURNKind: "jira_users",
 		},
@@ -194,7 +194,6 @@ func projectRolesFamily() jsonapi.Family {
 		PathParams:            []string{"project_id_or_key"},
 		URNKind:               "jira_project_roles",
 		IDKeys:                []string{"id", "self", "name"},
-		IdentityKeys:          []string{"project_id_or_key"},
 		DisablePageSize:       true,
 		Attributes: map[string]string{
 			"admin":             "admin",
@@ -213,7 +212,7 @@ func projectRolesFamily() jsonapi.Family {
 			"source_event_id":   "id|self",
 		},
 		StaticAttributes: map[string]string{"record_class": "identity_role_assignment", "resource_type": "project_role", "schema": FamilyProjectRoles, "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "jira_project_roles"},
+		Config:           jsonapi.FamilyConfig{EncodeURNID: true, IdentityKeys: []string{"project_id_or_key"}, ResourceURNKind: "jira_project_roles"},
 	}
 }
 
