@@ -107,3 +107,30 @@ func TestSnykRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestSnykOrgProjectionUsesOrgIDWhenGroupIDPresent(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "snyk-org-event",
+		TenantId: "tenant",
+		SourceId: "snyk",
+		Kind:     "snyk.orgs",
+		Attributes: map[string]string{
+			"org_id":   "org-1",
+			"group_id": "group-1",
+			"name":     "Security",
+		},
+	}
+	entities, _, err := BuiltinRegistry().Project(event)
+	if err != nil {
+		t.Fatalf("Project(snyk.orgs) error = %v", err)
+	}
+	for _, entity := range entities {
+		if entity.EntityType == "snyk.orgs" {
+			if entity.URN != "urn:cerebro:tenant:snyk_orgs:org-1" {
+				t.Fatalf("snyk org URN = %q, want org-scoped URN", entity.URN)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing snyk.orgs entity in %#v", entities)
+}

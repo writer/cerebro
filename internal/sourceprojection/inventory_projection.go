@@ -87,6 +87,8 @@ func inventoryEntityID(kind string, family string, attrs map[string]string) stri
 		return joinProjectionIdentity(attrs, "monitor_id", "external_id")
 	case "datadog.slos":
 		return joinProjectionIdentity(attrs, "slo_id", "external_id")
+	case "snyk.orgs":
+		return joinProjectionIdentity(attrs, "org_id")
 	case "trivy.image_scan":
 		return joinProjectionIdentity(attrs, "image_digest")
 	case "trivy.image_package":

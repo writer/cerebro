@@ -110,10 +110,11 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/projects",
 			record: map[string]any{"id": "project-1", "attributes": map[string]any{"name": "Checkout API", "origin": "github", "type": "maven"}, "relationships": map[string]any{"target": map[string]any{"data": map[string]string{"id": "target-1"}}}},
 			wantAttrs: map[string]string{
-				"org_id":     "org-1",
-				"project_id": "project-1",
-				"name":       "Checkout API",
-				"target_id":  "target-1",
+				"org_id":        "org-1",
+				"project_id":    "project-1",
+				"name":          "Checkout API",
+				"target_id":     "target-1",
+				"resource_type": "snyk_project",
 			},
 		},
 		{
@@ -122,10 +123,11 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/targets",
 			record: map[string]any{"id": "target-1", "attributes": map[string]any{"display_name": "writer/cerebro", "source_type": "github", "url": "https://github.com/writer/cerebro", "is_private": true}},
 			wantAttrs: map[string]string{
-				"org_id":       "org-1",
-				"target_id":    "target-1",
-				"display_name": "writer/cerebro",
-				"is_private":   "true",
+				"org_id":        "org-1",
+				"target_id":     "target-1",
+				"display_name":  "writer/cerebro",
+				"is_private":    "true",
+				"resource_type": "snyk_target",
 			},
 		},
 		{
