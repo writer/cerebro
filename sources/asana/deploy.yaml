@@ -1,6 +1,7 @@
 sourceId: asana
 secretKeys:
   - ASANA_TOKEN
+  - ASANA_WORKSPACE_GID
 runtimes:
   - localId: users
     config:
