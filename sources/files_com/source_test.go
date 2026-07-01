@@ -127,46 +127,68 @@ func TestActionNotificationExportResultUsesMessageFields(t *testing.T) {
 	}
 }
 
-func TestAPIKeyDoesNotUseLastUseAsRotation(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackForTest()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Token test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.Path != "/api_keys" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{
-				"created_at":     "2026-05-20T12:00:00Z",
-				"id":             2001,
-				"last_use_at":    "2026-06-01T00:00:00Z",
-				"name":           "prod automation key",
-				"permission_set": "files_only",
-			},
-		})
-	}))
-	defer server.Close()
+func TestAPIKeyFamiliesUsePermissionSetMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		family string
+		path   string
+		status string
+	}{
+		{family: familyApiKey, path: "/api_keys", status: "files_only"},
+		{family: familySiteApiKey, path: "/site/api_keys", status: "full"},
+		{family: familyUserApiKey, path: "/user/api_keys", status: "desktop_app"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Token test-token" {
+					t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+				}
+				if r.URL.Path != tt.path {
+					t.Fatalf("path = %q", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{
+						"created_at":     "2026-05-20T12:00:00Z",
+						"id":             2001,
+						"last_use_at":    "2026-06-01T00:00:00Z",
+						"name":           "prod automation key",
+						"permission_set": tt.status,
+					},
+				})
+			}))
+			defer server.Close()
 
-	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "tenant",
-		"base_url":  server.URL,
-		"family":    familyApiKey,
-		"api_token": "test-token",
-	}), nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
-	}
-	if got := pull.Events[0].Attributes["secret_last_rotated_at"]; got != "" {
-		t.Fatalf("secret_last_rotated_at = %q, want empty without provider rotation field", got)
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "tenant",
+				"base_url":  server.URL,
+				"family":    tt.family,
+				"api_token": "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			attrs := pull.Events[0].Attributes
+			for key, want := range map[string]string{
+				"resource_type": "api_key",
+				"secret_status": tt.status,
+				"secret_type":   "api_key",
+			} {
+				if got := attrs[key]; got != want {
+					t.Fatalf("%s = %q, want %q; attrs=%#v", key, got, want, attrs)
+				}
+			}
+			if got := attrs["secret_last_rotated_at"]; got != "" {
+				t.Fatalf("secret_last_rotated_at = %q, want empty without provider rotation field", got)
+			}
+		})
 	}
 }
 
