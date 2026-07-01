@@ -3421,9 +3421,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"journy_io.user":             journyIoUserProjections,
 
 	// jumpcloud generated projectors (sourcegen promotion)
-	"jumpcloud.audit_events": jumpcloudAuditEventsProjections,
-	"jumpcloud.groups":       jumpcloudGroupsProjections,
-	"jumpcloud.users":        jumpcloudUsersProjections,
+	"jumpcloud.applications":  jumpcloudApplicationsProjections,
+	"jumpcloud.audit_events":  jumpcloudAuditEventsProjections,
+	"jumpcloud.group_members": jumpcloudGroupMembersProjections,
+	"jumpcloud.groups":        jumpcloudGroupsProjections,
+	"jumpcloud.system_groups": jumpcloudSystemGroupsProjections,
+	"jumpcloud.systems":       jumpcloudSystemsProjections,
+	"jumpcloud.users":         jumpcloudUsersProjections,
 
 	// jumpseller generated projectors (sourcegen promotion)
 	"jumpseller.checkout_custom_fields_json": jumpsellerCheckoutCustomFieldsJsonProjections,

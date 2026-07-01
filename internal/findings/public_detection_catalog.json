@@ -205132,9 +205132,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205212,9 +205216,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205348,9 +205356,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205428,9 +205440,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205508,9 +205524,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205588,9 +205608,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205610,9 +205634,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205690,9 +205718,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205770,9 +205802,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -205962,9 +205998,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -206042,9 +206082,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -206064,9 +206108,13 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"

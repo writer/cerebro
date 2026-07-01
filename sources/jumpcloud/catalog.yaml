@@ -1,18 +1,34 @@
 id: jumpcloud
 name: "JumpCloud"
-description: "Collects users, groups, and audit events from JumpCloud and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
+description: "Collects JumpCloud directory users, user groups, systems, applications, group membership edges, and Directory Insights events for identity, access, device, and audit graph context."
 emitted_kinds:
   - jumpcloud.users
   - jumpcloud.groups
+  - jumpcloud.systems
+  - jumpcloud.applications
+  - jumpcloud.system_groups
+  - jumpcloud.group_members
   - jumpcloud.audit_events
 runtime_families:
-  - audit_events
-  - groups
   - users
+  - groups
+  - systems
+  - applications
+  - system_groups
+  - group_members
+  - audit_events
 kind_lifecycle:
   - kind: jumpcloud.users
     status: active
   - kind: jumpcloud.groups
+    status: active
+  - kind: jumpcloud.systems
+    status: active
+  - kind: jumpcloud.applications
+    status: active
+  - kind: jumpcloud.system_groups
+    status: active
+  - kind: jumpcloud.group_members
     status: active
   - kind: jumpcloud.audit_events
     status: active
@@ -22,40 +38,82 @@ coverage_contract:
   dimensions:
     - id: users
       type: entity_family
-      title: "Users"
+      title: "System users"
       families: [users]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads JumpCloud API v1 /systemusers with x-api-key auth, results records, totalCount metadata, and skip/limit pagination.
     - id: groups
       type: entity_family
-      title: "Groups"
+      title: "User groups"
       families: [groups]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads JumpCloud API v2 /usergroups with x-api-key auth and skip/limit pagination.
+    - id: systems
+      type: entity_family
+      title: "Systems"
+      families: [systems]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, endpoint_security]
+      notes:
+        - Reads JumpCloud API v1 /systems for device inventory, agent state, operating system, and last contact fields.
+    - id: applications
+      type: entity_family
+      title: "Applications"
+      families: [applications]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, saas_management]
+      notes:
+        - Reads JumpCloud API v1 /applications for SSO application inventory and application URLs.
+    - id: system_groups
+      type: entity_family
+      title: "System groups"
+      families: [system_groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, endpoint_security]
+      notes:
+        - Reads JumpCloud API v2 /systemgroups for device grouping context.
+    - id: group_members
+      type: entity_family
+      title: "User group members"
+      families: [group_members]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads JumpCloud API v2 /usergroups/{group_id}/members across configured group_ids and projects group-to-user membership.
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Directory Insights events"
       families: [audit_events]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      control_domains: [logging_monitoring, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Directory Insights POST /events with service/start_time filters and X-Search_after continuation.
     - id: incremental_sync
       type: incremental_sync
-      title: Incremental cursor sync
-      support: planned
+      title: "Incremental cursor sync"
+      support: partial
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - Collection endpoints use provider skip cursors; Directory Insights uses provider search_after cursors and checkpoint watermarks.
 event_contracts:
   - kind: jumpcloud.users
     schema_ref: jumpcloud/users/v1
@@ -64,7 +122,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
+      - _id
   - kind: jumpcloud.groups
     schema_ref: jumpcloud/groups/v1
     required_attributes:
@@ -73,6 +131,39 @@ event_contracts:
       - group_id
     required_payload_fields:
       - id
+  - kind: jumpcloud.systems
+    schema_ref: jumpcloud/systems/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - system_id
+    required_payload_fields:
+      - _id
+  - kind: jumpcloud.applications
+    schema_ref: jumpcloud/applications/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - app_id
+    required_payload_fields:
+      - _id
+  - kind: jumpcloud.system_groups
+    schema_ref: jumpcloud/system_groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: jumpcloud.group_members
+    schema_ref: jumpcloud/group_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_id
+    required_payload_fields:
+      - to.id
   - kind: jumpcloud.audit_events
     schema_ref: jumpcloud/audit_events/v1
     required_attributes:

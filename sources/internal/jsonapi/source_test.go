@@ -453,6 +453,108 @@ func TestReadSynthesizesStartAtOffsetCursorForFullPages(t *testing.T) {
 	}
 }
 
+func TestReadUsesSkipOffsetCursorFromResponseMetadata(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit query = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("skip") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":    []map[string]any{{"id": "user-1"}, {"id": "user-2"}},
+				"skip":       0,
+				"limit":      2,
+				"totalCount": 4,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":    []map[string]any{{"id": "user-3"}, {"id": "user-4"}},
+				"skip":       2,
+				"limit":      2,
+				"totalCount": 4,
+			})
+		default:
+			t.Fatalf("unexpected skip %q", r.URL.Query().Get("skip"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/systemusers",
+		CursorParam:     "skip",
+		PageSizeParams:  []string{"limit"},
+		PageFirstCursor: "0",
+		URNKind:         "test_user",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"results"},
+		Config:          FamilyConfig{OffsetCursor: true, TotalKeys: []string{"totalCount"}},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if got := requests[0].URL.Query().Get("skip"); got != "0" {
+		t.Fatalf("first skip query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("skip"); got != "2" {
+		t.Fatalf("second skip query = %q, want 2", got)
+	}
+}
+
+func TestReadTreatsSkipAsPageCursorWithoutOffsetConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit query = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("skip"); got != "0" {
+			t.Fatalf("skip query = %q, want 0", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-1"}, {"id": "item-2"}})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "items",
+		Path:            "/items",
+		CursorParam:     "skip",
+		PageSizeParams:  []string{"limit"},
+		PageFirstCursor: "0",
+		URNKind:         "test_item",
+		IDKeys:          []string{"id"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.NextCursor.GetOpaque() != "1" {
+		t.Fatalf("NextCursor = %q, want page-style skip cursor 1", pull.NextCursor.GetOpaque())
+	}
+}
+
 func TestParseTimeSupportsJiraAuditOffsetTimestamp(t *testing.T) {
 	got, ok := parseTime("2026-05-01T12:34:56.789+0000")
 	if !ok {

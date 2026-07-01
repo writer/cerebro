@@ -49,6 +49,7 @@ type FamilyConfig struct {
 	ConfigAttributes   map[string]string
 	EncodeURNID        bool
 	IdentityKeys       []string
+	OffsetCursor       bool
 	RequireDetail      bool
 	ResourceURNKind    string
 	TotalKeys          []string
