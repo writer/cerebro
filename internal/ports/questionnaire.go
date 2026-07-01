@@ -104,16 +104,33 @@ type QuestionnaireRunMetadata struct {
 }
 
 type QuestionnaireQuestion struct {
-	ID                   string   `json:"id"`
-	Question             string   `json:"question"`
-	NormalizedQuestion   string   `json:"normalized_question,omitempty"`
-	Section              string   `json:"section,omitempty"`
-	RequiredAnswerFormat string   `json:"required_answer_format,omitempty"`
-	MappedControls       []string `json:"mapped_controls,omitempty"`
-	RequiredSlots        []string `json:"required_evidence_slots,omitempty"`
-	OwnerID              string   `json:"owner_id,omitempty"`
-	AnswerState          string   `json:"answer_state"`
-	ReviewState          string   `json:"review_state"`
+	ID                   string                      `json:"id"`
+	Question             string                      `json:"question"`
+	NormalizedQuestion   string                      `json:"normalized_question,omitempty"`
+	Section              string                      `json:"section,omitempty"`
+	RequiredAnswerFormat string                      `json:"required_answer_format,omitempty"`
+	MappedControls       []string                    `json:"mapped_controls,omitempty"`
+	RequiredSlots        []string                    `json:"required_evidence_slots,omitempty"`
+	OwnerID              string                      `json:"owner_id,omitempty"`
+	AnswerState          string                      `json:"answer_state"`
+	ReviewState          string                      `json:"review_state"`
+	SourceLocator        *QuestionnaireSourceLocator `json:"source_locator,omitempty"`
+}
+
+type QuestionnaireSourceLocator struct {
+	SourceArtifactURN string `json:"source_artifact_urn,omitempty"`
+	SourceFormat      string `json:"source_format,omitempty"`
+	SourceFilename    string `json:"source_filename,omitempty"`
+	SheetName         string `json:"sheet_name,omitempty"`
+	Cell              string `json:"cell,omitempty"`
+	ColumnName        string `json:"column_name,omitempty"`
+	RowNumber         int    `json:"row_number,omitempty"`
+	LineNumber        int    `json:"line_number,omitempty"`
+	PageNumber        int    `json:"page_number,omitempty"`
+	Text              string `json:"text,omitempty"`
+	PortalURL         string `json:"portal_url,omitempty"`
+	PortalFieldID     string `json:"portal_field_id,omitempty"`
+	PortalFieldLabel  string `json:"portal_field_label,omitempty"`
 }
 
 type QuestionnaireRunAnswer struct {
@@ -147,17 +164,22 @@ type QuestionnaireEvidenceSlot struct {
 }
 
 type QuestionnaireCitation struct {
-	ID               string `json:"id"`
-	Label            string `json:"label,omitempty"`
-	Source           string `json:"source,omitempty"`
-	ResourceURN      string `json:"resource_urn,omitempty"`
-	EvidencePacketID string `json:"evidence_packet_id,omitempty"`
-	EvidenceID       string `json:"evidence_id,omitempty"`
-	EvidenceType     string `json:"evidence_type,omitempty"`
-	ControlID        string `json:"control_id,omitempty"`
-	FreshnessStatus  string `json:"freshness_status,omitempty"`
-	ObservedAt       string `json:"observed_at,omitempty"`
-	ExpiresAt        string `json:"expires_at,omitempty"`
+	ID               string   `json:"id"`
+	Label            string   `json:"label,omitempty"`
+	Source           string   `json:"source,omitempty"`
+	SourceID         string   `json:"source_id,omitempty"`
+	RuntimeID        string   `json:"runtime_id,omitempty"`
+	ResourceURN      string   `json:"resource_urn,omitempty"`
+	EvidencePacketID string   `json:"evidence_packet_id,omitempty"`
+	EvidenceID       string   `json:"evidence_id,omitempty"`
+	EvidenceType     string   `json:"evidence_type,omitempty"`
+	ControlID        string   `json:"control_id,omitempty"`
+	FreshnessStatus  string   `json:"freshness_status,omitempty"`
+	ObservedAt       string   `json:"observed_at,omitempty"`
+	ExpiresAt        string   `json:"expires_at,omitempty"`
+	SourceEventIDs   []string `json:"source_event_ids,omitempty"`
+	GraphRootURNs    []string `json:"graph_root_urns,omitempty"`
+	GraphPathIDs     []string `json:"graph_path_ids,omitempty"`
 }
 
 type QuestionnaireEvidenceGap struct {
