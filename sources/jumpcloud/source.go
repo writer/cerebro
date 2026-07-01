@@ -3,31 +3,29 @@ package jumpcloud
 import (
 	"context"
 	"embed"
-	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
+	"github.com/writer/cerebro/sources/internal/jumpcloudapi"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const (
-	sourceID                       = "jumpcloud"
-	defaultFamily                  = familyUsers
-	defaultHealthPath              = "/systemusers?limit=1&skip=0"
-	defaultBaseURLTemplate         = "https://console.jumpcloud.com/api"
-	defaultInsightsBaseURLTemplate = "https://api.jumpcloud.com/insights/directory/v1"
-	tokenHeader                    = "x-api-key"
-	tokenScheme                    = ""
-	familyUsers                    = "users"
-	familyGroups                   = "groups"
-	familySystems                  = "systems"
-	familyApplications             = "applications"
-	familySystemGroups             = "system_groups"
-	familyGroupMembers             = "group_members"
-	familyAuditEvents              = "audit_events"
+	sourceID               = jumpcloudapi.SourceID
+	defaultFamily          = jumpcloudapi.DefaultFamily
+	defaultHealthPath      = "/systemusers?limit=1&skip=0"
+	defaultBaseURLTemplate = jumpcloudapi.DefaultBaseURLTemplate
+	tokenScheme            = ""
+	familyUsers            = jumpcloudapi.FamilyUsers
+	familyGroups           = jumpcloudapi.FamilyGroups
+	familySystems          = jumpcloudapi.FamilySystems
+	familyApplications     = jumpcloudapi.FamilyApplications
+	familySystemGroups     = jumpcloudapi.FamilySystemGroups
+	familyGroupMembers     = jumpcloudapi.FamilyGroupMembers
+	familyAuditEvents      = jumpcloudapi.FamilyAuditEvents
 )
 
 var templateKeys = []string{"api_key"}
@@ -47,10 +45,10 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		AuthModel:       "api_key",
-		TokenHeader:     tokenHeader,
+		TokenHeader:     jumpcloudapi.TokenHeader,
 		TokenScheme:     tokenScheme,
 		ConfigHeaders:   map[string]string{"x-org-id": "org_id"},
-		Families:        jumpCloudFamilies(),
+		Families:        jumpcloudapi.Families(),
 	})
 	if err != nil {
 		return nil, err
@@ -70,13 +68,13 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if familyName(runtimeCfg) == familyAuditEvents {
-		return s.checkAuditEvents(ctx, runtimeCfg)
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.CheckAuditEvents(ctx, runtimeCfg, s != nil && s.allowLoopback)
 	}
 	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
 		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
-	path := firstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
+	path := jumpcloudapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
 	if err := s.inner.CheckPath(ctx, runtimeCfg, path, nil); err != nil {
 		return err
 	}
@@ -88,8 +86,8 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
-	if familyName(runtimeCfg) == familyAuditEvents {
-		return s.discoverAuditEvents(ctx, runtimeCfg)
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.DiscoverAuditEvents(ctx, runtimeCfg, s != nil && s.allowLoopback)
 	}
 	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
 		return s.discoverGroupMembers(ctx, runtimeCfg, param, values)
@@ -106,8 +104,8 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	if familyName(runtimeCfg) == familyAuditEvents {
-		return s.readAuditEvents(ctx, runtimeCfg, cursor, checkpoint)
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.ReadAuditEvents(ctx, runtimeCfg, cursor, checkpoint, s != nil && s.allowLoopback)
 	}
 	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
 		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
@@ -124,10 +122,10 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 }
 
 func jumpCloudPathParamValues(cfg sourcecdk.Config) (string, []string) {
-	if familyName(cfg) != familyGroupMembers {
+	if jumpcloudapi.FamilyName(cfg) != familyGroupMembers {
 		return "", nil
 	}
-	return "group_id", configListValues(cfg, "group_ids", "user_group_ids", "group_id", "user_group_id")
+	return "group_id", jumpcloudapi.ConfigListValues(cfg, "group_ids", "user_group_ids", "group_id", "user_group_id")
 }
 
 func (s *Source) discoverGroupMembers(ctx context.Context, cfg sourcecdk.Config, param string, values []string) ([]sourcecdk.URN, error) {
@@ -139,8 +137,8 @@ func (s *Source) discoverGroupMembers(ctx context.Context, cfg sourcecdk.Config,
 	urns := []sourcecdk.URN{}
 	for _, event := range pull.Events {
 		attrs := event.GetAttributes()
-		groupID := firstNonEmpty(attrs["group_id"], sourcecdk.ConfigValue(cfg, "group_id"))
-		memberID := firstNonEmpty(attrs["member_user_id"], attrs["member_id"], attrs["resource_id"], attrs["source_event_id"])
+		groupID := jumpcloudapi.FirstNonEmpty(attrs["group_id"], sourcecdk.ConfigValue(cfg, "group_id"))
+		memberID := jumpcloudapi.FirstNonEmpty(attrs["member_user_id"], attrs["member_id"], attrs["resource_id"], attrs["source_event_id"])
 		if groupID == "" && memberID == "" {
 			memberID = event.GetId()
 		}
@@ -155,34 +153,6 @@ func (s *Source) discoverGroupMembers(ctx context.Context, cfg sourcecdk.Config,
 		urns = append(urns, urn)
 	}
 	return urns, nil
-}
-
-func configListValues(cfg sourcecdk.Config, keys ...string) []string {
-	values := []string{}
-	for _, key := range keys {
-		for _, value := range strings.Split(sourcecdk.ConfigValue(cfg, key), ",") {
-			if value = strings.TrimSpace(value); value != "" {
-				values = append(values, value)
-			}
-		}
-	}
-	return values
-}
-
-func familyName(cfg sourcecdk.Config) string {
-	if family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")); family != "" {
-		return family
-	}
-	return defaultFamily
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func (s *Source) allowLoopbackForTest() {

@@ -1,6 +1,7 @@
 sourceId: jumpcloud
 secretKeys:
   - JUMPCLOUD_API_KEY
+  - JUMPCLOUD_GROUP_IDS
 runtimes:
   - localId: users
     config:

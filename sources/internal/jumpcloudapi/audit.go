@@ -1,4 +1,4 @@
-package jumpcloud
+package jumpcloudapi
 
 import (
 	"bytes"
@@ -28,17 +28,17 @@ type auditEventsRequest struct {
 	SearchAfter any      `json:"search_after,omitempty"`
 }
 
-func (s *Source) checkAuditEvents(ctx context.Context, cfg sourcecdk.Config) error {
+func CheckAuditEvents(ctx context.Context, cfg sourcecdk.Config, allowLoopback bool) error {
 	values := cfg.Values()
 	if strings.TrimSpace(values["per_page"]) == "" {
 		values["per_page"] = "1"
 	}
-	_, err := s.readAuditEvents(ctx, sourcecdk.NewConfig(values), nil, nil)
+	_, err := ReadAuditEvents(ctx, sourcecdk.NewConfig(values), nil, nil, allowLoopback)
 	return err
 }
 
-func (s *Source) discoverAuditEvents(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	pull, err := s.readAuditEvents(ctx, cfg, nil, nil)
+func DiscoverAuditEvents(ctx context.Context, cfg sourcecdk.Config, allowLoopback bool) ([]sourcecdk.URN, error) {
+	pull, err := ReadAuditEvents(ctx, cfg, nil, nil, allowLoopback)
 	if err != nil {
 		return nil, err
 	}
@@ -62,35 +62,35 @@ func (s *Source) discoverAuditEvents(ctx context.Context, cfg sourcecdk.Config) 
 	return urns, nil
 }
 
-func (s *Source) readAuditEvents(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+func ReadAuditEvents(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, allowLoopback bool) (sourcecdk.Pull, error) {
 	requestBody, requestedLimit, err := auditRequestBody(cfg, cursor, checkpoint)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	baseURL := insightsBaseURL(cfg)
-	req, err := sourcehttp.NewJSONRequest(ctx, sourceID, baseURL, s != nil && s.allowLoopback, http.MethodPost, auditEventsPath, nil, requestBody)
+	req, err := sourcehttp.NewJSONRequest(ctx, SourceID, baseURL, allowLoopback, http.MethodPost, auditEventsPath, nil, requestBody)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	apiKey := firstNonEmpty(sourcecdk.ConfigValue(cfg, "api_key"), sourcecdk.ConfigValue(cfg, "api_token"), sourcecdk.ConfigValue(cfg, "token"))
 	if apiKey == "" {
-		return sourcecdk.Pull{}, fmt.Errorf("%w: %s api_key is required", sourcecdk.ErrInvalidConfig, sourceID)
+		return sourcecdk.Pull{}, fmt.Errorf("%w: %s api_key is required", sourcecdk.ErrInvalidConfig, SourceID)
 	}
-	req.Header.Set(tokenHeader, apiKey)
+	req.Header.Set(TokenHeader, apiKey)
 	if orgID := sourcecdk.ConfigValue(cfg, "org_id"); orgID != "" {
 		req.Header.Set("x-org-id", orgID)
 	}
-	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback})
+	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: SourceID, AllowLoopback: allowLoopback})
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return sourcecdk.Pull{}, fmt.Errorf("%s audit_events returned HTTP %d: %s", sourceID, resp.StatusCode, responseMessage(resp.Body))
+		return sourcecdk.Pull{}, fmt.Errorf("%s audit_events returned HTTP %d: %s", SourceID, resp.StatusCode, responseMessage(resp.Body))
 	}
 	var rows []json.RawMessage
 	if err := json.Unmarshal(resp.Body, &rows); err != nil {
-		return sourcecdk.Pull{}, fmt.Errorf("decode %s audit_events response: %w", sourceID, err)
+		return sourcecdk.Pull{}, fmt.Errorf("decode %s audit_events response: %w", SourceID, err)
 	}
 	events := make([]*primitives.Event, 0, len(rows))
 	for _, row := range rows {
@@ -153,10 +153,10 @@ func auditPageSize(cfg sourcecdk.Config) (int, error) {
 	}
 	parsed, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, fmt.Errorf("%w: parse %s audit page size: %w", sourcecdk.ErrInvalidConfig, sourceID, err)
+		return 0, fmt.Errorf("%w: parse %s audit page size: %w", sourcecdk.ErrInvalidConfig, SourceID, err)
 	}
 	if parsed < 1 || parsed > 10000 {
-		return 0, fmt.Errorf("%w: %s audit page size must be between 1 and 10000", sourcecdk.ErrInvalidConfig, sourceID)
+		return 0, fmt.Errorf("%w: %s audit page size must be between 1 and 10000", sourcecdk.ErrInvalidConfig, SourceID)
 	}
 	return parsed, nil
 }
@@ -166,7 +166,7 @@ func auditSearchAfter(raw string) (any, error) {
 	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(raw)))
 	decoder.UseNumber()
 	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("%w: parse %s search_after cursor: %w", sourcecdk.ErrInvalidConfig, sourceID, err)
+		return nil, fmt.Errorf("%w: parse %s search_after cursor: %w", sourcecdk.ErrInvalidConfig, SourceID, err)
 	}
 	return value, nil
 }
@@ -197,23 +197,23 @@ func auditEventFromRow(cfg sourcecdk.Config, baseURL string, raw json.RawMessage
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	if err := decoder.Decode(&values); err != nil {
-		return nil, fmt.Errorf("decode %s audit event row: %w", sourceID, err)
+		return nil, fmt.Errorf("decode %s audit event row: %w", SourceID, err)
 	}
 	tenantID := firstNonEmpty(sourcecdk.ConfigValue(cfg, "tenant_id"), sourcecdk.ConfigValue(cfg, "runtime_tenant_id"))
 	if tenantID == "" {
-		return nil, fmt.Errorf("%w: %s tenant_id is required", sourcecdk.ErrInvalidConfig, sourceID)
+		return nil, fmt.Errorf("%w: %s tenant_id is required", sourcecdk.ErrInvalidConfig, SourceID)
 	}
 	rowID := firstNonEmpty(auditValueString(values, "id", "event_id", "uuid", "request_id"), sourcecdk.EventID(string(raw)))
 	occurredAt := auditEventTime(values)
 	attrs := map[string]string{
 		"external_id":     rowID,
-		"family":          familyAuditEvents,
-		"provider":        sourceID,
+		"family":          FamilyAuditEvents,
+		"provider":        SourceID,
 		"record_class":    "audit_event",
 		"schema":          "audit_events",
 		"source_event_id": rowID,
-		"source_provider": sourceID,
-		"source_system":   sourceID,
+		"source_provider": SourceID,
+		"source_system":   SourceID,
 		"tenant_id":       tenantID,
 		"event_type":      auditValueString(values, "event_type", "type", "action"),
 		"actor_id":        auditValueString(values, "initiated_by.id", "actor.id", "admin.id", "user.id", "user_id", "resource.id", "username"),
@@ -238,12 +238,12 @@ func auditEventFromRow(cfg sourcecdk.Config, baseURL string, raw json.RawMessage
 	}
 	trimAttributes(attrs)
 	return &primitives.Event{
-		Id:         sourcecdk.EventID(sourceID, tenantID, baseURL, familyAuditEvents, rowID),
+		Id:         sourcecdk.EventID(SourceID, tenantID, baseURL, FamilyAuditEvents, rowID),
 		TenantId:   tenantID,
-		SourceId:   sourceID,
-		Kind:       sourceID + "." + familyAuditEvents,
+		SourceId:   SourceID,
+		Kind:       SourceID + "." + FamilyAuditEvents,
 		OccurredAt: timestamppb.New(occurredAt),
-		SchemaRef:  sourceID + "/" + familyAuditEvents + "/v1",
+		SchemaRef:  SourceID + "/" + FamilyAuditEvents + "/v1",
 		Payload:    append([]byte(nil), raw...),
 		Attributes: attrs,
 	}, nil
@@ -298,7 +298,7 @@ func insightsBaseURL(cfg sourcecdk.Config) string {
 	case "in", "india":
 		return "https://api.in.jumpcloud.com/insights/directory/v1"
 	default:
-		return defaultInsightsBaseURLTemplate
+		return DefaultInsightsBaseURLTemplate
 	}
 }
 
@@ -381,4 +381,40 @@ func trimAttributes(attrs map[string]string) {
 			delete(attrs, key)
 		}
 	}
+}
+
+func ConfigListValues(cfg sourcecdk.Config, keys ...string) []string {
+	return configListValues(cfg, keys...)
+}
+
+func FamilyName(cfg sourcecdk.Config) string {
+	if family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")); family != "" {
+		return family
+	}
+	return DefaultFamily
+}
+
+func FirstNonEmpty(values ...string) string {
+	return firstNonEmpty(values...)
+}
+
+func configListValues(cfg sourcecdk.Config, keys ...string) []string {
+	values := []string{}
+	for _, key := range keys {
+		for _, value := range strings.Split(sourcecdk.ConfigValue(cfg, key), ",") {
+			if value = strings.TrimSpace(value); value != "" {
+				values = append(values, value)
+			}
+		}
+	}
+	return values
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

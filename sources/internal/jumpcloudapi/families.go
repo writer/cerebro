@@ -1,8 +1,23 @@
-package jumpcloud
+package jumpcloudapi
 
 import "github.com/writer/cerebro/sources/internal/jsonapi"
 
-func jumpCloudFamilies() []jsonapi.Family {
+const (
+	SourceID                       = "jumpcloud"
+	DefaultFamily                  = FamilyUsers
+	DefaultBaseURLTemplate         = "https://console.jumpcloud.com/api"
+	DefaultInsightsBaseURLTemplate = "https://api.jumpcloud.com/insights/directory/v1"
+	TokenHeader                    = "x-api-key"
+	FamilyUsers                    = "users"
+	FamilyGroups                   = "groups"
+	FamilySystems                  = "systems"
+	FamilyApplications             = "applications"
+	FamilySystemGroups             = "system_groups"
+	FamilyGroupMembers             = "group_members"
+	FamilyAuditEvents              = "audit_events"
+)
+
+func Families() []jsonapi.Family {
 	return []jsonapi.Family{
 		jumpCloudUsersFamily(),
 		jumpCloudGroupsFamily(),
@@ -15,7 +30,7 @@ func jumpCloudFamilies() []jsonapi.Family {
 
 func jumpCloudUsersFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:          familyUsers,
+		Name:          FamilyUsers,
 		Path:          "/systemusers",
 		URNKind:       "jumpcloud_users",
 		IDKeys:        []string{"_id", "id", "email", "username"},
@@ -48,7 +63,7 @@ func jumpCloudUsersFamily() jsonapi.Family {
 
 func jumpCloudGroupsFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:          familyGroups,
+		Name:          FamilyGroups,
 		Path:          "/v2/usergroups",
 		URNKind:       "jumpcloud_groups",
 		IDKeys:        []string{"id", "name"},
@@ -70,7 +85,7 @@ func jumpCloudGroupsFamily() jsonapi.Family {
 
 func jumpCloudSystemsFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:          familySystems,
+		Name:          FamilySystems,
 		Path:          "/systems",
 		URNKind:       "jumpcloud_systems",
 		IDKeys:        []string{"_id", "id", "displayName", "hostname"},
@@ -100,7 +115,7 @@ func jumpCloudSystemsFamily() jsonapi.Family {
 
 func jumpCloudApplicationsFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:          familyApplications,
+		Name:          FamilyApplications,
 		Path:          "/applications",
 		URNKind:       "jumpcloud_applications",
 		IDKeys:        []string{"_id", "id", "displayName", "name"},
@@ -123,7 +138,7 @@ func jumpCloudApplicationsFamily() jsonapi.Family {
 
 func jumpCloudSystemGroupsFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:          familySystemGroups,
+		Name:          FamilySystemGroups,
 		Path:          "/v2/systemgroups",
 		URNKind:       "jumpcloud_system_groups",
 		IDKeys:        []string{"id", "name"},
@@ -144,7 +159,7 @@ func jumpCloudSystemGroupsFamily() jsonapi.Family {
 
 func jumpCloudGroupMembersFamily() jsonapi.Family {
 	return jumpCloudPagedFamily(jsonapi.Family{
-		Name:       familyGroupMembers,
+		Name:       FamilyGroupMembers,
 		Path:       "/v2/usergroups/{group_id}/members",
 		PathParams: []string{"group_id"},
 		URNKind:    "jumpcloud_group_members",
