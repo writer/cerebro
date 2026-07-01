@@ -317,6 +317,7 @@ type ResourceReadSpec struct {
 
 // FamilyConfigSpec binds static and runtime config values into a resource-family request.
 type FamilyConfigSpec struct {
+	BaseURL          string            `json:"base_url,omitempty"`
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
@@ -514,6 +515,16 @@ func Validate(definition Definition) ValidationResult {
 		}
 		if strings.TrimSpace(family.IDField) == "" {
 			add(blocking("id_field_"+family.ID, "Resource identity", "Each resource family needs a stable id field."))
+		}
+		familyBaseURL := ""
+		if family.Config != nil {
+			familyBaseURL = family.Config.BaseURL
+		}
+		if familyBaseURL != "" && !safeTemplate(familyBaseURL, map[string]struct{}{"config": {}, "connection": {}, "credential": {}}) {
+			add(blocking("base_url_"+family.ID, "Resource base URL", "Resource family base URL templates may only reference config, connection, or credential fields."))
+		}
+		if strings.ContainsAny(familyBaseURL, "\r\n\t\\") {
+			add(blocking("base_url_chars_"+family.ID, "Resource base URL", "Resource family base URL must not contain control characters or backslashes."))
 		}
 		validateFamilyIntegrationFields(family, add)
 	}
@@ -1221,10 +1232,11 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 		return nil
 	}
 	next := *config
+	next.BaseURL = strings.TrimSpace(next.BaseURL)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
-	if len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 {
+	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 {
 		return nil
 	}
 	return &next

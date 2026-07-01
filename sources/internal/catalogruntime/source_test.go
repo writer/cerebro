@@ -85,6 +85,58 @@ func TestSourceCheckAndReadDefinition(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesFamilyBaseURLOverride(t *testing.T) {
+	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("default server received family override request at %q", r.URL.Path)
+	}))
+	defer defaultServer.Close()
+	auditServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/audit/v1/logs" {
+			t.Fatalf("audit path = %q, want /audit/v1/logs", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries": []map[string]any{{"id": "A1", "action": "user_login"}},
+		})
+	}))
+	defer auditServer.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: defaultServer.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "audit_log",
+			Path:           "/logs",
+			RecordSelector: "$.entries[*]",
+			IDField:        "id",
+			Config:         &connectordefinitions.FamilyConfigSpec{BaseURL: auditServer.URL + "/audit/v1"},
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.audit_log",
+				SchemaRef: "example/audit_log/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "audit_event"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "supported"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"family":    "audit_log",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "example.audit_log" {
+		t.Fatalf("events = %#v, want example.audit_log event", pull.Events)
+	}
+}
+
 func TestSourceDefinitionReadsSingletonFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/account" {

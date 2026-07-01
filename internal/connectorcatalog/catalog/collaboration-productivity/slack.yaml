@@ -295,6 +295,8 @@ entries:
             required_payload_fields: [id]
             schema_ref: slack/audit_log/v1
             urn_kind: slack_audit_log
+          config:
+            base_url: https://api.slack.com/audit/v1
           id: audit_log
           id_field: id
           label: Enterprise audit logs
@@ -306,7 +308,7 @@ entries:
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /audit/v1/logs
+          path: /logs
           permissions_needed: [auditlogs:read]
           projection:
             fields:
