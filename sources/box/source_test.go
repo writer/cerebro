@@ -172,6 +172,25 @@ func TestRuntimeUsesBoxAPIPathsAndCursors(t *testing.T) {
 	}
 }
 
+func TestGroupMembershipsRequireConfiguredGroupIDs(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  "https://api.box.com/2.0",
+		"tenant_id": "tenant",
+		"token":     "test-token",
+		"family":    familyGroupMemberships,
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want missing group_id error")
+	}
+	if !strings.Contains(err.Error(), "group_id") {
+		t.Fatalf("Read() error = %v, want group_id error", err)
+	}
+}
+
 func TestRuntimeUsesBoxClientCredentialsTokenExchange(t *testing.T) {
 	source, err := New()
 	if err != nil {

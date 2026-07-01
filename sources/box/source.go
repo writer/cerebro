@@ -141,7 +141,11 @@ func boxPathParamValues(cfg sourcecdk.Config) (string, []string) {
 	if familyName(cfg) != familyGroupMemberships {
 		return "", nil
 	}
-	return "group_id", configListValues(cfg, "group_ids", "group_id")
+	values := configListValues(cfg, "group_ids", "group_id")
+	if len(values) == 0 {
+		return "", nil
+	}
+	return "group_id", values
 }
 
 func configListValues(cfg sourcecdk.Config, keys ...string) []string {
