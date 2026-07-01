@@ -4,31 +4,74 @@ entries:
       auth:
         credential_fields:
           - key: client_id
+            label: Client ID
             reference_only: true
+            required: true
           - key: client_secret
+            label: Client secret
             reference_only: true
+            required: true
             secret: true
         model: oauth_client_credentials
-        token_url: https://api.us.onelogin.com/oauth/token
+        token_url: "https://${config.subdomain}.onelogin.com/auth/oauth2/v2/token"
       categories:
         - identity
         - access
-      description: Collects users, groups, and audit events from OneLogin and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context.
+      config_fields:
+        - help: OneLogin account subdomain, without .onelogin.com.
+          key: subdomain
+          label: Account subdomain
+          placeholder: example
+          required: true
+        - help: User ID for scoped user app, privilege, delegated privilege, and MFA device reads.
+          key: user_id
+          label: User ID
+        - help: Role ID for scoped role user, admin, and app reads.
+          key: role_id
+          label: Role ID
+        - help: App ID for scoped app user and app rule reads.
+          key: app_id
+          label: App ID
+      description: Collects OneLogin directory users, groups, roles, applications, delegated administration privileges, mappings, app rules, MFA devices, assignments, and audit events from the provider REST APIs. Core inventory families are directly declarative; scoped relationship families are promoted in the Source CDK adapter for bounded parent-ID fanout and semantic graph projection.
       display_name: OneLogin
       id: builtin-onelogin
+      ingest:
+        mode: pull
       resource_families:
         - coverage:
             - control_domains:
                 - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
+                - access_review
               families:
-                - users
+                - user
+                - active_account
+                - dormant_user
+                - stale_login
+                - suspended
               high_value: true
               id: users
               support: partial
-              title: Identity users
+              title: Users
               type: entity_family
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+                - source_snapshot
+              families:
+                - mfa
+                - mfa_device
+              high_value: true
+              id: user_mfa_posture
+              notes:
+                - The promoted Source CDK adapter reads /api/2/mfa/users/{user_id}/devices for configured user IDs and projects user-to-factor ownership.
+              support: partial
+              title: User MFA posture
+              type: relationship
+          default_enabled: true
           event:
             kind: onelogin.users
             required_payload_fields:
@@ -39,32 +82,36 @@ entries:
           id_field: id
           label: Users
           method: GET
+          name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/users
+          path: /api/2/users
           projection:
             fields:
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
+              display_name: name|display_name|firstname|username|email
+              email: email
+              status: status|state
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
+                - access_review
               families:
-                - groups
+                - group
               high_value: true
               id: groups
               support: partial
-              title: Identity groups
+              title: Groups
               type: entity_family
+          default_enabled: true
           event:
             kind: onelogin.groups
             required_payload_fields:
@@ -75,32 +122,126 @@ entries:
           id_field: id
           label: Groups
           method: GET
+          name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.pagination.after_cursor
+            cursor_param: after_cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/groups
+          path: /api/1/groups
           projection:
             fields:
-              description: description|summary
-              group_email: group_email|email
+              description: description
               group_id: id
+              group_name: name
             template: identity_group
           record_selector: $.data[*]
         - coverage:
             - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - role
+                - group_membership
+                - privileged_role
+              high_value: true
+              id: roles
+              notes:
+                - The promoted Source CDK adapter reads role users, role admins, and role apps for configured role IDs and projects group membership, admin role assignment, and app assignment edges.
+              support: partial
+              title: Roles and scoped role assignments
+              type: relationship
+          default_enabled: true
+          event:
+            kind: onelogin.roles
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/roles/v1
+            urn_kind: onelogin_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/2/roles
+          projection:
+            fields:
+              description: description
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - identity_access
+              evidence_types:
+                - source_snapshot
+                - identity_configuration
+              families:
+                - application
+                - app_assignment
+                - provisioning_state
+              high_value: true
+              id: applications
+              notes:
+                - The promoted Source CDK adapter reads user apps, role apps, and app users for configured parent IDs and projects app assignment edges.
+              support: partial
+              title: Applications and app assignments
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: onelogin.apps
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/apps/v1
+            urn_kind: onelogin_apps
+          id: apps
+          id_field: id
+          label: Applications
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/2/apps
+          projection:
+            fields:
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: application
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
                 - logging_monitoring
+                - identity_access
               evidence_types:
                 - logging_configuration
+                - access_review
               families:
-                - audit_events
+                - audit
+                - user_lifecycle
+                - application
+                - session
+                - mfa
               high_value: true
               id: audit_events
               support: partial
               title: Audit events
               type: audit_event
+          default_enabled: true
           event:
             kind: onelogin.audit_events
             required_payload_fields:
@@ -112,27 +253,339 @@ entries:
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
+            cursor_json_path: $.pagination.after_cursor
+            cursor_param: after_cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/1/events
+          projection:
+            fields:
+              actor_email: user.email|actor.email|email
+              actor_id: actor_user_id|user_id|user.id|actor.id
+              event_type: event_type|event_type_id|type|action
+              id: id
+              resource_id: app_id|group_id|role_id|object_id|target_id|id
+              resource_type: resource_type|object_type|target_type
+            template: audit_event
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - delegated_admin
+                - privilege
+                - privileged_role
+              high_value: true
+              id: privileges
+              notes:
+                - The promoted Source CDK adapter reads privilege users and privilege roles for configured privilege IDs and projects delegated privilege assignment edges.
+              support: partial
+              title: Delegated administration privileges
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: onelogin.privileges
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/privileges/v1
+            urn_kind: onelogin_privileges
+          id: privileges
+          id_field: id
+          label: Privileges
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/1/privileges
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_type: privilege
+            template: policy
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - change_management
+              evidence_types:
+                - configuration_snapshot
+              families:
+                - user_mapping
+                - lifecycle_rule
+              high_value: true
+              id: mappings
+              support: partial
+              title: User mappings
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: onelogin.mappings
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/mappings/v1
+            urn_kind: onelogin_mappings
+          id: mappings
+          id_field: id
+          label: User mappings
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: /api/2/mappings
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_type: user_mapping
+            template: policy
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+                - source_snapshot
+              families:
+                - mfa
+                - mfa_device
+              high_value: true
+              id: mfa_devices
+              notes:
+                - Requires a user_id for declarative reads. Production fanout over user_ids is implemented by the promoted Source CDK adapter.
+              support: partial
+              title: User MFA devices
+              type: relationship
+          default_enabled: false
+          event:
+            kind: onelogin.mfa_devices
+            required_payload_fields:
+              - device_id
+            schema_ref: onelogin/mfa_devices/v1
+            urn_kind: onelogin_mfa_devices
+          id: mfa_devices
+          id_field: device_id
+          label: MFA devices
+          method: GET
+          name_field: user_display_name
+          pagination:
+            type: none
+          path: "/api/2/mfa/users/${config.user_id}/devices"
+          projection:
+            fields:
+              resource_id: device_id|id|auth_factor_id
+              resource_name: user_display_name|type_display_name|auth_factor_name
+              resource_type: mfa_device
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - role_membership
+                - group_membership
+              high_value: true
+              id: role_users
+              notes:
+                - Requires a role_id for declarative reads. The promoted Source CDK adapter injects role_id into emitted events and projects group membership edges.
+              support: partial
+              title: Role users
+              type: relationship
+          default_enabled: false
+          event:
+            kind: onelogin.role_users
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/role_users/v1
+            urn_kind: onelogin_role_users
+          id: role_users
+          id_field: id
+          label: Role users
+          method: GET
+          name_field: name
+          pagination:
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/audit/events
+          path: "/api/2/roles/${config.role_id}/users"
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
-            template: audit_event
-          record_selector: $.data[*]
+              resource_id: id
+              resource_name: name|username|email
+              resource_type: role_user
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - role_admin
+                - privileged_role
+              high_value: true
+              id: role_admins
+              notes:
+                - Requires a role_id for declarative reads. The promoted Source CDK adapter injects role_id into emitted events and projects admin role assignment edges.
+              support: partial
+              title: Role administrators
+              type: relationship
+          default_enabled: false
+          event:
+            kind: onelogin.role_admins
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/role_admins/v1
+            urn_kind: onelogin_role_admins
+          id: role_admins
+          id_field: id
+          label: Role administrators
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: "/api/2/roles/${config.role_id}/admins"
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name|username|email
+              resource_type: role_admin
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - app_user
+                - app_assignment
+              high_value: true
+              id: app_users
+              notes:
+                - Requires an app_id for declarative reads. The promoted Source CDK adapter injects app_id into emitted events and projects user-to-app assignment edges.
+              support: partial
+              title: App users
+              type: app_entitlement
+          default_enabled: false
+          event:
+            kind: onelogin.app_users
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/app_users/v1
+            urn_kind: onelogin_app_users
+          id: app_users
+          id_field: id
+          label: App users
+          method: GET
+          name_field: name
+          pagination:
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: "/api/2/apps/${config.app_id}/users"
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name|username|email
+              resource_type: app_user
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - change_management
+              evidence_types:
+                - configuration_snapshot
+              families:
+                - app_rule
+                - provisioning_rule
+              high_value: true
+              id: app_rules
+              notes:
+                - Requires an app_id for declarative reads. The promoted Source CDK adapter injects app_id into emitted events and projects policy rule context.
+              support: partial
+              title: App rules
+              type: entity_family
+          default_enabled: false
+          event:
+            kind: onelogin.app_rules
+            required_payload_fields:
+              - id
+            schema_ref: onelogin/app_rules/v1
+            urn_kind: onelogin_app_rules
+          id: app_rules
+          id_field: id
+          label: App rules
+          method: GET
+          name_field: name
+          pagination:
+            type: none
+          path: "/api/2/apps/${config.app_id}/rules"
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_type: app_rule
+            template: policy
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - users
+            - groups
+            - roles
+            - apps
+            - audit_events
+            - privileges
+            - mappings
+          id: core_identity
+          label: Core identity inventory
+        - families:
+            - mfa_devices
+          id: user_scoped_depth
+          label: User-scoped depth
+        - families:
+            - role_users
+            - role_admins
+          id: role_scoped_depth
+          label: Role-scoped depth
+        - families:
+            - app_users
+            - app_rules
+          id: app_scoped_depth
+          label: App-scoped depth
       source_id: onelogin
       tenant_id: builtin_catalog
       transport:
-        base_url: https://api.us.onelogin.com
+        base_url: "https://${config.subdomain}.onelogin.com"
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
         verification:
           expect_status:
             - 200
           method: GET
-          path: /api/1/users
+          path: /api/2/users
