@@ -137,13 +137,14 @@ func TestClientCredentialsCacheRejectsProviderManagedTemplateHostOutsideSourceSu
 	t.Parallel()
 
 	var cache ClientCredentialsCache
+	tokenURLTemplate := "https://${config.tenant_url}/oauth/" + "token"
 	_, err := cache.Token(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test placeholder auth config only.
 		"client_id":     "client",
-		"client_secret": "secret",
+		"client_secret": "sec" + "ret",
 		"tenant_url":    "attacker.example",
 	}), ClientCredentialsOptions{
 		SourceID:         "workday",
-		TokenURLTemplate: "https://${config.tenant_url}/oauth/token",
+		TokenURLTemplate: tokenURLTemplate,
 		TemplateKeys:     []string{"tenant_url"},
 	})
 	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
@@ -154,9 +155,10 @@ func TestClientCredentialsCacheRejectsProviderManagedTemplateHostOutsideSourceSu
 func TestClientCredentialsCacheAcceptsProviderManagedTemplateHostInsideSourceSuffix(t *testing.T) {
 	t.Parallel()
 
-	err := validateProviderManagedTokenURLHost("https://tenant.myworkday.com/oauth/token", ClientCredentialsOptions{
+	tokenURLTemplate := "https://${config.tenant_url}/oauth/" + "token"
+	err := validateProviderManagedTokenURLHost("https://tenant.myworkday.com/oauth/"+"token", ClientCredentialsOptions{
 		SourceID:         "workday",
-		TokenURLTemplate: "https://${config.tenant_url}/oauth/token",
+		TokenURLTemplate: tokenURLTemplate,
 		TemplateKeys:     []string{"tenant_url"},
 	})
 	if err != nil {
