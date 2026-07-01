@@ -1,10 +1,6 @@
 id: auth0
 name: "Auth0"
-description: "Auth0 connector definition catalog entry for high-value security and operations resources."
-emitted_kinds:
-  - auth0.users
-  - auth0.roles
-  - auth0.audit_events
+description: "Collects Auth0 users, roles, applications, connections, organizations, role assignments, organization membership, organization member roles, and tenant logs from the Auth0 Management API."
 provider_api:
   status: verified
   transport: rest
@@ -15,6 +11,12 @@ provider_api:
     - https://auth0.com/docs/api/management/v2/users/get-users
     - https://auth0.com/docs/api/management/v2/roles/get-roles
     - https://auth0.com/docs/api/management/v2/logs/get-logs
+    - https://auth0.com/docs/api/management/v2/clients/get-clients
+    - https://auth0.com/docs/api/management/v2/connections/get-connections
+    - https://auth0.com/docs/api/management/v2/organizations/get-organizations
+    - https://auth0.com/docs/api/management/v2/organizations/get-members
+    - https://auth0.com/docs/api/management/v2/roles/get-role-user
+    - https://auth0.github.io/auth0-PHP/classes/Auth0-SDK-API-Management-Organizations.html
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/users/get-users.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/roles/get-roles.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/logs/get-logs.mdx
@@ -28,6 +30,34 @@ provider_api:
     - id: audit_events
       method: GET
       path: /logs
+    - id: clients
+      method: GET
+      path: /clients
+    - id: connections
+      method: GET
+      path: /connections
+    - id: organizations
+      method: GET
+      path: /organizations
+    - id: organization_members
+      method: GET
+      path: /organizations/{organization_id}/members
+    - id: role_users
+      method: GET
+      path: /roles/{role_id}/users
+    - id: organization_member_roles
+      method: GET
+      path: /organizations/{organization_id}/members/{user_id}/roles
+emitted_kinds:
+  - auth0.users
+  - auth0.roles
+  - auth0.audit_events
+  - auth0.clients
+  - auth0.connections
+  - auth0.organizations
+  - auth0.organization_members
+  - auth0.role_users
+  - auth0.organization_member_roles
 families:
   - id: users
     incremental: watermark
@@ -35,6 +65,15 @@ families:
     incremental: watermark
   - id: audit_events
     incremental: watermark
+  - id: clients
+    incremental: watermark
+  - id: connections
+    incremental: watermark
+  - id: organizations
+    incremental: watermark
+  - id: organization_members
+  - id: role_users
+  - id: organization_member_roles
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: auth0
@@ -48,7 +87,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads /api/v2/users with include_totals pagination and projects Auth0 identities.
     - id: roles
       type: entity_family
       title: "Roles"
@@ -58,7 +97,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads /api/v2/roles with include_totals pagination and projects role definitions.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -68,15 +107,75 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: incremental_sync
-      type: audit_event
-      title: Incremental cursor sync
-      families: [users, roles, audit_events]
+        - Reads /api/v2/logs with checkpoint pagination and projects actor/resource audit links.
+    - id: clients
+      type: entity_family
+      title: "Applications"
+      families: [clients]
       support: supported
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, identity_access]
+      notes:
+        - Reads /api/v2/clients with include_totals pagination and projects Auth0 applications.
+    - id: connections
+      type: entity_family
+      title: "Connections"
+      families: [connections]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads /api/v2/connections with checkpoint pagination and projects identity provider connections and enabled-client relationships.
+    - id: organizations
+      type: entity_family
+      title: "Organizations"
+      families: [organizations]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, identity_access]
+      notes:
+        - Reads /api/v2/organizations with checkpoint pagination and projects Auth0 organization scopes.
+    - id: organization_members
+      type: relationship
+      title: "Organization Members"
+      families: [organization_members]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads /api/v2/organizations/{id}/members across configured organization_ids and projects user membership links.
+    - id: role_users
+      type: relationship
+      title: "Role Users"
+      families: [role_users]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads /api/v2/roles/{id}/users across configured role_ids and projects user role assignment links.
+    - id: organization_member_roles
+      type: relationship
+      title: "Organization Member Roles"
+      families: [organization_member_roles]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads /api/v2/organizations/{id}/members/{user_id}/roles across configured organization_ids and user_ids and projects organization-scoped role assignments.
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      families: [users, roles, audit_events, clients, connections, organizations]
+      support: supported
+      high_value: true
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
       notes:
         - Watermark filtering is applied from durable source checkpoints; provider page continuation cursors are preserved when present.
 event_contracts:
@@ -94,6 +193,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - group_id
+      - role_id
     required_payload_fields:
       - id
   - kind: auth0.audit_events
@@ -105,3 +205,55 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - log_id
+  - kind: auth0.clients
+    schema_ref: auth0/clients/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - client_id
+    required_payload_fields:
+      - client_id
+  - kind: auth0.connections
+    schema_ref: auth0/connections/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - connection_id
+    required_payload_fields:
+      - id
+  - kind: auth0.organizations
+    schema_ref: auth0/organizations/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - organization_id
+    required_payload_fields:
+      - id
+  - kind: auth0.organization_members
+    schema_ref: auth0/organization_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - organization_id
+      - user_id
+    required_payload_fields:
+      - user_id
+  - kind: auth0.role_users
+    schema_ref: auth0/role_users/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - role_id
+      - subject_id
+    required_payload_fields:
+      - user_id
+  - kind: auth0.organization_member_roles
+    schema_ref: auth0/organization_member_roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - organization_id
+      - user_id
+      - role_id
+    required_payload_fields:
+      - id

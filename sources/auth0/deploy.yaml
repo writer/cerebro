@@ -37,3 +37,73 @@ runtimes:
       per_page: "100"
       client_id: env:AUTH0_CLIENT_ID
       client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: clients
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: clients
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: connections
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: connections
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: organizations
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: organizations
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: organization-members
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: organization_members
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      organization_ids: config:AUTH0_ORGANIZATION_IDS
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: role-users
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: role_users
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      role_ids: config:AUTH0_ROLE_IDS
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: organization-member-roles
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: organization_member_roles
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      organization_ids: config:AUTH0_ORGANIZATION_IDS
+      user_ids: config:AUTH0_USER_IDS
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET

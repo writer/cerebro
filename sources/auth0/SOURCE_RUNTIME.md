@@ -1,6 +1,6 @@
 # Auth0
 
-Generated Source Runtime SDK scaffold for `auth0`.
+Auth0 source runtime for Management API identity, application, organization, role assignment, and audit data.
 
 ## Runtime input
 
@@ -21,8 +21,14 @@ Generated Source Runtime SDK scaffold for `auth0`.
 - `users`, emits `auth0.users`, reads `/users`
 - `roles`, emits `auth0.roles`, reads `/roles`
 - `audit_events`, emits `auth0.audit_events`, reads `/logs`
+- `clients`, emits `auth0.clients`, reads `/clients`
+- `connections`, emits `auth0.connections`, reads `/connections`
+- `organizations`, emits `auth0.organizations`, reads `/organizations`
+- `organization_members`, emits `auth0.organization_members`, reads `/organizations/{organization_id}/members` across configured `organization_ids`
+- `role_users`, emits `auth0.role_users`, reads `/roles/{role_id}/users` across configured `role_ids`
+- `organization_member_roles`, emits `auth0.organization_member_roles`, reads `/organizations/{organization_id}/members/{user_id}/roles` across configured `organization_ids` and `user_ids`
 
-All Auth0 families support durable watermark checkpoints for incremental source-runtime sync.
+Direct inventory families use durable watermark checkpoints for incremental source-runtime sync. Role-user and organization membership fanout families preserve provider pagination cursors within each configured scope.
 
 ## Tests
 

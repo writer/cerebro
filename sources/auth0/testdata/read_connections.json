@@ -1,0 +1,28 @@
+[
+  {
+    "id": "auth0-connection-conn-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/connections/v1",
+    "payload": {
+      "id": "conn-1",
+      "name": "Username-Password-Authentication",
+      "strategy": "auth0",
+      "enabled_clients": ["client-1"]
+    },
+    "attributes": {
+      "connection_id": "conn-1",
+      "connection_name": "Username-Password-Authentication",
+      "enabled_clients": "client-1",
+      "resource_id": "conn-1",
+      "resource_name": "Username-Password-Authentication",
+      "resource_type": "connection",
+      "resource_urn": "urn:cerebro:tenant:auth0_connections:conn-1",
+      "source_event_id": "conn-1",
+      "strategy": "auth0",
+      "tenant_id": "tenant"
+    }
+  }
+]
