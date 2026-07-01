@@ -20,11 +20,11 @@ func snykVulnerabilitiesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 }
 
 func snykOrgMembershipsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: "snyk"})
+	return snykMembershipProjections(event, "snyk_orgs", "snyk.orgs")
 }
 
 func snykGroupMembershipsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: "snyk"})
+	return snykMembershipProjections(event, "snyk_groups", "snyk.groups")
 }
 
 func snykServiceAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -36,11 +36,11 @@ func snykGroupServiceAccountsProjections(event *cerebrov1.EventEnvelope) ([]*por
 }
 
 func snykAuditLogsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "snyk"})
+	return snykAuditProjections(event)
 }
 
 func snykGroupAuditLogsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "snyk"})
+	return snykAuditProjections(event)
 }
 
 func snykCloudResourcesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -73,6 +73,121 @@ func snykGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func snykMembershipProjections(event *cerebrov1.EventEnvelope, groupURNKind string, groupEntityType string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	groupID := strings.TrimSpace(attributes["group_id"])
+	groupURN := projectionURN(tenantID, groupURNKind, groupID)
+	memberEmail := firstNonEmpty(attributes["member_email"], attributes["email"], attributes["user_email"])
+	memberID := firstNonEmpty(attributes["member_user_id"], attributes["user_id"], attributes["member_id"], memberEmail)
+	memberType := strings.ToLower(firstNonEmpty(attributes["member_type"], attributes["type"], "user"))
+	memberURN := identityPrincipalURN(tenantID, "snyk", memberType, memberID, memberEmail)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	if groupURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        groupURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: groupEntityType,
+			Label:      firstNonEmpty(attributes["group_name"], groupID),
+			Attributes: map[string]string{
+				"group_id": groupID,
+			},
+		})
+	}
+	if memberURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        memberURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "snyk." + identityPrincipalType(memberType),
+			Label:      firstNonEmpty(attributes["member_name"], memberEmail, memberID),
+			Attributes: map[string]string{
+				"email":       memberEmail,
+				"member_id":   memberID,
+				"member_type": memberType,
+				"role":        strings.TrimSpace(attributes["role"]),
+			},
+		})
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, memberEmail, event.GetOccurredAt())
+		if groupURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, groupURN, relationMemberOf, map[string]string{
+				"event_id": event.GetId(),
+				"role":     strings.TrimSpace(attributes["role"]),
+			}))
+		}
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func snykAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	actorEmail := firstNonEmpty(attributes["actor_email"], attributes["email"])
+	actorID := firstNonEmpty(attributes["actor_id"], actorEmail)
+	actorURN := identityUserURN(tenantID, "snyk", actorID, actorEmail)
+	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["project_id"], attributes["group_id"])
+	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
+	resourceURNKind := snykInventoryURNKind(resourceType)
+	resourceURN := projectionURN(tenantID, resourceURNKind, resourceID)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	if actorURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        actorURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "snyk.user",
+			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, actorID),
+			Attributes: map[string]string{"actor_id": strings.TrimSpace(attributes["actor_id"]), "email": actorEmail},
+		})
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
+	}
+	if resourceURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        resourceURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "snyk." + strings.TrimPrefix(resourceURNKind, "snyk_"),
+			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceID),
+			Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType},
+		})
+	}
+	if actorURN != "" && resourceURN != "" {
+		actedAttrs := map[string]string{
+			"event_id":   event.GetId(),
+			"event_type": firstNonEmpty(attributes["event_type"], attributes["event_name"]),
+		}
+		addProjectedAttribute(actedAttrs, "at", eventObservedAt(event))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func snykInventoryURNKind(resourceType string) string {
+	switch normalizeIdentifier(resourceType) {
+	case "org", "organization":
+		return "snyk_orgs"
+	case "group":
+		return "snyk_groups"
+	case "project":
+		return "snyk_projects"
+	case "target":
+		return "snyk_targets"
+	case "asset":
+		return "snyk_assets"
+	default:
+		return "snyk_" + normalizeIdentifier(resourceType)
+	}
 }
 
 func snykServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

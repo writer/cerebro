@@ -61,10 +61,24 @@ func TestSnykGroupMembershipProjectionLinksMemberToGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.group") {
+	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.groups") {
 		t.Fatalf("expected projected Snyk user and group entities; entities=%#v", entities)
 	}
-	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", ""), relationMemberOf, identityGroupURN("tenant", "snyk", "group-1", "")) {
+	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", ""), relationMemberOf, projectionURN("tenant", "snyk_groups", "group-1")) {
+		t.Fatalf("expected member_of link; links=%#v", links)
+	}
+}
+
+func TestSnykOrgMembershipProjectionLinksMemberToOrg(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.org_memberships", Attributes: map[string]string{"group_id": "org-1", "member_user_id": "user-1", "member_type": "user", "role": "admin"}}
+	entities, links, err := snykOrgMembershipsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.orgs") {
+		t.Fatalf("expected projected Snyk user and org entities; entities=%#v", entities)
+	}
+	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", ""), relationMemberOf, projectionURN("tenant", "snyk_orgs", "org-1")) {
 		t.Fatalf("expected member_of link; links=%#v", links)
 	}
 }
@@ -89,10 +103,10 @@ func TestSnykAuditProjectionLinksActorToResource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.project") {
+	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.projects") {
 		t.Fatalf("expected audit actor and resource entities; entities=%#v", entities)
 	}
-	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", "snyk_project", "project-1")) {
+	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", "snyk_projects", "project-1")) {
 		t.Fatalf("expected acted_on link; links=%#v", links)
 	}
 }
