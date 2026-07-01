@@ -553,7 +553,7 @@ func (s *stubQuestionnaireRunStore) ListQuestionnaireVendorRollups(_ context.Con
 			rollup.QuestionnaireCount++
 			seen[key] = struct{}{}
 		}
-		if !questionnaireTerminal(record.Status) {
+		if !testQuestionnaireTerminal(record.Status) {
 			if record.DueAt != nil && !record.DueAt.After(filter.Now) {
 				rollup.DueQuestionnaires++
 			}
@@ -588,6 +588,15 @@ func hasQuestionnaireVendorRollupFilter(filter ports.QuestionnaireVendorRollupFi
 		}
 	}
 	return false
+}
+
+func testQuestionnaireTerminal(status string) bool {
+	switch strings.TrimSpace(status) {
+	case ports.QuestionnaireStatusApproved, ports.QuestionnaireStatusRejected:
+		return true
+	default:
+		return false
+	}
 }
 
 func vendorRow(urn string, label string, attrs string, contracts int64, reviews int64, questionnaires int64, documents int64) ports.CypherRow {

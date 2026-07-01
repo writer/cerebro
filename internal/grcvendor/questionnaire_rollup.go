@@ -90,12 +90,3 @@ func ApplyQuestionnaireVendorRollup(vendor Vendor, rollup QuestionnaireVendorRol
 	vendor.Attributes["questionnaire_open_assignments"] = fmt.Sprint(rollup.OpenAssignments)
 	return RefreshVendorQueuePosture(vendor)
 }
-
-func questionnaireTerminal(status string) bool {
-	switch strings.TrimSpace(status) {
-	case ports.QuestionnaireStatusApproved, ports.QuestionnaireStatusRejected:
-		return true
-	default:
-		return false
-	}
-}
