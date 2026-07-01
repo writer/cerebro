@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -246,6 +247,35 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 				t.Fatalf("resource_urn = %q, want %q", got, tt.resourceURN)
 			}
 		})
+	}
+}
+
+func TestDatabaseAPIKeyExpiryDoesNotSetOccurredAt(t *testing.T) {
+	deadline := time.Now().UTC().Add(365 * 24 * time.Hour).Truncate(time.Second)
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireQdrantCloudAuth(t, r)
+		if r.URL.Path != "/api/cluster/auth/v2/accounts/"+testAccountID+"/database-api-keys" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{"items": []map[string]any{{
+			"clusterId": testClusterID,
+			"expiresAt": deadline.Format(time.RFC3339),
+			"id":        "44444444-4444-4444-8444-444444444444",
+			"name":      "Production read key",
+		}}})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), qdrantTestConfig(familyDatabaseApiKeys, server.URL), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].GetOccurredAt().AsTime(); !got.Before(deadline) {
+		t.Fatalf("OccurredAt = %s, want observation time before expires_at deadline %s", got.Format(time.RFC3339), deadline.Format(time.RFC3339))
 	}
 }
 

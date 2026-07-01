@@ -187,6 +187,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - deployment_id
+      - deployment_name
       - deployment_status
     required_payload_fields:
       - id
@@ -224,6 +225,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - policy_id
+      - policy_name
       - policy_status
     required_payload_fields:
       - id

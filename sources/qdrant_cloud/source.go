@@ -96,7 +96,7 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "name", "postfix"},
 				DisablePageSize:  true,
 				ListKeys:         []string{"items"},
-				TimestampKeys:    []string{"createdAt", "created_at", "expiresAt", "expires_at"},
+				TimestampKeys:    []string{"createdAt", "created_at"},
 				Attributes:       map[string]string{"cluster_id": "clusterId|cluster_id", "created_by_email": "createdByEmail|created_by_email", "expires_at": "expiresAt|expires_at", "observed_at": "createdAt|created_at", "postfix": "postfix", "resource_id": "id", "resource_name": "name", "secret_created_at": "createdAt|created_at", "secret_id": "id", "secret_name": "name", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "secret", "resource_type": "database_api_key", "schema": "database_api_keys", "secret_type": "database_api_key", "source_system": "qdrant_cloud"},
 				Config:           qdrantClusterQueryConfig("qdrant_cloud_database_api_keys"),
