@@ -263,6 +263,7 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 				"scan_id":        "scan-1",
 				"status":         "finished",
 				"kind":           "scheduled",
+				"resource_type":  "snyk_cloud_scan",
 				"environment_id": "environment-1",
 			},
 		},

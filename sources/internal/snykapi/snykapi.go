@@ -443,7 +443,6 @@ func snykCloudScansFamily() jsonapi.Family {
 			"source_event_id": "id",
 			"resource_id":     "id",
 			"resource_name":   "attributes.name|id",
-			"resource_type":   "scan",
 			"status":          "attributes.status",
 			"kind":            "attributes.kind",
 			"error":           "attributes.error",
