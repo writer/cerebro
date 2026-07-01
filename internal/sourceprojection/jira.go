@@ -260,8 +260,8 @@ func jiraProjectRoleAdmin(attributes map[string]string) bool {
 	if raw := strings.TrimSpace(attributes["admin"]); raw != "" {
 		return projectionBool(raw)
 	}
-	roleName := normalizeIdentifier(firstNonEmpty(attributes["role_name"], attributes["resource_name"]))
-	return strings.Contains(roleName, "admin")
+	roleName := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["role_name"], attributes["resource_name"])))
+	return roleName == "administrators"
 }
 
 func jiraPermissionGrants(event *cerebrov1.EventEnvelope) []map[string]any {
