@@ -79,8 +79,9 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, nil
 	}
 	scopedRoleID := jiraScopedRoleID(projectID, roleID)
+	isAdminRole := jiraProjectRoleAdmin(attributes)
 	roleKind := "role"
-	if projectionBool(attributes["admin"]) {
+	if isAdminRole {
 		roleKind = "admin_role"
 	}
 	globalRoleURN := projectionURN(tenantID, "jira_role", roleID)
@@ -107,7 +108,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		EntityType: "jira." + roleKind,
 		Label:      firstNonEmpty(attributes["role_name"], attributes["resource_name"], roleID),
 		Attributes: map[string]string{
-			"is_admin":          strings.TrimSpace(attributes["admin"]),
+			"is_admin":          boolString(isAdminRole),
 			"project_id":        projectID,
 			"project_key":       strings.TrimSpace(attributes["project_key"]),
 			"role_id":           roleID,
@@ -136,7 +137,8 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		assignmentAttrs["subject_id"] = subjectID
 		assignmentAttrs["subject_name"] = subjectName
 		assignmentAttrs["subject_type"] = subjectType
-		assignmentAttrs["is_admin"] = strings.TrimSpace(attributes["admin"])
+		assignmentAttrs["admin"] = boolString(isAdminRole)
+		assignmentAttrs["is_admin"] = boolString(isAdminRole)
 		synthetic := &cerebrov1.EventEnvelope{
 			Id:         event.GetId() + "-" + normalizeIdentifier(subjectType) + "-" + normalizeIdentifier(subjectID),
 			TenantId:   event.GetTenantId(),
@@ -252,6 +254,14 @@ func jiraActorSubject(actor map[string]any) (string, string, string) {
 	}
 	user, _ := actor["actorUser"].(map[string]any)
 	return "user", firstNonEmpty(jiraAnyString(user["accountId"]), jiraAnyString(actor["name"]), displayName), displayName
+}
+
+func jiraProjectRoleAdmin(attributes map[string]string) bool {
+	if raw := strings.TrimSpace(attributes["admin"]); raw != "" {
+		return projectionBool(raw)
+	}
+	roleName := normalizeIdentifier(firstNonEmpty(attributes["role_name"], attributes["resource_name"]))
+	return strings.Contains(roleName, "admin")
 }
 
 func jiraPermissionGrants(event *cerebrov1.EventEnvelope) []map[string]any {

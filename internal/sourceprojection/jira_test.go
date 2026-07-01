@@ -118,6 +118,30 @@ func TestJiraProjectRoleProjectionKeepsNonAdminAdministratorNameScoped(t *testin
 	assertJiraMissingLink(t, links, userURN, relationCanAdmin, adminRoleURN)
 }
 
+func TestJiraProjectRoleProjectionInfersBuiltInAdministratorsRole(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "jira",
+		Kind:     "jira.project_roles",
+		Attributes: map[string]string{
+			"project_id":  "10001",
+			"project_key": "ENG",
+			"role_id":     "10002",
+			"role_name":   "Administrators",
+		},
+		Payload: []byte(`{"id":10002,"name":"Administrators","actors":[{"id":20001,"type":"atlassian-user-role-actor","displayName":"User One","actorUser":{"accountId":"acct-1"}}]}`),
+	}
+	entities, links, err := jiraProjectRolesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	roleURN := projectionURN("tenant", "jira_admin_role", "10001:10002")
+	userURN := projectionURN("tenant", "jira_user", "acct-1")
+	assertJiraEntity(t, entities, roleURN, "jira.admin_role")
+	assertJiraLink(t, links, userURN, relationCanAdmin, roleURN)
+}
+
 func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{
 		Id:       "event-1",

@@ -371,7 +371,7 @@ entries:
           pagination:
             limit_param: limit
             offset_param: offset
-            page_size: 1000
+            page_size: 100
             type: offset
           path: /rest/api/3/auditing/record
           projection:
