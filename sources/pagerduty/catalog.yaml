@@ -28,6 +28,9 @@ provider_api:
     - id: service
       method: GET
       path: /services
+    - id: integration
+      method: GET
+      path: /services/{service_id}/integrations
     - id: schedule
       method: GET
       path: /schedules
@@ -41,6 +44,7 @@ runtime_families:
   - user
   - team
   - service
+  - integration
   - schedule
   - escalation_policy
   - vendor
