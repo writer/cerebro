@@ -32,6 +32,64 @@ func slackUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	return slackWithTeamContext(event, enrichSlackUserPosture)
 }
 
+func slackChannelMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return slackMembershipProjections(event, "channel_id", "slack_channel", "slack.channel", "slack_channel_member")
+}
+
+func slackUserGroupMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return slackMembershipProjections(event, "usergroup_id", "slack_user_group", "slack.user_group", "slack_user_group_member")
+}
+
+func slackAccessLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "slack"})
+}
+
+func slackAuditLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "slack"})
+}
+
+func slackMembershipProjections(event *cerebrov1.EventEnvelope, containerAttr string, containerKind string, containerEntityType string, matchType string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	userID := strings.TrimSpace(attrs["user_id"])
+	containerID := strings.TrimSpace(attrs[containerAttr])
+	if userID == "" || containerID == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	userURN := projectionURN(tenantID, "slack_user", userID)
+	containerURN := projectionURN(tenantID, containerKind, containerID)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        userURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "slack.user",
+		Label:      firstNonEmpty(attrs["username"], userID),
+		Attributes: map[string]string{"user_id": userID},
+	})
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        containerURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: containerEntityType,
+		Label:      firstNonEmpty(attrs["name"], containerID),
+		Attributes: map[string]string{containerAttr: containerID},
+	})
+	linkAttrs := map[string]string{
+		"event_id":   event.GetId(),
+		"at":         eventObservedAt(event),
+		"match_type": matchType,
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, containerURN, relationMemberOf, linkAttrs))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), containerURN, userURN, relationContains, linkAttrs))
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.ProjectedEntity, *cerebrov1.EventEnvelope)) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	projectedEntities, projectedLinks, err := genericInventoryProjections(event)
 	if err != nil {

@@ -1,16 +1,64 @@
 id: slack
 name: Slack
-description: Slack collaboration governance source covering workspaces, users, public and private channels, and user groups. The runtime emits team context, user privilege and MFA enrollment posture, channel ownership context, and user group membership anchors for graph projection and review.
+description: Slack collaboration governance source covering workspaces, users, public and private channels, user groups, memberships, team access logs, and Enterprise Grid audit logs. The runtime emits team context, user privilege and MFA enrollment posture, channel ownership context, membership edges, login activity, and audit events for graph projection and review.
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://slack.com/api
+  references:
+    - https://docs.slack.dev/reference/methods/users.list
+    - https://docs.slack.dev/reference/methods/conversations.list
+    - https://docs.slack.dev/reference/methods/conversations.members
+    - https://docs.slack.dev/reference/methods/usergroups.list
+    - https://docs.slack.dev/reference/methods/usergroups.users.list
+    - https://docs.slack.dev/reference/methods/team.accessLogs
+    - https://docs.slack.dev/admins/audit-logs-api
+    - https://github.com/slackapi/slack-api-specs
+    - https://github.com/slackapi/python-slack-sdk/blob/main/slack_sdk/audit_logs/v1/client.py
+  families:
+    - id: team
+      method: POST
+      path: /auth.teams.list
+    - id: user
+      method: GET
+      path: /users.list
+    - id: channel
+      method: GET
+      path: /conversations.list
+    - id: user_group
+      method: GET
+      path: /usergroups.list
+    - id: access_log
+      method: GET
+      path: /team.accessLogs
+    - id: channel_member
+      method: GET
+      path: /conversations.members
+    - id: user_group_member
+      method: GET
+      path: /usergroups.users.list
+    - id: audit_log
+      method: GET
+      path: https://api.slack.com/audit/v1/logs
 emitted_kinds:
   - slack.team
   - slack.user
   - slack.channel
   - slack.user_group
+  - slack.access_log
+  - slack.channel_member
+  - slack.user_group_member
+  - slack.audit_log
 families:
   - id: team
   - id: user
   - id: channel
   - id: user_group
+  - id: access_log
+  - id: channel_member
+  - id: user_group_member
+  - id: audit_log
 coverage_contract:
   owner_domain: collaboration
   authority_domain: slack
@@ -45,6 +93,16 @@ coverage_contract:
       control_domains: [asset_inventory]
       notes:
         - User group records provide durable group anchors for ownership, notification, and access review workflows.
+    - id: memberships
+      type: relationship
+      title: Channel and user group memberships
+      families: [channel_member, user_group_member]
+      support: supported
+      high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [access_review, identity_access]
+      notes:
+        - Membership families read Slack scalar member lists and project user-to-channel and user-to-user-group edges on the graph.
     - id: users
       type: entity_family
       title: Users
@@ -55,16 +113,36 @@ coverage_contract:
       control_domains: [asset_inventory]
       notes:
         - User snapshots include privilege flags, deletion state, email identifiers, and MFA enrollment state for identity posture projection.
+    - id: access_logs
+      type: audit_event
+      title: Team access logs
+      families: [access_log]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
+      notes:
+        - Access log rows include user, IP address, user agent, and login count context from Slack team access logs.
+    - id: audit_logs
+      type: audit_event
+      title: Enterprise audit logs
+      families: [audit_log]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
+      notes:
+        - Enterprise Grid audit logs use the Slack Audit Logs API host and preserve actor, entity, context, and cursor state.
     - id: pagination
       type: incremental_sync
-      title: Slack cursor pagination
-      families: [team, user, channel]
+      title: Slack pagination
+      families: [team, user, channel, access_log, channel_member, user_group_member, audit_log]
       support: supported
       high_value: true
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
       notes:
-        - Slack cursor responses are preserved through Source CDK cursors so scheduled reads can continue from the provider cursor.
+        - Cursor-based Slack responses are preserved through Source CDK cursors, and team access logs use Slack page/count parameters.
 event_contracts:
   - kind: slack.team
     schema_ref: slack/team/v1
@@ -88,5 +166,35 @@ event_contracts:
     schema_ref: slack/user_group/v1
     required_attributes:
       - group_id
+    required_payload_fields:
+      - id
+  - kind: slack.access_log
+    schema_ref: slack/access_log/v1
+    required_attributes:
+      - actor_id
+      - event_type
+    required_payload_fields:
+      - user_id
+  - kind: slack.channel_member
+    schema_ref: slack/channel_member/v1
+    required_attributes:
+      - channel_id
+      - user_id
+    required_payload_fields:
+      - channel_id
+      - user_id
+  - kind: slack.user_group_member
+    schema_ref: slack/user_group_member/v1
+    required_attributes:
+      - usergroup_id
+      - user_id
+    required_payload_fields:
+      - usergroup_id
+      - user_id
+  - kind: slack.audit_log
+    schema_ref: slack/audit_log/v1
+    required_attributes:
+      - actor_id
+      - event_type
     required_payload_fields:
       - id

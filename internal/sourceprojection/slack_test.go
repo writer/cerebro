@@ -140,6 +140,36 @@ func TestProjectSlackSharedChannelLinksEachRealTeam(t *testing.T) {
 	assertProjectedLinkMissing(t, state, syntheticURN, relationContains, channelURN)
 }
 
+func TestProjectSlackMembershipsAndAuditEvents(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		slackEvent("slack.channel_member", map[string]string{"channel_id": "C1", "user_id": "U1"}),
+		slackEvent("slack.user_group_member", map[string]string{"usergroup_id": "S1", "user_id": "U2"}),
+		slackEvent("slack.audit_log", map[string]string{"event_type": "user_login", "actor_id": "U1", "actor_name": "alice", "resource_id": "U2", "resource_type": "user"}),
+		slackEvent("slack.access_log", map[string]string{"event_type": "team_access", "actor_id": "U1", "actor_name": "alice", "ip_address": "203.0.113.10"}),
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	channelURN := "urn:cerebro:writer:slack_channel:C1"
+	groupURN := "urn:cerebro:writer:slack_user_group:S1"
+	user1URN := "urn:cerebro:writer:slack_user:U1"
+	user2URN := "urn:cerebro:writer:slack_user:U2"
+
+	assertProjectedLink(t, state, user1URN, relationMemberOf, channelURN)
+	assertProjectedLink(t, state, channelURN, relationContains, user1URN)
+	assertProjectedLink(t, state, user2URN, relationMemberOf, groupURN)
+	assertProjectedLink(t, state, groupURN, relationContains, user2URN)
+	if actor := state.entities[user1URN]; actor == nil || actor.EntityType != "slack.user" {
+		t.Fatalf("slack audit/access actor missing or wrong: %#v", actor)
+	}
+}
+
 func TestRegistryRoutesSlackDeclaredKinds(t *testing.T) {
 	cases := []struct {
 		kind       string
@@ -148,8 +178,12 @@ func TestRegistryRoutesSlackDeclaredKinds(t *testing.T) {
 	}{
 		{"slack.team", map[string]string{"team_id": "T1", "name": "Writer"}, "slack.team"},
 		{"slack.user", map[string]string{"user_id": "U1", "team_id": "T1", "is_admin": "true", "has_2fa": "false"}, "slack.user"},
+		{"slack.access_log", map[string]string{"event_type": "team_access", "actor_id": "U1"}, "slack.user"},
+		{"slack.audit_log", map[string]string{"event_type": "user_login", "actor_id": "U1", "resource_id": "U2", "resource_type": "user"}, "slack.user"},
 		{"slack.channel", map[string]string{"channel_id": "C1", "team_id": "T1"}, "slack.channel"},
+		{"slack.channel_member", map[string]string{"channel_id": "C1", "user_id": "U1"}, "slack.user"},
 		{"slack.user_group", map[string]string{"group_id": "S1", "team_id": "T1"}, "slack.user_group"},
+		{"slack.user_group_member", map[string]string{"usergroup_id": "S1", "user_id": "U1"}, "slack.user"},
 	}
 	registered := make(map[string]struct{})
 	for _, kind := range BuiltinRegistry().Kinds() {
@@ -223,6 +257,38 @@ func TestSlackRuntimeKindLiteralsProjectThroughRegistry(t *testing.T) {
 				"group_id": "S1",
 				"team_id":  "T1",
 				"handle":   "eng",
+			},
+		},
+		{
+			Id:       "slack-channel-member-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.channel_member",
+			Attributes: map[string]string{
+				"channel_id": "C1",
+				"user_id":    "U1",
+			},
+		},
+		{
+			Id:       "slack-user-group-member-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.user_group_member",
+			Attributes: map[string]string{
+				"usergroup_id": "S1",
+				"user_id":      "U1",
+			},
+		},
+		{
+			Id:       "slack-audit-log-literal",
+			TenantId: "writer",
+			SourceId: "slack",
+			Kind:     "slack.audit_log",
+			Attributes: map[string]string{
+				"actor_id":      "U1",
+				"event_type":    "user_login",
+				"resource_id":   "U2",
+				"resource_type": "user",
 			},
 		},
 	}

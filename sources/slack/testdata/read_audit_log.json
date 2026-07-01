@@ -1,0 +1,54 @@
+[
+  {
+    "id": "slack-audit-log-Ev1",
+    "tenant_id": "tenant",
+    "source_id": "slack",
+    "kind": "slack.audit_log",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "slack/audit_log/v1",
+    "payload": {
+      "id": "Ev1",
+      "date_create": 1780272000,
+      "action": "user_login",
+      "actor": {
+        "type": "user",
+        "user": {
+          "id": "U1",
+          "name": "alice",
+          "email": "alice@example.test",
+          "team": "T1"
+        }
+      },
+      "entity": {
+        "type": "user",
+        "user": {
+          "id": "U2",
+          "name": "bob",
+          "team": "T1"
+        }
+      },
+      "context": {
+        "ip_address": "203.0.113.10",
+        "ua": "Mozilla/5.0"
+      }
+    },
+    "attributes": {
+      "actor_email": "alice@example.test",
+      "actor_id": "U1",
+      "actor_name": "alice",
+      "actor_type": "user",
+      "event_type": "user_login",
+      "external_id": "Ev1",
+      "family": "audit_log",
+      "ip_address": "203.0.113.10",
+      "provider": "slack",
+      "resource_id": "U2",
+      "resource_name": "bob",
+      "resource_type": "user",
+      "source_product": "slack",
+      "source_provider": "slack",
+      "team_id": "T1",
+      "user_agent": "Mozilla/5.0"
+    }
+  }
+]

@@ -131,6 +131,19 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 			}}},
 			want: map[string]string{"group_id": "S1", "team_id": "T1", "handle": "eng", "name": "Engineering"},
 		},
+		{
+			name:   "access_log",
+			family: familyAccessLog,
+			kind:   "slack.access_log",
+			path:   "/team.accessLogs",
+			method: http.MethodGet,
+			query:  map[string]string{"count": "100", "page": "1"},
+			response: map[string]any{"ok": true, "logins": []map[string]any{{
+				"user_id": "U1", "username": "alice", "ip": "203.0.113.10", "user_agent": "Mozilla/5.0",
+				"count": 3, "date_first": 1780271000, "date_last": 1780272000,
+			}}},
+			want: map[string]string{"actor_id": "U1", "actor_name": "alice", "event_type": "team_access", "ip_address": "203.0.113.10", "login_count": "3"},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +193,204 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReadSlackScalarMembershipFamilies(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		family    string
+		path      string
+		configKey string
+		configVal string
+		queryKey  string
+		listKey   string
+		kind      string
+		want      map[string]string
+	}{
+		{
+			name:      "channel_member",
+			family:    familyChannelMember,
+			path:      "/conversations.members",
+			configKey: "channel_id",
+			configVal: "C1",
+			queryKey:  "channel",
+			listKey:   "members",
+			kind:      "slack.channel_member",
+			want:      map[string]string{"channel_id": "C1", "user_id": "U1", "membership_type": "channel"},
+		},
+		{
+			name:      "user_group_member",
+			family:    familyUserGroupMember,
+			path:      "/usergroups.users.list",
+			configKey: "usergroup_id",
+			configVal: "S1",
+			queryKey:  "usergroup",
+			listKey:   "users",
+			kind:      "slack.user_group_member",
+			want:      map[string]string{"usergroup_id": "S1", "user_id": "U1", "membership_type": "user_group"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if got := r.URL.EscapedPath(); got != tt.path {
+					t.Fatalf("request path = %q, want %s", got, tt.path)
+				}
+				if got := r.URL.Query().Get(tt.queryKey); got != tt.configVal {
+					t.Fatalf("query %q = %q, want %q", tt.queryKey, got, tt.configVal)
+				}
+				if got := r.URL.Query().Get("limit"); got != "2" {
+					t.Fatalf("limit = %q, want 2", got)
+				}
+				if tt.family == familyUserGroupMember {
+					if got := r.URL.Query().Get("include_disabled"); got != "true" {
+						t.Fatalf("include_disabled = %q, want true", got)
+					}
+				}
+				if got := r.Header.Get("Authorization"); got != "Bearer slack-token" {
+					t.Fatalf("Authorization = %q, want bearer token", got)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"ok":                true,
+					tt.listKey:          []string{"U1"},
+					"response_metadata": map[string]any{"next_cursor": "cursor-2"},
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.inner.AllowLoopbackBaseURL = true
+			config := sourcecdk.NewConfig(map[string]string{
+				"base_url":   server.URL,
+				"family":     tt.family,
+				"per_page":   "2",
+				"tenant_id":  "writer",
+				"token":      "slack-token",
+				tt.configKey: tt.configVal,
+			})
+			pull, err := source.Read(context.Background(), config, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			if pull.NextCursor == nil || pull.NextCursor.GetOpaque() != "cursor-2" {
+				t.Fatalf("NextCursor = %#v, want cursor-2", pull.NextCursor)
+			}
+			event := pull.Events[0]
+			if event.Kind != tt.kind {
+				t.Fatalf("Kind = %q, want %q", event.Kind, tt.kind)
+			}
+			for key, want := range tt.want {
+				if got := event.Attributes[key]; got != want {
+					t.Fatalf("attribute %q = %q, want %q", key, got, want)
+				}
+			}
+			urns, err := source.Discover(context.Background(), config)
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if len(urns) != 1 {
+				t.Fatalf("Discover URNs = %d, want 1", len(urns))
+			}
+			if requests != 2 {
+				t.Fatalf("requests = %d, want Read and Discover", requests)
+			}
+		})
+	}
+}
+
+func TestReadSlackAuditLogsUsesAuditBaseURL(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.URL.EscapedPath(); got != "/logs" {
+			t.Fatalf("request path = %q, want /logs", got)
+		}
+		for key, want := range map[string]string{
+			"action": "user_login",
+			"cursor": "cursor-1",
+			"latest": "1780273000",
+			"limit":  "3",
+			"oldest": "1780270000",
+		} {
+			if got := r.URL.Query().Get(key); got != want {
+				t.Fatalf("query %q = %q, want %q", key, got, want)
+			}
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer slack-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries": []map[string]any{{
+				"id":          "Ev1",
+				"date_create": 1780272000,
+				"action":      "user_login",
+				"actor": map[string]any{"type": "user", "user": map[string]any{
+					"id": "U1", "name": "alice", "email": "alice@example.test", "team": "T1",
+				}},
+				"entity": map[string]any{"type": "user", "user": map[string]any{
+					"id": "U2", "name": "bob", "team": "T1",
+				}},
+				"context": map[string]any{"ip_address": "203.0.113.10", "ua": "Mozilla/5.0"},
+			}},
+			"response_metadata": map[string]any{"next_cursor": "cursor-2"},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"action":         "user_login",
+		"audit_base_url": server.URL,
+		"family":         familyAuditLog,
+		"latest":         "1780273000",
+		"oldest":         "1780270000",
+		"per_page":       "3",
+		"tenant_id":      "writer",
+		"token":          "slack-token",
+	})
+	pull, err := source.Read(context.Background(), config, &cerebrov1.SourceCursor{Opaque: "cursor-1"})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if pull.NextCursor == nil || pull.NextCursor.GetOpaque() != "cursor-2" {
+		t.Fatalf("NextCursor = %#v, want cursor-2", pull.NextCursor)
+	}
+	event := pull.Events[0]
+	if event.Kind != "slack.audit_log" {
+		t.Fatalf("Kind = %q, want slack.audit_log", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"actor_email":   "alice@example.test",
+		"actor_id":      "U1",
+		"actor_name":    "alice",
+		"event_type":    "user_login",
+		"ip_address":    "203.0.113.10",
+		"resource_id":   "U2",
+		"resource_name": "bob",
+		"resource_type": "user",
+		"team_id":       "T1",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attribute %q = %q, want %q", key, got, want)
+		}
 	}
 }
 
@@ -306,10 +517,13 @@ func TestNewFixtureReplaysSlackFamilies(t *testing.T) {
 		t.Fatalf("NewFixture() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
-	for _, family := range []string{familyTeam, familyUser, familyChannel, familyUserGroup} {
+	for _, family := range []string{familyTeam, familyUser, familyChannel, familyUserGroup, familyAccessLog, familyChannelMember, familyUserGroupMember, familyAuditLog} {
 		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
-			"family":    family,
-			"tenant_id": "tenant",
+			"audit_base_url": "https://audit.example.test",
+			"channel_id":     "C1",
+			"family":         family,
+			"tenant_id":      "tenant",
+			"usergroup_id":   "S1",
 		})
 	}
 	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
@@ -326,6 +540,10 @@ func TestNewFixtureReplaysSlackFamilies(t *testing.T) {
 		{family: familyUser, kind: "slack.user", want: map[string]string{"user_id": "U1", "team_id": "T1", "email": "alice@example.test", "has_2fa": "false"}},
 		{family: familyChannel, kind: "slack.channel", want: map[string]string{"channel_id": "C1", "team_id": "T1", "creator": "U1"}},
 		{family: familyUserGroup, kind: "slack.user_group", want: map[string]string{"group_id": "S1", "team_id": "T1", "handle": "eng"}},
+		{family: familyAccessLog, kind: "slack.access_log", want: map[string]string{"actor_id": "U1", "event_type": "team_access", "ip_address": "203.0.113.10"}},
+		{family: familyChannelMember, kind: "slack.channel_member", want: map[string]string{"channel_id": "C1", "user_id": "U1", "membership_type": "channel"}},
+		{family: familyUserGroupMember, kind: "slack.user_group_member", want: map[string]string{"usergroup_id": "S1", "user_id": "U1", "membership_type": "user_group"}},
+		{family: familyAuditLog, kind: "slack.audit_log", want: map[string]string{"actor_id": "U1", "event_type": "user_login", "resource_id": "U2"}},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
