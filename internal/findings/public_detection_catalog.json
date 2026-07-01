@@ -2655,6 +2655,29 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -2871,28 +2894,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.5"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -10487,6 +10488,29 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "directory_role_assignment",
           "dimension_type": "app_entitlement",
@@ -10658,28 +10682,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.16"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -41462,6 +41464,37 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "dormant_users",
           "dimension_type": "lifecycle_state",
@@ -41605,36 +41638,6 @@
             {
               "framework_name": "CIS Controls v8",
               "control_id": "6"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
             },
             {
               "framework_name": "NIST 800-53 r5",
@@ -45502,6 +45505,33 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -45583,32 +45613,6 @@
           "control_domains": [
             "asset_inventory",
             "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -47037,23 +47041,19 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "dormant_users",
-          "dimension_type": "lifecycle_state",
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "dormant_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "user"
+            "users"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "source_snapshot"
           ],
           "control_domains": [
+            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -47064,6 +47064,10 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             },
             {
               "framework_name": "SOC 2",
@@ -48730,6 +48734,33 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "groups",
           "dimension_type": "entity_family",
@@ -48792,32 +48823,6 @@
             "identity_access"
           ],
           "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -56353,6 +56358,41 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -56429,40 +56469,6 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             },
             {
               "framework_name": "SOC 2",
@@ -65453,7 +65459,7 @@
           "source_id": "asana",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "audit_events"
@@ -249417,7 +249423,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -249426,7 +249432,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -249787,7 +249794,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -249796,7 +249803,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -250118,7 +250126,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -250127,7 +250135,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -250469,7 +250478,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -250478,7 +250487,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -250916,7 +250926,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -250925,7 +250935,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -251762,7 +251773,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -251771,7 +251782,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -270369,6 +270381,41 @@
           ]
         },
         {
+          "source_id": "asana",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -270466,40 +270513,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "asana",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
             }
           ]
         }
@@ -270918,7 +270931,7 @@
           "source_id": "asana",
           "dimension_id": "users",
           "dimension_type": "entity_family",
-          "support_level": "partial",
+          "support_level": "supported",
           "high_value": true,
           "families": [
             "users"
@@ -270927,7 +270940,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "asset_inventory",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
