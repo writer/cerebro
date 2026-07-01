@@ -709,14 +709,16 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			}
 		}
 		families = append(families, familyData{
-			Name:                  name,
-			Schema:                schemaNameFromRef(schemaRef, name),
-			Class:                 class,
-			ConstName:             "family" + pascalIdentifier(name),
-			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
-			Path:                  resource.Path,
-			Method:                methodForResource(resource),
-			AuthModel:             authModel,
+			Name:          name,
+			Schema:        schemaNameFromRef(schemaRef, name),
+			Class:         class,
+			ConstName:     "family" + pascalIdentifier(name),
+			ProjectorName: lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
+			Path:          resource.Path,
+			familyRequestData: familyRequestData{
+				Method:    methodForResource(resource),
+				AuthModel: authModel,
+			},
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,

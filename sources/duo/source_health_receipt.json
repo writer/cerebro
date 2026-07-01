@@ -1,6 +1,14 @@
 {
+  "adapter_health_path": "/admin/v1/users",
   "auth_model": "duo_hmac",
   "evidence_cas_reference_kind": "duo.evidence_cas_reference",
+  "expected_cadence_seconds": 3600,
+  "failure_modes": [
+    "api_error",
+    "auth_error",
+    "rate_limit",
+    "schema_drift"
+  ],
   "families": [
     "user",
     "group",
@@ -16,5 +24,8 @@
   ],
   "health_endpoint": "/source-runtimes/health?source_id=duo",
   "provider_api_status": "verified",
-  "source_id": "duo"
+  "receipt_kind": "source_health.receipt",
+  "source_id": "duo",
+  "source_type": "json_api",
+  "stale_after_seconds": 7200
 }
