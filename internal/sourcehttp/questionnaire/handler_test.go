@@ -99,6 +99,22 @@ func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
 	}
 }
 
+func TestParseIntakeAttachmentKeepsSpreadsheetFormat(t *testing.T) {
+	questions, err := parseIntakeAttachment(createRequest{
+		IntakeFile:   base64.StdEncoding.EncodeToString(testXLSXWorkbook(t)),
+		IntakeFormat: "xlsm",
+	})
+	if err != nil {
+		t.Fatalf("parseIntakeAttachment returned error: %v", err)
+	}
+	if len(questions) != 2 {
+		t.Fatalf("questions = %d, want 2: %#v", len(questions), questions)
+	}
+	if locator := questions[0].SourceLocator; locator == nil || locator.SourceFormat != "xlsm" || locator.SheetName != "sheet1" || locator.Cell != "B2" {
+		t.Fatalf("source locator = %#v, want xlsm sheet1 B2", locator)
+	}
+}
+
 func TestQuestionsFromSpreadsheetRowsStopsAtSheetBoundary(t *testing.T) {
 	questions, err := questionsFromSpreadsheetRows([]spreadsheetRow{
 		{
@@ -119,7 +135,7 @@ func TestQuestionsFromSpreadsheetRowsStopsAtSheetBoundary(t *testing.T) {
 			RowNumber: 1,
 			CellRefs:  []string{"A1", "B1", "C1"},
 		},
-	})
+	}, "xlsx")
 	if err != nil {
 		t.Fatalf("questionsFromSpreadsheetRows returned error: %v", err)
 	}

@@ -101,7 +101,7 @@ func parseIntakeAttachment(request createRequest) ([]ports.QuestionnaireQuestion
 		if err != nil {
 			return nil, err
 		}
-		questions, err := questionsFromSpreadsheetRows(rows)
+		questions, err := questionsFromSpreadsheetRows(rows, format)
 		if err != nil {
 			return nil, err
 		}
@@ -303,7 +303,8 @@ func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([]spreadsheetRow
 	return rows, nil
 }
 
-func questionsFromSpreadsheetRows(rows []spreadsheetRow) ([]ports.QuestionnaireQuestion, error) {
+func questionsFromSpreadsheetRows(rows []spreadsheetRow, sourceFormat string) ([]ports.QuestionnaireQuestion, error) {
+	sourceFormat = firstNonEmpty(canonicalIntakeFormat(sourceFormat), "xlsx")
 	for index, row := range rows {
 		header := normalizedHeaders(row.Values)
 		questionIndex := headerIndex(header, "question", "question_text", "prompt")
@@ -327,7 +328,7 @@ func questionsFromSpreadsheetRows(rows []spreadsheetRow) ([]ports.QuestionnaireQ
 				RequiredSlots:        splitList(columnValue(record.Values, header, "required_evidence_slots", "evidence_slots", "slots")),
 				OwnerID:              columnValue(record.Values, header, "owner_id", "owner", "assignee"),
 				SourceLocator: &ports.QuestionnaireSourceLocator{
-					SourceFormat: "xlsx",
+					SourceFormat: sourceFormat,
 					SheetName:    record.SheetName,
 					RowNumber:    record.RowNumber,
 					Cell:         cellRefAt(record.CellRefs, questionIndex),
@@ -337,7 +338,7 @@ func questionsFromSpreadsheetRows(rows []spreadsheetRow) ([]ports.QuestionnaireQ
 		}
 		return questionsFromIntakeRows(intakeRows), nil
 	}
-	return nil, fmt.Errorf("%w: xlsx workbook must include a question, question_text, or prompt column", ErrInvalidRequest)
+	return nil, fmt.Errorf("%w: %s workbook must include a question, question_text, or prompt column", ErrInvalidRequest, sourceFormat)
 }
 
 func worksheetNameFromPath(path string) string {
