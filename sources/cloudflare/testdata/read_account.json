@@ -1,0 +1,61 @@
+[
+  {
+    "attributes": {
+      "account_id": "account-id-source-cloudflare-account-1",
+      "api_method": "GET",
+      "api_path": "/accounts",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/cloudflare/account/source-cloudflare-account-1",
+      "external_id": "source-cloudflare-account-1",
+      "family": "account",
+      "list_keys": "result",
+      "name": "Cloudflare Account Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "cloudflare",
+      "resource_id": "source-cloudflare-account-1",
+      "resource_name": "Cloudflare Account Fixture",
+      "resource_type": "account",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account:source-cloudflare-account-1",
+      "source_event_id": "source-cloudflare-account-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "type": "type-source-cloudflare-account-1"
+    },
+    "id": "source-cloudflare-account-event-1",
+    "kind": "cloudflare.account",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/accounts",
+      "event_id": "source-cloudflare-account-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/cloudflare/account/source-cloudflare-account-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/cloudflare/account/source-cloudflare-account-1",
+      "family": "account",
+      "id": "account-id-source-cloudflare-account-1",
+      "list_keys": [
+        "result"
+      ],
+      "name": "Cloudflare Account Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-cloudflare-account-1",
+      "resource_type": "account",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account:source-cloudflare-account-1",
+      "schema_ref": "cloudflare/account/v1",
+      "source_id": "cloudflare",
+      "tenant_id": "tenant",
+      "type": "type-source-cloudflare-account-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "cloudflare/account/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

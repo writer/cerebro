@@ -5,6 +5,10 @@ emitted_kinds:
   - segment.workspaces
   - segment.users
   - segment.sources
+runtime_families:
+  - sources
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: segment.workspaces
     status: active

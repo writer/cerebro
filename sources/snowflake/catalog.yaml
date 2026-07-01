@@ -6,6 +6,11 @@ emitted_kinds:
   - snowflake.cortex_search_services
   - snowflake.audit_events
   - snowflake.vulnerabilities
+runtime_families:
+  - assets
+  - audit_events
+  - cortex_search_services
+  - vulnerabilities
 kind_lifecycle:
   - kind: snowflake.assets
     status: active

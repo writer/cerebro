@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_sentinel.audit_events
   - microsoft_sentinel.findings
   - microsoft_sentinel.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: microsoft_sentinel.audit_events
     status: active

@@ -1,14 +1,38 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "new_relic-tenant-assets-NR-ENTITY-1",
+    "tenant_id": "tenant",
+    "source_id": "new_relic",
+    "kind": "new_relic.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "new_relic/assets/v1",
+    "payload": {
+      "guid": "NR-ENTITY-1",
+      "name": "Checkout service",
+      "type": "SERVICE",
+      "entityType": "APM_APPLICATION_ENTITY",
+      "domain": "APM",
+      "permalink": "https://example.com/entities/NR-ENTITY-1",
+      "reporting": true,
+      "account": {
+        "id": 42,
+        "name": "Production"
+      }
+    },
+    "attributes": {
+      "external_id": "NR-ENTITY-1",
+      "family": "assets",
+      "provider": "new_relic",
+      "record_class": "asset",
+      "resource_id": "NR-ENTITY-1",
+      "resource_name": "Checkout service",
+      "resource_type": "APM_APPLICATION_ENTITY",
+      "resource_urn": "urn:cerebro:tenant:runtime_new_relic_entity:NR-ENTITY-1",
+      "schema": "assets",
+      "source_event_id": "NR-ENTITY-1",
+      "source_provider": "new_relic",
+      "source_system": "new_relic",
+      "tenant_id": "tenant"
     }
-  ]
-}
+  }
+]

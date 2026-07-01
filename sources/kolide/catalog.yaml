@@ -8,6 +8,13 @@ emitted_kinds:
   - kolide.software
   - kolide.user_device
   - kolide.vulnerability
+runtime_families:
+  - check
+  - device
+  - issue
+  - software
+  - user_device
+  - vulnerability
 event_contracts:
   - kind: kolide.check
     schema_ref: kolide/check/v1

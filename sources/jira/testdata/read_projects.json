@@ -1,0 +1,39 @@
+[
+  {
+    "id": "jira-projects-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.projects",
+    "schema_ref": "jira/projects/v1",
+    "occurred_at": "2026-05-01T12:00:00Z",
+    "attributes": {
+      "external_id": "10001",
+      "family": "projects",
+      "lead_user_id": "acct-lead",
+      "project_id": "10001",
+      "project_key": "ENG",
+      "project_name": "Engineering",
+      "project_type": "software",
+      "provider": "jira",
+      "record_class": "asset",
+      "resource_id": "10001",
+      "resource_name": "Engineering",
+      "resource_type": "project",
+      "resource_urn": "urn:cerebro:tenant:jira_projects:10001",
+      "schema": "projects",
+      "source_event_id": "10001",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "tenant_id": "tenant",
+      "updated_at": "2026-05-01T12:00:00.000+0000"
+    },
+    "payload": {
+      "id": "10001",
+      "insight": {"lastIssueUpdateTime": "2026-05-01T12:00:00.000+0000"},
+      "key": "ENG",
+      "lead": {"accountId": "acct-lead"},
+      "name": "Engineering",
+      "projectTypeKey": "software"
+    }
+  }
+]

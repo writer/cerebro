@@ -6,6 +6,11 @@ emitted_kinds:
   - fulfillment_com.inventory
   - fulfillment_com.return
   - fulfillment_com.track
+runtime_families:
+  - accounting
+  - inventory
+  - return
+  - track
 kind_lifecycle:
   - kind: fulfillment_com.accounting
     status: active

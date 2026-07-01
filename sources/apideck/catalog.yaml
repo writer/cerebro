@@ -6,6 +6,11 @@ emitted_kinds:
   - apideck.bill
   - apideck.credit_note
   - apideck.customer
+runtime_families:
+  - bill
+  - credit_note
+  - customer
+  - ledger_account
 kind_lifecycle:
   - kind: apideck.ledger_account
     status: active

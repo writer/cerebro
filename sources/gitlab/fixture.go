@@ -14,9 +14,13 @@ var fixtureFS embed.FS
 
 // NewFixture constructs the deterministic GitLab source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
-	spec, err := loadSpec()
+	catalogBytes, err := catalogFS.ReadFile("catalog.yaml")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	families := []sourcecdk.FixtureFamily{}
 	for _, family := range []string{familyRepositories, familyUsers, familyAuditEvents} {
@@ -24,14 +28,15 @@ func NewFixture() (sourcecdk.Source, error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := sourcecdk.LoadFixtureEvents(fixtureFS, "testdata/read_"+family+".json")
+		events, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, "testdata/read_"+family+".json", catalog.EventContracts)
 		if err != nil {
 			return nil, err
 		}
 		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
 	}
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
-		Spec:          spec,
+		Spec:          catalog.Spec,
+		Contracts:     catalog.EventContracts,
 		DefaultFamily: defaultFamily,
 		Check:         checkFixtureConfig,
 		ResolveFamily: resolveFixtureFamily,

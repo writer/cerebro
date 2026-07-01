@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@magento.example.test",
+      "actor_id": "magento-users-1",
+      "actor_name": "actor-name-source-magento-attribute-1",
+      "api_method": "GET",
+      "api_path": "/V1/categories/attributes",
+      "event_type": "magento.attribute.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-magento-attribute-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-magento-attribute-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/magento/attribute/source-magento-attribute-1",
+      "external_id": "source-magento-attribute-1",
+      "family": "attribute",
+      "id": "source-magento-attribute-1",
+      "name": "Magento Attribute Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "magento",
+      "provider_id": "provider-id-source-magento-attribute-1",
+      "record_class": "audit_event",
+      "record_selector": "$.items[*]",
+      "resource_email": "resource@magento.example.test",
+      "resource_id": "source-magento-attribute-1",
+      "resource_name": "Magento Attribute Fixture",
+      "resource_type": "attribute",
+      "resource_urn": "urn:cerebro:tenant:magento_attribute:source-magento-attribute-1",
+      "schema": "attribute",
+      "source_event_id": "source-magento-attribute-1",
+      "source_provider": "magento",
+      "source_system": "magento",
+      "tenant_id": "tenant"
+    },
+    "id": "source-magento-attribute-event-1",
+    "kind": "magento.attribute",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@magento.example.test",
+      "actor_id": "magento-users-1",
+      "actor_name": "actor-name-source-magento-attribute-1",
+      "api_method": "GET",
+      "api_path": "/V1/categories/attributes",
+      "apply_to": "source-magento-attribute-1",
+      "event_id": "source-magento-attribute-1",
+      "event_type": "magento.attribute.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-magento-attribute-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-magento-attribute-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/magento/attribute/source-magento-attribute-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/magento/attribute/source-magento-attribute-1",
+      "family": "attribute",
+      "id": "source-magento-attribute-1",
+      "name": "Magento Attribute Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.items[*]",
+      "resource_email": "resource@magento.example.test",
+      "resource_id": "source-magento-attribute-1",
+      "resource_name": "Magento Attribute Fixture",
+      "resource_type": "attribute",
+      "resource_urn": "urn:cerebro:tenant:magento_attribute:source-magento-attribute-1",
+      "schema_ref": "magento/attribute/v1",
+      "source_id": "magento",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "magento/attribute/v1",
+    "source_id": "magento",
+    "tenant_id": "tenant"
+  }
+]

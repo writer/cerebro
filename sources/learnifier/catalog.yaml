@@ -13,6 +13,18 @@ emitted_kinds:
   - learnifier.orgunit
   - learnifier.project
   - learnifier.participant
+runtime_families:
+  - coursedesign
+  - globalusergroup
+  - member
+  - orgunit
+  - orgunits_usergroup
+  - participant
+  - project
+  - teammember
+  - user
+  - usergroup
+  - usergroups_member
 kind_lifecycle:
   - kind: learnifier.globalusergroup
     status: active

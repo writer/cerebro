@@ -6,6 +6,11 @@ emitted_kinds:
   - truora.report
   - truora.check
   - truora.config
+runtime_families:
+  - check
+  - config
+  - hook
+  - report
 kind_lifecycle:
   - kind: truora.hook
     status: active

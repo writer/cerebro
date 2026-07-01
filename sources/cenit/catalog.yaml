@@ -14,6 +14,19 @@ emitted_kinds:
   - cenit.translator
   - cenit.setup_connection_role
   - cenit.setup_webhook
+runtime_families:
+  - connection
+  - connection_role
+  - data_type
+  - flow
+  - namespace
+  - observer
+  - scheduler
+  - schema
+  - setup_connection_role
+  - setup_webhook
+  - translator
+  - webhook
 kind_lifecycle:
   - kind: cenit.observer
     status: active

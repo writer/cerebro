@@ -7,6 +7,12 @@ emitted_kinds:
   - tallyfy.records
   - tallyfy.policies
   - tallyfy.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: tallyfy.users
     status: active

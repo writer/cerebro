@@ -1,14 +1,85 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-atlan-users-1",
+      "display_name": "Atlan Users Fixture",
+      "domain": "domain-source-atlan-users-1",
+      "email": "email@atlan.example.test",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-atlan-users-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-atlan-users-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/atlan/users/source-atlan-users-1",
+      "external_id": "source-atlan-users-1",
+      "family": "users",
+      "job_title": "job-title-source-atlan-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@atlan.example.test",
+      "manager": "manager-source-atlan-users-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@atlan.example.test",
+      "provider": "atlan",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-atlan-users-1",
+      "resource_name": "Atlan Users Fixture",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:atlan_users:source-atlan-users-1",
+      "schema": "users",
+      "source_event_id": "source-atlan-users-1",
+      "source_provider": "atlan",
+      "source_system": "atlan",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_id": "source-atlan-users-1"
+    },
+    "id": "source-atlan-users-event-1",
+    "kind": "atlan.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-atlan-users-1",
+      "display_name": "Atlan Users Fixture",
+      "domain": "domain-source-atlan-users-1",
+      "email": "email@atlan.example.test",
+      "event_id": "source-atlan-users-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-atlan-users-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-atlan-users-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/atlan/users/source-atlan-users-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/atlan/users/source-atlan-users-1",
+      "family": "users",
+      "id": "source-atlan-users-1",
+      "job_title": "job-title-source-atlan-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@atlan.example.test",
+      "manager": "manager-source-atlan-users-1",
+      "name": "Atlan Users Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@atlan.example.test",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-atlan-users-1",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:atlan_users:source-atlan-users-1",
+      "schema_ref": "atlan/users/v1",
+      "source_id": "atlan",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-atlan-users-1"
+    },
+    "schema_ref": "atlan/users/v1",
+    "source_id": "atlan",
+    "tenant_id": "tenant"
+  }
+]

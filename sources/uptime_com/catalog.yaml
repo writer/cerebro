@@ -7,6 +7,12 @@ emitted_kinds:
   - uptime_com.monitors
   - uptime_com.dashboards
   - uptime_com.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: uptime_com.alerts
     status: active

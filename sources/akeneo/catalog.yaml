@@ -14,6 +14,19 @@ emitted_kinds:
   - akeneo.products_draft
   - akeneo.asset_families_attribute
   - akeneo.v1_attribute
+runtime_families:
+  - asset
+  - asset_families_attribute
+  - asset_family
+  - attribute
+  - attribute_group
+  - attributes_option
+  - draft
+  - option
+  - products_draft
+  - products_uuid_draft
+  - reference_entities_attribute
+  - v1_attribute
 kind_lifecycle:
   - kind: akeneo.attribute
     status: active

@@ -1,0 +1,71 @@
+[
+  {
+    "attributes": {
+      "account_id": "account-id-source-cloudflare-account_ruleset-1",
+      "api_method": "GET",
+      "api_path": "/accounts/{account_id}/rulesets",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/cloudflare/account_ruleset/source-cloudflare-account_ruleset-1",
+      "external_id": "source-cloudflare-account_ruleset-1",
+      "family": "account_ruleset",
+      "kind": "kind-source-cloudflare-account_ruleset-1",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "list_keys": "result",
+      "name": "Cloudflare Account Ruleset Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "phase": "phase-source-cloudflare-account_ruleset-1",
+      "provider": "cloudflare",
+      "resource_id": "source-cloudflare-account_ruleset-1",
+      "resource_name": "Cloudflare Account Ruleset Fixture",
+      "resource_type": "account_ruleset",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account_ruleset:source-cloudflare-account_ruleset-1",
+      "rules": "rules-source-cloudflare-account_ruleset-1",
+      "ruleset_id": "ruleset-id-source-cloudflare-account_ruleset-1",
+      "source_event_id": "source-cloudflare-account_ruleset-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "version": "version-source-cloudflare-account_ruleset-1"
+    },
+    "id": "source-cloudflare-account_ruleset-event-1",
+    "kind": "cloudflare.account_ruleset",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "account_id": "account-id-source-cloudflare-account_ruleset-1",
+      "api_method": "GET",
+      "api_path": "/accounts/{account_id}/rulesets",
+      "event_id": "source-cloudflare-account_ruleset-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/cloudflare/account_ruleset/source-cloudflare-account_ruleset-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/cloudflare/account_ruleset/source-cloudflare-account_ruleset-1",
+      "family": "account_ruleset",
+      "id": "ruleset-id-source-cloudflare-account_ruleset-1",
+      "kind": "kind-source-cloudflare-account_ruleset-1",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "list_keys": [
+        "result"
+      ],
+      "name": "Cloudflare Account Ruleset Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "phase": "phase-source-cloudflare-account_ruleset-1",
+      "resource_id": "source-cloudflare-account_ruleset-1",
+      "resource_type": "account_ruleset",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_account_ruleset:source-cloudflare-account_ruleset-1",
+      "rules": "rules-source-cloudflare-account_ruleset-1",
+      "schema_ref": "cloudflare/account_ruleset/v1",
+      "source_id": "cloudflare",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "version": "version-source-cloudflare-account_ruleset-1"
+    },
+    "schema_ref": "cloudflare/account_ruleset/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

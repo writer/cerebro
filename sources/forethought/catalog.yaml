@@ -7,6 +7,12 @@ emitted_kinds:
   - forethought.records
   - forethought.policies
   - forethought.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: forethought.users
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - launchdarkly.repositories
   - launchdarkly.users
   - launchdarkly.audit_events
+runtime_families:
+  - audit_events
+  - repositories
+  - users
 kind_lifecycle:
   - kind: launchdarkly.repositories
     status: active

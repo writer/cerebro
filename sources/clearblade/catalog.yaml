@@ -14,6 +14,19 @@ emitted_kinds:
   - clearblade.session_user
   - clearblade.listindexe
   - clearblade.admin_audit
+runtime_families:
+  - admin_audit
+  - audit
+  - connection
+  - deployment
+  - listindexe
+  - platform_system
+  - session_user
+  - system
+  - timer
+  - topic
+  - trigger
+  - user
 kind_lifecycle:
   - kind: clearblade.system
     status: active

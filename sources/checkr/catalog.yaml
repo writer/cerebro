@@ -5,6 +5,10 @@ emitted_kinds:
   - checkr.users
   - checkr.candidates
   - checkr.background_checks
+runtime_families:
+  - background_checks
+  - candidates
+  - users
 kind_lifecycle:
   - kind: checkr.users
     status: active

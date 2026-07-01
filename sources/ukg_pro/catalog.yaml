@@ -7,6 +7,12 @@ emitted_kinds:
   - ukg_pro.records
   - ukg_pro.policies
   - ukg_pro.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ukg_pro.users
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - aqua_security.assets
   - aqua_security.findings
   - aqua_security.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: aqua_security.assets
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - callfire.credential
   - callfire.broadcast
   - callfire.call
+runtime_families:
+  - account
+  - broadcast
+  - call
+  - credential
 kind_lifecycle:
   - kind: callfire.account
     status: active

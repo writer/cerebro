@@ -7,6 +7,12 @@ emitted_kinds:
   - typeform.records
   - typeform.policies
   - typeform.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: typeform.users
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - dracoon.group
   - dracoon.user
   - dracoon.channel
+runtime_families:
+  - channel
+  - event_type
+  - group
+  - user
 kind_lifecycle:
   - kind: dracoon.event_type
     status: active

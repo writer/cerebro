@@ -1,0 +1,38 @@
+[
+  {
+    "attributes": {
+      "cluster_id": "cluster-1",
+      "container_name": "Container Name",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "container",
+      "namespace": "default",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "container",
+      "resource_urn": "urn:cerebro:tenant:runtime_container:record-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "kubernetes-container-record-1",
+    "kind": "kubernetes.container",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "container_name": "Container Name",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "pod_uid": "pod-uid-1",
+      "resource_id": "record-1",
+      "resource_type": "container",
+      "resource_urn": "urn:cerebro:tenant:runtime_container:record-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "kubernetes/container/v1",
+    "source_id": "kubernetes",
+    "tenant_id": "tenant"
+  }
+]

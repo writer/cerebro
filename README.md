@@ -140,9 +140,10 @@ make readme-check   # README and docs drift checks
 make docs-drift-check
 make oss-audit      # public repository hygiene scan
 cerebro deploy preflight  # emit a redacted deployment readiness receipt
+cerebro append-log dead-letters list  # list pending exhausted publish records
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 For policy or compliance-control work, run `make finding-dsl-check`, `make policy-rule-check`, `make detection-catalog-check`, and `make control-index-check` as applicable. Control extension packs are documented in [Compliance controls](docs/domains/compliance-controls.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
 

@@ -7,6 +7,12 @@ emitted_kinds:
   - bitwarden.roles
   - bitwarden.applications
   - bitwarden.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: bitwarden.users
     status: active

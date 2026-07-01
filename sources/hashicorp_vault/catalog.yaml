@@ -5,6 +5,10 @@ emitted_kinds:
   - hashicorp_vault.users
   - hashicorp_vault.secrets
   - hashicorp_vault.audit_events
+runtime_families:
+  - audit_events
+  - secrets
+  - users
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: hashicorp_vault

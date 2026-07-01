@@ -6,6 +6,11 @@ emitted_kinds:
   - visiblethread.document
   - visiblethread.weburl
   - visiblethread.document_2
+runtime_families:
+  - document
+  - document_2
+  - webscan
+  - weburl
 kind_lifecycle:
   - kind: visiblethread.webscan
     status: active

@@ -488,10 +488,12 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 
 	userURN := oktaUserURN(tenantID, userID)
 	if userURN != "" {
+		projectionObservedAt := time.Now().UTC()
 		userAttrs := map[string]string{
 			"email":           email,
 			"event_kind":      event.GetKind(),
 			"login":           login,
+			"observed_at":     oktaUserObservedAt(event, projectionObservedAt),
 			"source_event_id": event.GetId(),
 			"status":          strings.TrimSpace(attributes["status"]),
 		}
@@ -518,9 +520,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 				userAttrs[key] = v
 			}
 		}
-		if observedAt := eventObservedAt(event); observedAt != "" {
-			userAttrs["observed_at"] = observedAt
-		}
+		addOktaUserLifecyclePayloadAttributes(userAttrs, payloadMap(event))
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
 			TenantID:   tenantID,
@@ -546,7 +546,7 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		// instead means any current inventory link is always recent, while
 		// edges that stop being re-asserted (e.g. a renamed email) still age
 		// out naturally because subsequent syncs no longer refresh them.
-		observedAt := timestamppb.New(time.Now().UTC())
+		observedAt := timestamppb.New(projectionObservedAt)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, observedAt)
 		if !sameIdentifier(email, login) {
 			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, observedAt)
@@ -845,4 +845,31 @@ func oktaResourceURN(tenantID string, resourceType string, resourceID string) st
 
 func oktaAuditTargetUser(resourceType string, targetType string) bool {
 	return strings.EqualFold(resourceType, "user") || strings.EqualFold(targetType, "user")
+}
+
+func addOktaUserLifecyclePayloadAttributes(attributes map[string]string, payload map[string]any) {
+	timestamps, _ := payload["timestamps"].(map[string]any)
+	for _, key := range []string{"created_at", "activated_at", "last_login_at", "last_updated_at", "password_changed_at", "status_changed_at"} {
+		if strings.TrimSpace(attributes[key]) != "" {
+			continue
+		}
+		if value, _ := timestamps[key].(string); strings.TrimSpace(value) != "" {
+			attributes[key] = strings.TrimSpace(value)
+		}
+	}
+}
+
+func oktaUserObservedAt(event *cerebrov1.EventEnvelope, projectionObservedAt time.Time) string {
+	observedAt := strings.TrimSpace(eventObservedAt(event))
+	if observedAt == "" {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	eventAt, err := time.Parse(time.RFC3339, observedAt)
+	if err != nil {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	if projectionObservedAt.Sub(eventAt.UTC()) > 90*24*time.Hour {
+		return projectionObservedAt.Format(time.RFC3339)
+	}
+	return observedAt
 }

@@ -5,6 +5,10 @@ emitted_kinds:
   - terraform_cloud.repositories
   - terraform_cloud.users
   - terraform_cloud.audit_events
+runtime_families:
+  - audit_events
+  - repositories
+  - users
 kind_lifecycle:
   - kind: terraform_cloud.repositories
     status: active

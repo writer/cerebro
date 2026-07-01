@@ -7,6 +7,12 @@ emitted_kinds:
   - hightouch.records
   - hightouch.policies
   - hightouch.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: hightouch.users
     status: active

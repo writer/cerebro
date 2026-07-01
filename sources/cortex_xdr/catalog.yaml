@@ -5,6 +5,10 @@ emitted_kinds:
   - cortex_xdr.assets
   - cortex_xdr.findings
   - cortex_xdr.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: cortex_xdr.assets
     status: active

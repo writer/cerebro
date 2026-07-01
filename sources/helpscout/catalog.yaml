@@ -7,6 +7,12 @@ emitted_kinds:
   - helpscout.workspaces
   - helpscout.documents
   - helpscout.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: helpscout.users
     status: active

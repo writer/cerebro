@@ -1,14 +1,64 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/projects/${config.username}/${config.project_slug}/filters",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-botify-filter-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-botify-filter-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/botify/filter/source-botify-filter-1",
+      "external_id": "source-botify-filter-1",
+      "family": "filter",
+      "id": "source-botify-filter-1",
+      "name": "Botify Filter Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "botify",
+      "record_class": "asset",
+      "record_selector": "$.results[*]",
+      "resource_id": "source-botify-filter-1",
+      "resource_name": "Botify Filter Fixture",
+      "resource_type": "filter",
+      "resource_urn": "urn:cerebro:tenant:botify_filter:source-botify-filter-1",
+      "schema": "filter",
+      "source_event_id": "source-botify-filter-1",
+      "source_provider": "botify",
+      "source_system": "botify",
+      "tenant_id": "tenant"
+    },
+    "id": "source-botify-filter-event-1",
+    "kind": "botify.filter",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/projects/${config.username}/${config.project_slug}/filters",
+      "event_id": "source-botify-filter-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-botify-filter-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-botify-filter-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/botify/filter/source-botify-filter-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/botify/filter/source-botify-filter-1",
+      "family": "filter",
+      "filter": "filter",
+      "id": "source-botify-filter-1",
+      "name": "Botify Filter Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.results[*]",
+      "resource_id": "source-botify-filter-1",
+      "resource_type": "filter",
+      "resource_urn": "urn:cerebro:tenant:botify_filter:source-botify-filter-1",
+      "schema_ref": "botify/filter/v1",
+      "source_id": "botify",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "botify/filter/v1",
+    "source_id": "botify",
+    "tenant_id": "tenant"
+  }
+]

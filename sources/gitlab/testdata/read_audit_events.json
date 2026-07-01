@@ -31,7 +31,6 @@
       "resource_id": "101",
       "resource_name": "writer/cerebro",
       "resource_type": "Project",
-      "resource_urn": "urn:cerebro:tenant:runtime_repositories:101",
       "schema": "audit_events",
       "source_event_id": "9001",
       "source_provider": "gitlab",

@@ -1,14 +1,63 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/ml/v1/foundation_model_specs",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-ibm_watsonx_ai-foundation_model_specs-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-ibm_watsonx_ai-foundation_model_specs-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/ibm_watsonx_ai/foundation_model_specs/source-ibm_watsonx_ai-foundation_model_specs-1",
+      "external_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "family": "foundation_model_specs",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "ibm_watsonx_ai",
+      "record_class": "asset",
+      "record_selector": "$.resources[*]",
+      "resource_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "resource_name": "Ibm Watsonx Ai Foundation Model Specs Fixture",
+      "resource_type": "foundation_model_specs",
+      "resource_urn": "urn:cerebro:tenant:ibm_watsonx_ai_foundation_model_specs:source-ibm_watsonx_ai-foundation_model_specs-1",
+      "schema": "foundation_model_specs",
+      "source_event_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "source_provider": "ibm_watsonx_ai",
+      "source_system": "ibm_watsonx_ai",
+      "tenant_id": "tenant"
+    },
+    "id": "source-ibm_watsonx_ai-foundation_model_specs-event-1",
+    "kind": "ibm_watsonx_ai.foundation_model_specs",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/ml/v1/foundation_model_specs",
+      "event_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-ibm_watsonx_ai-foundation_model_specs-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-ibm_watsonx_ai-foundation_model_specs-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/ibm_watsonx_ai/foundation_model_specs/source-ibm_watsonx_ai-foundation_model_specs-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/ibm_watsonx_ai/foundation_model_specs/source-ibm_watsonx_ai-foundation_model_specs-1",
+      "family": "foundation_model_specs",
+      "id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "label": "Ibm Watsonx Ai Foundation Model Specs Fixture",
+      "model_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "name": "Ibm Watsonx Ai Foundation Model Specs Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.resources[*]",
+      "resource_id": "source-ibm_watsonx_ai-foundation_model_specs-1",
+      "resource_type": "foundation_model_specs",
+      "resource_urn": "urn:cerebro:tenant:ibm_watsonx_ai_foundation_model_specs:source-ibm_watsonx_ai-foundation_model_specs-1",
+      "schema_ref": "ibm_watsonx_ai/foundation_model_specs/v1",
+      "source_id": "ibm_watsonx_ai",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "ibm_watsonx_ai/foundation_model_specs/v1",
+    "source_id": "ibm_watsonx_ai",
+    "tenant_id": "tenant"
+  }
+]

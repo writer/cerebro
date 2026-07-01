@@ -6,6 +6,11 @@ emitted_kinds:
   - configcat.organization
   - configcat.member
   - configcat.permission
+runtime_families:
+  - auditlog
+  - member
+  - organization
+  - permission
 kind_lifecycle:
   - kind: configcat.auditlog
     status: active

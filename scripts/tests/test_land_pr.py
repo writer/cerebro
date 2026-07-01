@@ -162,6 +162,105 @@ class LandPRTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("not a finished review", reason)
 
+    def test_check_no_active_review_threads_accepts_empty_threads(self):
+        ok, reason = land_pr.check_no_active_review_threads([])
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+
+    def test_check_no_active_review_threads_rejects_open_threads(self):
+        ok, reason = land_pr.check_no_active_review_threads(
+            [{"path": "internal/example.go", "line": 42, "url": "https://thread"}]
+        )
+        self.assertFalse(ok)
+        self.assertIn("active review thread", reason)
+        self.assertIn("internal/example.go:42", reason)
+
+    def test_fetch_active_review_threads_filters_resolved_and_outdated(self):
+        raw = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [
+                                {
+                                    "isResolved": True,
+                                    "isOutdated": False,
+                                    "path": "resolved.go",
+                                    "line": 1,
+                                    "comments": {"nodes": [{"url": "https://resolved", "body": "done"}]},
+                                },
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": True,
+                                    "path": "outdated.go",
+                                    "line": 2,
+                                    "comments": {"nodes": [{"url": "https://outdated", "body": "old"}]},
+                                },
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "path": "active.go",
+                                    "line": 3,
+                                    "comments": {"nodes": [{"url": "https://active", "body": "fix me"}]},
+                                },
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+        with mock.patch("scripts.land_pr.run_gh", return_value=land_pr.json.dumps(raw)):
+            threads = land_pr.fetch_active_review_threads(12, "writer/cerebro")
+
+        self.assertEqual(len(threads), 1)
+        self.assertEqual(threads[0]["path"], "active.go")
+        self.assertEqual(threads[0]["url"], "https://active")
+
+    def test_fetch_active_review_threads_paginates(self):
+        first_page = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [],
+                            "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                        }
+                    }
+                }
+            }
+        }
+        second_page = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "path": "late.go",
+                                    "line": 9,
+                                    "comments": {"nodes": [{"url": "https://late", "body": "late thread"}]},
+                                }
+                            ],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
+
+        with mock.patch(
+            "scripts.land_pr.run_gh",
+            side_effect=[land_pr.json.dumps(first_page), land_pr.json.dumps(second_page)],
+        ) as run_gh:
+            threads = land_pr.fetch_active_review_threads(12, "writer/cerebro")
+
+        self.assertEqual(len(threads), 1)
+        self.assertEqual(threads[0]["path"], "late.go")
+        self.assertIn("after=cursor-1", run_gh.call_args_list[1].args[0])
+
     def test_delete_branch_if_safe_skips_already_deleted_branch(self):
         pr = {
             "headRefName": "codex/test-branch",

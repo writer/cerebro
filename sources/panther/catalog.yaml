@@ -5,6 +5,10 @@ emitted_kinds:
   - panther.audit_events
   - panther.findings
   - panther.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: panther.audit_events
     status: active

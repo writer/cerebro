@@ -5,6 +5,10 @@ emitted_kinds:
   - grafana_cloud.assets
   - grafana_cloud.findings
   - grafana_cloud.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: grafana_cloud.assets
     status: active

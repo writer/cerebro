@@ -7,6 +7,12 @@ emitted_kinds:
   - honeycomb.monitors
   - honeycomb.dashboards
   - honeycomb.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: honeycomb.alerts
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - coralogix.monitors
   - coralogix.dashboards
   - coralogix.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: coralogix.alerts
     status: active

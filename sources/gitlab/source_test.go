@@ -62,6 +62,44 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 }
 
+func TestSourceReadAuditEventsDoesNotInventResourceURN(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/api/v4/audit_events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id":          9001,
+			"created_at":  "2026-06-01T00:00:00Z",
+			"author_id":   7,
+			"entity_id":   101,
+			"entity_type": "Project",
+			"entity_path": "writer/cerebro",
+			"details": map[string]any{
+				"custom_message": "Changed project visibility",
+			},
+		}})
+	}))
+	defer server.Close()
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyAuditEvents, "token": "test-token"})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	assertNoResourceURN(t, pull.Events[0].Attributes)
+}
+
 func TestNewFixtureReplaysGitLabFamilies(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
@@ -86,7 +124,7 @@ func TestNewFixtureReplaysGitLabFamilies(t *testing.T) {
 	}{
 		{family: familyRepositories, kind: "gitlab.repositories", wantResourceURN: "urn:cerebro:tenant:runtime_repositories:101"},
 		{family: familyUsers, kind: "gitlab.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:7"},
-		{family: familyAuditEvents, kind: "gitlab.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_repositories:101"},
+		{family: familyAuditEvents, kind: "gitlab.audit_events"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
@@ -99,9 +137,20 @@ func TestNewFixtureReplaysGitLabFamilies(t *testing.T) {
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("event kind = %q, want %q", got, tt.kind)
 			}
+			if tt.wantResourceURN == "" {
+				assertNoResourceURN(t, pull.Events[0].Attributes)
+				return
+			}
 			if got := pull.Events[0].Attributes["resource_urn"]; got != tt.wantResourceURN {
 				t.Fatalf("resource_urn = %q, want %q", got, tt.wantResourceURN)
 			}
 		})
+	}
+}
+
+func assertNoResourceURN(t *testing.T, attributes map[string]string) {
+	t.Helper()
+	if got := attributes["resource_urn"]; got != "" {
+		t.Fatalf("resource_urn = %q, want empty because audit event target kind is not statically known", got)
 	}
 }

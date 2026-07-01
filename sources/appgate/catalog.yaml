@@ -7,6 +7,12 @@ emitted_kinds:
   - appgate.roles
   - appgate.applications
   - appgate.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: appgate.users
     status: active

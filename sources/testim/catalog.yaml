@@ -7,6 +7,12 @@ emitted_kinds:
   - testim.repositories
   - testim.deployments
   - testim.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: testim.users
     status: active

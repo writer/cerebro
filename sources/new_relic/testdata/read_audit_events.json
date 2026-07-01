@@ -1,0 +1,40 @@
+[
+  {
+    "id": "new_relic-tenant-audit_events-user.create-211b400d1574be81",
+    "tenant_id": "tenant",
+    "source_id": "new_relic",
+    "kind": "new_relic.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "new_relic/audit_events/v1",
+    "payload": {
+      "eventType": "NrAuditEvent",
+      "actionIdentifier": "user.create",
+      "actorId": "USER-1",
+      "actorEmail": "admin@example.test",
+      "targetId": "NR-ENTITY-1",
+      "targetName": "Checkout service",
+      "targetType": "entity",
+      "timestamp": 1780272000000,
+      "description": "Created user"
+    },
+    "attributes": {
+      "actor_email": "admin@example.test",
+      "actor_id": "USER-1",
+      "event_type": "user.create",
+      "external_id": "user.create-211b400d1574be81",
+      "family": "audit_events",
+      "id": "user.create-211b400d1574be81",
+      "provider": "new_relic",
+      "record_class": "audit_event",
+      "resource_id": "NR-ENTITY-1",
+      "resource_name": "Checkout service",
+      "resource_type": "entity",
+      "resource_urn": "urn:cerebro:tenant:new_relic_audit_events:user.create-211b400d1574be81",
+      "schema": "audit_events",
+      "source_event_id": "user.create-211b400d1574be81",
+      "source_provider": "new_relic",
+      "source_system": "new_relic",
+      "tenant_id": "tenant"
+    }
+  }
+]

@@ -6,6 +6,11 @@ emitted_kinds:
   - replicate.deployments
   - replicate.collections
   - replicate.predictions
+runtime_families:
+  - collections
+  - deployments
+  - models
+  - predictions
 kind_lifecycle:
   - kind: replicate.models
     status: active

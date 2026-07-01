@@ -18,6 +18,23 @@ emitted_kinds:
   - cloudflare.zone_access_group
   - cloudflare.zone_ruleset
   - cloudflare.dns_record
+runtime_families:
+  - access_application
+  - access_group
+  - account
+  - account_ruleset
+  - audit_log
+  - dns_record
+  - gateway_rule
+  - load_balancer
+  - load_balancer_pool
+  - member
+  - role
+  - worker_script
+  - zone
+  - zone_access_application
+  - zone_access_group
+  - zone_ruleset
 coverage_contract:
   owner_domain: cloud
   authority_domain: cloudflare

@@ -122,11 +122,13 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
           exit "${status}"
       - name: Set up Node for DeepSec
+        if: steps.preflight.outputs.run_droid_review == 'true'
         continue-on-error: true
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
       - name: Install DeepSec
+        if: steps.preflight.outputs.run_droid_review == 'true'
         continue-on-error: true
         shell: bash
         run: |
@@ -135,6 +137,7 @@ jobs:
           corepack prepare pnpm@10.12.4 --activate
           pnpm -C .deepsec install --frozen-lockfile
       - name: Install Semgrep
+        if: steps.preflight.outputs.run_droid_review == 'true'
         continue-on-error: true
         shell: bash
         run: |
@@ -143,6 +146,7 @@ jobs:
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
       - name: Run Droid SAST context
         id: sast
+        if: steps.preflight.outputs.run_droid_review == 'true'
         shell: bash
         env:
           DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
@@ -167,7 +171,7 @@ jobs:
           exit 0
       - name: Run Droid CI context
         id: ci-context
-        if: always() && steps.preflight.outcome != 'skipped'
+        if: always() && steps.preflight.outputs.run_droid_review == 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -188,7 +192,7 @@ jobs:
           fi
       - name: Run Droid feedback context
         id: feedback-context
-        if: always() && steps.preflight.outcome != 'skipped'
+        if: always() && steps.preflight.outputs.run_droid_review == 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -208,7 +212,7 @@ jobs:
             } >> "${GITHUB_STEP_SUMMARY}"
           fi
       - name: Publish consolidated Droid context
-        if: always() && steps.sast.outcome != 'skipped'
+        if: always() && steps.preflight.outputs.run_droid_review == 'true' && steps.sast.outcome != 'skipped'
         continue-on-error: true
         shell: bash
         env:

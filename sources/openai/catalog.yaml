@@ -41,6 +41,46 @@ emitted_kinds:
   - openai.project_data_retention
   - openai.project_spend_alert
   - openai.project_certificate
+runtime_families:
+  - admin_api_key
+  - api_key
+  - audit_log
+  - certificate
+  - cost
+  - data_retention
+  - group
+  - group_role
+  - group_user
+  - invite
+  - project
+  - project_api_key
+  - project_certificate
+  - project_data_retention
+  - project_group
+  - project_group_role
+  - project_hosted_tool_permission
+  - project_model_permission
+  - project_rate_limit
+  - project_role
+  - project_service_account
+  - project_spend_alert
+  - project_user
+  - project_user_role
+  - role
+  - service_account
+  - spend_alert
+  - usage_audio_speech
+  - usage_audio_transcription
+  - usage_code_interpreter_session
+  - usage_completion
+  - usage_embedding
+  - usage_file_search_call
+  - usage_image
+  - usage_moderation
+  - usage_vector_store
+  - usage_web_search_call
+  - user
+  - user_role
 coverage_contract:
   owner_domain: ai
   authority_domain: openai

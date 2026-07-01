@@ -7,6 +7,12 @@ emitted_kinds:
   - azure_openai.rai_policies
   - azure_openai.rai_blocklists
   - azure_openai.private_endpoint_connections
+runtime_families:
+  - deployments
+  - model_catalog
+  - private_endpoint_connections
+  - rai_blocklists
+  - rai_policies
 kind_lifecycle:
   - kind: azure_openai.deployments
     status: active

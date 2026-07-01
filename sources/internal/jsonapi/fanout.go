@@ -19,13 +19,20 @@ type fanoutCursor struct {
 // parameter values. The returned cursor preserves both the current value index
 // and that value's provider cursor.
 func (s *Source) ReadPathParamValues(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, param string, values []string) (sourcecdk.Pull, error) {
+	return s.ReadPathParamValuesWithCheckpoint(ctx, cfg, cursor, nil, param, values)
+}
+
+// ReadPathParamValuesWithCheckpoint reads one configured family across a
+// bounded list of path parameter values while preserving the caller's durable
+// checkpoint for every scoped provider read.
+func (s *Source) ReadPathParamValuesWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, param string, values []string) (sourcecdk.Pull, error) {
 	values = compactUniqueStrings(values)
 	if len(values) == 0 {
 		return sourcecdk.Pull{}, fmt.Errorf("%w: %s %s values are required", sourcecdk.ErrInvalidConfig, s.options.SourceID, param)
 	}
 	state := parseFanoutCursor(fanoutCursorToken(cursor))
 	for state.Index < len(values) {
-		pull, err := s.Read(ctx, configWithValue(cfg, param, values[state.Index]), sourceCursor(state.Cursor))
+		pull, err := s.ReadWithCheckpoint(ctx, configWithValue(cfg, param, values[state.Index]), sourceCursor(state.Cursor), checkpoint)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}

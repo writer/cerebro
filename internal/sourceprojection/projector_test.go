@@ -2725,6 +2725,7 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		SourceId:   "okta",
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(historicalProfileEdit),
+		Payload:    []byte(`{"timestamps":{"last_login_at":"2022-12-15T10:00:00Z","last_updated_at":"2023-01-01T00:00:00Z"}}`),
 		Attributes: map[string]string{
 			"department":      "Design",
 			"domain":          "writer.okta.com",
@@ -2734,6 +2735,7 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 			"login":           "alice@writer.com",
 			"manager":         "manager@example.com",
 			"manager_id":      "00u-manager",
+			"mfa_enrolled":    "false",
 			"organization":    "Writer",
 			"status":          "DEPROVISIONED",
 			"user_id":         "00u1",
@@ -2769,15 +2771,31 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	for key, want := range map[string]string{
 		"department":      "Design",
 		"employee_number": "E-1001",
+		"event_kind":      "okta.user",
 		"job_title":       "Product Designer",
+		"last_login_at":   "2022-12-15T10:00:00Z",
+		"last_updated_at": "2023-01-01T00:00:00Z",
 		"manager":         "manager@example.com",
 		"manager_id":      "00u-manager",
+		"mfa_enrolled":    "false",
 		"organization":    "Writer",
+		"source_event_id": "okta-user-stale-profile",
 		"user_type":       "employee",
 	} {
 		if got := entity.Attributes[key]; got != want {
 			t.Fatalf("user entity attributes[%q] = %q, want %q", key, got, want)
 		}
+	}
+	rawObservedAt := entity.Attributes["observed_at"]
+	observedAt, err := time.Parse(time.RFC3339, rawObservedAt)
+	if err != nil {
+		t.Fatalf("user entity observed_at = %q is not RFC3339: %v", rawObservedAt, err)
+	}
+	if observedAt.Equal(historicalProfileEdit) {
+		t.Fatalf("user entity observed_at = %q matches profile history; expected projection observation time", rawObservedAt)
+	}
+	if observedAt.Before(before.Add(-time.Second)) || observedAt.After(after.Add(time.Second)) {
+		t.Fatalf("user entity observed_at = %v not within projection window [%v, %v]", observedAt, before, after)
 	}
 }
 

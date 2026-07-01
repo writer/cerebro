@@ -5,6 +5,10 @@ emitted_kinds:
   - mend_io.assets
   - mend_io.findings
   - mend_io.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: mend_io.assets
     status: active

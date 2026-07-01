@@ -7,6 +7,12 @@ emitted_kinds:
   - huntr.vulnerabilities
   - huntr.policies
   - huntr.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: huntr.assets
     status: active

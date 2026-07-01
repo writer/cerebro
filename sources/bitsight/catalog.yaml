@@ -7,6 +7,12 @@ emitted_kinds:
   - bitsight.vulnerabilities
   - bitsight.policies
   - bitsight.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: bitsight.assets
     status: active

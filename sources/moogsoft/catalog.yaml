@@ -7,6 +7,12 @@ emitted_kinds:
   - moogsoft.monitors
   - moogsoft.dashboards
   - moogsoft.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: moogsoft.alerts
     status: active

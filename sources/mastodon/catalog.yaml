@@ -6,6 +6,11 @@ emitted_kinds:
   - mastodon.activity
   - mastodon.verify_credential
   - mastodon.notification
+runtime_families:
+  - account
+  - activity
+  - notification
+  - verify_credential
 kind_lifecycle:
   - kind: mastodon.account
     status: active

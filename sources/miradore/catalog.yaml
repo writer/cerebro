@@ -7,6 +7,12 @@ emitted_kinds:
   - miradore.roles
   - miradore.applications
   - miradore.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: miradore.users
     status: active

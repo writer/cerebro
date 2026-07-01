@@ -1,14 +1,81 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "alert_description": "Splunk Observability Alerts Fixture alert",
+      "alert_fired_at": "2026-06-01T00:00:00Z",
+      "alert_id": "source-splunk_observability-alerts-1",
+      "alert_name": "Splunk Observability Alerts Fixture",
+      "alert_resolved_at": "2026-06-01T00:00:00Z",
+      "alert_severity": "critical",
+      "alert_source": "splunk_observability",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-splunk_observability-alerts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-splunk_observability-alerts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/splunk_observability/alerts/source-splunk_observability-alerts-1",
+      "external_id": "source-splunk_observability-alerts-1",
+      "family": "alerts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "splunk_observability",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-splunk_observability-alerts-1",
+      "resource_name": "Splunk Observability Alerts Fixture",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:splunk_observability_alerts:source-splunk_observability-alerts-1",
+      "schema": "alerts",
+      "source_event_id": "source-splunk_observability-alerts-1",
+      "source_provider": "splunk_observability",
+      "source_system": "splunk_observability",
+      "tenant_id": "tenant"
+    },
+    "id": "source-splunk_observability-alerts-event-1",
+    "kind": "splunk_observability.alerts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "alert_id": "source-splunk_observability-alerts-1",
+      "alert_name": "Splunk Observability Alerts Fixture",
+      "alert_severity": "critical",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "description": "Splunk Observability Alerts Fixture alert",
+      "event_id": "source-splunk_observability-alerts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-splunk_observability-alerts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-splunk_observability-alerts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/splunk_observability/alerts/source-splunk_observability-alerts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/splunk_observability/alerts/source-splunk_observability-alerts-1",
+      "family": "alerts",
+      "fired_at": "2026-06-01T00:00:00Z",
+      "id": "source-splunk_observability-alerts-1",
+      "name": "Splunk Observability Alerts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-splunk_observability-alerts-1",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:splunk_observability_alerts:source-splunk_observability-alerts-1",
+      "schema_ref": "splunk_observability/alerts/v1",
+      "severity": "critical",
+      "source": "splunk_observability",
+      "source_id": "splunk_observability",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "splunk_observability/alerts/v1",
+    "source_id": "splunk_observability",
+    "tenant_id": "tenant"
+  }
+]

@@ -202,6 +202,66 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	)
 }
 
+func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T) {
+	analysis, err := BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	var okta *Entry
+	for index := range analysis.Entries {
+		if analysis.Entries[index].Definition.SourceID == "okta" {
+			okta = &analysis.Entries[index]
+			break
+		}
+	}
+	if okta == nil {
+		t.Fatal("okta connector catalog entry not found")
+	}
+	dimensions := map[string]connectordefinitions.CoverageDimensionSpec{}
+	for _, family := range okta.Definition.ResourceFamilies {
+		for _, dimension := range family.Coverage {
+			dimensions[dimension.ID] = dimension
+		}
+	}
+	for _, want := range []struct {
+		id             string
+		dimensionType  string
+		support        string
+		evidenceType   string
+		controlDomain  string
+		requiredFamily string
+	}{
+		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "dormant_user"},
+		{id: "mfa_posture", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
+		{id: "external_accounts", dimensionType: "entity_family", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "external_user"},
+		{id: "group_memberships", dimensionType: "relationship", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
+		{id: "admin_membership", dimensionType: "relationship", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "privileged_role"},
+		{id: "app_access", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "app_assignment"},
+		{id: "identity_audit_events", dimensionType: "audit_event", support: "partial", evidenceType: "logging_configuration", controlDomain: "logging_monitoring", requiredFamily: "session"},
+	} {
+		dimension, ok := dimensions[want.id]
+		if !ok {
+			t.Fatalf("okta coverage dimension %q not found; got %#v", want.id, dimensions)
+		}
+		if dimension.Type != want.dimensionType || dimension.Support != want.support {
+			t.Fatalf("dimension %s type/support = %s/%s, want %s/%s", want.id, dimension.Type, dimension.Support, want.dimensionType, want.support)
+		}
+		if !hasString(dimension.EvidenceTypes, want.evidenceType) {
+			t.Fatalf("dimension %s evidence types = %#v, want %q", want.id, dimension.EvidenceTypes, want.evidenceType)
+		}
+		if !hasString(dimension.ControlDomains, want.controlDomain) {
+			t.Fatalf("dimension %s control domains = %#v, want %q", want.id, dimension.ControlDomains, want.controlDomain)
+		}
+		if !hasString(dimension.Families, want.requiredFamily) {
+			t.Fatalf("dimension %s families = %#v, want %q", want.id, dimension.Families, want.requiredFamily)
+		}
+	}
+	groupMemberships := dimensions["group_memberships"]
+	if !hasString(groupMemberships.Notes, "The declarative groups endpoint does not enumerate memberships; dedicated okta.group_membership events in the hand-written Okta source runtime provide full membership projection support.") {
+		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
+	}
+}
+
 func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	analysis, err := BuiltinRuntime()
 	if err != nil {

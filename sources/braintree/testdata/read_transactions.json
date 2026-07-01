@@ -1,14 +1,73 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@braintree.example.test",
+      "actor_id": "braintree-users-1",
+      "actor_name": "actor-name-source-braintree-transactions-1",
+      "api_method": "GET",
+      "api_path": "/transactions",
+      "event_type": "braintree.transactions.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-braintree-transactions-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-braintree-transactions-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/braintree/transactions/source-braintree-transactions-1",
+      "external_id": "source-braintree-transactions-1",
+      "family": "transactions",
+      "id": "source-braintree-transactions-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "braintree",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@braintree.example.test",
+      "resource_id": "source-braintree-transactions-1",
+      "resource_name": "Braintree Transactions Fixture",
+      "resource_type": "transactions",
+      "resource_urn": "urn:cerebro:tenant:braintree_transactions:source-braintree-transactions-1",
+      "schema": "transactions",
+      "source_event_id": "source-braintree-transactions-1",
+      "source_provider": "braintree",
+      "source_system": "braintree",
+      "tenant_id": "tenant"
+    },
+    "id": "source-braintree-transactions-event-1",
+    "kind": "braintree.transactions",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@braintree.example.test",
+      "actor_id": "braintree-users-1",
+      "actor_name": "actor-name-source-braintree-transactions-1",
+      "api_method": "GET",
+      "api_path": "/transactions",
+      "event_id": "source-braintree-transactions-1",
+      "event_type": "braintree.transactions.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-braintree-transactions-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-braintree-transactions-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/braintree/transactions/source-braintree-transactions-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/braintree/transactions/source-braintree-transactions-1",
+      "family": "transactions",
+      "id": "source-braintree-transactions-1",
+      "name": "Braintree Transactions Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@braintree.example.test",
+      "resource_id": "source-braintree-transactions-1",
+      "resource_name": "Braintree Transactions Fixture",
+      "resource_type": "transactions",
+      "resource_urn": "urn:cerebro:tenant:braintree_transactions:source-braintree-transactions-1",
+      "schema_ref": "braintree/transactions/v1",
+      "source_id": "braintree",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "braintree/transactions/v1",
+    "source_id": "braintree",
+    "tenant_id": "tenant"
+  }
+]

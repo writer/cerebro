@@ -1,0 +1,73 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/zones/{zone_id}/access/groups",
+      "display_name": "Cloudflare Zone Access Group Fixture",
+      "email": "user@example.test",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/cloudflare/zone_access_group/source-cloudflare-zone_access_group-1",
+      "exclude": "exclude-source-cloudflare-zone_access_group-1",
+      "external_id": "source-cloudflare-zone_access_group-1",
+      "family": "zone_access_group",
+      "group_id": "group-id-source-cloudflare-zone_access_group-1",
+      "include": "include-source-cloudflare-zone_access_group-1",
+      "list_keys": "result",
+      "name": "Cloudflare Zone Access Group Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "cloudflare",
+      "require": "require-source-cloudflare-zone_access_group-1",
+      "resource_id": "source-cloudflare-zone_access_group-1",
+      "resource_name": "Cloudflare Zone Access Group Fixture",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone_access_group:source-cloudflare-zone_access_group-1",
+      "source_event_id": "source-cloudflare-zone_access_group-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "user_id": "source-cloudflare-user-1",
+      "zone_id": "zone-id-source-cloudflare-zone_access_group-1"
+    },
+    "id": "source-cloudflare-zone_access_group-event-1",
+    "kind": "cloudflare.zone_access_group",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/zones/{zone_id}/access/groups",
+      "display_name": "Cloudflare Zone Access Group Fixture",
+      "email": "user@example.test",
+      "event_id": "source-cloudflare-zone_access_group-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/cloudflare/zone_access_group/source-cloudflare-zone_access_group-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/cloudflare/zone_access_group/source-cloudflare-zone_access_group-1",
+      "exclude": "exclude-source-cloudflare-zone_access_group-1",
+      "family": "zone_access_group",
+      "id": "group-id-source-cloudflare-zone_access_group-1",
+      "include": "include-source-cloudflare-zone_access_group-1",
+      "list_keys": [
+        "result"
+      ],
+      "name": "Cloudflare Zone Access Group Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "require": "require-source-cloudflare-zone_access_group-1",
+      "resource_id": "source-cloudflare-zone_access_group-1",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone_access_group:source-cloudflare-zone_access_group-1",
+      "schema_ref": "cloudflare/zone_access_group/v1",
+      "source_id": "cloudflare",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-cloudflare-user-1",
+      "zone_id": "zone-id-source-cloudflare-zone_access_group-1"
+    },
+    "schema_ref": "cloudflare/zone_access_group/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

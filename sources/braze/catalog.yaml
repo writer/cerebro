@@ -7,6 +7,12 @@ emitted_kinds:
   - braze.records
   - braze.policies
   - braze.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: braze.users
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - klaviyo.records
   - klaviyo.policies
   - klaviyo.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: klaviyo.users
     status: active

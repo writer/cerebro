@@ -7,6 +7,12 @@ emitted_kinds:
   - foxpass.roles
   - foxpass.applications
   - foxpass.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: foxpass.users
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - beeline.records
   - beeline.policies
   - beeline.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: beeline.users
     status: active

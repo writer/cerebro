@@ -7,6 +7,12 @@ emitted_kinds:
   - rootly.monitors
   - rootly.dashboards
   - rootly.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: rootly.alerts
     status: active

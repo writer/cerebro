@@ -5,6 +5,10 @@ emitted_kinds:
   - checkmarx_one.assets
   - checkmarx_one.findings
   - checkmarx_one.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: checkmarx_one.assets
     status: active

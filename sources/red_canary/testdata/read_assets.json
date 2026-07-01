@@ -1,14 +1,64 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-red_canary-assets-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-red_canary-assets-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/red_canary/assets/source-red_canary-assets-1",
+      "external_id": "source-red_canary-assets-1",
+      "family": "assets",
+      "id": "source-red_canary-assets-1",
+      "name": "Red Canary Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "red_canary",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-red_canary-assets-1",
+      "resource_name": "Red Canary Assets Fixture",
       "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "resource_urn": "urn:cerebro:tenant:red_canary_assets:source-red_canary-assets-1",
+      "schema": "assets",
+      "source_event_id": "source-red_canary-assets-1",
+      "source_provider": "red_canary",
+      "source_system": "red_canary",
+      "tenant_id": "tenant"
+    },
+    "id": "source-red_canary-assets-event-1",
+    "kind": "red_canary.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "asset": "asset",
+      "event_id": "source-red_canary-assets-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-red_canary-assets-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-red_canary-assets-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/red_canary/assets/source-red_canary-assets-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/red_canary/assets/source-red_canary-assets-1",
+      "family": "assets",
+      "id": "source-red_canary-assets-1",
+      "name": "Red Canary Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-red_canary-assets-1",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:red_canary_assets:source-red_canary-assets-1",
+      "schema_ref": "red_canary/assets/v1",
+      "source_id": "red_canary",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "red_canary/assets/v1",
+    "source_id": "red_canary",
+    "tenant_id": "tenant"
+  }
+]

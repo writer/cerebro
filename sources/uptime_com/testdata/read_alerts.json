@@ -1,14 +1,81 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "alert_description": "Uptime Com Alerts Fixture alert",
+      "alert_fired_at": "2026-06-01T00:00:00Z",
+      "alert_id": "source-uptime_com-alerts-1",
+      "alert_name": "Uptime Com Alerts Fixture",
+      "alert_resolved_at": "2026-06-01T00:00:00Z",
+      "alert_severity": "critical",
+      "alert_source": "uptime_com",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-uptime_com-alerts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-uptime_com-alerts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/uptime_com/alerts/source-uptime_com-alerts-1",
+      "external_id": "source-uptime_com-alerts-1",
+      "family": "alerts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "uptime_com",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-uptime_com-alerts-1",
+      "resource_name": "Uptime Com Alerts Fixture",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:uptime_com_alerts:source-uptime_com-alerts-1",
+      "schema": "alerts",
+      "source_event_id": "source-uptime_com-alerts-1",
+      "source_provider": "uptime_com",
+      "source_system": "uptime_com",
+      "tenant_id": "tenant"
+    },
+    "id": "source-uptime_com-alerts-event-1",
+    "kind": "uptime_com.alerts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "alert_id": "source-uptime_com-alerts-1",
+      "alert_name": "Uptime Com Alerts Fixture",
+      "alert_severity": "critical",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "description": "Uptime Com Alerts Fixture alert",
+      "event_id": "source-uptime_com-alerts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-uptime_com-alerts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-uptime_com-alerts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/uptime_com/alerts/source-uptime_com-alerts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/uptime_com/alerts/source-uptime_com-alerts-1",
+      "family": "alerts",
+      "fired_at": "2026-06-01T00:00:00Z",
+      "id": "source-uptime_com-alerts-1",
+      "name": "Uptime Com Alerts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-uptime_com-alerts-1",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:uptime_com_alerts:source-uptime_com-alerts-1",
+      "schema_ref": "uptime_com/alerts/v1",
+      "severity": "critical",
+      "source": "uptime_com",
+      "source_id": "uptime_com",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "uptime_com/alerts/v1",
+    "source_id": "uptime_com",
+    "tenant_id": "tenant"
+  }
+]

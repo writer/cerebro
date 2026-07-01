@@ -1,0 +1,40 @@
+[
+  {
+    "attributes": {
+      "cluster_id": "cluster-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "service",
+      "namespace": "default",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "service",
+      "resource_urn": "urn:cerebro:tenant:runtime_service:record-1",
+      "service_name": "Service Name",
+      "service_type": "service-type-1",
+      "source_event_id": "record-1",
+      "tenant_id": "tenant"
+    },
+    "id": "kubernetes-service-record-1",
+    "kind": "kubernetes.service",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "id": "record-1",
+      "name": "Record One",
+      "namespace": "default",
+      "ports": "ports-1",
+      "resource_id": "record-1",
+      "resource_type": "service",
+      "resource_urn": "urn:cerebro:tenant:runtime_service:record-1",
+      "type": "type-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "kubernetes/service/v1",
+    "source_id": "kubernetes",
+    "tenant_id": "tenant"
+  }
+]

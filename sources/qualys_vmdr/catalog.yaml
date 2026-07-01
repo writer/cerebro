@@ -5,6 +5,10 @@ emitted_kinds:
   - qualys_vmdr.assets
   - qualys_vmdr.findings
   - qualys_vmdr.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: qualys_vmdr.assets
     status: active

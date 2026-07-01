@@ -7,6 +7,12 @@ emitted_kinds:
   - envoy_visitors.records
   - envoy_visitors.policies
   - envoy_visitors.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: envoy_visitors.users
     status: active

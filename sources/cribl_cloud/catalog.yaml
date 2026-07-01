@@ -7,6 +7,12 @@ emitted_kinds:
   - cribl_cloud.monitors
   - cribl_cloud.dashboards
   - cribl_cloud.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: cribl_cloud.alerts
     status: active

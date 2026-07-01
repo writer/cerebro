@@ -7,6 +7,12 @@ emitted_kinds:
   - legit_security.vulnerabilities
   - legit_security.policies
   - legit_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: legit_security.assets
     status: active

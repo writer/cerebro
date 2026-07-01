@@ -5,6 +5,10 @@ emitted_kinds:
   - prisma_cloud.assets
   - prisma_cloud.findings
   - prisma_cloud.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: prisma_cloud.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - mesh_payments.records
   - mesh_payments.policies
   - mesh_payments.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: mesh_payments.users
     status: active
