@@ -26,6 +26,8 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 		writeMetric(&b, "Runtime-backed sources", report.Summary.RuntimeDepth.RuntimeBackedSources)
 		writeMetric(&b, "Reference-runtime sources", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
 		writeMetric(&b, "Needs runtime depth", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+		writeMetric(&b, "Sources with read fixtures", report.Summary.RuntimeDepth.SourcesWithReadFixtures)
+		writeMetric(&b, "Sources with discover fixtures", report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures)
 		writeMetric(&b, "Sources with provider API contract", report.Summary.RuntimeDepth.SourcesWithProviderAPIContract)
 		writeMetric(&b, "Sources with provider API family mapping", report.Summary.RuntimeDepth.SourcesWithProviderAPIMapping)
 		writeMetric(&b, "Sources with matching runtime transport", report.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch)

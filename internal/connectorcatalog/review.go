@@ -52,6 +52,8 @@ type RuntimeDepthSummary struct {
 	RuntimeBackedSources             int `json:"runtime_backed_sources"`
 	ReferenceRuntimeSources          int `json:"reference_runtime_sources"`
 	NeedsRuntimeDepth                int `json:"needs_runtime_depth"`
+	SourcesWithReadFixtures          int `json:"sources_with_read_fixtures"`
+	SourcesWithDiscoverFixtures      int `json:"sources_with_discover_fixtures"`
 	SourcesWithProviderAPIContract   int `json:"sources_with_provider_api_contract"`
 	SourcesWithProviderAPIMapping    int `json:"sources_with_provider_api_mapping"`
 	SourcesWithRuntimeTransportMatch int `json:"sources_with_runtime_transport_match"`
@@ -146,22 +148,24 @@ type SourceFidelityFields struct {
 }
 
 type RuntimeDepthFields struct {
-	RuntimeDepthScore        int      `json:"runtime_depth_score,omitempty"`
-	RuntimeDepthLevel        string   `json:"runtime_depth_level,omitempty"`
-	RuntimeDepthGaps         []string `json:"runtime_depth_gaps,omitempty"`
-	RuntimePackagePath       string   `json:"runtime_package_path,omitempty"`
-	HasRuntimePackage        bool     `json:"has_runtime_package,omitempty"`
-	HasRuntimeCatalog        bool     `json:"has_runtime_catalog,omitempty"`
-	HasRuntimeImplementation bool     `json:"has_runtime_implementation,omitempty"`
-	HasRuntimeTests          bool     `json:"has_runtime_tests,omitempty"`
-	HasRuntimeFixtures       bool     `json:"has_runtime_fixtures,omitempty"`
-	HasDeployManifest        bool     `json:"has_deploy_manifest,omitempty"`
-	HasProjectorTests        bool     `json:"has_projector_tests,omitempty"`
-	HasProviderAPIContract   bool     `json:"has_provider_api_contract,omitempty"`
-	HasProviderAPIMapping    bool     `json:"has_provider_api_mapping,omitempty"`
-	HasRuntimeTransportMatch bool     `json:"has_runtime_transport_match,omitempty"`
-	ProviderAPITransport     string   `json:"provider_api_transport,omitempty"`
-	RuntimeFamilies          []string `json:"runtime_families,omitempty"`
+	RuntimeDepthScore          int      `json:"runtime_depth_score,omitempty"`
+	RuntimeDepthLevel          string   `json:"runtime_depth_level,omitempty"`
+	RuntimeDepthGaps           []string `json:"runtime_depth_gaps,omitempty"`
+	RuntimePackagePath         string   `json:"runtime_package_path,omitempty"`
+	HasRuntimePackage          bool     `json:"has_runtime_package,omitempty"`
+	HasRuntimeCatalog          bool     `json:"has_runtime_catalog,omitempty"`
+	HasRuntimeImplementation   bool     `json:"has_runtime_implementation,omitempty"`
+	HasRuntimeTests            bool     `json:"has_runtime_tests,omitempty"`
+	HasRuntimeReadFixtures     bool     `json:"has_runtime_read_fixtures,omitempty"`
+	HasRuntimeDiscoverFixtures bool     `json:"has_runtime_discover_fixtures,omitempty"`
+	HasRuntimeFixtures         bool     `json:"has_runtime_fixtures,omitempty"`
+	HasDeployManifest          bool     `json:"has_deploy_manifest,omitempty"`
+	HasProjectorTests          bool     `json:"has_projector_tests,omitempty"`
+	HasProviderAPIContract     bool     `json:"has_provider_api_contract,omitempty"`
+	HasProviderAPIMapping      bool     `json:"has_provider_api_mapping,omitempty"`
+	HasRuntimeTransportMatch   bool     `json:"has_runtime_transport_match,omitempty"`
+	ProviderAPITransport       string   `json:"provider_api_transport,omitempty"`
+	RuntimeFamilies            []string `json:"runtime_families,omitempty"`
 }
 
 type SourceFamilyReadinessFields struct {
@@ -263,6 +267,12 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			}
 			if sourceReview.HasRuntimeFixtures {
 				review.Summary.RuntimeDepth.SourcesWithRuntimeFixtures++
+			}
+			if sourceReview.HasRuntimeReadFixtures {
+				review.Summary.RuntimeDepth.SourcesWithReadFixtures++
+			}
+			if sourceReview.HasRuntimeDiscoverFixtures {
+				review.Summary.RuntimeDepth.SourcesWithDiscoverFixtures++
 			}
 			if sourceReview.HasProviderAPIContract {
 				review.Summary.RuntimeDepth.SourcesWithProviderAPIContract++
@@ -381,6 +391,8 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.HasRuntimeCatalog = runtimeDepth.HasSourceCatalog
 		review.HasRuntimeImplementation = runtimeDepth.HasSourceImplementation
 		review.HasRuntimeTests = runtimeDepth.HasSourceTests
+		review.HasRuntimeReadFixtures = runtimeDepth.HasReadFixtures
+		review.HasRuntimeDiscoverFixtures = runtimeDepth.HasDiscoverFixtures
 		review.HasRuntimeFixtures = runtimeDepth.HasFixturePair
 		review.HasDeployManifest = runtimeDepth.HasDeployManifest
 		review.HasProjectorTests = runtimeDepth.HasProjectorTests

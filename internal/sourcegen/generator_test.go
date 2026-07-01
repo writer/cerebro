@@ -87,6 +87,18 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
 	}
+	discoverFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/discover_finding_vulnerability.json")
+	for _, want := range []string{"urn:cerebro:tenant:runtime_finding_vulnerability:source-demo_source-finding_vulnerability-1"} {
+		if !strings.Contains(discoverFixture, want) {
+			t.Fatalf("discover fixture missing %q:\n%s", want, discoverFixture)
+		}
+	}
+	readFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/read_asset_host.json")
+	for _, want := range []string{`"family": "asset_host"`, `"record_class": "asset"`, `"resource_type": "host"`} {
+		if !strings.Contains(readFixture, want) {
+			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
+		}
+	}
 	deploy, err := sourcedeploy.Parse([]byte(readGeneratedFile(t, outputDir, "sources/demo_source/deploy.yaml")), "generated")
 	if err != nil {
 		t.Fatalf("parse deploy manifest: %v", err)

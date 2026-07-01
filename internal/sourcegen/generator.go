@@ -2178,6 +2178,7 @@ func renderRuntimeDocs(request normalizedRequest) string {
 		fmt.Fprintf(&b, "- `%s`, emits `%s`, reads `%s`\n", family.Name, family.EventKind, family.Path)
 	}
 	fmt.Fprintf(&b, "\n## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs: `sources/%s/testdata/discover_<family>.json` and `sources/%s/testdata/read_<family>.json` for every generated family\n", request.SourceID, request.SourceID)
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()
@@ -2194,6 +2195,7 @@ func renderPRBody(request normalizedRequest) string {
 	fmt.Fprintf(&b, "- Health endpoint: `%s`\n", healthEndpoint(request.SourceID))
 	fmt.Fprintf(&b, "- Freshness: `%s`\n\n", request.FreshnessExpectation)
 	fmt.Fprintf(&b, "## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs cover discover and read payloads for every generated family.\n")
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()
