@@ -181,7 +181,7 @@ func TestCheckConnectorDefinitionCatalogEnforcesRuntimeDepthBudget(t *testing.T)
 	writeGenerateableConnectorDefinition(t, root, "example_idp")
 	writeRuntimeBackedSource(t, root, "example_idp", []string{"users", "groups"}, []string{"example_idp.user", "example_idp.group"})
 
-	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 0})
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthBudgetEnabled: true, runtimeDepthMaxQueued: 0})
 	if err != nil {
 		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
 	}
@@ -198,7 +198,7 @@ func TestCheckConnectorDefinitionCatalogAllowsRuntimeDepthAtBudget(t *testing.T)
 	writeGenerateableConnectorDefinition(t, root, "example_idp")
 	writeRuntimeBackedSource(t, root, "example_idp", []string{"users", "groups"}, []string{"example_idp.user", "example_idp.group"})
 
-	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 1})
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthBudgetEnabled: true, runtimeDepthMaxQueued: 1})
 	if err != nil {
 		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
 	}
@@ -207,11 +207,25 @@ func TestCheckConnectorDefinitionCatalogAllowsRuntimeDepthAtBudget(t *testing.T)
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogDefaultOptionsDisableRuntimeDepthBudget(t *testing.T) {
+	root := t.TempDir()
+	writeGenerateableConnectorDefinition(t, root, "example_idp")
+	writeRuntimeBackedSource(t, root, "example_idp", []string{"users", "groups"}, []string{"example_idp.user", "example_idp.group"})
+
+	issues, err := checkConnectorDefinitionCatalog(root)
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalog() error = %v", err)
+	}
+	if issueMessagesContain(issues, "runtime-depth queue") {
+		t.Fatalf("issues = %#v, want default runtime-depth budget disabled", issues)
+	}
+}
+
 func TestCheckConnectorDefinitionCatalogIgnoresCatalogOnlyRuntimeBacklog(t *testing.T) {
 	root := t.TempDir()
 	writeGenerateableConnectorDefinition(t, root, "catalog_only")
 
-	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthMaxQueued: 0})
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{runtimeDepthBudgetEnabled: true, runtimeDepthMaxQueued: 0})
 	if err != nil {
 		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
 	}

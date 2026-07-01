@@ -27,8 +27,9 @@ type issue struct {
 }
 
 type repositoryCheckOptions struct {
-	requireSourcegenReady bool
-	runtimeDepthMaxQueued int
+	requireSourcegenReady     bool
+	runtimeDepthBudgetEnabled bool
+	runtimeDepthMaxQueued     int
 }
 
 func main() {
@@ -38,8 +39,9 @@ func main() {
 	runtimeDepthMaxQueued := flag.Int("runtime-depth-max-queued", -1, "fail when runtime-backed connector definitions below the reference runtime bar exceed this budget; negative disables the ratchet")
 	flag.Parse()
 	issues, err := checkRepositoryWithOptions(*root, repositoryCheckOptions{
-		requireSourcegenReady: *requireSourcegenReady,
-		runtimeDepthMaxQueued: *runtimeDepthMaxQueued,
+		requireSourcegenReady:     *requireSourcegenReady,
+		runtimeDepthBudgetEnabled: *runtimeDepthMaxQueued >= 0,
+		runtimeDepthMaxQueued:     *runtimeDepthMaxQueued,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "catalog-check: %v\n", err)
@@ -174,7 +176,7 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 			})
 		}
 	}
-	if options.runtimeDepthMaxQueued >= 0 {
+	if options.runtimeDepthBudgetEnabled {
 		runtimeInventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
 		if err != nil {
 			return nil, fmt.Errorf("discover runtime depth: %w", err)
