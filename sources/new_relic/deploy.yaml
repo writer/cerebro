@@ -1,6 +1,9 @@
 sourceId: new_relic
 secretKeys:
   - NEW_RELIC_API_KEY
+  - NEW_RELIC_ACCOUNT_ID
+  - NEW_RELIC_AUDIT_NRQL
+  - NEW_RELIC_ENTITY_QUERY
 runtimes:
   - localId: assets
     config:

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/newrelicapi"
 )
 
 func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
@@ -17,7 +18,7 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
-	var requests []graphQLRequest
+	var requests []newrelicapi.Request
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -28,7 +29,7 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 		if r.Header.Get("API-Key") != "test-api-key" {
 			t.Fatalf("API-Key = %q", r.Header.Get("API-Key"))
 		}
-		var req graphQLRequest
+		var req newrelicapi.Request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -49,7 +50,7 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 					"type":       "SERVICE",
 					"entityType": "APM_APPLICATION_ENTITY",
 					"domain":     "APM",
-					"permalink":  "https://one.newrelic.com/entities/NR-ENTITY-1",
+					"permalink":  "https://example.com/entities/NR-ENTITY-1",
 					"reporting":  true,
 					"account":    map[string]any{"id": 42, "name": "Production"},
 				}},
@@ -190,15 +191,15 @@ func TestSanitizeEventIDPreservesProviderIdentifiers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := sanitizeEventID(tt.input); got != tt.want {
+			if got := newrelicapi.SanitizeEventID(tt.input); got != tt.want {
 				t.Fatalf("sanitizeEventID(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
-	if sanitizeEventID("ID") == sanitizeEventID("id") {
+	if newrelicapi.SanitizeEventID("ID") == newrelicapi.SanitizeEventID("id") {
 		t.Fatalf("sanitizeEventID collapsed case-distinct IDs")
 	}
-	if sanitizeEventID("A_B") == sanitizeEventID("A-B") {
+	if newrelicapi.SanitizeEventID("A_B") == newrelicapi.SanitizeEventID("A-B") {
 		t.Fatalf("sanitizeEventID collapsed underscore-distinct IDs")
 	}
 }

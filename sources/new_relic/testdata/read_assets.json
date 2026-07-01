@@ -12,7 +12,7 @@
       "type": "SERVICE",
       "entityType": "APM_APPLICATION_ENTITY",
       "domain": "APM",
-      "permalink": "https://one.newrelic.com/entities/NR-ENTITY-1",
+      "permalink": "https://example.com/entities/NR-ENTITY-1",
       "reporting": true,
       "account": {
         "id": 42,
