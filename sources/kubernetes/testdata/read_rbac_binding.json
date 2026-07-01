@@ -1,43 +1,50 @@
 [
   {
     "attributes": {
-      "binding_kind": "binding-kind-1",
-      "binding_name": "Binding Name",
-      "cluster_id": "cluster-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
       "family": "rbac_binding",
-      "group_id": "group-1",
-      "group_name": "Group One",
-      "member_email": "user@example.test",
-      "member_id": "user-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
+      "tenant_id": "tenant",
+      "provider": "kubernetes",
+      "source_provider": "kubernetes",
+      "resource_id": "payments-secret-reader-binding",
+      "resource_name": "secret-reader-binding",
       "resource_type": "relationship",
-      "resource_urn": "urn:cerebro:tenant:runtime_rbac_binding:record-1",
-      "role_name": "Role Name",
-      "source_event_id": "record-1",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:kubernetes_rbac_binding:prod-eks-us-east-1:RoleBinding:payments:secret-reader-binding",
+      "cluster_id": "prod-eks-us-east-1",
+      "cluster_name": "prod-us-east-1",
+      "namespace": "payments",
+      "binding_name": "secret-reader-binding",
+      "binding_kind": "RoleBinding",
+      "binding_scope": "namespace",
+      "role_kind": "Role",
+      "role_name": "secret-reader",
+      "subject_kinds": "ServiceAccount,User",
+      "subject_names": "alice@example.com,payments-api"
     },
-    "id": "kubernetes-rbac_binding-record-1",
+    "id": "kubernetes-rbac-binding-payments-secret-reader-binding",
     "kind": "kubernetes.rbac_binding",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "binding_kind": "binding-kind-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "group_id": "group-1",
-      "group_name": "Group One",
-      "id": "record-1",
-      "member_id": "user-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "relationship",
-      "resource_urn": "urn:cerebro:tenant:runtime_rbac_binding:record-1",
-      "role_ref": "role-ref-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "uid": "binding-uid-secret-reader",
+      "name": "secret-reader-binding",
+      "namespace": "payments",
+      "binding_kind": "RoleBinding",
+      "binding_scope": "namespace",
+      "role_ref": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "Role",
+        "name": "secret-reader"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "namespace": "payments",
+          "name": "payments-api"
+        },
+        {
+          "kind": "User",
+          "name": "alice@example.com"
+        }
+      ]
     },
     "schema_ref": "kubernetes/rbac_binding/v1",
     "source_id": "kubernetes",

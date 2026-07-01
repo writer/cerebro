@@ -1,35 +1,87 @@
 [
   {
     "attributes": {
-      "cluster_id": "cluster-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
       "family": "ingress",
-      "ingress_name": "Ingress Name",
-      "namespace": "default",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
+      "tenant_id": "tenant",
+      "provider": "kubernetes",
+      "source_provider": "kubernetes",
+      "resource_id": "payments-ingress",
+      "resource_name": "payments",
       "resource_type": "ingress",
-      "resource_urn": "urn:cerebro:tenant:runtime_ingress:record-1",
-      "source_event_id": "record-1",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:kubernetes_ingress:prod-eks-us-east-1:payments:payments",
+      "cluster_id": "prod-eks-us-east-1",
+      "cluster_name": "prod-us-east-1",
+      "namespace": "payments",
+      "ingress_name": "payments",
+      "ingress_class_name": "nginx",
+      "hosts": "payments.example.com",
+      "tls_hosts": "payments.example.com",
+      "tls_secret_names": "payments-tls",
+      "backend_services": "default-backend:80,payments:443",
+      "load_balancer_ips": "198.51.100.30",
+      "load_balancer_hostnames": "ingress.example.net"
     },
-    "id": "kubernetes-ingress-record-1",
+    "id": "kubernetes-ingress-payments-ingress",
     "kind": "kubernetes.ingress",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "namespace": "default",
-      "resource_id": "record-1",
-      "resource_type": "ingress",
-      "resource_urn": "urn:cerebro:tenant:runtime_ingress:record-1",
-      "rules": "rules-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "uid": "ingress-uid-payments",
+      "name": "payments",
+      "namespace": "payments",
+      "ingress_class_name": "nginx",
+      "rules": [
+        {
+          "host": "payments.example.com",
+          "http": {
+            "paths": [
+              {
+                "path": "/",
+                "pathType": "Prefix",
+                "backend": {
+                  "service": {
+                    "name": "payments",
+                    "port": {
+                      "number": 443
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "tls": [
+        {
+          "hosts": [
+            "payments.example.com"
+          ],
+          "secretName": "payments-tls"
+        }
+      ],
+      "default_backend": {
+        "service": {
+          "name": "default-backend",
+          "port": {
+            "number": 80
+          }
+        }
+      },
+      "hosts": [
+        "payments.example.com"
+      ],
+      "tls_hosts": [
+        "payments.example.com"
+      ],
+      "backend_services": [
+        "default-backend:80",
+        "payments:443"
+      ],
+      "load_balancer_ips": [
+        "198.51.100.30"
+      ],
+      "load_balancer_hostnames": [
+        "ingress.example.net"
+      ]
     },
     "schema_ref": "kubernetes/ingress/v1",
     "source_id": "kubernetes",
