@@ -7,6 +7,12 @@ emitted_kinds:
   - perforce_helix_cloud.repositories
   - perforce_helix_cloud.deployments
   - perforce_helix_cloud.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: perforce_helix_cloud.users
     status: active

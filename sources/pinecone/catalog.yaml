@@ -6,6 +6,11 @@ emitted_kinds:
   - pinecone.collections
   - pinecone.backups
   - pinecone.restore_jobs
+runtime_families:
+  - backups
+  - collections
+  - indexes
+  - restore_jobs
 kind_lifecycle:
   - kind: pinecone.indexes
     status: active

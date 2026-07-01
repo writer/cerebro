@@ -5,6 +5,10 @@ emitted_kinds:
   - jumpcloud.users
   - jumpcloud.groups
   - jumpcloud.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: jumpcloud.users
     status: active

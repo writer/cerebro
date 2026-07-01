@@ -7,6 +7,12 @@ emitted_kinds:
   - productiv.roles
   - productiv.applications
   - productiv.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: productiv.users
     status: active

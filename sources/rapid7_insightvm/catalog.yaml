@@ -5,6 +5,10 @@ emitted_kinds:
   - rapid7_insightvm.assets
   - rapid7_insightvm.findings
   - rapid7_insightvm.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: rapid7_insightvm.assets
     status: active

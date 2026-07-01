@@ -7,6 +7,12 @@ emitted_kinds:
   - splunk_observability.monitors
   - splunk_observability.dashboards
   - splunk_observability.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: splunk_observability.alerts
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - ceridian_dayforce.records
   - ceridian_dayforce.policies
   - ceridian_dayforce.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ceridian_dayforce.users
     status: active

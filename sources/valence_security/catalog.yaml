@@ -7,6 +7,12 @@ emitted_kinds:
   - valence_security.vulnerabilities
   - valence_security.policies
   - valence_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: valence_security.assets
     status: active

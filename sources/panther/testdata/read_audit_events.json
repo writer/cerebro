@@ -1,14 +1,73 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@panther.example.test",
+      "actor_id": "panther-users-1",
+      "actor_name": "actor-name-source-panther-audit_events-1",
+      "api_method": "GET",
+      "api_path": "/v1/events",
+      "event_type": "panther.audit_events.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-panther-audit_events-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-panther-audit_events-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/panther/audit_events/source-panther-audit_events-1",
+      "external_id": "source-panther-audit_events-1",
+      "family": "audit_events",
+      "id": "source-panther-audit_events-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "panther",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@panther.example.test",
+      "resource_id": "source-panther-audit_events-1",
+      "resource_name": "Panther Audit Events Fixture",
+      "resource_type": "audit_events",
+      "resource_urn": "urn:cerebro:tenant:panther_audit_events:source-panther-audit_events-1",
+      "schema": "audit_events",
+      "source_event_id": "source-panther-audit_events-1",
+      "source_provider": "panther",
+      "source_system": "panther",
+      "tenant_id": "tenant"
+    },
+    "id": "source-panther-audit_events-event-1",
+    "kind": "panther.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@panther.example.test",
+      "actor_id": "panther-users-1",
+      "actor_name": "actor-name-source-panther-audit_events-1",
+      "api_method": "GET",
+      "api_path": "/v1/events",
+      "event_id": "source-panther-audit_events-1",
+      "event_type": "panther.audit_events.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-panther-audit_events-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-panther-audit_events-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/panther/audit_events/source-panther-audit_events-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/panther/audit_events/source-panther-audit_events-1",
+      "family": "audit_events",
+      "id": "source-panther-audit_events-1",
+      "name": "Panther Audit Events Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@panther.example.test",
+      "resource_id": "source-panther-audit_events-1",
+      "resource_name": "Panther Audit Events Fixture",
+      "resource_type": "audit_events",
+      "resource_urn": "urn:cerebro:tenant:panther_audit_events:source-panther-audit_events-1",
+      "schema_ref": "panther/audit_events/v1",
+      "source_id": "panther",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "panther/audit_events/v1",
+    "source_id": "panther",
+    "tenant_id": "tenant"
+  }
+]

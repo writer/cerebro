@@ -5,6 +5,10 @@ emitted_kinds:
   - tines.audit_events
   - tines.findings
   - tines.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: tines.audit_events
     status: active

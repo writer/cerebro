@@ -6,6 +6,11 @@ emitted_kinds:
   - firmalyzer.account
   - firmalyzer.private_key
   - firmalyzer.risk
+runtime_families:
+  - account
+  - config_issue
+  - private_key
+  - risk
 kind_lifecycle:
   - kind: firmalyzer.config_issue
     status: active

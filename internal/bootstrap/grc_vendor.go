@@ -154,6 +154,11 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 		return grcVendorDetailResponse{}, err
 	}
 	urn = detail.Vendor.URN
+	questionnaireRollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, []string{urn}, time.Now().UTC())
+	if err != nil {
+		return grcVendorDetailResponse{}, err
+	}
+	detail.Vendor = grcvendor.ApplyQuestionnaireVendorRollup(detail.Vendor, questionnaireRollups[urn])
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
 		return grcVendorDetailResponse{}, err
@@ -321,7 +326,18 @@ func (a *App) handleUpdateGRCVendorDiscoveryDecision(w http.ResponseWriter, r *h
 
 func (a *App) enrichGRCVendors(r *http.Request, scope grcScope, vendors []grcvendor.Vendor) ([]grcvendor.Vendor, error) {
 	if len(vendors) == 0 || findingStore(a.deps.StateStore) == nil {
+		rollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, grcVendorURNs(vendors), time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		for index := range vendors {
+			vendors[index] = grcvendor.ApplyQuestionnaireVendorRollup(vendors[index], rollups[vendors[index].URN])
+		}
 		return vendors, nil
+	}
+	questionnaireRollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, grcVendorURNs(vendors), time.Now().UTC())
+	if err != nil {
+		return nil, err
 	}
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
@@ -358,9 +374,18 @@ func (a *App) enrichGRCVendors(r *http.Request, scope grcScope, vendors []grcven
 		vendors[index].CriticalFindings = item.CriticalFindings
 		vendors[index].HighFindings = item.HighFindings
 		vendors[index].EvidenceItems = item.EvidenceItems
+		vendors[index] = grcvendor.ApplyQuestionnaireVendorRollup(vendors[index], questionnaireRollups[vendors[index].URN])
 		vendors[index] = grcvendor.RefreshVendorQueuePosture(vendors[index])
 	}
 	return vendors, nil
+}
+
+func grcQuestionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
+	runStore, ok := store.(ports.QuestionnaireRunStore)
+	if !ok || isNilInterface(runStore) {
+		return nil
+	}
+	return runStore
 }
 
 func vendorFindingMetrics(findings []grcFindingItem) map[string]grcVendorFindingMetrics {

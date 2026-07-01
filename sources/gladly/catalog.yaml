@@ -7,6 +7,12 @@ emitted_kinds:
   - gladly.workspaces
   - gladly.documents
   - gladly.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: gladly.users
     status: active

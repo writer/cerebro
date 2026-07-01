@@ -7,6 +7,12 @@ emitted_kinds:
   - nudge_security.roles
   - nudge_security.applications
   - nudge_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: nudge_security.users
     status: active

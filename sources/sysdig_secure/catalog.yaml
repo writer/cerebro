@@ -5,6 +5,10 @@ emitted_kinds:
   - sysdig_secure.assets
   - sysdig_secure.findings
   - sysdig_secure.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: sysdig_secure.assets
     status: active

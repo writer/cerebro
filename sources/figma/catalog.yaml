@@ -5,6 +5,10 @@ emitted_kinds:
   - figma.users
   - figma.projects
   - figma.audit_events
+runtime_families:
+  - audit_events
+  - projects
+  - users
 kind_lifecycle:
   - kind: figma.users
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - brinqa.vulnerabilities
   - brinqa.policies
   - brinqa.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: brinqa.assets
     status: active

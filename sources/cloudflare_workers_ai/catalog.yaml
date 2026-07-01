@@ -8,6 +8,13 @@ emitted_kinds:
   - cloudflare_workers_ai.gateway_evaluations
   - cloudflare_workers_ai.gateway_logs
   - cloudflare_workers_ai.vectorize_indexes
+runtime_families:
+  - ai_gateways
+  - gateway_evaluations
+  - gateway_logs
+  - gateway_provider_configs
+  - model_catalog
+  - vectorize_indexes
 kind_lifecycle:
   - kind: cloudflare_workers_ai.model_catalog
     status: active

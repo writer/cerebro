@@ -510,6 +510,34 @@ func TestAppendEmitsPublishRetryExhaustedTelemetry(t *testing.T) {
 	}
 }
 
+func TestAppendReturnsTypedPublishExhaustedError(t *testing.T) {
+	skipPublishRetryWaits(t)
+	errs := make([]error, publishRetryAttempts)
+	for i := range errs {
+		errs[i] = errors.New("nats: no response from stream")
+	}
+	pub := &fakePublisher{publishErrs: errs}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+		Id:   "evt-exhausted",
+		Kind: securityevents.FindingRecorded,
+	})
+	var exhausted *ports.AppendLogPublishExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("Append() error = %T %v, want AppendLogPublishExhaustedError", err, err)
+	}
+	if exhausted.Subject != securityevents.FindingRecorded {
+		t.Fatalf("exhausted subject = %q, want canonical finding subject", exhausted.Subject)
+	}
+	if exhausted.Operation != "append" || exhausted.ErrorCategory != "no_response" {
+		t.Fatalf("exhausted details = %#v", exhausted)
+	}
+	if exhausted.RetryCount != publishRetryAttempts-1 || exhausted.MaxAttempts != publishRetryAttempts {
+		t.Fatalf("exhausted retry budget = %d/%d, want %d/%d", exhausted.RetryCount, exhausted.MaxAttempts, publishRetryAttempts-1, publishRetryAttempts)
+	}
+}
+
 func TestAppendRetriesTransientPublishErrorWithDerivedMessageID(t *testing.T) {
 	skipPublishRetryWaits(t)
 	pub := &fakePublisher{
@@ -560,6 +588,112 @@ func TestAppendEmitsPublishBulkheadTelemetry(t *testing.T) {
 	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(1) {
 		t.Fatalf("bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
 	}
+	if end["messaging.jetstream.publish.bulkhead.scopes"] != "global" {
+		t.Fatalf("bulkhead scopes = %v, want global", end["messaging.jetstream.publish.bulkhead.scopes"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != float64(1) {
+		t.Fatalf("global bulkhead max in flight = %v, want 1", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
+	}
+}
+
+func TestAppendEmitsFindingsPublishBulkheadTelemetry(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events", findingSlots: make(chan struct{}, 2)}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-findings-bulkhead-telemetry",
+			Kind: securityevents.FindingRecorded,
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.jetstream.publish.bulkhead.enabled"] != true {
+		t.Fatalf("bulkhead enabled = %v, want true", end["messaging.jetstream.publish.bulkhead.enabled"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(2) {
+		t.Fatalf("bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.scopes"] != "findings" {
+		t.Fatalf("bulkhead scopes = %v, want findings", end["messaging.jetstream.publish.bulkhead.scopes"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != float64(2) {
+		t.Fatalf("findings bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"])
+	}
+	if _, ok := end["messaging.jetstream.publish.bulkhead.global.max_in_flight"]; ok {
+		t.Fatalf("global bulkhead field present for findings-only limiter: %v", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
+	}
+}
+
+func TestAppendPreservesGlobalBulkheadMaxTelemetryWithFindingsBulkhead(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{
+		js:            pub,
+		subjectPrefix: "events",
+		publishSlots:  make(chan struct{}, 5),
+		findingSlots:  make(chan struct{}, 2),
+	}
+
+	stderr := captureJetstreamTelemetry(t, func() {
+		err := log.Append(context.Background(), &cerebrov1.EventEnvelope{
+			Id:   "evt-global-findings-bulkhead-telemetry",
+			Kind: securityevents.FindingRecorded,
+		})
+		if err != nil {
+			t.Fatalf("Append() error = %v", err)
+		}
+	})
+
+	spanEnds := jetstreamTelemetryPayloads(t, stderr, "span_end", "jetstream.append")
+	if len(spanEnds) != 1 {
+		t.Fatalf("jetstream.append span_end events = %d, want 1; stderr=%s", len(spanEnds), stderr)
+	}
+	end := spanEnds[0]
+	if end["messaging.jetstream.publish.bulkhead.scopes"] != "global,findings" {
+		t.Fatalf("bulkhead scopes = %v, want global,findings", end["messaging.jetstream.publish.bulkhead.scopes"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.max_in_flight"] != float64(5) {
+		t.Fatalf("bulkhead max in flight = %v, want legacy global value 5", end["messaging.jetstream.publish.bulkhead.max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"] != float64(2) {
+		t.Fatalf("effective bulkhead max in flight = %v, want tightest value 2", end["messaging.jetstream.publish.bulkhead.effective_max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.global.max_in_flight"] != float64(5) {
+		t.Fatalf("global bulkhead max in flight = %v, want 5", end["messaging.jetstream.publish.bulkhead.global.max_in_flight"])
+	}
+	if end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"] != float64(2) {
+		t.Fatalf("findings bulkhead max in flight = %v, want 2", end["messaging.jetstream.publish.bulkhead.findings.max_in_flight"])
+	}
+}
+
+func TestAppendNonFindingBypassesFindingsPublishBulkhead(t *testing.T) {
+	pub := &fakePublisher{}
+	findingSlots := make(chan struct{}, 1)
+	findingSlots <- struct{}{}
+	log := &Log{js: pub, subjectPrefix: "events", findingSlots: findingSlots}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err := log.Append(ctx, &cerebrov1.EventEnvelope{
+		Id:   "evt-non-finding",
+		Kind: "entity.upsert",
+	})
+	if err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.publishCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", pub.publishCalls)
+	}
+	if len(findingSlots) != 1 {
+		t.Fatalf("findingSlots len = %d, want 1", len(findingSlots))
+	}
 }
 
 func TestAcquirePublishSlotRespectsContextDeadline(t *testing.T) {
@@ -568,16 +702,47 @@ func TestAcquirePublishSlotRespectsContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 
-	_, release, err := log.acquirePublishSlot(ctx)
+	_, release, err := log.acquirePublishSlots(ctx, "entity.upsert")
 	if err == nil {
 		release()
-		t.Fatal("acquirePublishSlot() error = nil, want deadline error")
+		t.Fatal("acquirePublishSlots() error = nil, want deadline error")
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("acquirePublishSlot() error = %v, want deadline exceeded", err)
+		t.Fatalf("acquirePublishSlots() error = %v, want deadline exceeded", err)
 	}
 	if len(log.publishSlots) != 1 {
 		t.Fatalf("publishSlots len = %d, want 1", len(log.publishSlots))
+	}
+}
+
+func TestAcquireFindingsPublishSlotReleasesGlobalOnDeadline(t *testing.T) {
+	log := &Log{
+		publishSlots: make(chan struct{}, 1),
+		findingSlots: make(chan struct{}, 1),
+	}
+	log.findingSlots <- struct{}{}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	bulkheads, release, err := log.acquirePublishSlots(ctx, securityevents.FindingRecorded)
+	if err == nil {
+		release()
+		t.Fatal("acquirePublishSlots() error = nil, want deadline error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("acquirePublishSlots() error = %v, want deadline exceeded", err)
+	}
+	if len(log.publishSlots) != 0 {
+		t.Fatalf("publishSlots len = %d, want released global slot", len(log.publishSlots))
+	}
+	if len(log.findingSlots) != 1 {
+		t.Fatalf("findingSlots len = %d, want original finding slot", len(log.findingSlots))
+	}
+	if len(bulkheads) != 2 {
+		t.Fatalf("bulkheads = %#v, want global and findings", bulkheads)
+	}
+	if bulkheads[0].Scope != publishBulkheadScopeGlobal || bulkheads[1].Scope != publishBulkheadScopeFindings {
+		t.Fatalf("bulkhead scopes = %#v, want global then findings", bulkheads)
 	}
 }
 

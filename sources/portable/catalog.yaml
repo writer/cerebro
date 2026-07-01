@@ -7,6 +7,12 @@ emitted_kinds:
   - portable.records
   - portable.policies
   - portable.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: portable.users
     status: active

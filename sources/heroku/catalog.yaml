@@ -5,6 +5,10 @@ emitted_kinds:
   - heroku.apps
   - heroku.collaborators
   - heroku.audit_events
+runtime_families:
+  - apps
+  - audit_events
+  - collaborators
 kind_lifecycle:
   - kind: heroku.apps
     status: active

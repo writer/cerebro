@@ -7,6 +7,7 @@ import (
 	"time"
 
 	appendlogjetstream "github.com/writer/cerebro/internal/appendlog/jetstream"
+	appendlogrecovery "github.com/writer/cerebro/internal/appendlog/recovery"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
@@ -40,7 +41,6 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		_ = closeAll()
 		return Dependencies{}, func() error { return nil }, err
 	}
-
 	if cfg.AppendLog.Driver == config.AppendLogDriverJetStream {
 		appendLog, err := appendlogjetstream.Open(cfg.AppendLog)
 		if err != nil {
@@ -67,6 +67,9 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 				appendLog.SetRuntimeReplayIndex(index)
 			}
 		}
+	}
+	if store, ok := deps.StateStore.(ports.AppendLogDeadLetterStore); ok && !isNilInterface(store) {
+		deps.AppendLog = appendlogrecovery.Wrap(deps.AppendLog, store)
 	}
 	switch cfg.GraphStore.Driver {
 	case "":
@@ -140,8 +143,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	return deps, closeAll, nil
 }
 
-// OpenSourceRuntimeBootstrapDependencies opens only the state-store dependency
-// required to validate and persist source runtime definitions.
+// OpenSourceRuntimeBootstrapDependencies opens only the state-store dependency required to validate and persist source runtime definitions.
 func OpenSourceRuntimeBootstrapDependencies(ctx context.Context, cfg config.Config) (Dependencies, func() error, error) {
 	var (
 		deps    Dependencies
@@ -162,7 +164,6 @@ func OpenSourceRuntimeBootstrapDependencies(ctx context.Context, cfg config.Conf
 		_ = closeAll()
 		return Dependencies{}, func() error { return nil }, err
 	}
-
 	if cfg.StateStore.Driver == config.StateStoreDriverPostgres {
 		stateStore, err := statestorepostgres.Open(cfg.StateStore)
 		if err != nil {
@@ -178,7 +179,6 @@ func OpenSourceRuntimeBootstrapDependencies(ctx context.Context, cfg config.Conf
 	}
 	return deps, closeAll, nil
 }
-
 func graphAgentLLMConfigured(cfg config.GraphAgentLLMConfig) bool {
 	return cfg.Provider != "" || cfg.Model != "" ||
 		cfg.SonnetModel != "" || cfg.OpusModel != "" || cfg.HaikuModel != "" ||

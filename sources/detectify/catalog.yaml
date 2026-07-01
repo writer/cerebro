@@ -5,6 +5,10 @@ emitted_kinds:
   - detectify.findings
   - detectify.assets
   - detectify.scan_profiles
+runtime_families:
+  - assets
+  - findings
+  - scan_profiles
 kind_lifecycle:
   - kind: detectify.findings
     status: active

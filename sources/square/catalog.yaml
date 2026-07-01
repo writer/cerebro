@@ -6,6 +6,11 @@ emitted_kinds:
   - square.bank_account
   - square.group
   - square.team_member_booking_profile
+runtime_families:
+  - activity
+  - bank_account
+  - group
+  - team_member_booking_profile
 kind_lifecycle:
   - kind: square.activity
     status: active

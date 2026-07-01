@@ -7,6 +7,12 @@ emitted_kinds:
   - jamf_pro.roles
   - jamf_pro.applications
   - jamf_pro.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: jamf_pro.users
     status: active

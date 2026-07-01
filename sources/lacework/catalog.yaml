@@ -5,6 +5,10 @@ emitted_kinds:
   - lacework.assets
   - lacework.findings
   - lacework.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: lacework.assets
     status: active

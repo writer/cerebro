@@ -6,6 +6,11 @@ emitted_kinds:
   - conjur.authenticator
   - conjur.resource_2
   - conjur.resource_3
+runtime_families:
+  - authenticator
+  - resource
+  - resource_2
+  - resource_3
 kind_lifecycle:
   - kind: conjur.resource
     status: active

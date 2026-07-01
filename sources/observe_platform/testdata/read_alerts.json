@@ -1,14 +1,81 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "alert_description": "Observe Platform Alerts Fixture alert",
+      "alert_fired_at": "2026-06-01T00:00:00Z",
+      "alert_id": "source-observe_platform-alerts-1",
+      "alert_name": "Observe Platform Alerts Fixture",
+      "alert_resolved_at": "2026-06-01T00:00:00Z",
+      "alert_severity": "critical",
+      "alert_source": "observe_platform",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-observe_platform-alerts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-observe_platform-alerts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/observe_platform/alerts/source-observe_platform-alerts-1",
+      "external_id": "source-observe_platform-alerts-1",
+      "family": "alerts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "observe_platform",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-observe_platform-alerts-1",
+      "resource_name": "Observe Platform Alerts Fixture",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:observe_platform_alerts:source-observe_platform-alerts-1",
+      "schema": "alerts",
+      "source_event_id": "source-observe_platform-alerts-1",
+      "source_provider": "observe_platform",
+      "source_system": "observe_platform",
+      "tenant_id": "tenant"
+    },
+    "id": "source-observe_platform-alerts-event-1",
+    "kind": "observe_platform.alerts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "alert_id": "source-observe_platform-alerts-1",
+      "alert_name": "Observe Platform Alerts Fixture",
+      "alert_severity": "critical",
+      "alert_status": "open",
+      "alert_type": "alerts",
+      "api_method": "GET",
+      "api_path": "/v1/alerts",
+      "description": "Observe Platform Alerts Fixture alert",
+      "event_id": "source-observe_platform-alerts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-observe_platform-alerts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-observe_platform-alerts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/observe_platform/alerts/source-observe_platform-alerts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/observe_platform/alerts/source-observe_platform-alerts-1",
+      "family": "alerts",
+      "fired_at": "2026-06-01T00:00:00Z",
+      "id": "source-observe_platform-alerts-1",
+      "name": "Observe Platform Alerts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "alert",
+      "record_selector": "$.data[*]",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-observe_platform-alerts-1",
+      "resource_type": "alerts",
+      "resource_urn": "urn:cerebro:tenant:observe_platform_alerts:source-observe_platform-alerts-1",
+      "schema_ref": "observe_platform/alerts/v1",
+      "severity": "critical",
+      "source": "observe_platform",
+      "source_id": "observe_platform",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "observe_platform/alerts/v1",
+    "source_id": "observe_platform",
+    "tenant_id": "tenant"
+  }
+]

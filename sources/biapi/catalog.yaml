@@ -6,6 +6,11 @@ emitted_kinds:
   - biapi.account
   - biapi.add_to_data
   - biapi.alert
+runtime_families:
+  - account
+  - add_to_data
+  - alert
+  - logo
 kind_lifecycle:
   - kind: biapi.logo
     status: active

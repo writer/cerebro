@@ -1,14 +1,71 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/api-groups",
+      "description": "Perplexity Api Groups Fixture identity_group",
+      "domain": "domain-source-perplexity-api_groups-1",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-perplexity-api_groups-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-perplexity-api_groups-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/perplexity/api_groups/source-perplexity-api_groups-1",
+      "external_id": "source-perplexity-api_groups-1",
+      "family": "api_groups",
+      "group_email": "group@perplexity.example.test",
+      "group_id": "source-perplexity-api_groups-1",
+      "group_name": "Perplexity Api Groups Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "perplexity",
+      "record_class": "identity_group",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-perplexity-api_groups-1",
+      "resource_name": "Perplexity Api Groups Fixture",
+      "resource_type": "api_groups",
+      "resource_urn": "urn:cerebro:tenant:perplexity_api_groups:source-perplexity-api_groups-1",
+      "schema": "api_groups",
+      "source_event_id": "source-perplexity-api_groups-1",
+      "source_provider": "perplexity",
+      "source_system": "perplexity",
+      "tenant_id": "tenant"
+    },
+    "id": "source-perplexity-api_groups-event-1",
+    "kind": "perplexity.api_groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/api-groups",
+      "description": "Perplexity Api Groups Fixture identity_group",
+      "domain": "domain-source-perplexity-api_groups-1",
+      "event_id": "source-perplexity-api_groups-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-perplexity-api_groups-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-perplexity-api_groups-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/perplexity/api_groups/source-perplexity-api_groups-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/perplexity/api_groups/source-perplexity-api_groups-1",
+      "family": "api_groups",
+      "group_email": "group@perplexity.example.test",
+      "group_id": "source-perplexity-api_groups-1",
+      "group_name": "Perplexity Api Groups Fixture",
+      "id": "source-perplexity-api_groups-1",
+      "name": "Perplexity Api Groups Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "identity_group",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-perplexity-api_groups-1",
+      "resource_type": "api_groups",
+      "resource_urn": "urn:cerebro:tenant:perplexity_api_groups:source-perplexity-api_groups-1",
+      "schema_ref": "perplexity/api_groups/v1",
+      "source_id": "perplexity",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "perplexity/api_groups/v1",
+    "source_id": "perplexity",
+    "tenant_id": "tenant"
+  }
+]

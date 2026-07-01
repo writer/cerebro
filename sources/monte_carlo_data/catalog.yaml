@@ -7,6 +7,12 @@ emitted_kinds:
   - monte_carlo_data.records
   - monte_carlo_data.policies
   - monte_carlo_data.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: monte_carlo_data.users
     status: active

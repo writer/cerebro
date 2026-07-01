@@ -7,6 +7,12 @@ emitted_kinds:
   - zoho_sprints.workspaces
   - zoho_sprints.documents
   - zoho_sprints.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: zoho_sprints.users
     status: active

@@ -14,6 +14,19 @@ emitted_kinds:
   - files_com.exavault_reserved
   - files_com.user_group
   - files_com.user
+runtime_families:
+  - action_notification_export_result
+  - api_key
+  - exavault_reserved
+  - external_event
+  - group
+  - group_user
+  - login
+  - permission
+  - site_api_key
+  - user
+  - user_api_key
+  - user_group
 kind_lifecycle:
   - kind: files_com.external_event
     status: active

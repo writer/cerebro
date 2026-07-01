@@ -1,14 +1,75 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@sinao.example.test",
+      "actor_id": "sinao-users-1",
+      "actor_name": "actor-name-source-sinao-product-1",
+      "api_method": "GET",
+      "api_path": "/apps/${config.appid}/products",
+      "event_type": "sinao.product.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-sinao-product-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-sinao-product-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/sinao/product/source-sinao-product-1",
+      "external_id": "source-sinao-product-1",
+      "family": "product",
+      "id": "source-sinao-product-1",
+      "name": "Sinao Product Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "sinao",
+      "provider_id": "provider-id-source-sinao-product-1",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@sinao.example.test",
+      "resource_id": "source-sinao-product-1",
+      "resource_name": "Sinao Product Fixture",
+      "resource_type": "product",
+      "resource_urn": "urn:cerebro:tenant:sinao_product:source-sinao-product-1",
+      "schema": "product",
+      "source_event_id": "source-sinao-product-1",
+      "source_provider": "sinao",
+      "source_system": "sinao",
+      "tenant_id": "tenant"
+    },
+    "id": "source-sinao-product-event-1",
+    "kind": "sinao.product",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@sinao.example.test",
+      "actor_id": "sinao-users-1",
+      "actor_name": "actor-name-source-sinao-product-1",
+      "api_method": "GET",
+      "api_path": "/apps/${config.appid}/products",
+      "event_id": "source-sinao-product-1",
+      "event_type": "sinao.product.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-sinao-product-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-sinao-product-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/sinao/product/source-sinao-product-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/sinao/product/source-sinao-product-1",
+      "family": "product",
+      "id": "source-sinao-product-1",
+      "name": "Sinao Product Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@sinao.example.test",
+      "resource_id": "source-sinao-product-1",
+      "resource_name": "Sinao Product Fixture",
+      "resource_type": "product",
+      "resource_urn": "urn:cerebro:tenant:sinao_product:source-sinao-product-1",
+      "schema_ref": "sinao/product/v1",
+      "source_id": "sinao",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "sinao/product/v1",
+    "source_id": "sinao",
+    "tenant_id": "tenant"
+  }
+]

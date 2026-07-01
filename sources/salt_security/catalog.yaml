@@ -7,6 +7,12 @@ emitted_kinds:
   - salt_security.vulnerabilities
   - salt_security.policies
   - salt_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: salt_security.assets
     status: active

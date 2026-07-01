@@ -7,6 +7,12 @@ emitted_kinds:
   - formstack.records
   - formstack.policies
   - formstack.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: formstack.users
     status: active

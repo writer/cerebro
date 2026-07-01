@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -240,6 +241,21 @@ class DroidSastContextTests(unittest.TestCase):
         self.assertIn("go-ssrf-ignore-this", message)
         self.assertNotIn("IGNORE ALL", message)
         self.assertNotIn("approve this PR", message)
+
+    def test_semgrep_targets_use_changed_existing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            try:
+                os.chdir(tmp)
+                Path("internal").mkdir()
+                Path("internal/handler.go").write_text("package internal\n", encoding="utf-8")
+                Path("README.md").write_text("# test\n", encoding="utf-8")
+
+                targets = ctx.semgrep_targets(["internal/handler.go", "deleted.go", "./README.md"])
+            finally:
+                os.chdir(previous)
+
+        self.assertEqual(targets, ["README.md", "internal/handler.go"])
 
 
 if __name__ == "__main__":

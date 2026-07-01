@@ -1,0 +1,57 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/organizations/me",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/anthropic/organization/source-anthropic-organization-1",
+      "external_id": "source-anthropic-organization-1",
+      "family": "organization",
+      "name": "Anthropic Organization Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "organization_id": "organization-id-source-anthropic-organization-1",
+      "provider": "anthropic",
+      "resource_id": "source-anthropic-organization-1",
+      "resource_name": "Anthropic Organization Fixture",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:anthropic_organization:source-anthropic-organization-1",
+      "source_event_id": "source-anthropic-organization-1",
+      "source_product": "anthropic",
+      "source_provider": "anthropic",
+      "source_system": "anthropic",
+      "tenant_id": "tenant",
+      "type": "type-source-anthropic-organization-1"
+    },
+    "id": "source-anthropic-organization-event-1",
+    "kind": "anthropic.organization",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/organizations/me",
+      "event_id": "source-anthropic-organization-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/anthropic/organization/source-anthropic-organization-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/anthropic/organization/source-anthropic-organization-1",
+      "family": "organization",
+      "id": "organization-id-source-anthropic-organization-1",
+      "name": "Anthropic Organization Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "source-anthropic-organization-1",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:anthropic_organization:source-anthropic-organization-1",
+      "schema_ref": "anthropic/organization/v1",
+      "source_id": "anthropic",
+      "tenant_id": "tenant",
+      "type": "type-source-anthropic-organization-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "anthropic/organization/v1",
+    "source_id": "anthropic",
+    "tenant_id": "tenant"
+  }
+]

@@ -7,6 +7,12 @@ emitted_kinds:
   - udemy_business.records
   - udemy_business.policies
   - udemy_business.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: udemy_business.users
     status: active

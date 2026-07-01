@@ -1,0 +1,182 @@
+sourceId: anthropic
+secretKeys:
+  - ANTHROPIC_TOKEN
+runtimes:
+  - localId: analytics-cost
+    config:
+      family: analytics_cost
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: api-key
+    config:
+      family: api_key
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: compliance-activity
+    config:
+      family: compliance_activity
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: compliance-group
+    config:
+      family: compliance_group
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: compliance-group-member
+    config:
+      family: compliance_group_member
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      group_id: group-1
+  - localId: compliance-organization
+    config:
+      family: compliance_organization
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      organization_uuid: organization-uuid
+  - localId: compliance-organization-setting
+    config:
+      family: compliance_organization_setting
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      organization_uuid: organization-uuid
+  - localId: compliance-organization-user
+    config:
+      family: compliance_organization_user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      organization_uuid: organization-uuid
+  - localId: compliance-project
+    config:
+      family: compliance_project
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: compliance-project-collaborator
+    config:
+      family: compliance_project_collaborator
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      project_id: project-1
+  - localId: compliance-role
+    config:
+      family: compliance_role
+      organization_uuid: organization-uuid
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: compliance-role-permission
+    config:
+      family: compliance_role_permission
+      organization_uuid: organization-uuid
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      role_id: role-1
+  - localId: cost-report
+    config:
+      family: cost_report
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: external-key
+    config:
+      family: external_key
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: federation-issuer
+    config:
+      family: federation_issuer
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: federation-rule
+    config:
+      family: federation_rule
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: invite
+    config:
+      family: invite
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: organization
+    config:
+      family: organization
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: rate-limit
+    config:
+      family: rate_limit
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: service-account
+    config:
+      family: service_account
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: spend-limit
+    config:
+      family: spend_limit
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: spend-limit-increase-request
+    config:
+      family: spend_limit_increase_request
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: usage-report-claude-code
+    config:
+      family: usage_report_claude_code
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: usage-report-message
+    config:
+      family: usage_report_message
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: workspace
+    config:
+      family: workspace
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+  - localId: workspace-member
+    config:
+      family: workspace_member
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      workspace_id: workspace-1
+  - localId: workspace-rate-limit
+    config:
+      family: workspace_rate_limit
+      per_page: "100"
+      tenant_id: tenant
+      token: env:ANTHROPIC_TOKEN
+      workspace_id: workspace-1

@@ -5,6 +5,10 @@ emitted_kinds:
   - statuspage.users
   - statuspage.tickets
   - statuspage.audit_events
+runtime_families:
+  - audit_events
+  - tickets
+  - users
 kind_lifecycle:
   - kind: statuspage.users
     status: active

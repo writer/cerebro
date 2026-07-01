@@ -81,6 +81,7 @@ type AppendLogConfig struct {
 	JetStreamSubjectPrefix              string
 	JetStreamDrainTimeout               time.Duration
 	JetStreamPublishMaxInFlight         int
+	JetStreamPublishFindingsMaxInFlight int
 	JetStreamPublishRetryAttempts       int
 	JetStreamPublishRetryInitialBackoff time.Duration
 	JetStreamPublishRetryMaxBackoff     time.Duration
@@ -590,6 +591,9 @@ func Load() (Config, error) {
 	if cfg.AppendLog.JetStreamPublishMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", 0); err != nil {
 		return Config{}, err
 	}
+	if cfg.AppendLog.JetStreamPublishFindingsMaxInFlight, err = parseIntEnv("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT", 0); err != nil {
+		return Config{}, err
+	}
 	if cfg.AppendLog.JetStreamRuntimeIndexEnabled, err = parseBoolEnvDefault("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", true); err != nil {
 		return Config{}, err
 	}
@@ -718,6 +722,9 @@ func Load() (Config, error) {
 		}
 		if cfg.AppendLog.JetStreamPublishMaxInFlight < 0 {
 			return Config{}, errors.New("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT must be greater than or equal to 0")
+		}
+		if cfg.AppendLog.JetStreamPublishFindingsMaxInFlight < 0 {
+			return Config{}, errors.New("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT must be greater than or equal to 0")
 		}
 		if err := validateJetStreamPublishRetryConfig(cfg.AppendLog); err != nil {
 			return Config{}, err

@@ -14,6 +14,19 @@ emitted_kinds:
   - increase.external_account
   - increase.ach_transfer
   - increase.card
+runtime_families:
+  - account
+  - account_number
+  - account_statement
+  - account_transfer
+  - ach_prenotification
+  - ach_transfer
+  - card
+  - digital_wallet_token
+  - event
+  - event_subscription
+  - external_account
+  - oauth_connection
 kind_lifecycle:
   - kind: increase.event
     status: active

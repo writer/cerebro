@@ -4,90 +4,338 @@ entries:
       auth:
         credential_fields:
           - key: username
+            label: Email address
             reference_only: true
+            required: true
           - key: password
+            label: API token
             reference_only: true
+            required: true
             secret: true
         model: basic
+        requires_references: true
       categories:
         - saas
         - project
-      description: Collects users, projects, and audit events from Jira and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context.
+      config_fields:
+        - help: Jira Cloud site host, such as example.atlassian.net.
+          key: site_url
+          label: Site URL
+          required: true
+        - help: Comma-separated Jira groupId values used for group member reads.
+          key: group_ids
+          label: Group IDs
+        - help: Comma-separated Jira project IDs or keys used for project role reads.
+          key: project_id_or_keys
+          label: Project IDs or keys
+      description: Collects Jira Cloud users, groups, group memberships, projects, project role actors, permission schemes, and audit records from Jira REST API v3 and projects them into the graph for identity, authorization, asset, policy, and audit review.
       display_name: Jira
       id: builtin-jira
+      ingest:
+        mode: pull
       resource_families:
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
                 - users
               high_value: true
               id: users
+              notes:
+                - Reads Jira Cloud users from /rest/api/3/users/search with startAt and maxResults pagination.
               support: partial
               title: Users
               type: entity_family
+          default_enabled: true
           event:
             kind: jira.users
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - user_id
+              - resource_id
+              - resource_type
             required_payload_fields:
-              - id
+              - accountId
             schema_ref: jira/users/v1
             urn_kind: jira_users
           id: users
-          id_field: id
+          id_field: accountId
           label: Users
           method: GET
+          name_field: displayName
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: maxResults
+            offset_param: startAt
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: offset
+          path: /rest/api/3/users/search
           projection:
             fields:
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: id
+              display_name: displayName|name|emailAddress
+              email: emailAddress|email
+              status: active
+              user_id: accountId
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - groups
+              high_value: true
+              id: groups
+              notes:
+                - Reads Jira groups from /rest/api/3/group/bulk and uses groupId when the provider returns it.
+              support: partial
+              title: Groups
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: jira.groups
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+              - group_name
+              - resource_id
+            required_payload_fields:
+              - groupId
+            schema_ref: jira/groups/v1
+            urn_kind: jira_groups
+          id: groups
+          id_field: groupId
+          label: Groups
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: maxResults
+            next_cursor_keys:
+              - nextPage
+            offset_param: startAt
+            page_size: 100
+            type: offset
+          path: /rest/api/3/group/bulk
+          projection:
+            fields:
+              description: description
+              group_id: groupId|id
+              group_name: name|displayName
+            template: identity_group
+          record_selector: $.values[*]
+        - config_query:
+            groupId: group_id
+          coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - group_members
+              high_value: true
+              id: group_members
+              notes:
+                - Fans out configured group IDs into /rest/api/3/group/member and emits one user-to-group membership record per member.
+              support: partial
+              title: Group members
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: jira.group_members
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+              - member_user_id
+            required_payload_fields:
+              - accountId
+              - group_id
+            schema_ref: jira/group_members/v1
+            urn_kind: jira_group_members
+          id: group_members
+          id_field: accountId
+          label: Group members
+          method: GET
+          name_field: displayName
+          pagination:
+            limit_param: maxResults
+            next_cursor_keys:
+              - nextPage
+            offset_param: startAt
+            page_size: 100
+            type: offset
+          path: /rest/api/3/group/member
+          projection:
+            fields:
+              group_id: group_id
+              member_email: emailAddress|email
+              member_id: accountId
+              role: member
+            template: group_membership
+          read:
+            path_params:
+              - group_id
+          record_selector: $.values[*]
+          static_query:
+            includeInactiveUsers: "true"
         - coverage:
             - control_domains:
                 - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
                 - projects
               high_value: true
               id: projects
+              notes:
+                - Reads visible projects from /rest/api/3/project/search and keeps project id, key, type, lead, category, and lifecycle state.
               support: partial
               title: Projects
               type: entity_family
+          default_enabled: true
           event:
             kind: jira.projects
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - project_id
+              - project_key
+              - resource_id
+              - resource_type
             required_payload_fields:
               - id
+              - key
             schema_ref: jira/projects/v1
             urn_kind: jira_projects
           id: projects
           id_field: id
           label: Projects
           method: GET
+          name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: maxResults
+            next_cursor_keys:
+              - nextPage
+            offset_param: startAt
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/projects
+            type: offset
+          path: /rest/api/3/project/search
           projection:
             fields:
               resource_id: id
-              resource_type: resource_type|type|kind
+              resource_name: name|key
+              resource_type: project
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.values[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - authorization
+              evidence_types:
+                - source_snapshot
+              families:
+                - project_roles
+              high_value: true
+              id: project_roles
+              notes:
+                - Fans out configured project IDs or keys into /rest/api/3/project/{project_id_or_key}/roledetails and enriches each role through /role/{id} for actor assignments.
+              support: partial
+              title: Project role assignments
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: jira.project_roles
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - project_id_or_key
+              - role_id
+              - role_name
+              - resource_id
+              - resource_type
+            required_payload_fields:
+              - id
+              - actors
+              - project_id_or_key
+            schema_ref: jira/project_roles/v1
+            urn_kind: jira_project_roles
+          id: project_roles
+          id_field: id
+          label: Project role assignments
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /rest/api/3/project/{project_id_or_key}/roledetails
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name|translatedName
+              policy_status: roleConfigurable
+              policy_type: project_role
+            template: policy
+          read:
+            allow_bare_detail_record: true
+            detail_path: /rest/api/3/project/{project_id_or_key}/role/{id}
+            path_params:
+              - project_id_or_key
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - authorization
+                - change_management
+              evidence_types:
+                - policy_configuration
+              families:
+                - permission_schemes
+              high_value: true
+              id: permission_schemes
+              notes:
+                - Reads /rest/api/3/permissionscheme with permissions expanded and projects permission grants to groups, users, project roles, application roles, and other principals.
+              support: partial
+              title: Permission schemes
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: jira.permission_schemes
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - policy_id
+              - policy_name
+              - policy_type
+              - resource_id
+            required_payload_fields:
+              - id
+              - permissions
+            schema_ref: jira/permission_schemes/v1
+            urn_kind: jira_permission_schemes
+          id: permission_schemes
+          id_field: id
+          label: Permission schemes
+          method: GET
+          name_field: name
+          pagination:
+            disable_page_size: true
+            type: none
+          path: /rest/api/3/permissionscheme
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: enabled
+              policy_type: permission_scheme
+            template: policy
+          record_selector: $.permissionSchemes[*]
+          static_query:
+            expand: permissions
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -97,39 +345,87 @@ entries:
                 - audit_events
               high_value: true
               id: audit_events
+              notes:
+                - Reads Jira audit records from /rest/api/3/auditing/record with offset and limit pagination.
               support: partial
               title: Audit events
               type: audit_event
+          default_enabled: true
           event:
             kind: jira.audit_events
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - event_type
+              - actor_id
             required_payload_fields:
               - id
+              - created
             schema_ref: jira/audit_events/v1
             urn_kind: jira_audit_events
           id: audit_events
           id_field: id
           label: Audit events
           method: GET
+          name_field: summary
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+            type: offset
+          path: /rest/api/3/auditing/record
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
+              actor_email: actor.email|email|user.email
+              actor_id: authorAccountId|actor.id|actorId|user.id
+              event_type: summary|category|eventSource
               id: id
+              resource_id: objectItem.id
+              resource_type: objectItem.typeName
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.records[*]
       schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - users
+          id: users
+          label: Users
+        - default_enabled: true
+          families:
+            - groups
+            - group_members
+          id: groups
+          label: Groups and members
+          permission_note: Requires Jira group read access and configured group IDs for member fanout.
+        - default_enabled: true
+          families:
+            - projects
+            - project_roles
+            - permission_schemes
+          id: authorization
+          label: Projects and permissions
+          permission_note: Requires project browse access, project role access, and permission scheme access.
+        - default_enabled: true
+          families:
+            - audit_events
+          id: audit_events
+          label: Audit records
+          permission_note: Requires Jira audit record access.
       source_id: jira
       tenant_id: builtin_catalog
       transport:
         base_url: https://${config.site_url}
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
         verification:
           expect_status:
             - 200

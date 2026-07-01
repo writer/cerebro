@@ -7,6 +7,12 @@ emitted_kinds:
   - cerbos_cloud.roles
   - cerbos_cloud.applications
   - cerbos_cloud.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: cerbos_cloud.users
     status: active

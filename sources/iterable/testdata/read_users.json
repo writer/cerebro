@@ -1,14 +1,85 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-iterable-users-1",
+      "display_name": "Iterable Users Fixture",
+      "domain": "domain-source-iterable-users-1",
+      "email": "email@iterable.example.test",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-iterable-users-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-iterable-users-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/iterable/users/source-iterable-users-1",
+      "external_id": "source-iterable-users-1",
+      "family": "users",
+      "job_title": "job-title-source-iterable-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@iterable.example.test",
+      "manager": "manager-source-iterable-users-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@iterable.example.test",
+      "provider": "iterable",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-iterable-users-1",
+      "resource_name": "Iterable Users Fixture",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:iterable_users:source-iterable-users-1",
+      "schema": "users",
+      "source_event_id": "source-iterable-users-1",
+      "source_provider": "iterable",
+      "source_system": "iterable",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_id": "source-iterable-users-1"
+    },
+    "id": "source-iterable-users-event-1",
+    "kind": "iterable.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-iterable-users-1",
+      "display_name": "Iterable Users Fixture",
+      "domain": "domain-source-iterable-users-1",
+      "email": "email@iterable.example.test",
+      "event_id": "source-iterable-users-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-iterable-users-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-iterable-users-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/iterable/users/source-iterable-users-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/iterable/users/source-iterable-users-1",
+      "family": "users",
+      "id": "source-iterable-users-1",
+      "job_title": "job-title-source-iterable-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@iterable.example.test",
+      "manager": "manager-source-iterable-users-1",
+      "name": "Iterable Users Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@iterable.example.test",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-iterable-users-1",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:iterable_users:source-iterable-users-1",
+      "schema_ref": "iterable/users/v1",
+      "source_id": "iterable",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-iterable-users-1"
+    },
+    "schema_ref": "iterable/users/v1",
+    "source_id": "iterable",
+    "tenant_id": "tenant"
+  }
+]

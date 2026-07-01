@@ -1,0 +1,61 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/ip-addresses",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-abuseipdb-ip_addresses-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-abuseipdb-ip_addresses-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/abuseipdb/ip_addresses/source-abuseipdb-ip_addresses-1",
+      "external_id": "source-abuseipdb-ip_addresses-1",
+      "family": "ip_addresses",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "abuseipdb",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-abuseipdb-ip_addresses-1",
+      "resource_name": "Abuseipdb Ip Addresses Fixture",
+      "resource_type": "ip_addresses",
+      "resource_urn": "urn:cerebro:tenant:abuseipdb_ip_addresses:source-abuseipdb-ip_addresses-1",
+      "schema": "ip_addresses",
+      "source_event_id": "source-abuseipdb-ip_addresses-1",
+      "source_provider": "abuseipdb",
+      "source_system": "abuseipdb",
+      "tenant_id": "tenant"
+    },
+    "id": "source-abuseipdb-ip_addresses-event-1",
+    "kind": "abuseipdb.ip_addresses",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/ip-addresses",
+      "event_id": "source-abuseipdb-ip_addresses-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-abuseipdb-ip_addresses-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-abuseipdb-ip_addresses-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/abuseipdb/ip_addresses/source-abuseipdb-ip_addresses-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/abuseipdb/ip_addresses/source-abuseipdb-ip_addresses-1",
+      "family": "ip_addresses",
+      "id": "source-abuseipdb-ip_addresses-1",
+      "name": "Abuseipdb Ip Addresses Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-abuseipdb-ip_addresses-1",
+      "resource_type": "ip_addresses",
+      "resource_urn": "urn:cerebro:tenant:abuseipdb_ip_addresses:source-abuseipdb-ip_addresses-1",
+      "schema_ref": "abuseipdb/ip_addresses/v1",
+      "source_id": "abuseipdb",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "abuseipdb/ip_addresses/v1",
+    "source_id": "abuseipdb",
+    "tenant_id": "tenant"
+  }
+]

@@ -7,6 +7,12 @@ emitted_kinds:
   - cornerstone_ondemand.records
   - cornerstone_ondemand.policies
   - cornerstone_ondemand.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: cornerstone_ondemand.users
     status: active

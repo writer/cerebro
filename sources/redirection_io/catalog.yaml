@@ -14,6 +14,19 @@ emitted_kinds:
   - redirection_io.rule
   - redirection_io.rule_change
   - redirection_io.rule_set_version
+runtime_families:
+  - agent_rule
+  - agent_rule_complexe
+  - agent_rule_straight
+  - aggregate_log
+  - export_rule
+  - log
+  - notification
+  - rule
+  - rule_change
+  - rule_set_version
+  - smart_list
+  - user
 kind_lifecycle:
   - kind: redirection_io.aggregate_log
     status: active

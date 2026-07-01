@@ -6,6 +6,11 @@ emitted_kinds:
   - neutrinoapi.host_reputation
   - neutrinoapi.bin_lookup
   - neutrinoapi.geocode_address
+runtime_families:
+  - bin_lookup
+  - geocode_address
+  - host_reputation
+  - ip_blocklist
 kind_lifecycle:
   - kind: neutrinoapi.ip_blocklist
     status: active

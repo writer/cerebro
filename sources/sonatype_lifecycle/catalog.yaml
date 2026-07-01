@@ -7,6 +7,12 @@ emitted_kinds:
   - sonatype_lifecycle.vulnerabilities
   - sonatype_lifecycle.policies
   - sonatype_lifecycle.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: sonatype_lifecycle.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - cast_ai.monitors
   - cast_ai.dashboards
   - cast_ai.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: cast_ai.alerts
     status: active

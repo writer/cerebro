@@ -14,6 +14,19 @@ emitted_kinds:
   - illumidesk.server_size
   - illumidesk.card
   - illumidesk.invoice
+runtime_families:
+  - application
+  - card
+  - deployment
+  - email
+  - entity
+  - group
+  - invoice
+  - notification
+  - profile
+  - server_size
+  - setting
+  - team
 kind_lifecycle:
   - kind: illumidesk.team
     status: active

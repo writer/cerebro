@@ -76,6 +76,8 @@ func run(args []string) error {
 		return runSource(args[1:])
 	case "source-runtime":
 		return runSourceRuntime(args[1:])
+	case "append-log":
+		return runAppendLog(args[1:])
 	case "vulndb":
 		return runVulnDB(args[1:])
 	case "closeout":
@@ -86,7 +88,7 @@ func run(args []string) error {
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|deploy|graph|orchestrator|finding-rule|source|source-runtime|vulndb|closeout]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|deploy|graph|orchestrator|finding-rule|source|source-runtime|append-log|vulndb|closeout]", os.Args[0]))
 }
 
 func serve() error {

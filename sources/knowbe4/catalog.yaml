@@ -6,6 +6,11 @@ emitted_kinds:
   - knowbe4.groups
   - knowbe4.training_enrollments
   - knowbe4.phishing_campaigns
+runtime_families:
+  - groups
+  - phishing_campaigns
+  - training_enrollments
+  - users
 kind_lifecycle:
   - kind: knowbe4.users
     status: active

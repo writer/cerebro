@@ -7,6 +7,12 @@ emitted_kinds:
   - microsoft_foundry.indexes
   - microsoft_foundry.evaluations
   - microsoft_foundry.connections
+runtime_families:
+  - agents
+  - connections
+  - datasets
+  - evaluations
+  - indexes
 kind_lifecycle:
   - kind: microsoft_foundry.agents
     status: active

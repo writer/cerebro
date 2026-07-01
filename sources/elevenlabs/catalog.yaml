@@ -8,6 +8,13 @@ emitted_kinds:
   - elevenlabs.service_account_api_keys
   - elevenlabs.webhooks
   - elevenlabs.auth_connections
+runtime_families:
+  - auth_connections
+  - model_catalog
+  - service_account_api_keys
+  - service_accounts
+  - voices
+  - webhooks
 kind_lifecycle:
   - kind: elevenlabs.model_catalog
     status: active

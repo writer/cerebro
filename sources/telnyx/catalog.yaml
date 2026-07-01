@@ -14,6 +14,19 @@ emitted_kinds:
   - telnyx.wireless_connectivity_log
   - telnyx.sim_card_group
   - telnyx.sim_card_group_action
+runtime_families:
+  - billing_group
+  - call_control_application
+  - call_event
+  - credential_connection
+  - detail_records_report
+  - managed_account
+  - notification_channel
+  - notification_event
+  - notification_event_condition
+  - sim_card_group
+  - sim_card_group_action
+  - wireless_connectivity_log
 kind_lifecycle:
   - kind: telnyx.call_event
     status: active

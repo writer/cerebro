@@ -1,0 +1,61 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/domains",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-postmark-domains-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-postmark-domains-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/postmark/domains/source-postmark-domains-1",
+      "external_id": "source-postmark-domains-1",
+      "family": "domains",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "postmark",
+      "record_class": "asset",
+      "record_selector": "$[*]",
+      "resource_id": "source-postmark-domains-1",
+      "resource_name": "Postmark Domains Fixture",
+      "resource_type": "domains",
+      "resource_urn": "urn:cerebro:tenant:postmark_domains:source-postmark-domains-1",
+      "schema": "domains",
+      "source_event_id": "source-postmark-domains-1",
+      "source_provider": "postmark",
+      "source_system": "postmark",
+      "tenant_id": "tenant"
+    },
+    "id": "source-postmark-domains-event-1",
+    "kind": "postmark.domains",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/domains",
+      "event_id": "source-postmark-domains-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-postmark-domains-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-postmark-domains-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/postmark/domains/source-postmark-domains-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/postmark/domains/source-postmark-domains-1",
+      "family": "domains",
+      "id": "source-postmark-domains-1",
+      "name": "Postmark Domains Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$[*]",
+      "resource_id": "source-postmark-domains-1",
+      "resource_type": "domains",
+      "resource_urn": "urn:cerebro:tenant:postmark_domains:source-postmark-domains-1",
+      "schema_ref": "postmark/domains/v1",
+      "source_id": "postmark",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "postmark/domains/v1",
+    "source_id": "postmark",
+    "tenant_id": "tenant"
+  }
+]

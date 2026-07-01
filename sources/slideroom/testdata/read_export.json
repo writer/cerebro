@@ -1,0 +1,63 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/api/v2/export/${config.token}",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-slideroom-export-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-slideroom-export-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/slideroom/export/source-slideroom-export-1",
+      "external_id": "source-slideroom-export-1",
+      "family": "export",
+      "id": "source-slideroom-export-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "slideroom",
+      "record_class": "asset",
+      "record_selector": "$.file_urls[*]",
+      "resource_id": "source-slideroom-export-1",
+      "resource_name": "Slideroom Export Fixture",
+      "resource_type": "export",
+      "resource_urn": "urn:cerebro:tenant:slideroom_export:source-slideroom-export-1",
+      "schema": "export",
+      "source_event_id": "source-slideroom-export-1",
+      "source_provider": "slideroom",
+      "source_system": "slideroom",
+      "tenant_id": "tenant"
+    },
+    "id": "source-slideroom-export-event-1",
+    "kind": "slideroom.export",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/api/v2/export/${config.token}",
+      "event_id": "source-slideroom-export-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-slideroom-export-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-slideroom-export-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/slideroom/export/source-slideroom-export-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/slideroom/export/source-slideroom-export-1",
+      "export": "export",
+      "family": "export",
+      "id": "source-slideroom-export-1",
+      "name": "Slideroom Export Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.file_urls[*]",
+      "resource_id": "source-slideroom-export-1",
+      "resource_type": "export",
+      "resource_urn": "urn:cerebro:tenant:slideroom_export:source-slideroom-export-1",
+      "schema_ref": "slideroom/export/v1",
+      "source_id": "slideroom",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "slideroom/export/v1",
+    "source_id": "slideroom",
+    "tenant_id": "tenant"
+  }
+]

@@ -7,6 +7,12 @@ emitted_kinds:
   - invicti.vulnerabilities
   - invicti.policies
   - invicti.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: invicti.assets
     status: active

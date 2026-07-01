@@ -7,6 +7,12 @@ emitted_kinds:
   - dynamics_365_sales.records
   - dynamics_365_sales.policies
   - dynamics_365_sales.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: dynamics_365_sales.users
     status: active

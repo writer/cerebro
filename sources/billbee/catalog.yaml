@@ -14,6 +14,19 @@ emitted_kinds:
   - billbee.stock
   - billbee.addresses
   - billbee.image
+runtime_families:
+  - addresses
+  - cloudstorage
+  - custom_field
+  - customer
+  - customer_addresses
+  - image
+  - layout
+  - order
+  - product
+  - shipment
+  - stock
+  - webhook
 kind_lifecycle:
   - kind: billbee.webhook
     status: active

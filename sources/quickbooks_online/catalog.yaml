@@ -7,6 +7,12 @@ emitted_kinds:
   - quickbooks_online.records
   - quickbooks_online.policies
   - quickbooks_online.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: quickbooks_online.users
     status: active

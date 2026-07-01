@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@beezup.example.test",
+      "actor_id": "beezup-users-1",
+      "actor_name": "actor-name-source-beezup-channelcatalog-1",
+      "api_method": "GET",
+      "api_path": "/v2/user/marketplaces/channelcatalogs/",
+      "event_type": "beezup.channelcatalog.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-beezup-channelcatalog-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-beezup-channelcatalog-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/beezup/channelcatalog/source-beezup-channelcatalog-1",
+      "external_id": "source-beezup-channelcatalog-1",
+      "family": "channelcatalog",
+      "id": "source-beezup-channelcatalog-1",
+      "name": "Beezup Channelcatalog Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "beezup",
+      "provider_id": "provider-id-source-beezup-channelcatalog-1",
+      "record_class": "audit_event",
+      "record_selector": "$.marketplaceChannelCatalogs[*]",
+      "resource_email": "resource@beezup.example.test",
+      "resource_id": "source-beezup-channelcatalog-1",
+      "resource_name": "Beezup Channelcatalog Fixture",
+      "resource_type": "channelcatalog",
+      "resource_urn": "urn:cerebro:tenant:beezup_channelcatalog:source-beezup-channelcatalog-1",
+      "schema": "channelcatalog",
+      "source_event_id": "source-beezup-channelcatalog-1",
+      "source_provider": "beezup",
+      "source_system": "beezup",
+      "tenant_id": "tenant"
+    },
+    "id": "source-beezup-channelcatalog-event-1",
+    "kind": "beezup.channelcatalog",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@beezup.example.test",
+      "actor_id": "beezup-users-1",
+      "actor_name": "actor-name-source-beezup-channelcatalog-1",
+      "apiSettingsStatus": "source-beezup-channelcatalog-1",
+      "api_method": "GET",
+      "api_path": "/v2/user/marketplaces/channelcatalogs/",
+      "event_id": "source-beezup-channelcatalog-1",
+      "event_type": "beezup.channelcatalog.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-beezup-channelcatalog-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-beezup-channelcatalog-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/beezup/channelcatalog/source-beezup-channelcatalog-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/beezup/channelcatalog/source-beezup-channelcatalog-1",
+      "family": "channelcatalog",
+      "id": "source-beezup-channelcatalog-1",
+      "name": "Beezup Channelcatalog Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.marketplaceChannelCatalogs[*]",
+      "resource_email": "resource@beezup.example.test",
+      "resource_id": "source-beezup-channelcatalog-1",
+      "resource_name": "Beezup Channelcatalog Fixture",
+      "resource_type": "channelcatalog",
+      "resource_urn": "urn:cerebro:tenant:beezup_channelcatalog:source-beezup-channelcatalog-1",
+      "schema_ref": "beezup/channelcatalog/v1",
+      "source_id": "beezup",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "beezup/channelcatalog/v1",
+    "source_id": "beezup",
+    "tenant_id": "tenant"
+  }
+]

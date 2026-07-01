@@ -5,6 +5,10 @@ emitted_kinds:
   - resend.domains
   - resend.api_keys
   - resend.audit_events
+runtime_families:
+  - api_keys
+  - audit_events
+  - domains
 kind_lifecycle:
   - kind: resend.domains
     status: active

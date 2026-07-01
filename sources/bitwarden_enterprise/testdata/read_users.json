@@ -1,14 +1,85 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-bitwarden_enterprise-users-1",
+      "display_name": "Bitwarden Enterprise Users Fixture",
+      "domain": "domain-source-bitwarden_enterprise-users-1",
+      "email": "email@bitwarden-enterprise.example.test",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-bitwarden_enterprise-users-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bitwarden_enterprise-users-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/bitwarden_enterprise/users/source-bitwarden_enterprise-users-1",
+      "external_id": "source-bitwarden_enterprise-users-1",
+      "family": "users",
+      "job_title": "job-title-source-bitwarden_enterprise-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@bitwarden-enterprise.example.test",
+      "manager": "manager-source-bitwarden_enterprise-users-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@bitwarden-enterprise.example.test",
+      "provider": "bitwarden_enterprise",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-bitwarden_enterprise-users-1",
+      "resource_name": "Bitwarden Enterprise Users Fixture",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:bitwarden_enterprise_users:source-bitwarden_enterprise-users-1",
+      "schema": "users",
+      "source_event_id": "source-bitwarden_enterprise-users-1",
+      "source_provider": "bitwarden_enterprise",
+      "source_system": "bitwarden_enterprise",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_id": "source-bitwarden_enterprise-users-1"
+    },
+    "id": "source-bitwarden_enterprise-users-event-1",
+    "kind": "bitwarden_enterprise.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-bitwarden_enterprise-users-1",
+      "display_name": "Bitwarden Enterprise Users Fixture",
+      "domain": "domain-source-bitwarden_enterprise-users-1",
+      "email": "email@bitwarden-enterprise.example.test",
+      "event_id": "source-bitwarden_enterprise-users-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-bitwarden_enterprise-users-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-bitwarden_enterprise-users-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/bitwarden_enterprise/users/source-bitwarden_enterprise-users-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/bitwarden_enterprise/users/source-bitwarden_enterprise-users-1",
+      "family": "users",
+      "id": "source-bitwarden_enterprise-users-1",
+      "job_title": "job-title-source-bitwarden_enterprise-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@bitwarden-enterprise.example.test",
+      "manager": "manager-source-bitwarden_enterprise-users-1",
+      "name": "Bitwarden Enterprise Users Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@bitwarden-enterprise.example.test",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-bitwarden_enterprise-users-1",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:bitwarden_enterprise_users:source-bitwarden_enterprise-users-1",
+      "schema_ref": "bitwarden_enterprise/users/v1",
+      "source_id": "bitwarden_enterprise",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-bitwarden_enterprise-users-1"
+    },
+    "schema_ref": "bitwarden_enterprise/users/v1",
+    "source_id": "bitwarden_enterprise",
+    "tenant_id": "tenant"
+  }
+]

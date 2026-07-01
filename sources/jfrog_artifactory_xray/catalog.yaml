@@ -5,6 +5,10 @@ emitted_kinds:
   - jfrog_artifactory_xray.assets
   - jfrog_artifactory_xray.findings
   - jfrog_artifactory_xray.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: jfrog_artifactory_xray.assets
     status: active

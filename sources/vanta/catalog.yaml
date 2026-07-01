@@ -5,6 +5,10 @@ emitted_kinds:
   - vanta.users
   - vanta.controls
   - vanta.findings
+runtime_families:
+  - controls
+  - findings
+  - users
 kind_lifecycle:
   - kind: vanta.users
     status: active

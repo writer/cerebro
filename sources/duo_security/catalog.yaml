@@ -7,6 +7,12 @@ emitted_kinds:
   - duo_security.roles
   - duo_security.applications
   - duo_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: duo_security.users
     status: active

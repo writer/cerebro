@@ -7,6 +7,12 @@ emitted_kinds:
   - shorebird.repositories
   - shorebird.deployments
   - shorebird.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: shorebird.users
     status: active

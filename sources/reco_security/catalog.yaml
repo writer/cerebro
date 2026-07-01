@@ -7,6 +7,12 @@ emitted_kinds:
   - reco_security.vulnerabilities
   - reco_security.policies
   - reco_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: reco_security.assets
     status: active

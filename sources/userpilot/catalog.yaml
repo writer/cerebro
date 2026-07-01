@@ -7,6 +7,12 @@ emitted_kinds:
   - userpilot.records
   - userpilot.policies
   - userpilot.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: userpilot.users
     status: active

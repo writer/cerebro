@@ -7,6 +7,12 @@ emitted_kinds:
   - semgrep.vulnerabilities
   - semgrep.policies
   - semgrep.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: semgrep.assets
     status: active

@@ -70,6 +70,13 @@ func TestSourcePackagesDoNotDuplicateExtractableHelpers(t *testing.T) {
 			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 				return nil
 			}
+			generated, err := isSourcegenGeneratedFile(path)
+			if err != nil {
+				return err
+			}
+			if generated {
+				return nil
+			}
 			fset := token.NewFileSet()
 			file, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {

@@ -7,6 +7,12 @@ emitted_kinds:
   - activecampaign.records
   - activecampaign.policies
   - activecampaign.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: activecampaign.users
     status: active

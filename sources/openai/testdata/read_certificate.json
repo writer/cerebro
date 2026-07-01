@@ -1,0 +1,71 @@
+[
+  {
+    "attributes": {
+      "active": "true",
+      "api_method": "GET",
+      "api_path": "/organization/certificates",
+      "certificate_id": "certificate-id-source-openai-certificate-1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/openai/certificate/source-openai-certificate-1",
+      "expires_at": "2026-06-01T00:00:00Z",
+      "external_id": "source-openai-certificate-1",
+      "family": "certificate",
+      "name": "Openai Certificate Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policy_id": "source-openai-policy-1",
+      "policy_name": "Openai Certificate Fixture",
+      "provider": "openai",
+      "resource_id": "source-openai-certificate-1",
+      "resource_name": "Openai Certificate Fixture",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:openai_certificate:source-openai-certificate-1",
+      "source_event_id": "source-openai-certificate-1",
+      "source_product": "openai",
+      "source_provider": "openai",
+      "source_system": "openai",
+      "status": "active",
+      "tenant_id": "tenant",
+      "valid_at": "2026-06-01T00:00:00Z"
+    },
+    "id": "source-openai-certificate-event-1",
+    "kind": "openai.certificate",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "active": "true",
+      "api_method": "GET",
+      "api_path": "/organization/certificates",
+      "certificate_details": {
+        "expires_at": "2026-06-01T00:00:00Z",
+        "valid_at": "2026-06-01T00:00:00Z"
+      },
+      "created_at": "2026-06-01T00:00:00Z",
+      "event_id": "source-openai-certificate-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openai/certificate/source-openai-certificate-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/openai/certificate/source-openai-certificate-1",
+      "family": "certificate",
+      "id": "certificate-id-source-openai-certificate-1",
+      "name": "Openai Certificate Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policy_id": "source-openai-policy-1",
+      "policy_name": "Openai Certificate Fixture",
+      "resource_id": "source-openai-certificate-1",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:openai_certificate:source-openai-certificate-1",
+      "schema_ref": "openai/certificate/v1",
+      "source_id": "openai",
+      "status": "active",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "openai/certificate/v1",
+    "source_id": "openai",
+    "tenant_id": "tenant"
+  }
+]

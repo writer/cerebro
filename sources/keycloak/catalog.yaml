@@ -5,6 +5,10 @@ emitted_kinds:
   - keycloak.users
   - keycloak.groups
   - keycloak.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: keycloak.users
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - cortex_xsoar.audit_events
   - cortex_xsoar.findings
   - cortex_xsoar.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: cortex_xsoar.audit_events
     status: active

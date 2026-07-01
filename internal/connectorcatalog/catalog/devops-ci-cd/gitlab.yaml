@@ -31,25 +31,25 @@ entries:
             required_payload_fields:
               - id
             schema_ref: gitlab/repositories/v1
-            urn_kind: gitlab_repositories
+            urn_kind: runtime_repositories
           id: repositories
           id_field: id
           label: Repositories
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            link_header: Link
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/repositories
+            page_size_param: per_page
+            type: link
+          path: /api/v4/projects
           projection:
             fields:
               resource_id: id
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: repository
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -67,25 +67,25 @@ entries:
             required_payload_fields:
               - id
             schema_ref: gitlab/users/v1
-            urn_kind: gitlab_users
+            urn_kind: runtime_users
           id: users
           id_field: id
           label: Users
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            link_header: Link
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: per_page
+            type: link
+          path: /api/v4/users
           projection:
             fields:
               email: email|primary_email|profile.email
               status: status|state|lifecycle_state
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -103,18 +103,18 @@ entries:
             required_payload_fields:
               - id
             schema_ref: gitlab/audit_events/v1
-            urn_kind: gitlab_audit_events
+            urn_kind: runtime_audit_events
           id: audit_events
           id_field: id
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page
+            link_header: Link
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+            page_size_param: per_page
+            type: link
+          path: /api/v4/audit_events
           projection:
             fields:
               actor_email: actor_email|actor.email|email|user.email
@@ -122,14 +122,14 @@ entries:
               event_type: event_type|event_name|action|type
               id: id
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: gitlab
       tenant_id: builtin_catalog
       transport:
-        base_url: https://gitlab.com/api
+        base_url: https://gitlab.com
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v4/user
+          path: /api/v4/user

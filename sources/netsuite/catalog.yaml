@@ -5,6 +5,10 @@ emitted_kinds:
   - netsuite.users
   - netsuite.assets
   - netsuite.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - users
 kind_lifecycle:
   - kind: netsuite.users
     status: active

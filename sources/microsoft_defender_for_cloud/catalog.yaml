@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_defender_for_cloud.assets
   - microsoft_defender_for_cloud.findings
   - microsoft_defender_for_cloud.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: microsoft_defender_for_cloud.assets
     status: active

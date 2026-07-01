@@ -1,0 +1,63 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/custom-models",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-aws_bedrock-custom_models-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-aws_bedrock-custom_models-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/aws_bedrock/custom_models/source-aws_bedrock-custom_models-1",
+      "external_id": "source-aws_bedrock-custom_models-1",
+      "family": "custom_models",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "aws_bedrock",
+      "record_class": "asset",
+      "record_selector": "$.modelSummaries[*]",
+      "resource_id": "source-aws_bedrock-custom_models-1",
+      "resource_name": "Aws Bedrock Custom Models Fixture",
+      "resource_type": "custom_models",
+      "resource_urn": "urn:cerebro:tenant:aws_bedrock_custom_models:source-aws_bedrock-custom_models-1",
+      "schema": "custom_models",
+      "source_event_id": "source-aws_bedrock-custom_models-1",
+      "source_provider": "aws_bedrock",
+      "source_system": "aws_bedrock",
+      "tenant_id": "tenant"
+    },
+    "id": "source-aws_bedrock-custom_models-event-1",
+    "kind": "aws_bedrock.custom_models",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/custom-models",
+      "event_id": "source-aws_bedrock-custom_models-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-aws_bedrock-custom_models-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-aws_bedrock-custom_models-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/aws_bedrock/custom_models/source-aws_bedrock-custom_models-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/aws_bedrock/custom_models/source-aws_bedrock-custom_models-1",
+      "family": "custom_models",
+      "id": "source-aws_bedrock-custom_models-1",
+      "modelArn": "source-aws_bedrock-custom_models-1",
+      "modelName": "Aws Bedrock Custom Models Fixture",
+      "name": "Aws Bedrock Custom Models Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.modelSummaries[*]",
+      "resource_id": "source-aws_bedrock-custom_models-1",
+      "resource_type": "custom_models",
+      "resource_urn": "urn:cerebro:tenant:aws_bedrock_custom_models:source-aws_bedrock-custom_models-1",
+      "schema_ref": "aws_bedrock/custom_models/v1",
+      "source_id": "aws_bedrock",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "aws_bedrock/custom_models/v1",
+    "source_id": "aws_bedrock",
+    "tenant_id": "tenant"
+  }
+]

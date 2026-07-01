@@ -7,6 +7,12 @@ emitted_kinds:
   - customer_io.records
   - customer_io.policies
   - customer_io.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: customer_io.users
     status: active
