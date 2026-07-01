@@ -180,6 +180,7 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/memberships",
 			record: map[string]any{"id": "membership-1", "attributes": map[string]any{"created_at": "2026-06-01T00:00:00Z"}, "relationships": map[string]any{"user": map[string]any{"data": map[string]string{"id": "user-1", "type": "user"}}, "role": map[string]any{"data": map[string]string{"id": "admin"}}}},
 			wantAttrs: map[string]string{
+				"group_id":       "org-1",
 				"org_id":         "org-1",
 				"membership_id":  "membership-1",
 				"member_user_id": "user-1",

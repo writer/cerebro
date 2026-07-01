@@ -286,6 +286,7 @@ func snykOrgMembershipsFamily() jsonapi.Family {
 		StaticAttributes: snykStaticAttributes("org_memberships", "identity_group_membership", "snyk_org_membership"),
 	})
 	family.Config.IdentityKeys = []string{orgIDConfig, "relationships.user.data.id"}
+	family.Config.ConfigAttributes["group_id"] = OrgIDConfig
 	family.Config.ResourceURNKind = "runtime_users"
 	return family
 }
