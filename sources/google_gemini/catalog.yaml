@@ -7,6 +7,12 @@ emitted_kinds:
   - google_gemini.files
   - google_gemini.cached_contents
   - google_gemini.batch_jobs
+runtime_families:
+  - batch_jobs
+  - cached_contents
+  - files
+  - model_catalog
+  - tuned_models
 kind_lifecycle:
   - kind: google_gemini.model_catalog
     status: active

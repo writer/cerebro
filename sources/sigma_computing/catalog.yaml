@@ -7,6 +7,12 @@ emitted_kinds:
   - sigma_computing.records
   - sigma_computing.policies
   - sigma_computing.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: sigma_computing.users
     status: active

@@ -14,6 +14,19 @@ emitted_kinds:
   - drchrono.appointment
   - drchrono.appointment_profile
   - drchrono.appointment_template
+runtime_families:
+  - allergy
+  - amendment
+  - appointment
+  - appointment_profile
+  - appointment_template
+  - care_team_member
+  - comm_log
+  - implantable_device
+  - patient_payment_log
+  - patient_risk_assessment
+  - user
+  - user_group
 kind_lifecycle:
   - kind: drchrono.patient_risk_assessment
     status: active

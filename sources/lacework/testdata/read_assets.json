@@ -1,14 +1,61 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-lacework-assets-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-lacework-assets-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/lacework/assets/source-lacework-assets-1",
+      "external_id": "source-lacework-assets-1",
+      "family": "assets",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "lacework",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-lacework-assets-1",
+      "resource_name": "Lacework Assets Fixture",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:lacework_assets:source-lacework-assets-1",
+      "schema": "assets",
+      "source_event_id": "source-lacework-assets-1",
+      "source_provider": "lacework",
+      "source_system": "lacework",
+      "tenant_id": "tenant"
+    },
+    "id": "source-lacework-assets-event-1",
+    "kind": "lacework.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "event_id": "source-lacework-assets-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-lacework-assets-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-lacework-assets-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/lacework/assets/source-lacework-assets-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/lacework/assets/source-lacework-assets-1",
+      "family": "assets",
+      "id": "source-lacework-assets-1",
+      "name": "Lacework Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-lacework-assets-1",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:lacework_assets:source-lacework-assets-1",
+      "schema_ref": "lacework/assets/v1",
+      "source_id": "lacework",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "lacework/assets/v1",
+    "source_id": "lacework",
+    "tenant_id": "tenant"
+  }
+]

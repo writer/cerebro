@@ -6,6 +6,11 @@ emitted_kinds:
   - signl4.user
   - signl4.membership
   - signl4.image
+runtime_families:
+  - image
+  - membership
+  - team
+  - user
 kind_lifecycle:
   - kind: signl4.team
     status: active

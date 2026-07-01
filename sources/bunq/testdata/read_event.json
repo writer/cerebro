@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@bunq.example.test",
+      "actor_id": "bunq-users-1",
+      "actor_name": "actor-name-source-bunq-event-1",
+      "api_method": "GET",
+      "api_path": "/user/${config.userid}/event",
+      "event_type": "bunq.event.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-bunq-event-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bunq-event-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/bunq/event/source-bunq-event-1",
+      "external_id": "source-bunq-event-1",
+      "family": "event",
+      "id": "source-bunq-event-1",
+      "name": "Bunq Event Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "bunq",
+      "provider_id": "provider-id-source-bunq-event-1",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@bunq.example.test",
+      "resource_id": "source-bunq-event-1",
+      "resource_name": "Bunq Event Fixture",
+      "resource_type": "event",
+      "resource_urn": "urn:cerebro:tenant:bunq_event:source-bunq-event-1",
+      "schema": "event",
+      "source_event_id": "source-bunq-event-1",
+      "source_provider": "bunq",
+      "source_system": "bunq",
+      "tenant_id": "tenant"
+    },
+    "id": "source-bunq-event-event-1",
+    "kind": "bunq.event",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "action": "Bunq Event Fixture",
+      "actor_email": "actor@bunq.example.test",
+      "actor_id": "bunq-users-1",
+      "actor_name": "actor-name-source-bunq-event-1",
+      "api_method": "GET",
+      "api_path": "/user/${config.userid}/event",
+      "event_id": "source-bunq-event-1",
+      "event_type": "bunq.event.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-bunq-event-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-bunq-event-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/bunq/event/source-bunq-event-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/bunq/event/source-bunq-event-1",
+      "family": "event",
+      "id": "source-bunq-event-1",
+      "name": "Bunq Event Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@bunq.example.test",
+      "resource_id": "source-bunq-event-1",
+      "resource_name": "Bunq Event Fixture",
+      "resource_type": "event",
+      "resource_urn": "urn:cerebro:tenant:bunq_event:source-bunq-event-1",
+      "schema_ref": "bunq/event/v1",
+      "source_id": "bunq",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "bunq/event/v1",
+    "source_id": "bunq",
+    "tenant_id": "tenant"
+  }
+]

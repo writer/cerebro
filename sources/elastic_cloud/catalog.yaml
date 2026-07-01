@@ -7,6 +7,12 @@ emitted_kinds:
   - elastic_cloud.monitors
   - elastic_cloud.dashboards
   - elastic_cloud.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: elastic_cloud.alerts
     status: active

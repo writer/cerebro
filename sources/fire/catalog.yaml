@@ -6,6 +6,11 @@ emitted_kinds:
   - fire.aspsp
   - fire.user
   - fire.batche
+runtime_families:
+  - account
+  - aspsp
+  - batche
+  - user
 kind_lifecycle:
   - kind: fire.account
     status: active

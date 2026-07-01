@@ -7,6 +7,12 @@ emitted_kinds:
   - featurebase.repositories
   - featurebase.deployments
   - featurebase.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: featurebase.users
     status: active

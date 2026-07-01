@@ -5,6 +5,10 @@ emitted_kinds:
   - sonarcloud.assets
   - sonarcloud.findings
   - sonarcloud.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: sonarcloud.assets
     status: active

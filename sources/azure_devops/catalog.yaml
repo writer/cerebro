@@ -5,6 +5,10 @@ emitted_kinds:
   - azure_devops.repositories
   - azure_devops.users
   - azure_devops.audit_events
+runtime_families:
+  - audit_events
+  - repositories
+  - users
 kind_lifecycle:
   - kind: azure_devops.repositories
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - hexnode.roles
   - hexnode.applications
   - hexnode.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: hexnode.users
     status: active

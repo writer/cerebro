@@ -6,6 +6,11 @@ emitted_kinds:
   - salesloft.account_stages_json
   - salesloft.cadence_memberships_json
   - salesloft.groups_json
+runtime_families:
+  - account_stages_json
+  - cadence_memberships_json
+  - crm_activity_fields_json
+  - groups_json
 kind_lifecycle:
   - kind: salesloft.crm_activity_fields_json
     status: active

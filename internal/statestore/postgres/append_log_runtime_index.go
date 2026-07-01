@@ -181,5 +181,5 @@ func boundedInt64(value uint64) int64 {
 }
 
 func (s *Store) ensureAppendLogRuntimeIndexTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.appendLogRuntimeIndexReady, "append log runtime index", ensureAppendLogRuntimeIndexStatements)
+	return s.ensureStatements(ctx, &s.appendLog.runtimeIndex, "append log runtime index", ensureAppendLogRuntimeIndexStatements)
 }

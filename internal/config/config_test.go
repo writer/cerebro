@@ -23,6 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT", "")
 	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
@@ -187,6 +188,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "12")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT", "3")
 	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "true")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "22")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "750ms")
@@ -307,6 +309,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.AppendLog.JetStreamPublishMaxInFlight != 12 {
 		t.Fatalf("JetStreamPublishMaxInFlight = %d, want 12", cfg.AppendLog.JetStreamPublishMaxInFlight)
+	}
+	if cfg.AppendLog.JetStreamPublishFindingsMaxInFlight != 3 {
+		t.Fatalf("JetStreamPublishFindingsMaxInFlight = %d, want 3", cfg.AppendLog.JetStreamPublishFindingsMaxInFlight)
 	}
 	if !cfg.AppendLog.JetStreamRuntimeIndexEnabled {
 		t.Fatalf("JetStreamRuntimeIndexEnabled = %v, want true", cfg.AppendLog.JetStreamRuntimeIndexEnabled)
@@ -623,6 +628,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT", "")
 	t.Setenv("CEREBRO_JETSTREAM_RUNTIME_INDEX_ENABLED", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS", "")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF", "")
@@ -1342,6 +1348,16 @@ func TestLoadRejectsNegativeJetStreamPublishMaxInFlight(t *testing.T) {
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT", "-1")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsNegativeJetStreamPublishFindingsMaxInFlight(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT", "-1")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

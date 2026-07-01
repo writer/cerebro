@@ -5,6 +5,10 @@ emitted_kinds:
   - veracode.assets
   - veracode.findings
   - veracode.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: veracode.assets
     status: active

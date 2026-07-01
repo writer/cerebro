@@ -7,6 +7,12 @@ emitted_kinds:
   - nice_cxone.records
   - nice_cxone.policies
   - nice_cxone.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: nice_cxone.users
     status: active

@@ -1,14 +1,64 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/webhooks",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-bulksms-webhook-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-bulksms-webhook-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/bulksms/webhook/source-bulksms-webhook-1",
+      "external_id": "source-bulksms-webhook-1",
+      "family": "webhook",
+      "id": "source-bulksms-webhook-1",
+      "name": "Bulksms Webhook Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "bulksms",
+      "record_class": "asset",
+      "record_selector": "$[*]",
+      "resource_id": "source-bulksms-webhook-1",
+      "resource_name": "Bulksms Webhook Fixture",
+      "resource_type": "webhook",
+      "resource_urn": "urn:cerebro:tenant:bulksms_webhook:source-bulksms-webhook-1",
+      "schema": "webhook",
+      "source_event_id": "source-bulksms-webhook-1",
+      "source_provider": "bulksms",
+      "source_system": "bulksms",
+      "tenant_id": "tenant"
+    },
+    "id": "source-bulksms-webhook-event-1",
+    "kind": "bulksms.webhook",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/webhooks",
+      "event_id": "source-bulksms-webhook-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-bulksms-webhook-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-bulksms-webhook-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/bulksms/webhook/source-bulksms-webhook-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/bulksms/webhook/source-bulksms-webhook-1",
+      "family": "webhook",
+      "id": "source-bulksms-webhook-1",
+      "name": "Bulksms Webhook Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$[*]",
+      "resource_id": "source-bulksms-webhook-1",
+      "resource_type": "webhook",
+      "resource_urn": "urn:cerebro:tenant:bulksms_webhook:source-bulksms-webhook-1",
+      "schema_ref": "bulksms/webhook/v1",
+      "source_id": "bulksms",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "webhook": "webhook"
+    },
+    "schema_ref": "bulksms/webhook/v1",
+    "source_id": "bulksms",
+    "tenant_id": "tenant"
+  }
+]

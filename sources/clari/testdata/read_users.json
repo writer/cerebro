@@ -1,14 +1,85 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-clari-users-1",
+      "display_name": "Clari Users Fixture",
+      "domain": "domain-source-clari-users-1",
+      "email": "email@clari.example.test",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-clari-users-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-clari-users-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/clari/users/source-clari-users-1",
+      "external_id": "source-clari-users-1",
+      "family": "users",
+      "job_title": "job-title-source-clari-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@clari.example.test",
+      "manager": "manager-source-clari-users-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@clari.example.test",
+      "provider": "clari",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-clari-users-1",
+      "resource_name": "Clari Users Fixture",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:clari_users:source-clari-users-1",
+      "schema": "users",
+      "source_event_id": "source-clari-users-1",
+      "source_provider": "clari",
+      "source_system": "clari",
+      "status": "open",
+      "tenant_id": "tenant",
+      "user_id": "source-clari-users-1"
+    },
+    "id": "source-clari-users-event-1",
+    "kind": "clari.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/users",
+      "created_at": "2026-06-01T00:00:00Z",
+      "department": "department-source-clari-users-1",
+      "display_name": "Clari Users Fixture",
+      "domain": "domain-source-clari-users-1",
+      "email": "email@clari.example.test",
+      "event_id": "source-clari-users-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-clari-users-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-clari-users-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/clari/users/source-clari-users-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/clari/users/source-clari-users-1",
+      "family": "users",
+      "id": "source-clari-users-1",
+      "job_title": "job-title-source-clari-users-1",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "login@clari.example.test",
+      "manager": "manager-source-clari-users-1",
+      "name": "Clari Users Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "primary@clari.example.test",
+      "record_class": "identity_user",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-clari-users-1",
+      "resource_type": "users",
+      "resource_urn": "urn:cerebro:tenant:clari_users:source-clari-users-1",
+      "schema_ref": "clari/users/v1",
+      "source_id": "clari",
+      "status": "open",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "source-clari-users-1"
+    },
+    "schema_ref": "clari/users/v1",
+    "source_id": "clari",
+    "tenant_id": "tenant"
+  }
+]

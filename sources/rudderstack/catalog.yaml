@@ -7,6 +7,12 @@ emitted_kinds:
   - rudderstack.records
   - rudderstack.policies
   - rudderstack.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: rudderstack.users
     status: active

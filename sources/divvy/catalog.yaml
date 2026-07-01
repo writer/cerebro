@@ -7,6 +7,12 @@ emitted_kinds:
   - divvy.records
   - divvy.policies
   - divvy.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: divvy.users
     status: active

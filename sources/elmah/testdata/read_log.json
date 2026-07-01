@@ -1,14 +1,75 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@elmah.example.test",
+      "actor_id": "elmah-users-1",
+      "actor_name": "actor-name-source-elmah-log-1",
+      "api_method": "GET",
+      "api_path": "/v3/logs",
+      "event_type": "elmah.log.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-elmah-log-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-elmah-log-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/elmah/log/source-elmah-log-1",
+      "external_id": "source-elmah-log-1",
+      "family": "log",
+      "id": "source-elmah-log-1",
+      "name": "Elmah Log Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "elmah",
+      "provider_id": "provider-id-source-elmah-log-1",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@elmah.example.test",
+      "resource_id": "source-elmah-log-1",
+      "resource_name": "Elmah Log Fixture",
+      "resource_type": "log",
+      "resource_urn": "urn:cerebro:tenant:elmah_log:source-elmah-log-1",
+      "schema": "log",
+      "source_event_id": "source-elmah-log-1",
+      "source_provider": "elmah",
+      "source_system": "elmah",
+      "tenant_id": "tenant"
+    },
+    "id": "source-elmah-log-event-1",
+    "kind": "elmah.log",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@elmah.example.test",
+      "actor_id": "elmah-users-1",
+      "actor_name": "actor-name-source-elmah-log-1",
+      "api_method": "GET",
+      "api_path": "/v3/logs",
+      "event_id": "source-elmah-log-1",
+      "event_type": "elmah.log.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-elmah-log-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-elmah-log-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/elmah/log/source-elmah-log-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/elmah/log/source-elmah-log-1",
+      "family": "log",
+      "id": "source-elmah-log-1",
+      "name": "Elmah Log Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@elmah.example.test",
+      "resource_id": "source-elmah-log-1",
+      "resource_name": "Elmah Log Fixture",
+      "resource_type": "log",
+      "resource_urn": "urn:cerebro:tenant:elmah_log:source-elmah-log-1",
+      "schema_ref": "elmah/log/v1",
+      "source_id": "elmah",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "elmah/log/v1",
+    "source_id": "elmah",
+    "tenant_id": "tenant"
+  }
+]

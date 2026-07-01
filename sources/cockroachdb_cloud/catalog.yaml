@@ -5,6 +5,10 @@ emitted_kinds:
   - cockroachdb_cloud.assets
   - cockroachdb_cloud.audit_events
   - cockroachdb_cloud.vulnerabilities
+runtime_families:
+  - assets
+  - audit_events
+  - vulnerabilities
 kind_lifecycle:
   - kind: cockroachdb_cloud.assets
     status: active

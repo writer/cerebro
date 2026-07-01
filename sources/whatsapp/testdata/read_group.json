@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/groups",
+      "description": "Whatsapp Group Fixture identity_group",
+      "domain": "domain-source-whatsapp-group-1",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-whatsapp-group-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-whatsapp-group-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/whatsapp/group/source-whatsapp-group-1",
+      "external_id": "source-whatsapp-group-1",
+      "family": "group",
+      "group_email": "group@whatsapp.example.test",
+      "group_id": "source-whatsapp-group-1",
+      "group_name": "Whatsapp Group Fixture",
+      "id": "source-whatsapp-group-1",
+      "name": "Whatsapp Group Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "whatsapp",
+      "provider_id": "provider-id-source-whatsapp-group-1",
+      "record_class": "identity_group",
+      "record_selector": "$.errors[*]",
+      "resource_id": "source-whatsapp-group-1",
+      "resource_name": "Whatsapp Group Fixture",
+      "resource_type": "group",
+      "resource_urn": "urn:cerebro:tenant:whatsapp_group:source-whatsapp-group-1",
+      "schema": "group",
+      "source_event_id": "source-whatsapp-group-1",
+      "source_provider": "whatsapp",
+      "source_system": "whatsapp",
+      "tenant_id": "tenant"
+    },
+    "id": "source-whatsapp-group-event-1",
+    "kind": "whatsapp.group",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/groups",
+      "code": "source-whatsapp-group-1",
+      "description": "Whatsapp Group Fixture identity_group",
+      "domain": "domain-source-whatsapp-group-1",
+      "event_id": "source-whatsapp-group-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-whatsapp-group-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-whatsapp-group-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/whatsapp/group/source-whatsapp-group-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/whatsapp/group/source-whatsapp-group-1",
+      "family": "group",
+      "group_email": "group@whatsapp.example.test",
+      "group_id": "source-whatsapp-group-1",
+      "group_name": "Whatsapp Group Fixture",
+      "id": "source-whatsapp-group-1",
+      "name": "Whatsapp Group Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "identity_group",
+      "record_selector": "$.errors[*]",
+      "resource_id": "source-whatsapp-group-1",
+      "resource_type": "group",
+      "resource_urn": "urn:cerebro:tenant:whatsapp_group:source-whatsapp-group-1",
+      "schema_ref": "whatsapp/group/v1",
+      "source_id": "whatsapp",
+      "tenant_id": "tenant",
+      "title": "Whatsapp Group Fixture",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "whatsapp/group/v1",
+    "source_id": "whatsapp",
+    "tenant_id": "tenant"
+  }
+]

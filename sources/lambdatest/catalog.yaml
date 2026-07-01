@@ -6,6 +6,11 @@ emitted_kinds:
   - lambdatest.resolution
   - lambdatest.location
   - lambdatest.resource
+runtime_families:
+  - location
+  - profile
+  - resolution
+  - resource
 kind_lifecycle:
   - kind: lambdatest.profile
     status: active

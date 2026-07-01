@@ -1,14 +1,61 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-jfrog_artifactory_xray-assets-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-jfrog_artifactory_xray-assets-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/jfrog_artifactory_xray/assets/source-jfrog_artifactory_xray-assets-1",
+      "external_id": "source-jfrog_artifactory_xray-assets-1",
+      "family": "assets",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "jfrog_artifactory_xray",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-jfrog_artifactory_xray-assets-1",
+      "resource_name": "Jfrog Artifactory Xray Assets Fixture",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:jfrog_artifactory_xray_assets:source-jfrog_artifactory_xray-assets-1",
+      "schema": "assets",
+      "source_event_id": "source-jfrog_artifactory_xray-assets-1",
+      "source_provider": "jfrog_artifactory_xray",
+      "source_system": "jfrog_artifactory_xray",
+      "tenant_id": "tenant"
+    },
+    "id": "source-jfrog_artifactory_xray-assets-event-1",
+    "kind": "jfrog_artifactory_xray.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "event_id": "source-jfrog_artifactory_xray-assets-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-jfrog_artifactory_xray-assets-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-jfrog_artifactory_xray-assets-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/jfrog_artifactory_xray/assets/source-jfrog_artifactory_xray-assets-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/jfrog_artifactory_xray/assets/source-jfrog_artifactory_xray-assets-1",
+      "family": "assets",
+      "id": "source-jfrog_artifactory_xray-assets-1",
+      "name": "Jfrog Artifactory Xray Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-jfrog_artifactory_xray-assets-1",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:jfrog_artifactory_xray_assets:source-jfrog_artifactory_xray-assets-1",
+      "schema_ref": "jfrog_artifactory_xray/assets/v1",
+      "source_id": "jfrog_artifactory_xray",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "jfrog_artifactory_xray/assets/v1",
+    "source_id": "jfrog_artifactory_xray",
+    "tenant_id": "tenant"
+  }
+]

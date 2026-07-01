@@ -7,6 +7,12 @@ emitted_kinds:
   - wistia.workspaces
   - wistia.documents
   - wistia.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: wistia.users
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - ashby.records
   - ashby.policies
   - ashby.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ashby.users
     status: active

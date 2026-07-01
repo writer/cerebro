@@ -7,6 +7,12 @@ emitted_kinds:
   - kentik.monitors
   - kentik.dashboards
   - kentik.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: kentik.alerts
     status: active

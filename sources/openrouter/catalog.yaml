@@ -6,6 +6,11 @@ emitted_kinds:
   - openrouter.api_keys
   - openrouter.provider_keys
   - openrouter.usage_reports
+runtime_families:
+  - api_keys
+  - organization_members
+  - provider_keys
+  - usage_reports
 kind_lifecycle:
   - kind: openrouter.organization_members
     status: active

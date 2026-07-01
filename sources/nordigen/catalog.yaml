@@ -6,6 +6,11 @@ emitted_kinds:
   - nordigen.creditor
   - nordigen.enduser
   - nordigen.institution
+runtime_families:
+  - account
+  - creditor
+  - enduser
+  - institution
 kind_lifecycle:
   - kind: nordigen.account
     status: active

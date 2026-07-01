@@ -7,6 +7,12 @@ emitted_kinds:
   - riskonnect.vulnerabilities
   - riskonnect.policies
   - riskonnect.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: riskonnect.assets
     status: active

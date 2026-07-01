@@ -6,6 +6,11 @@ emitted_kinds:
   - appwrite.log
   - appwrite.membership
   - appwrite.continent
+runtime_families:
+  - continent
+  - log
+  - membership
+  - team
 kind_lifecycle:
   - kind: appwrite.team
     status: active

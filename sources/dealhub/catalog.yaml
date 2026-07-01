@@ -7,6 +7,12 @@ emitted_kinds:
   - dealhub.records
   - dealhub.policies
   - dealhub.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: dealhub.users
     status: active

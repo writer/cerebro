@@ -6,6 +6,11 @@ emitted_kinds:
   - velopayments.sourceaccount
   - velopayments.paymentchannelrule
   - velopayments.webhook
+runtime_families:
+  - delta
+  - paymentchannelrule
+  - sourceaccount
+  - webhook
 kind_lifecycle:
   - kind: velopayments.delta
     status: active

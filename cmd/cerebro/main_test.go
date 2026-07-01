@@ -953,6 +953,31 @@ func TestParseSourceRuntimeListArgs(t *testing.T) {
 	}
 }
 
+func TestParseAppendLogDeadLetterListArgs(t *testing.T) {
+	filter, err := parseAppendLogDeadLetterListArgs([]string{
+		"status=all",
+		"subject=sec.findings.v1.recorded",
+		"runtime_id=runtime-1",
+		"source_id=github",
+		"limit=7",
+	})
+	if err != nil {
+		t.Fatalf("parseAppendLogDeadLetterListArgs() error = %v", err)
+	}
+	if filter.Status != "all" || filter.Subject != "sec.findings.v1.recorded" || filter.RuntimeID != "runtime-1" || filter.SourceID != "github" || filter.Limit != 7 {
+		t.Fatalf("parseAppendLogDeadLetterListArgs() = %#v", filter)
+	}
+}
+
+func TestParseAppendLogDeadLetterDiscardArgsRequiresReason(t *testing.T) {
+	if _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "reason=operator replay skipped"}); err != nil {
+		t.Fatalf("parseAppendLogDeadLetterDiscardArgs() error = %v", err)
+	}
+	if _, _, err := parseAppendLogDeadLetterDiscardArgs([]string{"apdl_1", "reason= "}); err == nil {
+		t.Fatal("parseAppendLogDeadLetterDiscardArgs() error = nil, want missing reason error")
+	}
+}
+
 func TestParseSourceRuntimeListArgsRejectsZeroLimit(t *testing.T) {
 	if _, err := parseSourceRuntimeListArgs([]string{"limit=0"}); err == nil {
 		t.Fatal("parseSourceRuntimeListArgs(limit=0) error = nil, want error")

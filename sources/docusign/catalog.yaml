@@ -6,6 +6,11 @@ emitted_kinds:
   - docusign.signing_group
   - docusign.request_log
   - docusign.permission_profile
+runtime_families:
+  - bcc_email_archive
+  - permission_profile
+  - request_log
+  - signing_group
 kind_lifecycle:
   - kind: docusign.bcc_email_archive
     status: active

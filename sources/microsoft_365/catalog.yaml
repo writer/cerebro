@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_365.users
   - microsoft_365.content_assets
   - microsoft_365.audit_events
+runtime_families:
+  - audit_events
+  - content_assets
+  - users
 kind_lifecycle:
   - kind: microsoft_365.users
     status: active

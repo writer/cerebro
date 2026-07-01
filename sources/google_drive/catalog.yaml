@@ -5,6 +5,10 @@ emitted_kinds:
   - google_drive.files
   - google_drive.shared_drives
   - google_drive.changes
+runtime_families:
+  - changes
+  - files
+  - shared_drives
 kind_lifecycle:
   - kind: google_drive.files
     status: active

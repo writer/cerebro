@@ -6,6 +6,11 @@ emitted_kinds:
   - cohere.connectors
   - cohere.datasets
   - cohere.fine_tuned_models
+runtime_families:
+  - connectors
+  - datasets
+  - fine_tuned_models
+  - model_catalog
 kind_lifecycle:
   - kind: cohere.model_catalog
     status: active

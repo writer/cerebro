@@ -6,6 +6,11 @@ emitted_kinds:
   - sakari.campaign
   - sakari.contact
   - sakari.conversation
+runtime_families:
+  - campaign
+  - contact
+  - conversation
+  - webhook
 kind_lifecycle:
   - kind: sakari.webhook
     status: active

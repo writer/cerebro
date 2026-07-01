@@ -14,6 +14,19 @@ emitted_kinds:
   - iqualify.courses
   - iqualify.current
   - iqualify.future
+runtime_families:
+  - courses
+  - current
+  - future
+  - group
+  - learner
+  - learners_progress
+  - progress
+  - pulses
+  - responses
+  - social_note
+  - unit_reaction
+  - user
 kind_lifecycle:
   - kind: iqualify.learners_progress
     status: active

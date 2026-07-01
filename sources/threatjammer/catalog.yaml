@@ -6,6 +6,11 @@ emitted_kinds:
   - threatjammer.all
   - threatjammer.ip
   - threatjammer.reported_ip
+runtime_families:
+  - activity
+  - all
+  - ip
+  - reported_ip
 kind_lifecycle:
   - kind: threatjammer.activity
     status: active

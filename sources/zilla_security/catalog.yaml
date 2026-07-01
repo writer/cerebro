@@ -7,6 +7,12 @@ emitted_kinds:
   - zilla_security.roles
   - zilla_security.applications
   - zilla_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: zilla_security.users
     status: active

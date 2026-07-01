@@ -151,11 +151,22 @@ func (a *App) buildGRCControlEvidencePacket(r *http.Request) (grccontrol.PacketR
 
 func (a *App) buildGRCControlEvidencePacketWithScope(r *http.Request, scope grcScope, runtimes []*cerebrov1.SourceRuntime) (grccontrol.PacketResult, error) {
 	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	findingFilter := grcFindingFilter{Status: "open", Limit: scope.Limit}
+	if scope.VendorURN != "" {
+		findingFilter.ResourceURNs = []string{scope.VendorURN}
+	}
+	findings, err := a.grcListFindingRecords(r, runtimes, findingFilter)
 	if err != nil {
 		return grccontrol.PacketResult{}, err
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	evidenceFilter := grcEvidenceFilter{Limit: scope.Limit}
+	if scope.VendorURN != "" {
+		evidenceFilter.GraphRootURN = scope.VendorURN
+		if findingIDs := grcFindingIDs(findings); len(findingIDs) > 0 {
+			evidenceFilter.FindingIDs = findingIDs
+		}
+	}
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, evidenceFilter)
 	if err != nil {
 		return grccontrol.PacketResult{}, err
 	}

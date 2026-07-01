@@ -7,6 +7,12 @@ emitted_kinds:
   - workable.records
   - workable.policies
   - workable.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: workable.users
     status: active

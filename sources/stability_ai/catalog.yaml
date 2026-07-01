@@ -5,6 +5,10 @@ emitted_kinds:
   - stability_ai.engines
   - stability_ai.account
   - stability_ai.account_balance
+runtime_families:
+  - account
+  - account_balance
+  - engines
 kind_lifecycle:
   - kind: stability_ai.engines
     status: active

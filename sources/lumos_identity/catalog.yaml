@@ -7,6 +7,12 @@ emitted_kinds:
   - lumos_identity.roles
   - lumos_identity.applications
   - lumos_identity.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: lumos_identity.users
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - loket.actualorganizationalentity
   - loket.emailidentity
   - loket.customnotification
+runtime_families:
+  - actualorganizationalentity
+  - customnotification
+  - emailidentity
+  - integration
 kind_lifecycle:
   - kind: loket.integration
     status: active

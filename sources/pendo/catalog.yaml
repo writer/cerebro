@@ -6,6 +6,11 @@ emitted_kinds:
   - pendo.feature
   - pendo.user
   - pendo.search
+runtime_families:
+  - account
+  - feature
+  - search
+  - user
 kind_lifecycle:
   - kind: pendo.account
     status: active

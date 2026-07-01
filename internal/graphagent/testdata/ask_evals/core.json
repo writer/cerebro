@@ -112,6 +112,163 @@
     "expect_citations_ok": true
   },
   {
+    "name": "questionnaire_mfa_evidence",
+    "question": "Does Okta enforce MFA for access?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "okta_mfa"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:iam-1",
+        "support_urn": "urn:cerebro:writer:okta_policy_rule:mfa-global",
+        "evidence_urn": "urn:cerebro:writer:runtime_evidence:okta-mfa",
+        "source_urn": "urn:cerebro:writer:source:okta"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:runtime_evidence:okta-mfa` supports the MFA answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:runtime_evidence:okta-mfa"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_access_review_evidence",
+    "question": "Answer the access review questionnaire item.",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "access_review"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:access-review",
+        "evidence_urn": "urn:cerebro:writer:runtime_evidence:access-review-q2",
+        "source_urn": "urn:cerebro:writer:source:identity"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:runtime_evidence:access-review-q2` supports the access review answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:runtime_evidence:access-review-q2"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_encryption_evidence",
+    "question": "Do we encrypt customer data at rest?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "encryption"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:encryption",
+        "evidence_urn": "urn:cerebro:writer:runtime_evidence:kms-config",
+        "source_urn": "urn:cerebro:writer:source:aws"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:runtime_evidence:kms-config` supports the encryption answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:runtime_evidence:kms-config"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_incident_response_evidence",
+    "question": "Can you provide incident response evidence?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "incident_response"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:incident-response",
+        "evidence_urn": "urn:cerebro:writer:policy_document:incident-response-plan"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:policy_document:incident-response-plan` supports the incident response answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:policy_document:incident-response-plan"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_subprocessor_evidence",
+    "question": "Do we maintain a subprocessor list?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "subprocessors"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:third-party-risk",
+        "evidence_urn": "urn:cerebro:writer:policy_document:subprocessors"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:policy_document:subprocessors` supports the subprocessor answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:policy_document:subprocessors"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_policy_review_evidence",
+    "question": "Answer this policy document review questionnaire item.",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "policy_documents"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:policy-review",
+        "evidence_urn": "urn:cerebro:writer:policy_document:security-policy"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:policy_document:security-policy` supports the policy review answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:policy_document:security-policy"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_ai_data_use_evidence",
+    "question": "Do we train AI models on customer data?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "ai_data_use"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:ai-data-use",
+        "evidence_urn": "urn:cerebro:writer:policy_document:ai-data-use"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:policy_document:ai-data-use` supports the AI data-use answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:policy_document:ai-data-use"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_soc2_report_evidence",
+    "question": "Do we have a current SOC 2 report?",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "audit_report"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:audit-report",
+        "evidence_urn": "urn:cerebro:writer:assurance_document:soc2-2026"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:assurance_document:soc2-2026` supports the SOC 2 report answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:assurance_document:soc2-2026"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "questionnaire_vendor_due_diligence_evidence",
+    "question": "Show vendor due diligence evidence.",
+    "draft_plan": {"intent": "questionnaire_evidence_answer", "filters": {"topic": "vendor_due_diligence"}, "limit": 5},
+    "rows": [
+      {
+        "control_urn": "urn:cerebro:writer:policy:control:vendor-risk",
+        "evidence_urn": "urn:cerebro:writer:vendor_assurance:core-sso"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:vendor_assurance:core-sso` supports the vendor due diligence answer.",
+    "expected_intent": "questionnaire_evidence_answer",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:vendor_assurance:core-sso"],
+    "expect_quality_pass": true,
+    "expect_citations_ok": true
+  },
+  {
     "name": "unsupported_filtered_owner",
     "question": "Show security-owned risk findings.",
     "draft_plan": {"intent": "top_risk_findings", "filters": {"owner": "security"}},

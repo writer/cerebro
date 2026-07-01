@@ -7,6 +7,12 @@ emitted_kinds:
   - last9.monitors
   - last9.dashboards
   - last9.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: last9.alerts
     status: active

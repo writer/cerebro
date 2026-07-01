@@ -1,0 +1,42 @@
+[
+  {
+    "id": "jira-audit-events-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.audit_events",
+    "schema_ref": "jira/audit_events/v1",
+    "occurred_at": "2026-05-01T12:34:56.789Z",
+    "attributes": {
+      "actor_id": "acct-1",
+      "actor_name": "admin",
+      "category": "projects",
+      "created_at": "2026-05-01T12:34:56.789+0000",
+      "event_type": "Project updated",
+      "external_id": "audit-1",
+      "family": "audit_events",
+      "id": "audit-1",
+      "provider": "jira",
+      "record_class": "audit_event",
+      "remote_address": "203.0.113.10",
+      "resource_id": "10001",
+      "resource_name": "Engineering",
+      "resource_type": "project",
+      "resource_urn": "urn:cerebro:tenant:jira_audit_events:audit-1",
+      "schema": "audit_events",
+      "source_event_id": "audit-1",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "tenant_id": "tenant"
+    },
+    "payload": {
+      "authorAccountId": "acct-1",
+      "authorKey": "admin",
+      "category": "projects",
+      "created": "2026-05-01T12:34:56.789+0000",
+      "id": "audit-1",
+      "objectItem": {"id": "10001", "name": "Engineering", "typeName": "project"},
+      "remoteAddress": "203.0.113.10",
+      "summary": "Project updated"
+    }
+  }
+]

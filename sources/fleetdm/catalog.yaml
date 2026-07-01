@@ -5,6 +5,10 @@ emitted_kinds:
   - fleetdm.hosts
   - fleetdm.policies
   - fleetdm.audit_activities
+runtime_families:
+  - audit_activities
+  - hosts
+  - policies
 kind_lifecycle:
   - kind: fleetdm.hosts
     status: active

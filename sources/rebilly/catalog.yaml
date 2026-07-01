@@ -6,6 +6,11 @@ emitted_kinds:
   - rebilly.authentication_token
   - rebilly.bank_account
   - rebilly.aml
+runtime_families:
+  - aml
+  - authentication_token
+  - bank_account
+  - customer_timeline_custom_event
 kind_lifecycle:
   - kind: rebilly.customer_timeline_custom_event
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - omni_analytics.records
   - omni_analytics.policies
   - omni_analytics.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: omni_analytics.users
     status: active

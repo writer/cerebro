@@ -14,6 +14,19 @@ emitted_kinds:
   - osisoft.eventframes_eventframe
   - osisoft.eventframeattribute
   - osisoft.eventframes_eventframeattribute
+runtime_families:
+  - analysisruleplugin
+  - assetserver
+  - baseelementtemplate
+  - elements_eventframe
+  - elementtemplate
+  - eventframe
+  - eventframeattribute
+  - eventframes_eventframe
+  - eventframes_eventframeattribute
+  - notificationcontacttemplates_search
+  - search
+  - securityidentity
 kind_lifecycle:
   - kind: osisoft.search
     status: active

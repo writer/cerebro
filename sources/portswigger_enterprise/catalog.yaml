@@ -7,6 +7,12 @@ emitted_kinds:
   - portswigger_enterprise.vulnerabilities
   - portswigger_enterprise.policies
   - portswigger_enterprise.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: portswigger_enterprise.assets
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - abuseipdb.reports
   - abuseipdb.ip_addresses
   - abuseipdb.audit_events
+runtime_families:
+  - audit_events
+  - ip_addresses
+  - reports
 kind_lifecycle:
   - kind: abuseipdb.reports
     status: active

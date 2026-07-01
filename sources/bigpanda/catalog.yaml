@@ -7,6 +7,12 @@ emitted_kinds:
   - bigpanda.monitors
   - bigpanda.dashboards
   - bigpanda.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: bigpanda.alerts
     status: active

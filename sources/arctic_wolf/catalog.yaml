@@ -7,6 +7,12 @@ emitted_kinds:
   - arctic_wolf.vulnerabilities
   - arctic_wolf.policies
   - arctic_wolf.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: arctic_wolf.assets
     status: active

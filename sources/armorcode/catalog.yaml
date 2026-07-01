@@ -7,6 +7,12 @@ emitted_kinds:
   - armorcode.vulnerabilities
   - armorcode.policies
   - armorcode.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: armorcode.assets
     status: active

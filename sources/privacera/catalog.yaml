@@ -7,6 +7,12 @@ emitted_kinds:
   - privacera.vulnerabilities
   - privacera.policies
   - privacera.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: privacera.assets
     status: active

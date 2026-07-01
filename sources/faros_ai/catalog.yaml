@@ -7,6 +7,12 @@ emitted_kinds:
   - faros_ai.vulnerabilities
   - faros_ai.policies
   - faros_ai.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: faros_ai.assets
     status: active

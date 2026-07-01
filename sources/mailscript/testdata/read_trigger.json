@@ -1,0 +1,63 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/triggers",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-mailscript-trigger-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-mailscript-trigger-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/mailscript/trigger/source-mailscript-trigger-1",
+      "external_id": "source-mailscript-trigger-1",
+      "family": "trigger",
+      "id": "source-mailscript-trigger-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "mailscript",
+      "record_class": "asset",
+      "record_selector": "$.list[*]",
+      "resource_id": "source-mailscript-trigger-1",
+      "resource_name": "Mailscript Trigger Fixture",
+      "resource_type": "trigger",
+      "resource_urn": "urn:cerebro:tenant:mailscript_trigger:source-mailscript-trigger-1",
+      "schema": "trigger",
+      "source_event_id": "source-mailscript-trigger-1",
+      "source_provider": "mailscript",
+      "source_system": "mailscript",
+      "tenant_id": "tenant"
+    },
+    "id": "source-mailscript-trigger-event-1",
+    "kind": "mailscript.trigger",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/triggers",
+      "event_id": "source-mailscript-trigger-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-mailscript-trigger-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-mailscript-trigger-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/mailscript/trigger/source-mailscript-trigger-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/mailscript/trigger/source-mailscript-trigger-1",
+      "family": "trigger",
+      "id": "source-mailscript-trigger-1",
+      "name": "Mailscript Trigger Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.list[*]",
+      "resource_id": "source-mailscript-trigger-1",
+      "resource_type": "trigger",
+      "resource_urn": "urn:cerebro:tenant:mailscript_trigger:source-mailscript-trigger-1",
+      "schema_ref": "mailscript/trigger/v1",
+      "source_id": "mailscript",
+      "tenant_id": "tenant",
+      "trigger": "trigger",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "mailscript/trigger/v1",
+    "source_id": "mailscript",
+    "tenant_id": "tenant"
+  }
+]

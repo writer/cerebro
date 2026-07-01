@@ -5,6 +5,10 @@ emitted_kinds:
   - microsoft_teams.users
   - microsoft_teams.content_assets
   - microsoft_teams.audit_events
+runtime_families:
+  - audit_events
+  - content_assets
+  - users
 kind_lifecycle:
   - kind: microsoft_teams.users
     status: active

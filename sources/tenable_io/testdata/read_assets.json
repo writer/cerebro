@@ -1,14 +1,61 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-tenable_io-assets-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-tenable_io-assets-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1",
+      "external_id": "source-tenable_io-assets-1",
+      "family": "assets",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-tenable_io-assets-1",
+      "resource_name": "Tenable Io Assets Fixture",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:source-tenable_io-assets-1",
+      "schema": "assets",
+      "source_event_id": "source-tenable_io-assets-1",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    },
+    "id": "source-tenable_io-assets-event-1",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "event_id": "source-tenable_io-assets-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-tenable_io-assets-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-tenable_io-assets-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1",
+      "family": "assets",
+      "id": "source-tenable_io-assets-1",
+      "name": "Tenable Io Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-tenable_io-assets-1",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:source-tenable_io-assets-1",
+      "schema_ref": "tenable_io/assets/v1",
+      "source_id": "tenable_io",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "tenable_io/assets/v1",
+    "source_id": "tenable_io",
+    "tenant_id": "tenant"
+  }
+]

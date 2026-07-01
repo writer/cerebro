@@ -7,6 +7,12 @@ emitted_kinds:
   - zoom_phone.workspaces
   - zoom_phone.documents
   - zoom_phone.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: zoom_phone.users
     status: active

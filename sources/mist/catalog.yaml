@@ -6,6 +6,11 @@ emitted_kinds:
   - mist.sitegroup
   - mist.alarmtemplate
   - mist.secpolicy
+runtime_families:
+  - alarmtemplate
+  - call_event
+  - secpolicy
+  - sitegroup
 kind_lifecycle:
   - kind: mist.call_event
     status: active

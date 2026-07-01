@@ -6,6 +6,11 @@ emitted_kinds:
   - bigredcloud.ownertypegroup
   - bigredcloud.analysiscategory
   - bigredcloud.bankaccount
+runtime_families:
+  - account
+  - analysiscategory
+  - bankaccount
+  - ownertypegroup
 kind_lifecycle:
   - kind: bigredcloud.account
     status: active

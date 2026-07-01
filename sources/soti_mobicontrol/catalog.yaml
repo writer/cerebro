@@ -7,6 +7,12 @@ emitted_kinds:
   - soti_mobicontrol.roles
   - soti_mobicontrol.applications
   - soti_mobicontrol.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: soti_mobicontrol.users
     status: active

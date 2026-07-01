@@ -1,0 +1,69 @@
+[
+  {
+    "attributes": {
+      "account_id": "account-id-source-cloudflare-zone-1",
+      "api_method": "GET",
+      "api_path": "/zones",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/cloudflare/zone/source-cloudflare-zone-1",
+      "external_id": "source-cloudflare-zone-1",
+      "family": "zone",
+      "list_keys": "result",
+      "name": "Cloudflare Zone Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "paused": "paused-source-cloudflare-zone-1",
+      "provider": "cloudflare",
+      "resource_id": "source-cloudflare-zone-1",
+      "resource_name": "Cloudflare Zone Fixture",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:source-cloudflare-zone-1",
+      "source_event_id": "source-cloudflare-zone-1",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "status": "open",
+      "tenant_id": "tenant",
+      "type": "type-source-cloudflare-zone-1",
+      "zone_id": "zone-id-source-cloudflare-zone-1"
+    },
+    "id": "source-cloudflare-zone-event-1",
+    "kind": "cloudflare.zone",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "account": {
+        "id": "account-id-source-cloudflare-zone-1"
+      },
+      "api_method": "GET",
+      "api_path": "/zones",
+      "event_id": "source-cloudflare-zone-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/cloudflare/zone/source-cloudflare-zone-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/cloudflare/zone/source-cloudflare-zone-1",
+      "family": "zone",
+      "id": "zone-id-source-cloudflare-zone-1",
+      "list_keys": [
+        "result"
+      ],
+      "name": "Cloudflare Zone Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "paused": "paused-source-cloudflare-zone-1",
+      "resource_id": "source-cloudflare-zone-1",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:source-cloudflare-zone-1",
+      "schema_ref": "cloudflare/zone/v1",
+      "source_id": "cloudflare",
+      "status": "open",
+      "tenant_id": "tenant",
+      "type": "type-source-cloudflare-zone-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "cloudflare/zone/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

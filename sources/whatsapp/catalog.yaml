@@ -6,6 +6,11 @@ emitted_kinds:
   - whatsapp.user
   - whatsapp.invite
   - whatsapp.group_2
+runtime_families:
+  - group
+  - group_2
+  - invite
+  - user
 kind_lifecycle:
   - kind: whatsapp.group
     status: active

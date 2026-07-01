@@ -7,6 +7,12 @@ emitted_kinds:
   - airbyte_cloud.records
   - airbyte_cloud.policies
   - airbyte_cloud.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: airbyte_cloud.users
     status: active

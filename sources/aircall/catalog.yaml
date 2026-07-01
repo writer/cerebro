@@ -7,6 +7,12 @@ emitted_kinds:
   - aircall.workspaces
   - aircall.documents
   - aircall.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: aircall.users
     status: active

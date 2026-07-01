@@ -7,6 +7,12 @@ emitted_kinds:
   - cloudflare_zero_trust.roles
   - cloudflare_zero_trust.applications
   - cloudflare_zero_trust.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: cloudflare_zero_trust.users
     status: active

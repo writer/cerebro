@@ -7,6 +7,12 @@ emitted_kinds:
   - aws_bedrock.provisioned_model_throughputs
   - aws_bedrock.model_customization_jobs
   - aws_bedrock.guardrails
+runtime_families:
+  - custom_models
+  - foundation_models
+  - guardrails
+  - model_customization_jobs
+  - provisioned_model_throughputs
 kind_lifecycle:
   - kind: aws_bedrock.foundation_models
     status: active

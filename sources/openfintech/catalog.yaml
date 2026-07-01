@@ -6,6 +6,11 @@ emitted_kinds:
   - openfintech.bank
   - openfintech.country
   - openfintech.currency
+runtime_families:
+  - bank
+  - country
+  - currency
+  - organization
 kind_lifecycle:
   - kind: openfintech.organization
     status: active

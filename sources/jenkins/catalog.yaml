@@ -5,6 +5,10 @@ emitted_kinds:
   - jenkins.pipelines
   - jenkins.findings
   - jenkins.audit_events
+runtime_families:
+  - audit_events
+  - findings
+  - pipelines
 kind_lifecycle:
   - kind: jenkins.pipelines
     status: active
