@@ -205,6 +205,31 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	assertJiraLink(t, links, roleURN, relationCanPerform, roleGrantURN)
 }
 
+func TestJiraPermissionSchemeProjectionSkipsUserHolderWithoutIdentifier(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "jira",
+		Kind:     "jira.permission_schemes",
+		Attributes: map[string]string{
+			"policy_id":   "1001",
+			"policy_name": "Default Permission Scheme",
+			"policy_type": "permission_scheme",
+		},
+		Payload: []byte(`{"id":1001,"name":"Default Permission Scheme","permissions":[{"id":10,"permission":"BROWSE_PROJECTS","holder":{"type":"user"}}]}`),
+	}
+	entities, links, err := jiraPermissionSchemesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	userURN := projectionURN("tenant", "jira_user", "user")
+	grantURN := projectionURN("tenant", "jira_permission_grant", "1001", "10")
+	if entity := jiraEntityByURN(entities, userURN); entity != nil {
+		t.Fatalf("unexpected malformed holder entity %#v", entity)
+	}
+	assertJiraMissingLink(t, links, userURN, relationCanPerform, grantURN)
+}
+
 func TestJiraPermissionGrantFallbackIDUsesCanonicalJSON(t *testing.T) {
 	first := jiraPermissionGrantID(map[string]any{
 		"holder": map[string]any{"type": "group", "value": "jira-administrators"},

@@ -301,6 +301,10 @@ func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, st
 		}
 		return identityGroupURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "group", holderID
 	case "user":
+		holderID = firstNonEmpty(holderParameter, holderValue)
+		if holderID == "" {
+			return "", "", ""
+		}
 		return identityUserURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "user", holderID
 	case "project_role", "projectrole":
 		roleID := firstNonEmpty(jiraAnyString(holder["parameter"]), jiraAnyString(holder["value"]))
