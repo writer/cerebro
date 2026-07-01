@@ -848,9 +848,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"conjur.resource_3":    conjurResource3Projections,
 
 	// box generated projectors (sourcegen promotion)
-	"box.audit_events":   boxAuditEventsProjections,
-	"box.content_assets": boxContentAssetsProjections,
-	"box.users":          boxUsersProjections,
+	"box.audit_events":      boxAuditEventsProjections,
+	"box.content_assets":    boxContentAssetsProjections,
+	"box.group_memberships": boxGroupMembershipsProjections,
+	"box.groups":            boxGroupsProjections,
+	"box.users":             boxUsersProjections,
 
 	// asana generated projectors (sourcegen promotion)
 	"asana.audit_events": asanaAuditEventsProjections,

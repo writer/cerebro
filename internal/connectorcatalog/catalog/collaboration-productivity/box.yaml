@@ -3,22 +3,34 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: client_id
+            label: Client ID
+            reference_only: true
+            required: true
+          - key: client_secret
+            label: Client secret
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: oauth_client_credentials
         requires_references: true
+        token_params:
+          box_subject_id: ${config.enterprise_id}
+          box_subject_type: enterprise
+        token_request_auth_method: client_secret_post
+        token_url: https://api.box.com/oauth2/token
       categories:
         - saas
         - collaboration_productivity
       config_fields:
-        - help: Tenant or regional API base URL.
-          key: base_url
-          label: API base URL
+        - help: Box enterprise ID used as the client credentials subject.
+          key: enterprise_id
+          label: Enterprise ID
           required: true
-      description: Collects users, groups, workspaces, documents, and audit events from Box and projects them into the Cerebro graph as users, groups, assets, and audit events for workspace, document, message, and collaboration context.
+        - help: Comma-separated Box group IDs used for group membership reads.
+          key: group_ids
+          label: Group IDs
+      description: Collects Box managed users, root folder content items, groups, group memberships, and enterprise events from the Box Platform API and projects them into the graph for identity, access, content inventory, and audit review.
       display_name: Box
       id: builtin-box
       ingest:
@@ -26,6 +38,7 @@ entries:
       resource_families:
         - coverage:
             - control_domains:
+                - identity_access
                 - asset_inventory
               evidence_types:
                 - source_snapshot
@@ -33,51 +46,119 @@ entries:
                 - users
               high_value: true
               id: users
-              support: partial
-              title: Users
+              notes:
+                - Reads managed users from /users with marker pagination and preserves Box user ID, login email, display name, account status, and user resource URNs.
+              support: supported
+              title: Managed users
               type: entity_family
           default_enabled: true
           event:
             kind: box.users
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - user_id
             required_payload_fields:
               - id
             schema_ref: box/users/v1
-            urn_kind: box_users
+            urn_kind: runtime_users
           id: users
           id_field: id
-          label: Users
+          label: Managed users
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.next_marker
+            cursor_param: marker
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/users
+          path: /users
           projection:
             fields:
               display_name: name
-              email: email
+              email: login
               status: status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.entries[*]
+          static_query:
+            usemarker: "true"
         - coverage:
             - control_domains:
                 - asset_inventory
+                - data_governance
+              evidence_types:
+                - source_snapshot
+              families:
+                - content_assets
+              high_value: true
+              id: content_assets
+              notes:
+                - Reads root folder items from /folders/0/items with marker pagination and keeps file or folder ID, name, type, owner, and resource URN fields.
+              support: supported
+              title: Root folder content
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: box.content_assets
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - resource_urn
+              - resource_type
+              - resource_id
+            required_payload_fields:
+              - id
+            schema_ref: box/content_assets/v1
+            urn_kind: runtime_content_assets
+          id: content_assets
+          id_field: id
+          label: Root folder content
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.next_marker
+            cursor_param: marker
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /folders/0/items
+          projection:
+            fields:
+              owner_email: owned_by.login|owned_by.email
+              owner_id: owned_by.id
+              owner_name: owned_by.name
+              resource_id: id
+              resource_name: name
+              resource_type: type
+              resource_urn: resource_urn|urn|metadata.resource_urn
+            template: asset
+          record_selector: $.entries[*]
+          static_query:
+            usemarker: "true"
+        - coverage:
+            - control_domains:
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
                 - groups
               high_value: true
               id: groups
-              support: partial
+              notes:
+                - Reads Box groups from /groups with offset pagination and keeps group ID, group name, type, description, and graph resource identifiers.
+              support: supported
               title: Groups
               type: entity_family
           default_enabled: true
           event:
             kind: box.groups
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+              - group_name
             required_payload_fields:
               - id
             schema_ref: box/groups/v1
@@ -88,98 +169,67 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            type: offset
+          path: /groups
           projection:
             fields:
+              description: description
               group_id: id
               group_name: name
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $.entries[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - workspaces
+                - group_memberships
               high_value: true
-              id: workspaces
-              support: partial
-              title: Workspaces
+              id: group_memberships
+              notes:
+                - Fans out configured Box group IDs into /groups/{group_id}/memberships and emits one user-to-group membership record per returned member.
+              support: supported
+              title: Group memberships
               type: entity_family
           default_enabled: true
           event:
-            kind: box.workspaces
+            kind: box.group_memberships
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+              - member_user_id
             required_payload_fields:
               - id
-            schema_ref: box/workspaces/v1
-            urn_kind: box_workspaces
-          id: workspaces
+              - user.id
+            schema_ref: box/group_memberships/v1
+            urn_kind: box_group_memberships
+          id: group_memberships
           id_field: id
-          label: Workspaces
+          label: Group memberships
           method: GET
-          name_field: name
+          name_field: user.name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/workspaces
+            type: offset
+          path: /groups/{group_id}/memberships
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: workspace
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - documents
-              high_value: true
-              id: documents
-              support: partial
-              title: Documents
-              type: entity_family
-          default_enabled: true
-          event:
-            kind: box.documents
-            required_payload_fields:
-              - id
-            schema_ref: box/documents/v1
-            urn_kind: box_documents
-          id: documents
-          id_field: id
-          label: Documents
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/documents
-          projection:
-            fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: document
-            template: asset
-          record_selector: $.data[*]
+              group_id: group_id
+              member_email: user.login|user.email
+              member_id: user.id
+              role: role
+            template: group_membership
+          read:
+            path_params:
+              - group_id
+          record_selector: $.entries[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -189,45 +239,90 @@ entries:
                 - audit_events
               high_value: true
               id: audit_events
-              support: partial
-              title: Audit events
+              notes:
+                - Reads enterprise events from /events with admin_logs_streaming and stores the stream cursor from next_stream_position.
+              support: supported
+              title: Enterprise events
               type: audit_event
           default_enabled: true
           event:
             kind: box.audit_events
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - event_type
+              - actor_id
             required_payload_fields:
-              - id
+              - event_id
             schema_ref: box/audit_events/v1
-            urn_kind: box_audit_events
+            urn_kind: runtime_audit_events
           id: audit_events
-          id_field: id
-          label: Audit events
+          id_field: event_id
+          label: Enterprise events
           method: GET
-          name_field: name
+          name_field: event_type
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_json_path: $.next_stream_position
+            cursor_param: stream_position
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/audit_events
+          path: /events
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
+              actor_email: created_by.login|created_by.email
+              actor_id: created_by.id
               event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              id: event_id
+              resource_id: source.id
+              resource_type: source.type
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.entries[*]
+          static_query:
+            stream_type: admin_logs_streaming
       schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families:
+            - users
+          id: users
+          label: Managed users
+        - default_enabled: true
+          families:
+            - groups
+            - group_memberships
+          id: groups
+          label: Groups and memberships
+          permission_note: Requires Box group access and configured group IDs for membership fanout.
+        - default_enabled: true
+          families:
+            - content_assets
+          id: content_assets
+          label: Root folder content
+          permission_note: Requires root folder item access.
+        - default_enabled: true
+          families:
+            - audit_events
+          id: audit_events
+          label: Enterprise events
+          permission_note: Requires Box enterprise event access.
       source_id: box
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.box.com/2.0
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
         verification:
           expect_status:
             - 200
+            - 204
           method: GET
-          path: /v1/me
+          path: /users/me
