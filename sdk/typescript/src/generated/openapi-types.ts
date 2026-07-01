@@ -2265,10 +2265,12 @@ export type GRCQuestionnaireAnswerConfidence = {
 export type GRCQuestionnaireAssignment = {
   created_at?: string;
   due_at?: string;
+  gap_id?: string;
   id?: string;
   owner_id?: string;
   question_id?: string;
   reason?: string;
+  slot_id?: string;
   status?: string;
   team?: string;
   updated_at?: string;
@@ -2276,9 +2278,11 @@ export type GRCQuestionnaireAssignment = {
 
 export type GRCQuestionnaireAssignmentRequest = {
   due_at?: string;
+  gap_id?: string;
   owner_id?: string;
   question_id?: string;
   reason?: string;
+  slot_id?: string;
   status?: string;
   team?: string;
   tenant_id?: string;
@@ -2288,12 +2292,19 @@ export type GRCQuestionnaireCitation = {
   control_id?: string;
   evidence_id?: string;
   evidence_packet_id?: string;
+  evidence_type?: string;
   expires_at?: string;
   freshness_status?: string;
+  graph_path_ids?: string[];
+  graph_root_urns?: string[];
   id?: string;
   label?: string;
   observed_at?: string;
+  resource_urn?: string;
+  runtime_id?: string;
   source?: string;
+  source_event_ids?: string[];
+  source_id?: string;
 };
 
 export type GRCQuestionnaireComment = {
@@ -2378,10 +2389,13 @@ export type GRCQuestionnaireEvidenceRef = {
   evidence_packet_id?: string;
   evidence_type?: string;
   freshness: GRCEvidenceFreshness;
+  graph_path_ids?: string[];
+  graph_root_urns?: string[];
   id: string;
   review_state?: string;
   runtime_id?: string;
   source?: string;
+  source_event_ids?: string[];
   source_id?: string;
 };
 
@@ -2420,6 +2434,7 @@ export type GRCQuestionnaireIntakeRow = {
   required_answer_format?: string;
   required_evidence_slots?: string[];
   section?: string;
+  source_locator?: GRCQuestionnaireSourceLocator;
 };
 
 export type GRCQuestionnaireProcessRunRequest = {
@@ -2437,6 +2452,7 @@ export type GRCQuestionnaireQuestion = {
   required_evidence_slots?: string[];
   review_state?: "ready" | "needs_review" | "blocked" | "approved" | "rejected";
   section?: string;
+  source_locator?: GRCQuestionnaireSourceLocator;
 };
 
 export type GRCQuestionnaireQuestionUpdateRequest = {
@@ -2542,6 +2558,7 @@ export type GRCQuestionnaireRunEvidenceGap = {
   evidence_packet_id?: string;
   id?: string;
   reason?: string;
+  review_state?: string;
   slot_id?: string;
 };
 
@@ -2568,6 +2585,22 @@ export type GRCQuestionnaireRunsResponse = {
   generated_at?: string;
   runs?: GRCQuestionnaireRun[];
   summary?: GRCQuestionnaireRunSummary;
+};
+
+export type GRCQuestionnaireSourceLocator = {
+  cell?: string;
+  column_name?: string;
+  line_number?: number;
+  page_number?: number;
+  portal_field_id?: string;
+  portal_field_label?: string;
+  portal_url?: string;
+  row_number?: number;
+  sheet_name?: string;
+  source_artifact_urn?: string;
+  source_filename?: string;
+  source_format?: string;
+  text?: string;
 };
 
 export type GRCQuestionnaireTimelineEvent = {

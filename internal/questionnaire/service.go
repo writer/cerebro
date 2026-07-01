@@ -112,6 +112,7 @@ func NewRunRecord(request NewRunRequest, now time.Time) ports.QuestionnaireRunRe
 }
 
 func LinkVendor(record ports.QuestionnaireRunRecord, request LinkVendorRequest, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	record.UpdatedAt = now
 	record.Attributes = copyStringMap(record.Attributes)
@@ -187,6 +188,7 @@ func setVendorLinkReason(attributes map[string]string, reason string) {
 }
 
 func ProcessEvidenceAnswers(record ports.QuestionnaireRunRecord, evidenceAnswers []evidencepackets.QuestionnaireAnswer, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	previousStatus := record.Status
 	previousDecision := record.Decision
@@ -273,6 +275,7 @@ func NormalizeQuestionsForIntake(questions []ports.QuestionnaireQuestion) []port
 }
 
 func AddAssignment(record ports.QuestionnaireRunRecord, assignment ports.QuestionnaireAssignment, actorID string, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	assignment.ID = firstNonEmpty(assignment.ID, stableID("questionnaire-assignment", record.RunID, assignment.QuestionID, assignment.OwnerID, assignment.Team, fmt.Sprint(len(record.Assignments)+1)))
 	assignment.Status = firstNonEmpty(assignment.Status, "open")
@@ -289,11 +292,17 @@ func AddAssignment(record ports.QuestionnaireRunRecord, assignment ports.Questio
 		}
 	}
 	record.UpdatedAt = now
-	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventAssigned, actorID, "Questionnaire answer assigned", map[string]string{"question_id": assignment.QuestionID, "owner_id": assignment.OwnerID}, now))
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventAssigned, actorID, "Questionnaire answer assigned", map[string]string{
+		"question_id": assignment.QuestionID,
+		"gap_id":      assignment.GapID,
+		"slot_id":     assignment.SlotID,
+		"owner_id":    assignment.OwnerID,
+	}, now))
 	return SummarizeRun(record)
 }
 
 func AddComment(record ports.QuestionnaireRunRecord, comment ports.QuestionnaireComment, actorID string, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	comment.ActorID = strings.TrimSpace(actorID)
 	comment.ID = firstNonEmpty(comment.ID, stableID("questionnaire-comment", record.RunID, comment.QuestionID, comment.ActorID, comment.Body, now.Format(time.RFC3339Nano)))
@@ -307,6 +316,7 @@ func AddComment(record ports.QuestionnaireRunRecord, comment ports.Questionnaire
 }
 
 func UpdateQuestion(record ports.QuestionnaireRunRecord, request UpdateQuestionRequest, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	questionID := strings.TrimSpace(request.QuestionID)
 	for index := range record.Questions {
@@ -342,6 +352,7 @@ func UpdateQuestion(record ports.QuestionnaireRunRecord, request UpdateQuestionR
 }
 
 func RecordDecision(record ports.QuestionnaireRunRecord, decision ports.QuestionnaireDecision, now time.Time) ports.QuestionnaireRunRecord {
+	record = cloneRunRecord(record)
 	now = normalizeNow(now)
 	decision.ID = firstNonEmpty(decision.ID, stableID("questionnaire-decision", record.RunID, decision.QuestionID, decision.Decision, decision.ActorID, now.Format(time.RFC3339Nano)))
 	if decision.CreatedAt == nil {
@@ -661,12 +672,13 @@ func gapsFromEvidenceAnswer(questionID string, requiredSlots []string, evidenceA
 	for _, gap := range evidenceAnswer.MissingEvidence {
 		slotID := slotForGap(gap.Code, requiredSlots)
 		gaps = append(gaps, ports.QuestionnaireEvidenceGap{
-			ID:        firstNonEmpty(gap.ID, stableID("questionnaire-gap", questionID, gap.Code, gap.PacketID)),
-			Code:      gap.Code,
-			Reason:    gap.Reason,
-			SlotID:    slotID,
-			ControlID: gap.ControlID,
-			PacketID:  gap.PacketID,
+			ID:          firstNonEmpty(gap.ID, stableID("questionnaire-gap", questionID, gap.Code, gap.PacketID)),
+			Code:        gap.Code,
+			Reason:      gap.Reason,
+			SlotID:      slotID,
+			ControlID:   gap.ControlID,
+			PacketID:    gap.PacketID,
+			ReviewState: gap.ReviewState,
 		})
 	}
 	for _, slot := range slots {
@@ -708,11 +720,18 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 			ID:               citationID,
 			Label:            firstNonEmpty(ref.EvidenceType, ref.Source, ref.SourceID, ref.RuntimeID, citationID),
 			Source:           firstNonEmpty(ref.SourceID, ref.Source, ref.RuntimeID),
+			SourceID:         ref.SourceID,
+			RuntimeID:        ref.RuntimeID,
+			ResourceURN:      firstCerebroURN(ref.ID, ref.EvidencePacketID),
 			EvidencePacketID: ref.EvidencePacketID,
 			EvidenceID:       ref.ID,
+			EvidenceType:     ref.EvidenceType,
 			FreshnessStatus:  ref.Freshness.Status,
 			ObservedAt:       ref.Freshness.ObservedAt,
 			ExpiresAt:        ref.Freshness.ExpiresAt,
+			SourceEventIDs:   uniqueSorted(append(append([]string(nil), ref.SourceEventIDs...), ref.Citations.EventIDs...)),
+			GraphRootURNs:    uniqueSorted(append(append([]string(nil), ref.GraphRootURNs...), ref.Citations.GraphRoots...)),
+			GraphPathIDs:     uniqueSorted(ref.GraphPathIDs),
 		})
 	}
 	for _, packetID := range answer.EvidencePackets {
@@ -723,6 +742,16 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 	}
 	sort.Slice(citations, func(i, j int) bool { return citations[i].ID < citations[j].ID })
 	return citations
+}
+
+func firstCerebroURN(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if strings.HasPrefix(value, "urn:cerebro:") {
+			return value
+		}
+	}
+	return ""
 }
 
 func freshnessFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) ports.QuestionnaireFreshness {
@@ -995,6 +1024,158 @@ func normalizeNow(value time.Time) time.Time {
 		return time.Now().UTC()
 	}
 	return value.UTC()
+}
+
+func cloneRunRecord(record ports.QuestionnaireRunRecord) ports.QuestionnaireRunRecord {
+	record.Attributes = cloneStringMap(record.Attributes)
+	record.DueAt = cloneTimePtr(record.DueAt)
+	record.Questions = cloneQuestions(record.Questions)
+	record.Answers = cloneAnswers(record.Answers)
+	record.Assignments = cloneAssignments(record.Assignments)
+	record.Decisions = cloneDecisions(record.Decisions)
+	record.Comments = cloneComments(record.Comments)
+	record.Timeline = cloneTimeline(record.Timeline)
+	return record
+}
+
+func cloneQuestions(values []ports.QuestionnaireQuestion) []ports.QuestionnaireQuestion {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireQuestion, len(values))
+	for index, value := range values {
+		value.MappedControls = cloneStringSlice(value.MappedControls)
+		value.RequiredSlots = cloneStringSlice(value.RequiredSlots)
+		value.SourceLocator = cloneSourceLocator(value.SourceLocator)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneAnswers(values []ports.QuestionnaireRunAnswer) []ports.QuestionnaireRunAnswer {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireRunAnswer, len(values))
+	for index, value := range values {
+		value.Controls = cloneStringSlice(value.Controls)
+		value.EvidenceSlots = cloneEvidenceSlots(value.EvidenceSlots)
+		value.Citations = cloneCitations(value.Citations)
+		value.MissingEvidence = append([]ports.QuestionnaireEvidenceGap(nil), value.MissingEvidence...)
+		value.Conflicts = append([]ports.QuestionnaireEvidenceGap(nil), value.Conflicts...)
+		value.Attributes = cloneStringMap(value.Attributes)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneSourceLocator(value *ports.QuestionnaireSourceLocator) *ports.QuestionnaireSourceLocator {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneCitations(values []ports.QuestionnaireCitation) []ports.QuestionnaireCitation {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireCitation, len(values))
+	for index, value := range values {
+		value.SourceEventIDs = cloneStringSlice(value.SourceEventIDs)
+		value.GraphRootURNs = cloneStringSlice(value.GraphRootURNs)
+		value.GraphPathIDs = cloneStringSlice(value.GraphPathIDs)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneEvidenceSlots(values []ports.QuestionnaireEvidenceSlot) []ports.QuestionnaireEvidenceSlot {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireEvidenceSlot, len(values))
+	for index, value := range values {
+		value.CitationIDs = cloneStringSlice(value.CitationIDs)
+		value.MissingReasons = cloneStringSlice(value.MissingReasons)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneAssignments(values []ports.QuestionnaireAssignment) []ports.QuestionnaireAssignment {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireAssignment, len(values))
+	for index, value := range values {
+		value.DueAt = cloneTimePtr(value.DueAt)
+		value.CreatedAt = cloneTimePtr(value.CreatedAt)
+		value.UpdatedAt = cloneTimePtr(value.UpdatedAt)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneDecisions(values []ports.QuestionnaireDecision) []ports.QuestionnaireDecision {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireDecision, len(values))
+	for index, value := range values {
+		value.CreatedAt = cloneTimePtr(value.CreatedAt)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneComments(values []ports.QuestionnaireComment) []ports.QuestionnaireComment {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireComment, len(values))
+	for index, value := range values {
+		value.CreatedAt = cloneTimePtr(value.CreatedAt)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneTimeline(values []ports.QuestionnaireTimeline) []ports.QuestionnaireTimeline {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireTimeline, len(values))
+	for index, value := range values {
+		value.Attributes = cloneStringMap(value.Attributes)
+		value.CreatedAt = cloneTimePtr(value.CreatedAt)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneStringSlice(values []string) []string {
+	return append([]string(nil), values...)
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func copyStringMap(values map[string]string) map[string]string {

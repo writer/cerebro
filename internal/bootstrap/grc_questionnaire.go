@@ -21,7 +21,9 @@ func (app *App) grcQuestionnaireRunHandler() *questionnairehttp.Handler {
 		BumpCache: func(ctx context.Context, tenantID string) {
 			app.bumpGRCCacheVersions(ctx, tenantID, grcCacheScopeEvidence, grcCacheScopeFindings, grcCacheScopeGraph)
 		},
-		WriteErr: writeGRCQuestionnaireError,
+		WriteErr:        writeGRCQuestionnaireError,
+		ProjectionState: sourceProjectionStateStore(app.deps.StateStore),
+		ProjectionGraph: sourceProjectionGraphStore(app.deps.GraphStore),
 	})
 }
 

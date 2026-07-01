@@ -276,6 +276,120 @@ WHERE %s`, strings.Join(clauses, " AND "))
 	return summary, nil
 }
 
+func (s *Store) ListQuestionnaireVendorRollups(ctx context.Context, filter ports.QuestionnaireVendorRollupFilter) ([]ports.QuestionnaireVendorRollupRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureQuestionnaireRunTables(ctx); err != nil {
+		return nil, err
+	}
+	filter.VendorURNs = normalizedNonEmptyStrings(filter.VendorURNs)
+	if len(filter.VendorURNs) == 0 {
+		return nil, nil
+	}
+	if filter.Now.IsZero() {
+		filter.Now = time.Now().UTC()
+	}
+	query, args := questionnaireVendorRollupQuery(filter)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list questionnaire vendor rollups: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	records := []ports.QuestionnaireVendorRollupRecord{}
+	for rows.Next() {
+		var record ports.QuestionnaireVendorRollupRecord
+		if err := rows.Scan(
+			&record.VendorURN,
+			&record.QuestionnaireCount,
+			&record.DueQuestionnaires,
+			&record.ReadyAnswers,
+			&record.BlockedAnswers,
+			&record.ReviewAnswers,
+			&record.MissingEvidence,
+			&record.StaleEvidence,
+			&record.OpenAssignments,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func questionnaireVendorRollupQuery(filter ports.QuestionnaireVendorRollupFilter) (string, []any) {
+	clauses := []string{"vendor_urn <> ''"}
+	args := []any{}
+	addTextFilter(&clauses, &args, "tenant_id", filter.TenantID)
+	addStringInFilter(&clauses, &args, "vendor_urn", filter.VendorURNs)
+	args = append(args, filter.Now)
+	nowPlaceholder := len(args)
+	questionnaireID := "COALESCE(NULLIF(attributes_json->>'questionnaire_urn', ''), run_id)"
+	activeRun := "status NOT IN ('approved', 'rejected')"
+	// #nosec G201 -- clauses are fixed column predicates and values remain parameterized.
+	query := fmt.Sprintf(`
+WITH filtered AS (
+	SELECT *
+	FROM grc_questionnaire_runs
+	WHERE %s
+),
+ranked AS (
+	SELECT
+	  filtered.*,
+	  %s AS questionnaire_id,
+	  ROW_NUMBER() OVER (
+	    PARTITION BY vendor_urn, %s
+	    ORDER BY updated_at DESC, run_id DESC
+	  ) AS questionnaire_rank
+	FROM filtered
+),
+current_questionnaires AS (
+	SELECT *
+	FROM ranked
+	WHERE questionnaire_rank = 1
+),
+open_assignments AS (
+	SELECT current_questionnaires.tenant_id, current_questionnaires.run_id, COUNT(*) AS open_assignment_count
+	FROM current_questionnaires
+	CROSS JOIN LATERAL jsonb_array_elements(%s) AS assignment
+	WHERE %s
+	  AND (COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open')
+	GROUP BY current_questionnaires.tenant_id, current_questionnaires.run_id
+)
+SELECT
+  vendor_urn,
+  COUNT(DISTINCT questionnaire_id),
+  COUNT(DISTINCT CASE WHEN due_at IS NOT NULL AND due_at <= $%d AND %s THEN questionnaire_id END),
+  COALESCE(SUM(CASE WHEN %s THEN ready_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN blocked_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN review_answer_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN missing_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN stale_evidence_count ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN %s THEN COALESCE(open_assignments.open_assignment_count, 0) ELSE 0 END), 0)
+FROM current_questionnaires
+LEFT JOIN open_assignments USING (tenant_id, run_id)
+GROUP BY vendor_urn
+ORDER BY vendor_urn ASC`,
+		strings.Join(clauses, " AND "),
+		questionnaireID,
+		questionnaireID,
+		questionnaireAssignmentsArraySQL(),
+		activeRun,
+		nowPlaceholder,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun,
+		activeRun)
+	return query, args
+}
+
+func questionnaireAssignmentsArraySQL() string {
+	return "CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END"
+}
+
 func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any) {
 	clauses := []string{"1=1"}
 	args := []any{}
@@ -289,13 +403,13 @@ func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any
 	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
 		args = append(args, "%"+strings.ToLower(ownerID)+"%")
 		clauses = append(clauses, fmt.Sprintf(`(
-			lower(owner_id) LIKE $%d
-			OR lower(assigned_team) LIKE $%d
-			OR EXISTS (
-				SELECT 1 FROM jsonb_array_elements(assignments_json) AS assignment
-				WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
-			)
-		)`, len(args), len(args), len(args), len(args)))
+				lower(owner_id) LIKE $%d
+				OR lower(assigned_team) LIKE $%d
+				OR EXISTS (
+					SELECT 1 FROM jsonb_array_elements(%s) AS assignment
+					WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
+				)
+			)`, len(args), len(args), questionnaireAssignmentsArraySQL(), len(args), len(args)))
 	}
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
@@ -375,28 +489,35 @@ func marshalQuestionnaireRunJSON(record ports.QuestionnaireRunRecord) (questionn
 	}
 	var fields questionnaireRunJSONFields
 	var err error
-	if fields.questions, err = marshal("questions", record.Questions); err != nil {
+	if fields.questions, err = marshal("questions", emptySlice(record.Questions)); err != nil {
 		return fields, err
 	}
-	if fields.answers, err = marshal("answers", record.Answers); err != nil {
+	if fields.answers, err = marshal("answers", emptySlice(record.Answers)); err != nil {
 		return fields, err
 	}
-	if fields.assignments, err = marshal("assignments", record.Assignments); err != nil {
+	if fields.assignments, err = marshal("assignments", emptySlice(record.Assignments)); err != nil {
 		return fields, err
 	}
-	if fields.decisions, err = marshal("decisions", record.Decisions); err != nil {
+	if fields.decisions, err = marshal("decisions", emptySlice(record.Decisions)); err != nil {
 		return fields, err
 	}
-	if fields.comments, err = marshal("comments", record.Comments); err != nil {
+	if fields.comments, err = marshal("comments", emptySlice(record.Comments)); err != nil {
 		return fields, err
 	}
-	if fields.timeline, err = marshal("timeline", record.Timeline); err != nil {
+	if fields.timeline, err = marshal("timeline", emptySlice(record.Timeline)); err != nil {
 		return fields, err
 	}
 	if fields.attributes, err = marshal("attributes", emptyStringMap(record.Attributes)); err != nil {
 		return fields, err
 	}
 	return fields, nil
+}
+
+func emptySlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 func scanQuestionnaireRun(row scanner) (*ports.QuestionnaireRunRecord, error) {
