@@ -245,6 +245,75 @@ func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
 	}
 }
 
+func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.URL.EscapedPath(); got != "/admin/v2/logs/authentication" {
+			t.Fatalf("request path = %q, want /admin/v2/logs/authentication", got)
+		}
+		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		switch requests {
+		case 1:
+			if got := r.URL.Query().Get("next_offset"); got != "" {
+				t.Fatalf("first next_offset = %q, want empty", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": map[string]any{
+				"authlogs": []map[string]any{{
+					"txid":         "auth-1",
+					"event_type":   "authentication",
+					"user":         map[string]any{"key": "user-1", "name": "alice"},
+					"application":  map[string]any{"key": "DIAPP1", "name": "GitHub Enterprise"},
+					"isotimestamp": "2023-11-14T22:13:20Z",
+					"timestamp":    1700000000000,
+				}},
+				"metadata": map[string]any{"next_offset": []any{"1700000000001", "auth-1"}},
+			}})
+		case 2:
+			if got := r.URL.Query().Get("next_offset"); got != "1700000000001,auth-1" {
+				t.Fatalf("second next_offset = %q, want comma-joined cursor", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": map[string]any{"authlogs": []map[string]any{}}})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":      server.URL,
+		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
+		"client_secret": "deadbeefsecret",
+		"family":        "authentication_log",
+		"tenant_id":     "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("first Read() error = %v", err)
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "1700000000001,auth-1" {
+		t.Fatalf("first NextCursor = %#v, want 1700000000001,auth-1", first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("second Read() error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second events = %d, want 0", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
 func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, secretKey string) {
 	t.Helper()
 	date := r.Header.Get("Date")

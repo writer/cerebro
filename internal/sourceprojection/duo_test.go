@@ -500,6 +500,11 @@ func TestRegistryRoutesDuoCoreKinds(t *testing.T) {
 		{"duo.authentication_log", map[string]string{"event_type": "authentication", "actor_id": "user-1", "resource_id": "DIAPP1", "resource_type": "application"}, "duo.user"},
 		{"duo.token", map[string]string{"token_id": "token-1", "type": "h6"}, "duo.token"},
 		{"duo.web_authn_credential", map[string]string{"credential_id": "cred-1", "user_id": "user-1"}, "duo.web_authn_credential"},
+		{"duo_security.users", map[string]string{"user_id": "user-1", "status": "active", "is_enrolled": "true"}, "duo.user"},
+		{"duo_security.groups", map[string]string{"group_id": "group-1", "name": "Engineering"}, "duo.group"},
+		{"duo_security.roles", map[string]string{"policy_id": "owner", "policy_name": "Owner"}, "policy"},
+		{"duo_security.applications", map[string]string{"integration_key": "DIAPP1", "name": "GitHub Enterprise"}, "duo.application"},
+		{"duo_security.audit_events", map[string]string{"event_type": "user_update", "actor_id": "admin-1", "resource_id": "user-1", "resource_type": "user"}, "duo.user"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
