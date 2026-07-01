@@ -328,36 +328,61 @@ func questionnaireVendorRollupQuery(filter ports.QuestionnaireVendorRollupFilter
 	activeRun := "status NOT IN ('approved', 'rejected')"
 	// #nosec G201 -- clauses are fixed column predicates and values remain parameterized.
 	query := fmt.Sprintf(`
+WITH filtered AS (
+	SELECT *
+	FROM grc_questionnaire_runs
+	WHERE %s
+),
+ranked AS (
+	SELECT
+	  filtered.*,
+	  %s AS questionnaire_id,
+	  ROW_NUMBER() OVER (
+	    PARTITION BY vendor_urn, %s
+	    ORDER BY updated_at DESC, run_id DESC
+	  ) AS questionnaire_rank
+	FROM filtered
+),
+current_questionnaires AS (
+	SELECT *
+	FROM ranked
+	WHERE questionnaire_rank = 1
+),
+open_assignments AS (
+	SELECT current_questionnaires.tenant_id, current_questionnaires.run_id, COUNT(*) AS open_assignment_count
+	FROM current_questionnaires
+	CROSS JOIN LATERAL jsonb_array_elements(%s) AS assignment
+	WHERE %s
+	  AND (COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open')
+	GROUP BY current_questionnaires.tenant_id, current_questionnaires.run_id
+)
 SELECT
   vendor_urn,
-  COUNT(DISTINCT %s),
-  COUNT(DISTINCT CASE WHEN due_at IS NOT NULL AND due_at <= $%d AND %s THEN %s END),
+  COUNT(DISTINCT questionnaire_id),
+  COUNT(DISTINCT CASE WHEN due_at IS NOT NULL AND due_at <= $%d AND %s THEN questionnaire_id END),
   COALESCE(SUM(CASE WHEN %s THEN ready_answer_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN blocked_answer_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN review_answer_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN missing_evidence_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN stale_evidence_count ELSE 0 END), 0),
-	  COALESCE(SUM(CASE WHEN %s THEN (
-	    SELECT COUNT(*)
-	    FROM jsonb_array_elements(%s) AS assignment
-	    WHERE COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open'
-	  ) ELSE 0 END), 0)
-FROM grc_questionnaire_runs
-WHERE %s
+  COALESCE(SUM(CASE WHEN %s THEN COALESCE(open_assignments.open_assignment_count, 0) ELSE 0 END), 0)
+FROM current_questionnaires
+LEFT JOIN open_assignments USING (tenant_id, run_id)
 GROUP BY vendor_urn
 ORDER BY vendor_urn ASC`,
+		strings.Join(clauses, " AND "),
 		questionnaireID,
+		questionnaireID,
+		questionnaireAssignmentsArraySQL(),
+		activeRun,
 		nowPlaceholder,
 		activeRun,
-		questionnaireID,
 		activeRun,
 		activeRun,
 		activeRun,
 		activeRun,
 		activeRun,
-		activeRun,
-		questionnaireAssignmentsArraySQL(),
-		strings.Join(clauses, " AND "))
+		activeRun)
 	return query, args
 }
 

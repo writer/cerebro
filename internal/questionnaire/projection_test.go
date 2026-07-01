@@ -61,7 +61,7 @@ func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 	if len(projection.Entities) < 4 {
 		t.Fatalf("entities = %d, want questionnaire, owner, control, and evidence entities", len(projection.Entities))
 	}
-	if !hasProjectedLink(projection.Links, questionnaireURN, fabriccontract.RelationAssociatedWith, "urn:cerebro:writer:vendor:core-sso") {
+	if !hasAssociatedProjectedLink(projection.Links, questionnaireURN, "urn:cerebro:writer:vendor:core-sso") {
 		t.Fatalf("missing vendor association link in %#v", projection.Links)
 	}
 	if !hasProjectedLinkToRelation(projection.Links, fabriccontract.RelationOwnedBy) {
@@ -114,7 +114,7 @@ func TestBuildGraphProjectionRemovesStaleLinks(t *testing.T) {
 		t.Fatalf("BuildGraphProjection() error = %v", err)
 	}
 	questionnaireURN := projection.Record.Attributes[QuestionnaireAttributeQuestionnaireURN]
-	if !hasProjectedLink(projection.RemovedLinks, questionnaireURN, fabriccontract.RelationAssociatedWith, "urn:cerebro:writer:vendor:old") {
+	if !hasAssociatedProjectedLink(projection.RemovedLinks, questionnaireURN, "urn:cerebro:writer:vendor:old") {
 		t.Fatalf("removed links missing old vendor link: %#v", projection.RemovedLinks)
 	}
 	if !hasProjectedLinkToRelation(projection.RemovedLinks, fabriccontract.RelationSupports) {
@@ -123,7 +123,7 @@ func TestBuildGraphProjectionRemovesStaleLinks(t *testing.T) {
 	if !hasProjectedLinkToRelation(projection.RemovedLinks, fabriccontract.RelationHasEvidence) {
 		t.Fatalf("removed links missing stale evidence link: %#v", projection.RemovedLinks)
 	}
-	if hasProjectedLink(projection.RemovedLinks, questionnaireURN, fabriccontract.RelationAssociatedWith, "urn:cerebro:writer:vendor:new") {
+	if hasAssociatedProjectedLink(projection.RemovedLinks, questionnaireURN, "urn:cerebro:writer:vendor:new") {
 		t.Fatalf("removed links include current vendor link: %#v", projection.RemovedLinks)
 	}
 }
@@ -145,6 +145,58 @@ func TestEnsureGraphIdentityOverwritesUserProvidedQuestionnaireURN(t *testing.T)
 	}
 	if got := record.Attributes[QuestionnaireAttributeQuestionnaireURN]; got != "urn:cerebro:writer:vendor:core-sso" {
 		t.Fatalf("original attributes mutated to %q", got)
+	}
+}
+
+func TestBuildGraphProjectionOnlyLinksValidSourceArtifactURNs(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := ports.QuestionnaireRunRecord{
+		QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1"},
+		QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{Attributes: map[string]string{
+			QuestionnaireAttributeSourceArtifactURN: "urn:cerebro:writer:assurance_document:soc2",
+		}},
+	}
+
+	projection, err := BuildGraphProjection(record, nil, now)
+	if err != nil {
+		t.Fatalf("BuildGraphProjection() error = %v", err)
+	}
+	questionnaireURN := projection.Record.Attributes[QuestionnaireAttributeQuestionnaireURN]
+	if !hasAssociatedProjectedLink(projection.Links, questionnaireURN, "urn:cerebro:writer:assurance_document:soc2") {
+		t.Fatalf("missing source artifact link in %#v", projection.Links)
+	}
+
+	record.Attributes[QuestionnaireAttributeSourceArtifactURN] = "urn:cerebro:writer:vendor:core-sso"
+	projection, err = BuildGraphProjection(record, nil, now)
+	if err != nil {
+		t.Fatalf("BuildGraphProjection() error = %v", err)
+	}
+	if hasAssociatedProjectedLink(projection.Links, projection.Record.Attributes[QuestionnaireAttributeQuestionnaireURN], "urn:cerebro:writer:vendor:core-sso") {
+		t.Fatalf("source artifact link accepted wrong-kind urn: %#v", projection.Links)
+	}
+
+	record.Attributes[QuestionnaireAttributeSourceArtifactURN] = "urn:cerebro:other:assurance_document:soc2"
+	projection, err = BuildGraphProjection(record, nil, now)
+	if err != nil {
+		t.Fatalf("BuildGraphProjection() error = %v", err)
+	}
+	if hasAssociatedProjectedLink(projection.Links, projection.Record.Attributes[QuestionnaireAttributeQuestionnaireURN], "urn:cerebro:other:assurance_document:soc2") {
+		t.Fatalf("source artifact link accepted cross-tenant urn: %#v", projection.Links)
+	}
+}
+
+func TestControlEntityURNOnlyPassesThroughSameTenantControlURNs(t *testing.T) {
+	if got := controlEntityURN("writer", "SOC2-CC6.1"); got != "urn:cerebro:writer:control:questionnaire:SOC2-CC6.1" {
+		t.Fatalf("controlEntityURN() = %q, want minted control urn", got)
+	}
+	if got := controlEntityURN("writer", "urn:cerebro:writer:control:soc2-cc6.1"); got != "urn:cerebro:writer:control:soc2-cc6.1" {
+		t.Fatalf("controlEntityURN() = %q, want same-tenant control urn passthrough", got)
+	}
+	if got := controlEntityURN("writer", "urn:cerebro:writer:grc_user:security"); got != "" {
+		t.Fatalf("controlEntityURN() = %q, want wrong-kind urn skipped", got)
+	}
+	if got := controlEntityURN("writer", "urn:cerebro:other:control:soc2-cc6.1"); got != "" {
+		t.Fatalf("controlEntityURN() = %q, want cross-tenant urn skipped", got)
 	}
 }
 
@@ -173,9 +225,9 @@ func TestCitationResourceURNOnlyPassesThroughRuntimeEvidenceURNs(t *testing.T) {
 	}
 }
 
-func hasProjectedLink(links []*ports.ProjectedLink, fromURN string, relation string, toURN string) bool {
+func hasAssociatedProjectedLink(links []*ports.ProjectedLink, fromURN string, toURN string) bool {
 	for _, link := range links {
-		if link.FromURN == fromURN && link.Relation == relation && link.ToURN == toURN {
+		if link.FromURN == fromURN && link.Relation == fabriccontract.RelationAssociatedWith && link.ToURN == toURN {
 			return true
 		}
 	}

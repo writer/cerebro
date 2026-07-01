@@ -76,10 +76,17 @@ func TestQuestionnaireVendorRollupQueryBatchesVendors(t *testing.T) {
 		Now:        now,
 	})
 	for _, fragment := range []string{
+		"WITH filtered AS",
+		"ROW_NUMBER() OVER",
+		"PARTITION BY vendor_urn, COALESCE(NULLIF(attributes_json->>'questionnaire_urn', ''), run_id)",
+		"current_questionnaires AS",
+		"WHERE questionnaire_rank = 1",
 		"vendor_urn IN ($2, $3)",
 		"due_at <= $4",
+		"CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END)",
 		"status NOT IN ('approved', 'rejected')",
-		"jsonb_array_elements(CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END)",
+		"LEFT JOIN open_assignments USING (tenant_id, run_id)",
+		"COALESCE(open_assignments.open_assignment_count, 0)",
 		"GROUP BY vendor_urn",
 		"ORDER BY vendor_urn ASC",
 	} {

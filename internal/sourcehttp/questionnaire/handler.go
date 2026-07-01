@@ -16,11 +16,13 @@ import (
 	"github.com/writer/cerebro/internal/evidencepackets"
 	"github.com/writer/cerebro/internal/ports"
 	questionnairedomain "github.com/writer/cerebro/internal/questionnaire"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const maxQuestionnaireBodyBytes = 512 << 10
 const maxQuestionnaireCreateBodyBytes = 16 << 20
 const defaultLimit uint32 = 100
+const questionnaireProjectionTimeout = 10 * time.Second
 
 var (
 	ErrRuntimeUnavailable = errors.New("questionnaire runtime is unavailable")
@@ -960,10 +962,24 @@ func (h *Handler) saveQuestionnaireRun(ctx context.Context, record ports.Questio
 	if err != nil {
 		return nil, err
 	}
-	if err := h.projectQuestionnaireRun(ctx, projection); err != nil {
-		return nil, err
-	}
+	h.projectQuestionnaireRunAsync(ctx, projection)
 	return saved, nil
+}
+
+func (h *Handler) projectQuestionnaireRunAsync(parent context.Context, projection questionnairedomain.GraphProjection) {
+	if len(h.projections) == 0 {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), questionnaireProjectionTimeout)
+		defer cancel()
+		if err := h.projectQuestionnaireRun(ctx, projection); err != nil {
+			telemetry.CaptureError(ctx, "questionnaire.projection.failed", err, telemetry.Attrs(
+				telemetry.Field{Key: "tenant_id", Value: projection.Record.TenantID},
+				telemetry.Field{Key: "questionnaire.run_id", Value: projection.Record.RunID},
+			))
+		}
+	}()
 }
 
 func (h *Handler) projectQuestionnaireRun(ctx context.Context, projection questionnairedomain.GraphProjection) error {

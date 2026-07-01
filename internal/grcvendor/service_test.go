@@ -183,6 +183,27 @@ func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
 			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
 				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1"},
 				DueAt:      &due,
+				UpdatedAt:  now,
+			},
+		},
+		{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1-old-active"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{VendorURN: vendorURN},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
+				Status:             ports.QuestionnaireStatusNeedsInput,
+				ReadyAnswerCount:   20,
+				BlockedAnswerCount: 20,
+				ReviewAnswerCount:  20,
+				MissingEvidence:    20,
+				StaleEvidence:      20,
+			},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{Assignments: []ports.QuestionnaireAssignment{
+				{ID: "assignment-duplicate-open", Status: "open"},
+			}},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1"},
+				DueAt:      &due,
+				UpdatedAt:  now.Add(-time.Hour),
 			},
 		},
 		{
@@ -192,6 +213,7 @@ func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
 			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
 				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1"},
 				DueAt:      &due,
+				UpdatedAt:  now.Add(-2 * time.Hour),
 			},
 		},
 		{
@@ -204,6 +226,7 @@ func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
 			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
 				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-2"},
 				DueAt:      &due,
+				UpdatedAt:  now,
 			},
 		},
 		{
@@ -537,7 +560,7 @@ func (s *stubQuestionnaireRunStore) ListQuestionnaireVendorRollups(_ context.Con
 		}
 	}
 	seen := map[string]struct{}{}
-	rollups := map[string]ports.QuestionnaireVendorRollupRecord{}
+	current := map[string]*ports.QuestionnaireRunRecord{}
 	for _, record := range s.records {
 		if record == nil {
 			continue
@@ -546,9 +569,16 @@ func (s *stubQuestionnaireRunStore) ListQuestionnaireVendorRollups(_ context.Con
 		if _, ok := vendorSet[vendorURN]; !ok {
 			continue
 		}
+		key := vendorURN + "\x00" + firstNonEmpty(record.Attributes["questionnaire_urn"], record.RunID)
+		if existing := current[key]; existing == nil || record.UpdatedAt.After(existing.UpdatedAt) || (record.UpdatedAt.Equal(existing.UpdatedAt) && record.RunID > existing.RunID) {
+			current[key] = record
+		}
+	}
+	rollups := map[string]ports.QuestionnaireVendorRollupRecord{}
+	for key, record := range current {
+		vendorURN := strings.TrimSpace(record.VendorURN)
 		rollup := rollups[vendorURN]
 		rollup.VendorURN = vendorURN
-		key := vendorURN + "\x00" + firstNonEmpty(record.Attributes["questionnaire_urn"], record.RunID)
 		if _, ok := seen[key]; !ok {
 			rollup.QuestionnaireCount++
 			seen[key] = struct{}{}

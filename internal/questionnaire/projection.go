@@ -175,7 +175,7 @@ func graphProjectionForRecord(record ports.QuestionnaireRunRecord, at time.Time)
 			"match_type":         "questionnaire_answer_citation",
 		})
 	}
-	if sourceArtifactURN := strings.TrimSpace(record.Attributes[QuestionnaireAttributeSourceArtifactURN]); strings.HasPrefix(sourceArtifactURN, "urn:cerebro:") {
+	if sourceArtifactURN := strings.TrimSpace(record.Attributes[QuestionnaireAttributeSourceArtifactURN]); isSourceArtifactURN(record.TenantID, sourceArtifactURN) {
 		addLink(sourceArtifactURN, fabriccontract.RelationAssociatedWith, map[string]string{"match_type": "questionnaire_source_artifact"})
 	}
 	return GraphProjection{
@@ -239,6 +239,9 @@ func ownerEntityURN(tenantID string, owner string) string {
 func controlEntityURN(tenantID string, controlID string) string {
 	controlID = strings.TrimSpace(controlID)
 	if strings.HasPrefix(controlID, "urn:cerebro:") {
+		if !isControlURN(tenantID, controlID) {
+			return ""
+		}
 		return controlID
 	}
 	value, err := cerebrourn.Mint(tenantID, "control", "questionnaire", cerebrourn.EncodeSegment(controlID))
@@ -267,6 +270,18 @@ func citationResourceURN(tenantID string, citation ports.QuestionnaireCitation) 
 }
 
 func isRuntimeEvidenceURN(tenantID string, value string) bool {
+	return isSameTenantKindURN(tenantID, value, "runtime_evidence", "runtime.evidence")
+}
+
+func isControlURN(tenantID string, value string) bool {
+	return isSameTenantKindURN(tenantID, value, "control")
+}
+
+func isSourceArtifactURN(tenantID string, value string) bool {
+	return isSameTenantKindURN(tenantID, value, "assurance_document", "security_review", "security_questionnaire", "penetration_test", "runtime_evidence", "runtime.evidence")
+}
+
+func isSameTenantKindURN(tenantID string, value string, kinds ...string) bool {
 	parsed, err := cerebrourn.Parse(value)
 	if err != nil {
 		return false
@@ -274,12 +289,12 @@ func isRuntimeEvidenceURN(tenantID string, value string) bool {
 	if parsed.TenantID != strings.TrimSpace(tenantID) {
 		return false
 	}
-	switch parsed.Kind {
-	case "runtime_evidence", "runtime.evidence":
-		return true
-	default:
-		return false
+	for _, kind := range kinds {
+		if parsed.Kind == kind {
+			return true
+		}
 	}
+	return false
 }
 
 func firstNonCerebroURN(values ...string) string {
