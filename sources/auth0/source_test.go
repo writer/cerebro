@@ -218,26 +218,26 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.EscapedPath() {
 		case "/organizations":
-			_ = json.NewEncoder(w).Encode(map[string]any{"organizations": []map[string]any{{"id": "org-1", "name": "writer", "display_name": "Writer"}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "org-1", "name": "writer", "display_name": "Writer"}})
 		case "/organizations/org-1/members":
 			if got := r.URL.Query().Get("fields"); got != "roles" {
 				t.Fatalf("organization member fields = %q, want roles", got)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"members": []map[string]any{{"user_id": "auth0|user-1", "email": "user@example.test", "name": "User One", "roles": []string{"role-1"}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"user_id": "auth0|user-1", "email": "user@example.test", "name": "User One", "roles": []string{"role-1"}}})
 		case "/clients":
-			_ = json.NewEncoder(w).Encode(map[string]any{"clients": []map[string]any{{"client_id": "client-1", "name": "Workforce Portal", "app_type": "regular_web", "callbacks": []string{"https://app.example.test/callback"}, "grant_types": []string{"authorization_code"}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"client_id": "client-1", "name": "Workforce Portal", "app_type": "regular_web", "callbacks": []string{"https://app.example.test/callback"}, "grant_types": []string{"authorization_code"}}})
 		case "/connections":
-			_ = json.NewEncoder(w).Encode(map[string]any{"connections": []map[string]any{{"id": "conn-1", "name": "google-oauth2", "strategy": "google-oauth2", "enabled_clients": []string{"client-1"}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "conn-1", "name": "google-oauth2", "strategy": "google-oauth2", "enabled_clients": []string{"client-1"}}})
 		case "/resource-servers":
-			_ = json.NewEncoder(w).Encode(map[string]any{"resource_servers": []map[string]any{{"id": "api-1", "identifier": "https://api.example.test", "name": "Example API", "scopes": []map[string]string{{"value": "read:reports", "description": "Read reports"}}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "api-1", "identifier": "https://api.example.test", "name": "Example API", "scopes": []map[string]string{{"value": "read:reports", "description": "Read reports"}}}})
 		case "/client-grants":
-			_ = json.NewEncoder(w).Encode(map[string]any{"client_grants": []map[string]any{{"id": "grant-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": []string{"read:reports"}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "grant-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": []string{"read:reports"}}})
 		case "/grants":
-			_ = json.NewEncoder(w).Encode(map[string]any{"grants": []map[string]any{{"id": "user-grant-1", "user_id": "auth0|user-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": []string{"read:reports"}}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-grant-1", "user_id": "auth0|user-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": []string{"read:reports"}}})
 		case "/users/auth0%7Cuser-1/roles":
-			_ = json.NewEncoder(w).Encode(map[string]any{"roles": []map[string]any{{"id": "role-1", "name": "Security Administrators"}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "role-1", "name": "Security Administrators"}})
 		case "/users/auth0%7Cuser-1/authentication-methods":
-			_ = json.NewEncoder(w).Encode(map[string]any{"authenticators": []map[string]any{{"id": "auth-method-1", "type": "webauthn-roaming", "confirmed": true}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "auth-method-1", "type": "webauthn-roaming", "confirmed": true}})
 		case "/guardian/factors":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"name": "sms", "enabled": true, "trial_expired": false}})
 		default:
@@ -364,6 +364,14 @@ func TestReadPaginatesBareArrayManagementFamilies(t *testing.T) {
 		second []map[string]any
 	}
 	responses := map[string]pageResponse{
+		"/users": {
+			first:  []map[string]any{{"user_id": "auth0|user-1", "email": "user-1@example.test"}, {"user_id": "auth0|user-2", "email": "user-2@example.test"}},
+			second: []map[string]any{{"user_id": "auth0|user-3", "email": "user-3@example.test"}},
+		},
+		"/roles": {
+			first:  []map[string]any{{"id": "role-1", "name": "Security"}, {"id": "role-2", "name": "Support"}},
+			second: []map[string]any{{"id": "role-3", "name": "Audit"}},
+		},
 		"/organizations": {
 			first:  []map[string]any{{"id": "org-1", "name": "writer"}, {"id": "org-2", "name": "field"}},
 			second: []map[string]any{{"id": "org-3", "name": "support"}},
@@ -418,6 +426,8 @@ func TestReadPaginatesBareArrayManagementFamilies(t *testing.T) {
 		path   string
 		config map[string]string
 	}{
+		{family: auth0api.FamilyUsers, path: "/users"},
+		{family: auth0api.FamilyRoles, path: "/roles"},
 		{family: auth0api.FamilyOrganizations, path: "/organizations"},
 		{family: auth0api.FamilyOrganizationMembers, path: "/organizations/org-1/members", config: map[string]string{"organization_ids": "org-1"}},
 		{family: auth0api.FamilyConnections, path: "/connections"},
