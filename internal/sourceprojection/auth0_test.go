@@ -95,6 +95,29 @@ func TestAuth0GrantProjection(t *testing.T) {
 	}
 }
 
+func TestAuth0UserGrantProjectionUsesAppIDAsClientID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.grants", Attributes: map[string]string{"grant_id": "grant-1", "app_id": "client-1", "audience": "https://api.example.test", "scope": "read:reports", "subject_id": "auth0|user-1", "subject_type": "user"}}
+	entities, links, err := auth0GrantsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	wantClientURN := identityOAuthClientURN("tenant", "auth0", "client-1")
+	wantEntitlementURN := auth0APIEntitlementURN("tenant", "https://api.example.test", "read:reports")
+	entityURNs := map[string]struct{}{}
+	for _, entity := range entities {
+		entityURNs[entity.URN] = struct{}{}
+	}
+	if _, ok := entityURNs[wantClientURN]; !ok {
+		t.Fatalf("missing OAuth client entity %q; entities=%#v", wantClientURN, entities)
+	}
+	if _, ok := entityURNs["urn:cerebro:tenant:auth0_oauth_client"]; ok {
+		t.Fatalf("projected degenerate OAuth client entity; entities=%#v", entities)
+	}
+	if !projectedLinksContain(links, wantClientURN, relationGrantsEntitlement, wantEntitlementURN) {
+		t.Fatalf("missing OAuth client grant link %s -> %s; links=%#v", wantClientURN, wantEntitlementURN, links)
+	}
+}
+
 func TestAuth0AuthenticationMethodProjection(t *testing.T) {
 	idField := "cred" + "ential_id"
 	typeField := "cred" + "ential_type"

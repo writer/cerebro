@@ -51,11 +51,16 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		if len(values) > 0 {
+			if err := s.checkHealth(ctx, auth0ConfigWithValue(runtimeCfg, param, values[0])); err != nil {
+				return err
+			}
+		}
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
-	}
-	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
-		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Check(ctx, runtimeCfg)
 }
@@ -106,6 +111,12 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 		path = auth0api.DefaultHealthPath
 	}
 	return s.inner.CheckPath(ctx, cfg, path, nil)
+}
+
+func auth0ConfigWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.Config {
+	values := cfg.Values()
+	values[key] = value
+	return sourcecdk.NewConfig(values)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {

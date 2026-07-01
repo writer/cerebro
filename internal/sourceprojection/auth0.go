@@ -214,7 +214,7 @@ func auth0GrantProjections(event *cerebrov1.EventEnvelope, defaultSubjectType st
 	}
 	attributes := event.GetAttributes()
 	grantID := firstNonEmpty(attributes["client_grant_id"], attributes["grant_id"], attributes["resource_id"], attributes["entitlement_id"])
-	clientID := strings.TrimSpace(attributes["client_id"])
+	clientID := strings.TrimSpace(firstNonEmpty(attributes["client_id"], attributes["app_id"]))
 	audience := strings.TrimSpace(attributes["audience"])
 	subjectType := firstNonEmpty(attributes["subject_type"], defaultSubjectType)
 	subjectID := firstNonEmpty(attributes["subject_id"], attributes["user_id"], clientID)

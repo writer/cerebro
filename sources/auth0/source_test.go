@@ -365,6 +365,97 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 	}
 }
 
+func TestCheckAuth0PathParamFamiliesUsesFanoutConfig(t *testing.T) {
+	for _, tt := range []struct {
+		family     string
+		configKey  string
+		configVal  string
+		wantPath   string
+		response   any
+		extraQuery map[string]string
+	}{
+		{
+			family:     auth0api.FamilyOrganizationMembers,
+			configKey:  "organization_ids",
+			configVal:  "org-1 org-2",
+			wantPath:   "/organizations/org-1/members",
+			response:   []map[string]any{{"user_id": "auth0|user-1", "email": "user@example.test"}},
+			extraQuery: map[string]string{"fields": "roles"},
+		},
+		{
+			family:    auth0api.FamilyUserRoles,
+			configKey: "user_ids",
+			configVal: "auth0|user-1 auth0|user-2",
+			wantPath:  "/users/auth0%7Cuser-1/roles",
+			response:  []map[string]any{{"id": "role-1", "name": "Security Administrators"}},
+		},
+		{
+			family:    auth0api.FamilyUserAuthenticationMethods,
+			configKey: "user_ids",
+			configVal: "auth0|user-1 auth0|user-2",
+			wantPath:  "/users/auth0%7Cuser-1/authentication-methods",
+			response:  []map[string]any{{"id": "auth-method-1", "type": "webauthn-roaming"}},
+		},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			healthRequests := 0
+			scopedRequests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/oauth/token" {
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+					return
+				}
+				if r.Header.Get("Authorization") != "Bearer test-token" {
+					t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+				}
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.EscapedPath() {
+				case "/users":
+					healthRequests++
+					w.WriteHeader(http.StatusNoContent)
+				case tt.wantPath:
+					scopedRequests++
+					for key, want := range tt.extraQuery {
+						if got := r.URL.Query().Get(key); got != want {
+							t.Fatalf("query %s = %q, want %q", key, got, want)
+						}
+					}
+					_ = json.NewEncoder(w).Encode(tt.response)
+				default:
+					t.Fatalf("path = %q, want /users or %s", r.URL.EscapedPath(), tt.wantPath)
+				}
+			}))
+			defer server.Close()
+
+			cfgValues := map[string]string{
+				"tenant_id":     "tenant",
+				"base_url":      server.URL,
+				"family":        tt.family,
+				"token_url":     server.URL + "/oauth/token",
+				"client_id":     "client-id",
+				"client_secret": "client-secret",
+				"domain":        "tenant.auth0.com",
+				tt.configKey:    tt.configVal,
+			}
+			if tt.family == auth0api.FamilyOrganizationMembers {
+				cfgValues["organization_member_fields"] = "roles"
+			}
+			if err := source.Check(context.Background(), sourcecdk.NewConfig(cfgValues)); err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			if healthRequests != 1 || scopedRequests != 1 {
+				t.Fatalf("health/scoped requests = %d/%d, want 1/1", healthRequests, scopedRequests)
+			}
+		})
+	}
+}
+
 func TestReadPaginatesAuth0AuditEventsByLastLogID(t *testing.T) {
 	source, err := New()
 	if err != nil {
