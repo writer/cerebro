@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestSnykAssetProjection(t *testing.T) {
@@ -58,22 +59,27 @@ func TestSnykRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
 	cases := []struct {
 		event      *cerebrov1.EventEnvelope
 		entityType string
+		entityURN  string
 	}{
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-org-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.orgs", Attributes: map[string]string{"org_id": "org-1", "name": "Security"}},
 			entityType: "snyk.orgs",
+			entityURN:  "urn:cerebro:tenant:snyk_orgs:org-1",
 		},
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-group-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.groups", Attributes: map[string]string{"group_id": "group-1", "name": "Engineering"}},
 			entityType: "snyk.groups",
+			entityURN:  "urn:cerebro:tenant:snyk_groups:group-1",
 		},
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-project-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.projects", Attributes: map[string]string{"project_id": "project-1", "name": "Checkout API", "resource_type": "snyk_project"}},
 			entityType: "snyk.projects",
+			entityURN:  "urn:cerebro:tenant:snyk_projects:project-1",
 		},
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-target-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.targets", Attributes: map[string]string{"target_id": "target-1", "display_name": "writer/cerebro", "resource_type": "snyk_target"}},
 			entityType: "snyk.targets",
+			entityURN:  "urn:cerebro:tenant:snyk_targets:target-1",
 		},
 		{
 			event:      &cerebrov1.EventEnvelope{Id: "snyk-asset-event", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.assets", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "repository", "resource_name": "writer/cerebro"}},
@@ -104,6 +110,9 @@ func TestSnykRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
 			if !hasProjectedEntityType(entities, tc.entityType) {
 				t.Fatalf("kind %q did not project %q; entities=%#v", tc.event.Kind, tc.entityType, entities)
 			}
+			if tc.entityURN != "" && !hasProjectedEntityURN(entities, tc.entityURN) {
+				t.Fatalf("kind %q did not project URN %q; entities=%#v", tc.event.Kind, tc.entityURN, entities)
+			}
 		})
 	}
 }
@@ -133,4 +142,13 @@ func TestSnykOrgProjectionUsesOrgIDWhenGroupIDPresent(t *testing.T) {
 		}
 	}
 	t.Fatalf("missing snyk.orgs entity in %#v", entities)
+}
+
+func hasProjectedEntityURN(entities []*ports.ProjectedEntity, urn string) bool {
+	for _, entity := range entities {
+		if entity != nil && entity.URN == urn {
+			return true
+		}
+	}
+	return false
 }
