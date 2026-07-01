@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "family": "teams",
+      "provider": "fivetran",
+      "record_class": "authorization_scope",
+      "resource_id": "team_1",
+      "resource_name": "Platform Data Team",
+      "resource_type": "team",
+      "resource_urn": "urn:cerebro:tenant:fivetran_teams:team_1",
+      "role": "Team Manager",
+      "schema": "teams",
+      "source_event_id": "team_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "team_id": "team_1",
+      "team_name": "Platform Data Team",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-teams-event-1",
+    "kind": "fivetran.teams",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "description": "Owns production connector access",
+      "id": "team_1",
+      "name": "Platform Data Team",
+      "role": "Team Manager"
+    },
+    "schema_ref": "fivetran/teams/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

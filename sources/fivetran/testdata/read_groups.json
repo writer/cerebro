@@ -1,0 +1,31 @@
+[
+  {
+    "attributes": {
+      "family": "groups",
+      "group_id": "group_1",
+      "group_name": "Revenue Analytics",
+      "provider": "fivetran",
+      "record_class": "identity_group",
+      "resource_id": "group_1",
+      "resource_name": "Revenue Analytics",
+      "resource_type": "identity_group",
+      "resource_urn": "urn:cerebro:tenant:fivetran_groups:group_1",
+      "schema": "groups",
+      "source_event_id": "group_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-groups-event-1",
+    "kind": "fivetran.groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "created_at": "2026-05-15T10:00:00Z",
+      "id": "group_1",
+      "name": "Revenue Analytics"
+    },
+    "schema_ref": "fivetran/groups/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

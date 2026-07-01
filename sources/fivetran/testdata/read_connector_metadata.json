@@ -1,0 +1,32 @@
+[
+  {
+    "attributes": {
+      "family": "connector_metadata",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "snowflake",
+      "resource_name": "Snowflake",
+      "resource_type": "connector_type",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connector_metadata:snowflake",
+      "schema": "connector_metadata",
+      "service": "snowflake",
+      "source_event_id": "snowflake",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-connector-metadata-event-1",
+    "kind": "fivetran.connector_metadata",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "description": "Snowflake destination connector metadata",
+      "id": "snowflake",
+      "name": "Snowflake",
+      "service": "snowflake",
+      "type": "warehouse"
+    },
+    "schema_ref": "fivetran/connector_metadata/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

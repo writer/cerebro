@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "family": "team_groups",
+      "group_id": "group_1",
+      "member_id": "group_1",
+      "member_type": "group",
+      "provider": "fivetran",
+      "record_class": "relationship",
+      "resource_id": "group_1",
+      "resource_name": "Revenue Analytics",
+      "resource_type": "group",
+      "resource_urn": "urn:cerebro:tenant:fivetran_team_groups:group_1",
+      "role": "Member",
+      "schema": "team_groups",
+      "source_event_id": "group_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "team_id": "team_1",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-team-groups-event-1",
+    "kind": "fivetran.team_groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "group_1",
+      "name": "Revenue Analytics",
+      "role": "Member"
+    },
+    "schema_ref": "fivetran/team_groups/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

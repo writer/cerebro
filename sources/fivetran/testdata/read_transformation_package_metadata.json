@@ -1,0 +1,30 @@
+[
+  {
+    "attributes": {
+      "family": "transformation_package_metadata",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "dbt_package_1",
+      "resource_name": "dbt_utils",
+      "resource_type": "transformation_package_metadata",
+      "resource_urn": "urn:cerebro:tenant:fivetran_transformation_package_metadata:dbt_package_1",
+      "schema": "transformation_package_metadata",
+      "source_event_id": "dbt_package_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-transformation-package-metadata-event-1",
+    "kind": "fivetran.transformation_package_metadata",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "dbt_package_1",
+      "latest_version": "1.3.0",
+      "name": "dbt_utils",
+      "version": "1.3.0"
+    },
+    "schema_ref": "fivetran/transformation_package_metadata/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

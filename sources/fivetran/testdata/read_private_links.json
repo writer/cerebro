@@ -1,0 +1,35 @@
+[
+  {
+    "attributes": {
+      "family": "private_links",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "region": "us-east-1",
+      "resource_id": "private_link_1",
+      "resource_name": "Production private link",
+      "resource_type": "private_link",
+      "resource_urn": "urn:cerebro:tenant:fivetran_private_links:private_link_1",
+      "schema": "private_links",
+      "service": "snowflake",
+      "source_event_id": "private_link_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-private-links-event-1",
+    "kind": "fivetran.private_links",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "cloud_provider": "AWS",
+      "host": "vpce-12345.example.test",
+      "id": "private_link_1",
+      "name": "Production private link",
+      "region": "us-east-1",
+      "service": "snowflake",
+      "state": "CONNECTED"
+    },
+    "schema_ref": "fivetran/private_links/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

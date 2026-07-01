@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "family": "roles",
+      "provider": "fivetran",
+      "record_class": "authorization_role",
+      "resource_id": "Account Administrator",
+      "resource_name": "Account Administrator",
+      "resource_type": "authorization_role",
+      "resource_urn": "urn:cerebro:tenant:fivetran_roles:account_administrator",
+      "role_id": "Account Administrator",
+      "role_name": "Account Administrator",
+      "role_scope": "account",
+      "schema": "roles",
+      "source_event_id": "Account Administrator",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-roles-event-1",
+    "kind": "fivetran.roles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "description": "Full account administration",
+      "is_custom": false,
+      "is_deprecated": false,
+      "name": "Account Administrator",
+      "scope": "account"
+    },
+    "schema_ref": "fivetran/roles/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

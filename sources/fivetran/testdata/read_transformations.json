@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "connection_id": "connection_1",
+      "family": "transformations",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "transformation_1",
+      "resource_name": "transformation_1",
+      "resource_type": "transformation",
+      "resource_urn": "urn:cerebro:tenant:fivetran_transformations:transformation_1",
+      "schema": "transformations",
+      "source_event_id": "transformation_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "status": "SUCCEEDED",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-transformations-event-1",
+    "kind": "fivetran.transformations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "connection_id": "connection_1",
+      "created_at": "2026-05-20T08:00:00Z",
+      "id": "transformation_1",
+      "status": "SUCCEEDED",
+      "type": "dbt",
+      "updated_at": "2026-06-02T08:00:00Z"
+    },
+    "schema_ref": "fivetran/transformations/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "attributes": {
+      "connection_id": "connection_1",
+      "family": "connection_certificates",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "connection_certificate_1",
+      "resource_name": "Connection TLS Certificate",
+      "resource_type": "certificate",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connection_certificates:connection_certificate_1",
+      "schema": "connection_certificates",
+      "source_event_id": "connection_certificate_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-connection-certificates-event-1",
+    "kind": "fivetran.connection_certificates",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "hash": "sha256:connection_certificate_hash",
+      "id": "connection_certificate_1",
+      "name": "Connection TLS Certificate",
+      "public_key": "-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\\n-----END PUBLIC KEY-----",
+      "sha1": "connection_sha1_fingerprint",
+      "sha256": "connection_sha256_fingerprint",
+      "type": "TLS",
+      "validated_by": "user_1",
+      "validated_date": "2026-05-24T11:00:00Z"
+    },
+    "schema_ref": "fivetran/connection_certificates/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

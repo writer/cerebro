@@ -1,133 +1,468 @@
 id: fivetran
 name: "Fivetran"
-description: "Collects users, accounts, records, policies, and audit events from Fivetran and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context."
+description: "Collects Fivetran users, groups, teams, roles, pipeline resources, logging configuration, networking agents, keys, secrets, transformations, webhooks, and membership edges from the Fivetran REST API."
+provider_api:
+  status: verified
+  transport: rest
+  auth: basic_api_key_secret
+  base_url: https://api.fivetran.com
+  required_headers:
+    Accept: application/json;version=2
+  references:
+    - https://fivetran.com/docs/rest-api/api-reference/open-api-definition
+    - https://fivetran.com/assets-docs/openapi/file_v1.json
+    - https://fivetran.com/docs/rest-api/getting-started
+    - https://fivetran.com/docs/rest-api/getting-started/pagination
+  health:
+    method: GET
+    path: /v1/account/info
+  pagination:
+    type: cursor
+    cursor_param: cursor
+    cursor_json_path: $.data.next_cursor
+    page_size_param: limit
+    record_selector: $.data.items[*]
+  families:
+    - id: users
+      method: GET
+      path: /v1/users
+    - id: user_connection_memberships
+      method: GET
+      path: /v1/users/{userId}/connections
+    - id: user_group_memberships
+      method: GET
+      path: /v1/users/{userId}/groups
+    - id: groups
+      method: GET
+      path: /v1/groups
+    - id: group_users
+      method: GET
+      path: /v1/groups/{groupId}/users
+    - id: group_connections
+      method: GET
+      path: /v1/groups/{groupId}/connections
+    - id: teams
+      method: GET
+      path: /v1/teams
+    - id: team_users
+      method: GET
+      path: /v1/teams/{teamId}/users
+    - id: team_groups
+      method: GET
+      path: /v1/teams/{teamId}/groups
+    - id: team_connections
+      method: GET
+      path: /v1/teams/{teamId}/connections
+    - id: roles
+      method: GET
+      path: /v1/roles
+    - id: destinations
+      method: GET
+      path: /v1/destinations
+    - id: destination_certificates
+      method: GET
+      path: /v1/destinations/{destinationId}/certificates
+    - id: destination_fingerprints
+      method: GET
+      path: /v1/destinations/{destinationId}/fingerprints
+    - id: connections
+      method: GET
+      path: /v1/connections
+    - id: connection_certificates
+      method: GET
+      path: /v1/connections/{connectionId}/certificates
+    - id: connection_fingerprints
+      method: GET
+      path: /v1/connections/{connectionId}/fingerprints
+    - id: log_services
+      method: GET
+      path: /v1/external-logging
+    - id: webhooks
+      method: GET
+      path: /v1/webhooks
+    - id: private_links
+      method: GET
+      path: /v1/private-links
+    - id: proxy_agents
+      method: GET
+      path: /v1/proxy
+    - id: proxy_agent_connections
+      method: GET
+      path: /v1/proxy/{agentId}/connections
+    - id: hybrid_deployment_agents
+      method: GET
+      path: /v1/hybrid-deployment-agents
+    - id: connector_metadata
+      method: GET
+      path: /v1/metadata/connector-types
+    - id: connector_sdk_packages
+      method: GET
+      path: /v1/connector-sdk/packages
+    - id: system_keys
+      method: GET
+      path: /v1/system-keys
+    - id: external_secrets_managers
+      method: GET
+      path: /v1/external-secrets-managers
+    - id: external_secrets_manager_entities
+      method: GET
+      path: /v1/external-secrets-managers-entities
+    - id: transformations
+      method: GET
+      path: /v1/transformations
+    - id: transformation_projects
+      method: GET
+      path: /v1/transformation-projects
+    - id: transformation_package_metadata
+      method: GET
+      path: /v1/transformations/package-metadata
 emitted_kinds:
+  - fivetran.connector_metadata
+  - fivetran.connector_sdk_packages
+  - fivetran.connection_certificates
+  - fivetran.connection_fingerprints
+  - fivetran.connections
+  - fivetran.destination_certificates
+  - fivetran.destination_fingerprints
+  - fivetran.destinations
+  - fivetran.external_secrets_manager_entities
+  - fivetran.external_secrets_managers
+  - fivetran.group_connections
+  - fivetran.group_users
+  - fivetran.groups
+  - fivetran.hybrid_deployment_agents
+  - fivetran.log_services
+  - fivetran.private_links
+  - fivetran.proxy_agent_connections
+  - fivetran.proxy_agents
+  - fivetran.roles
+  - fivetran.system_keys
+  - fivetran.team_connections
+  - fivetran.team_groups
+  - fivetran.team_users
+  - fivetran.teams
+  - fivetran.transformation_package_metadata
+  - fivetran.transformation_projects
+  - fivetran.transformations
+  - fivetran.user_connection_memberships
+  - fivetran.user_group_memberships
   - fivetran.users
-  - fivetran.accounts
-  - fivetran.records
-  - fivetran.policies
-  - fivetran.audit_events
+  - fivetran.webhooks
 runtime_families:
-  - accounts
-  - audit_events
-  - policies
-  - records
+  - connector_metadata
+  - connector_sdk_packages
+  - connection_certificates
+  - connection_fingerprints
+  - connections
+  - destination_certificates
+  - destination_fingerprints
+  - destinations
+  - external_secrets_manager_entities
+  - external_secrets_managers
+  - group_connections
+  - group_users
+  - groups
+  - hybrid_deployment_agents
+  - log_services
+  - private_links
+  - proxy_agent_connections
+  - proxy_agents
+  - roles
+  - system_keys
+  - team_connections
+  - team_groups
+  - team_users
+  - teams
+  - transformation_package_metadata
+  - transformation_projects
+  - transformations
+  - user_connection_memberships
+  - user_group_memberships
   - users
+  - webhooks
 kind_lifecycle:
+  - kind: fivetran.connector_metadata
+    status: active
+  - kind: fivetran.connector_sdk_packages
+    status: active
+  - kind: fivetran.connection_certificates
+    status: active
+  - kind: fivetran.connection_fingerprints
+    status: active
+  - kind: fivetran.connections
+    status: active
+  - kind: fivetran.destination_certificates
+    status: active
+  - kind: fivetran.destination_fingerprints
+    status: active
+  - kind: fivetran.destinations
+    status: active
+  - kind: fivetran.external_secrets_manager_entities
+    status: active
+  - kind: fivetran.external_secrets_managers
+    status: active
+  - kind: fivetran.group_connections
+    status: active
+  - kind: fivetran.group_users
+    status: active
+  - kind: fivetran.groups
+    status: active
+  - kind: fivetran.hybrid_deployment_agents
+    status: active
+  - kind: fivetran.log_services
+    status: active
+  - kind: fivetran.private_links
+    status: active
+  - kind: fivetran.proxy_agent_connections
+    status: active
+  - kind: fivetran.proxy_agents
+    status: active
+  - kind: fivetran.roles
+    status: active
+  - kind: fivetran.system_keys
+    status: active
+  - kind: fivetran.team_connections
+    status: active
+  - kind: fivetran.team_groups
+    status: active
+  - kind: fivetran.team_users
+    status: active
+  - kind: fivetran.teams
+    status: active
+  - kind: fivetran.transformation_package_metadata
+    status: active
+  - kind: fivetran.transformation_projects
+    status: active
+  - kind: fivetran.transformations
+    status: active
+  - kind: fivetran.user_connection_memberships
+    status: active
+  - kind: fivetran.user_group_memberships
+    status: active
   - kind: fivetran.users
     status: active
-  - kind: fivetran.accounts
-    status: active
-  - kind: fivetran.records
-    status: active
-  - kind: fivetran.policies
-    status: active
-  - kind: fivetran.audit_events
+  - kind: fivetran.webhooks
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: fivetran
   dimensions:
-    - id: users
+    - id: account_access
       type: entity_family
-      title: "Users"
-      families: [users]
-      support: partial
+      title: "Account access"
+      families: [users, groups, group_users, teams, team_users, team_groups, team_connections, roles, user_group_memberships, user_connection_memberships]
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, access_review]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: accounts
+        - Fivetran REST API account access endpoints enumerate users, groups, teams, roles, and scoped membership relationships.
+    - id: pipeline_inventory
       type: entity_family
-      title: "Accounts"
-      families: [accounts]
-      support: partial
+      title: "Pipeline inventory"
+      families: [connections, destinations, group_connections, connector_metadata, connector_sdk_packages]
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: records
-      type: entity_family
-      title: "Records"
-      families: [records]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: policies
+        - Connection and destination endpoints use the provider's versioned JSON accept header.
+    - id: logging_and_hooks
       type: lifecycle_state
-      title: "Policies"
-      families: [policies]
-      support: partial
-      high_value: true
-      evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
+      title: "Logging and webhooks"
+      families: [log_services, webhooks]
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - The REST API exposes log service and webhook configuration; event logs are delivered through Fivetran logging products rather than a REST audit-events list.
+    - id: networking_agents
+      type: entity_family
+      title: "Networking and agents"
+      families: [private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents, connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints]
+      support: supported
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [network_security, asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
+    - id: keys_and_secrets
+      type: entity_family
+      title: "Keys and secrets managers"
+      families: [system_keys, external_secrets_managers, external_secrets_manager_entities]
+      support: supported
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [secrets_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+    - id: transformations
+      type: entity_family
+      title: "Transformations"
+      families: [transformations, transformation_projects, transformation_package_metadata]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [data_governance]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, groups, teams, roles, destinations, connections, log_services]
+      support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
 event_contracts:
+  - kind: fivetran.connector_metadata
+    schema_ref: fivetran/connector_metadata/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.connector_sdk_packages
+    schema_ref: fivetran/connector_sdk_packages/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.connection_certificates
+    schema_ref: fivetran/connection_certificates/v1
+    required_attributes: [connection_id, source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.connection_fingerprints
+    schema_ref: fivetran/connection_fingerprints/v1
+    required_attributes: [connection_id, source_event_id]
+    required_payload_fields: [hash]
+  - kind: fivetran.connections
+    schema_ref: fivetran/connections/v1
+    required_attributes: [connection_id, source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.destination_certificates
+    schema_ref: fivetran/destination_certificates/v1
+    required_attributes: [destination_id, source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.destination_fingerprints
+    schema_ref: fivetran/destination_fingerprints/v1
+    required_attributes: [destination_id, source_event_id]
+    required_payload_fields: [hash]
+  - kind: fivetran.destinations
+    schema_ref: fivetran/destinations/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.external_secrets_manager_entities
+    schema_ref: fivetran/external_secrets_manager_entities/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.external_secrets_managers
+    schema_ref: fivetran/external_secrets_managers/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.group_connections
+    schema_ref: fivetran/group_connections/v1
+    required_attributes: [group_id, source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.group_users
+    schema_ref: fivetran/group_users/v1
+    required_attributes: [group_id, source_event_id, user_id]
+    required_payload_fields: [id]
+  - kind: fivetran.groups
+    schema_ref: fivetran/groups/v1
+    required_attributes: [group_id, source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.hybrid_deployment_agents
+    schema_ref: fivetran/hybrid_deployment_agents/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.log_services
+    schema_ref: fivetran/log_services/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.private_links
+    schema_ref: fivetran/private_links/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.proxy_agent_connections
+    schema_ref: fivetran/proxy_agent_connections/v1
+    required_attributes: [proxy_agent_id, source_event_id]
+    required_payload_fields: [connection_id]
+  - kind: fivetran.proxy_agents
+    schema_ref: fivetran/proxy_agents/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.roles
+    schema_ref: fivetran/roles/v1
+    required_attributes: [role_name, source_event_id]
+    required_payload_fields: [name]
+  - kind: fivetran.system_keys
+    schema_ref: fivetran/system_keys/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.team_connections
+    schema_ref: fivetran/team_connections/v1
+    required_attributes: [member_id, source_event_id, team_id]
+    required_payload_fields: [id]
+  - kind: fivetran.team_groups
+    schema_ref: fivetran/team_groups/v1
+    required_attributes: [member_id, source_event_id, team_id]
+    required_payload_fields: [id]
+  - kind: fivetran.team_users
+    schema_ref: fivetran/team_users/v1
+    required_attributes: [source_event_id, team_id, user_id]
+    required_payload_fields: [user_id]
+  - kind: fivetran.teams
+    schema_ref: fivetran/teams/v1
+    required_attributes: [source_event_id, team_id]
+    required_payload_fields: [id]
+  - kind: fivetran.transformation_package_metadata
+    schema_ref: fivetran/transformation_package_metadata/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.transformation_projects
+    schema_ref: fivetran/transformation_projects/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.transformations
+    schema_ref: fivetran/transformations/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]
+  - kind: fivetran.user_connection_memberships
+    schema_ref: fivetran/user_connection_memberships/v1
+    required_attributes: [member_id, source_event_id, user_id]
+    required_payload_fields: [id]
+  - kind: fivetran.user_group_memberships
+    schema_ref: fivetran/user_group_memberships/v1
+    required_attributes: [member_id, source_event_id, user_id]
+    required_payload_fields: [id]
   - kind: fivetran.users
     schema_ref: fivetran/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: fivetran.accounts
-    schema_ref: fivetran/accounts/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: fivetran.records
-    schema_ref: fivetran/records/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: fivetran.policies
-    schema_ref: fivetran/policies/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
-  - kind: fivetran.audit_events
-    schema_ref: fivetran/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+    required_attributes: [source_event_id, user_id]
+    required_payload_fields: [id]
+  - kind: fivetran.webhooks
+    schema_ref: fivetran/webhooks/v1
+    required_attributes: [source_event_id]
+    required_payload_fields: [id]

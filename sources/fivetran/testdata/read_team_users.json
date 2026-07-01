@@ -1,0 +1,34 @@
+[
+  {
+    "attributes": {
+      "family": "team_users",
+      "member_id": "user_1",
+      "member_type": "user",
+      "provider": "fivetran",
+      "record_class": "identity_membership",
+      "resource_id": "user_1",
+      "resource_name": "user_1",
+      "resource_type": "user",
+      "resource_urn": "urn:cerebro:tenant:fivetran_team_users:user_1",
+      "role": "Member",
+      "schema": "team_users",
+      "source_event_id": "user_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "team_id": "team_1",
+      "tenant_id": "tenant",
+      "user_id": "user_1"
+    },
+    "id": "fivetran-team-users-event-1",
+    "kind": "fivetran.team_users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "created_at": "2026-05-22T12:00:00Z",
+      "role": "Member",
+      "user_id": "user_1"
+    },
+    "schema_ref": "fivetran/team_users/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

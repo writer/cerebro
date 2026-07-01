@@ -1,0 +1,41 @@
+[
+  {
+    "attributes": {
+      "destination_id": "destination_1",
+      "family": "destinations",
+      "group_id": "group_1",
+      "provider": "fivetran",
+      "proxy_agent_id": "proxy_agent_1",
+      "record_class": "asset",
+      "region": "AWS_US_EAST_1",
+      "resource_id": "destination_1",
+      "resource_name": "snowflake",
+      "resource_type": "destination",
+      "resource_urn": "urn:cerebro:tenant:fivetran_destinations:destination_1",
+      "schema": "destinations",
+      "service": "snowflake",
+      "source_event_id": "destination_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-destinations-event-1",
+    "kind": "fivetran.destinations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "external_secrets_manager_id": "secret_manager_1",
+      "group_id": "group_1",
+      "id": "destination_1",
+      "networking_method": "PrivateLink",
+      "private_link_id": "private_link_1",
+      "proxy_agent_id": "proxy_agent_1",
+      "region": "AWS_US_EAST_1",
+      "service": "snowflake",
+      "setup_status": "CONNECTED",
+      "time_zone_offset": "0"
+    },
+    "schema_ref": "fivetran/destinations/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

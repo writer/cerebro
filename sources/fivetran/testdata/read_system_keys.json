@@ -1,0 +1,31 @@
+[
+  {
+    "attributes": {
+      "family": "system_keys",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "system_key_1",
+      "resource_name": "Production system key",
+      "resource_type": "system_key",
+      "resource_urn": "urn:cerebro:tenant:fivetran_system_keys:system_key_1",
+      "schema": "system_keys",
+      "source_event_id": "system_key_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-system-keys-event-1",
+    "kind": "fivetran.system_keys",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "created_at": "2026-05-18T08:00:00Z",
+      "id": "system_key_1",
+      "last_used_at": "2026-06-02T07:30:00Z",
+      "name": "Production system key",
+      "type": "ssh"
+    },
+    "schema_ref": "fivetran/system_keys/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "enabled": "true",
+      "family": "hybrid_deployment_agents",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "hybrid_agent_1",
+      "resource_name": "Hybrid deployment agent",
+      "resource_type": "hybrid_deployment_agent",
+      "resource_urn": "urn:cerebro:tenant:fivetran_hybrid_deployment_agents:hybrid_agent_1",
+      "schema": "hybrid_deployment_agents",
+      "source_event_id": "hybrid_agent_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "status": "ONLINE",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-hybrid-deployment-agents-event-1",
+    "kind": "fivetran.hybrid_deployment_agents",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "display_name": "Hybrid deployment agent",
+      "enabled": true,
+      "id": "hybrid_agent_1",
+      "registered_at": "2026-05-13T08:00:00Z",
+      "status": "ONLINE"
+    },
+    "schema_ref": "fivetran/hybrid_deployment_agents/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

@@ -963,6 +963,37 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
+func TestReadUsesConfiguredNestedListKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items": []map[string]any{{"id": "U1", "name": "alice"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "user",
+		Path:       "/users",
+		URNKind:    "test_user",
+		IDKeys:     []string{"id"},
+		ListKeys:   []string{"data.items"},
+		Attributes: map[string]string{"user_id": "id", "name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "user",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["user_id"] != "U1" {
+		t.Fatalf("Events = %#v, want user from data.items list", pull.Events)
+	}
+}
+
 func TestReadWrapsScalarListItemsWithIDKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("channel"); got != "C1" {

@@ -1,0 +1,31 @@
+[
+  {
+    "attributes": {
+      "connection_id": "connection_1",
+      "family": "connector_sdk_packages",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "sdk_package_1",
+      "resource_name": "sdk_package_1",
+      "resource_type": "connector_sdk_package",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connector_sdk_packages:sdk_package_1",
+      "schema": "connector_sdk_packages",
+      "source_event_id": "sdk_package_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-connector-sdk-packages-event-1",
+    "kind": "fivetran.connector_sdk_packages",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "connection_id": "connection_1",
+      "created_at": "2026-05-17T08:00:00Z",
+      "id": "sdk_package_1",
+      "version": "1.0.0"
+    },
+    "schema_ref": "fivetran/connector_sdk_packages/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

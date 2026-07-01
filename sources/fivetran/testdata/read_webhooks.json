@@ -1,0 +1,35 @@
+[
+  {
+    "attributes": {
+      "active": "true",
+      "family": "webhooks",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "webhook_1",
+      "resource_name": "webhook_1",
+      "resource_type": "webhook",
+      "resource_urn": "urn:cerebro:tenant:fivetran_webhooks:webhook_1",
+      "schema": "webhooks",
+      "source_event_id": "webhook_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-webhooks-event-1",
+    "kind": "fivetran.webhooks",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "active": true,
+      "created_at": "2026-05-12T08:00:00Z",
+      "events": [
+        "sync_end",
+        "sync_start"
+      ],
+      "id": "webhook_1",
+      "url": "https://hooks.example.test/fivetran"
+    },
+    "schema_ref": "fivetran/webhooks/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "attributes": {
+      "connection_id": "connection_1",
+      "destination_id": "destination_1",
+      "family": "connections",
+      "group_id": "group_1",
+      "provider": "fivetran",
+      "record_class": "asset",
+      "resource_id": "connection_1",
+      "resource_name": "salesforce_raw",
+      "resource_type": "connection",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connections:connection_1",
+      "schema": "salesforce_raw",
+      "service": "salesforce",
+      "source_event_id": "connection_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "status": "connected",
+      "tenant_id": "tenant"
+    },
+    "id": "fivetran-connections-event-1",
+    "kind": "fivetran.connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "created_at": "2026-05-21T09:30:00Z",
+      "destination_id": "destination_1",
+      "group_id": "group_1",
+      "id": "connection_1",
+      "paused": false,
+      "schema": "salesforce_raw",
+      "service": "salesforce",
+      "setup_state": "connected",
+      "status": "connected",
+      "sync_frequency": 60,
+      "updated_at": "2026-06-02T09:30:00Z"
+    },
+    "schema_ref": "fivetran/connections/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

@@ -375,7 +375,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		return []json.RawMessage{item}, next, responseCursorKnown, nil
 	}
 	for _, key := range responseListKeys(family) {
-		if value, ok := object[key]; ok {
+		if value := rawMessageAtPath(object, key); len(value) != 0 {
 			if err := json.Unmarshal(value, &items); err == nil {
 				return items, next, responseCursorKnown, nil
 			}
@@ -560,34 +560,38 @@ func responseCursorValue(family Family, value string) string {
 }
 
 func rawStringAtPath(object map[string]json.RawMessage, path string) string {
+	return rawString(rawMessageAtPath(object, path))
+}
+
+func rawMessageAtPath(object map[string]json.RawMessage, path string) json.RawMessage {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return ""
+		return nil
 	}
 	if !strings.Contains(path, ".") {
-		return rawString(object[path])
+		return object[path]
 	}
 	parts := strings.Split(path, ".")
 	current := object
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return ""
+			return nil
 		}
 		raw := current[part]
 		if len(raw) == 0 {
-			return ""
+			return nil
 		}
 		if i == len(parts)-1 {
-			return rawString(raw)
+			return raw
 		}
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &nested); err != nil {
-			return ""
+			return nil
 		}
 		current = nested
 	}
-	return ""
+	return nil
 }
 
 func linkHeaderCursor(family Family, headers http.Header) string {

@@ -1,0 +1,40 @@
+[
+  {
+    "attributes": {
+      "connection_id": "connection_1",
+      "family": "user_connection_memberships",
+      "group_id": "group_1",
+      "member_id": "connection_1",
+      "member_type": "connection",
+      "provider": "fivetran",
+      "record_class": "relationship",
+      "resource_id": "connection_1",
+      "resource_name": "warehouse_raw",
+      "resource_type": "connection",
+      "resource_urn": "urn:cerebro:tenant:fivetran_user_connection_memberships:connection_1",
+      "role": "Connector Viewer",
+      "schema": "user_connection_memberships",
+      "service": "snowflake",
+      "source_event_id": "connection_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "status": "connected",
+      "tenant_id": "tenant",
+      "user_id": "user_1"
+    },
+    "id": "fivetran-user-connection-memberships-event-1",
+    "kind": "fivetran.user_connection_memberships",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "group_id": "group_1",
+      "id": "connection_1",
+      "role": "Connector Viewer",
+      "schema": "warehouse_raw",
+      "service": "snowflake",
+      "status": "connected"
+    },
+    "schema_ref": "fivetran/user_connection_memberships/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]

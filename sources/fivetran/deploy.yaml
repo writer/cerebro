@@ -1,15 +1,155 @@
 sourceId: fivetran
 secretKeys:
+  - FIVETRAN_API_KEY
+  - FIVETRAN_API_SECRET
   - FIVETRAN_BASE_URL
-  - FIVETRAN_TOKEN
+  - FIVETRAN_CONNECTION_IDS
+  - FIVETRAN_DESTINATION_IDS
+  - FIVETRAN_GROUP_IDS
+  - FIVETRAN_PROXY_AGENT_IDS
+  - FIVETRAN_TEAM_IDS
+  - FIVETRAN_USER_IDS
 runtimes:
   - localId: users
-    config:
+    config: &default_config
       base_url: env:FIVETRAN_BASE_URL
-      family: users
-      failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
       expected_cadence_seconds: "86400"
-      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1/account/info
+      password: env:FIVETRAN_API_SECRET
       per_page: "100"
-      token: env:FIVETRAN_TOKEN
+      stale_after_seconds: "86400"
+      username: env:FIVETRAN_API_KEY
+      family: users
+  - localId: groups
+    config:
+      <<: *default_config
+      family: groups
+  - localId: teams
+    config:
+      <<: *default_config
+      family: teams
+  - localId: roles
+    config:
+      <<: *default_config
+      family: roles
+  - localId: destinations
+    config:
+      <<: *default_config
+      family: destinations
+  - localId: connections
+    config:
+      <<: *default_config
+      family: connections
+  - localId: log_services
+    config:
+      <<: *default_config
+      family: log_services
+  - localId: webhooks
+    config:
+      <<: *default_config
+      family: webhooks
+  - localId: private_links
+    config:
+      <<: *default_config
+      family: private_links
+  - localId: proxy_agents
+    config:
+      <<: *default_config
+      family: proxy_agents
+  - localId: hybrid_deployment_agents
+    config:
+      <<: *default_config
+      family: hybrid_deployment_agents
+  - localId: connector_metadata
+    config:
+      <<: *default_config
+      family: connector_metadata
+  - localId: connector_sdk_packages
+    config:
+      <<: *default_config
+      family: connector_sdk_packages
+  - localId: system_keys
+    config:
+      <<: *default_config
+      family: system_keys
+  - localId: external_secrets_managers
+    config:
+      <<: *default_config
+      family: external_secrets_managers
+  - localId: external_secrets_manager_entities
+    config:
+      <<: *default_config
+      family: external_secrets_manager_entities
+  - localId: transformations
+    config:
+      <<: *default_config
+      family: transformations
+  - localId: transformation_projects
+    config:
+      <<: *default_config
+      family: transformation_projects
+  - localId: transformation_package_metadata
+    config:
+      <<: *default_config
+      family: transformation_package_metadata
+  - localId: user_connection_memberships
+    config:
+      <<: *default_config
+      family: user_connection_memberships
+      user_ids: env:FIVETRAN_USER_IDS
+  - localId: user_group_memberships
+    config:
+      <<: *default_config
+      family: user_group_memberships
+      user_ids: env:FIVETRAN_USER_IDS
+  - localId: group_users
+    config:
+      <<: *default_config
+      family: group_users
+      group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: group_connections
+    config:
+      <<: *default_config
+      family: group_connections
+      group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: team_users
+    config:
+      <<: *default_config
+      family: team_users
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: team_groups
+    config:
+      <<: *default_config
+      family: team_groups
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: team_connections
+    config:
+      <<: *default_config
+      family: team_connections
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: connection_certificates
+    config:
+      <<: *default_config
+      family: connection_certificates
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connection_fingerprints
+    config:
+      <<: *default_config
+      family: connection_fingerprints
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: destination_certificates
+    config:
+      <<: *default_config
+      family: destination_certificates
+      destination_ids: env:FIVETRAN_DESTINATION_IDS
+  - localId: destination_fingerprints
+    config:
+      <<: *default_config
+      family: destination_fingerprints
+      destination_ids: env:FIVETRAN_DESTINATION_IDS
+  - localId: proxy_agent_connections
+    config:
+      <<: *default_config
+      family: proxy_agent_connections
+      proxy_agent_ids: env:FIVETRAN_PROXY_AGENT_IDS

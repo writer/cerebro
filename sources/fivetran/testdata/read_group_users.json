@@ -1,0 +1,45 @@
+[
+  {
+    "attributes": {
+      "active": "true",
+      "display_name": "Ops Owner",
+      "email": "ops.owner@example.test",
+      "family": "group_users",
+      "group_id": "group_1",
+      "login": "ops.owner@example.test",
+      "member_id": "user_1",
+      "member_type": "user",
+      "primary_email": "ops.owner@example.test",
+      "provider": "fivetran",
+      "record_class": "identity_membership",
+      "resource_id": "user_1",
+      "resource_name": "Ops Owner",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:fivetran_group_users:user_1",
+      "role": "Account Administrator",
+      "schema": "group_users",
+      "source_event_id": "user_1",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "tenant_id": "tenant",
+      "user_id": "user_1"
+    },
+    "id": "fivetran-group-users-event-1",
+    "kind": "fivetran.group_users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "active": true,
+      "created_at": "2026-05-20T12:00:00Z",
+      "email": "ops.owner@example.test",
+      "family_name": "Owner",
+      "given_name": "Ops",
+      "id": "user_1",
+      "logged_in_at": "2026-06-02T18:12:00Z",
+      "role": "Account Administrator",
+      "verified": true
+    },
+    "schema_ref": "fivetran/group_users/v1",
+    "source_id": "fivetran",
+    "tenant_id": "tenant"
+  }
+]
