@@ -28,6 +28,7 @@ type xlsxWorksheet struct {
 }
 
 type xlsxRow struct {
+	Ref   int        `xml:"r,attr"`
 	Cells []xlsxCell `xml:"c"`
 }
 
@@ -38,6 +39,13 @@ type xlsxCell struct {
 	InlineStr struct {
 		Text string `xml:"t"`
 	} `xml:"is"`
+}
+
+type spreadsheetRow struct {
+	Values    []string
+	SheetName string
+	RowNumber int
+	CellRefs  []string
 }
 
 func createRunAttributes(request createRequest, questionCount int) map[string]string {
@@ -93,7 +101,7 @@ func parseIntakeAttachment(request createRequest) ([]ports.QuestionnaireQuestion
 		if err != nil {
 			return nil, err
 		}
-		questions, err := questionsFromSpreadsheetRows(rows)
+		questions, err := questionsFromSpreadsheetRows(rows, format)
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +187,7 @@ func inferAttachmentFormat(filename string, contentType string) string {
 	}
 }
 
-func extractXLSXRows(data []byte) ([][]string, error) {
+func extractXLSXRows(data []byte) ([]spreadsheetRow, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("%w: read xlsx workbook: %w", ErrInvalidRequest, err)
@@ -197,7 +205,7 @@ func extractXLSXRows(data []byte) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	allRows := [][]string{}
+	allRows := []spreadsheetRow{}
 	for _, name := range worksheetNames {
 		rows, err := readXLSXWorksheet(files[name], sharedStrings)
 		if err != nil {
@@ -251,7 +259,7 @@ func readXLSXSharedStrings(file *zip.File) ([]string, error) {
 	return values, nil
 }
 
-func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([][]string, error) {
+func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([]spreadsheetRow, error) {
 	if file == nil {
 		return nil, nil
 	}
@@ -263,9 +271,11 @@ func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([][]string, erro
 	if err := xml.Unmarshal(body, &worksheet); err != nil {
 		return nil, fmt.Errorf("%w: parse xlsx worksheet: %w", ErrInvalidRequest, err)
 	}
-	rows := make([][]string, 0, len(worksheet.Rows))
+	rows := make([]spreadsheetRow, 0, len(worksheet.Rows))
+	sheetName := worksheetNameFromPath(file.Name)
 	for _, row := range worksheet.Rows {
 		cells := []string{}
+		cellRefs := []string{}
 		nextIndex := 0
 		for _, cell := range row.Cells {
 			index := xlsxColumnIndex(cell.Ref)
@@ -274,43 +284,95 @@ func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([][]string, erro
 			}
 			for len(cells) <= index {
 				cells = append(cells, "")
+				cellRefs = append(cellRefs, "")
 			}
 			cells[index] = xlsxCellValue(cell, sharedStrings)
+			cellRefs[index] = strings.TrimSpace(cell.Ref)
 			nextIndex = index + 1
 		}
-		cells = trimEmptyTail(cells)
+		cells, cellRefs = trimEmptyTailWithRefs(cells, cellRefs)
 		if len(cells) > 0 {
-			rows = append(rows, cells)
+			rows = append(rows, spreadsheetRow{
+				Values:    cells,
+				SheetName: sheetName,
+				RowNumber: firstPositive(row.Ref, xlsxRowNumber(firstNonEmpty(cellRefs...))),
+				CellRefs:  cellRefs,
+			})
 		}
 	}
 	return rows, nil
 }
 
-func questionsFromSpreadsheetRows(rows [][]string) ([]ports.QuestionnaireQuestion, error) {
+func questionsFromSpreadsheetRows(rows []spreadsheetRow, sourceFormat string) ([]ports.QuestionnaireQuestion, error) {
+	sourceFormat = firstNonEmpty(canonicalIntakeFormat(sourceFormat), "xlsx")
 	for index, row := range rows {
-		header := normalizedHeaders(row)
+		header := normalizedHeaders(row.Values)
 		questionIndex := headerIndex(header, "question", "question_text", "prompt")
 		if questionIndex < 0 {
 			continue
 		}
 		intakeRows := []intakeRow{}
 		for _, record := range rows[index+1:] {
-			if questionIndex >= len(record) || strings.TrimSpace(record[questionIndex]) == "" {
+			if record.SheetName != row.SheetName {
+				break
+			}
+			if questionIndex >= len(record.Values) || strings.TrimSpace(record.Values[questionIndex]) == "" {
 				continue
 			}
 			intakeRows = append(intakeRows, intakeRow{
-				ID:                   columnValue(record, header, "id", "question_id"),
-				Question:             record[questionIndex],
-				Section:              columnValue(record, header, "section", "category"),
-				RequiredAnswerFormat: columnValue(record, header, "required_answer_format", "answer_format", "format"),
-				MappedControls:       splitList(columnValue(record, header, "mapped_controls", "controls", "control_ids")),
-				RequiredSlots:        splitList(columnValue(record, header, "required_evidence_slots", "evidence_slots", "slots")),
-				OwnerID:              columnValue(record, header, "owner_id", "owner", "assignee"),
+				ID:                   columnValue(record.Values, header, "id", "question_id"),
+				Question:             record.Values[questionIndex],
+				Section:              columnValue(record.Values, header, "section", "category"),
+				RequiredAnswerFormat: columnValue(record.Values, header, "required_answer_format", "answer_format", "format"),
+				MappedControls:       splitList(columnValue(record.Values, header, "mapped_controls", "controls", "control_ids")),
+				RequiredSlots:        splitList(columnValue(record.Values, header, "required_evidence_slots", "evidence_slots", "slots")),
+				OwnerID:              columnValue(record.Values, header, "owner_id", "owner", "assignee"),
+				SourceLocator: &ports.QuestionnaireSourceLocator{
+					SourceFormat: sourceFormat,
+					SheetName:    record.SheetName,
+					RowNumber:    record.RowNumber,
+					Cell:         cellRefAt(record.CellRefs, questionIndex),
+					ColumnName:   header[questionIndex],
+				},
 			})
 		}
 		return questionsFromIntakeRows(intakeRows), nil
 	}
-	return nil, fmt.Errorf("%w: xlsx workbook must include a question, question_text, or prompt column", ErrInvalidRequest)
+	return nil, fmt.Errorf("%w: %s workbook must include a question, question_text, or prompt column", ErrInvalidRequest, sourceFormat)
+}
+
+func worksheetNameFromPath(path string) string {
+	name := strings.TrimSuffix(filepath.Base(strings.TrimSpace(path)), filepath.Ext(path))
+	return firstNonEmpty(name, "worksheet")
+}
+
+func xlsxRowNumber(ref string) int {
+	for index, char := range ref {
+		if char >= '0' && char <= '9' {
+			value, err := strconv.Atoi(ref[index:])
+			if err == nil {
+				return value
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+func firstPositive(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func cellRefAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return strings.TrimSpace(values[index])
 }
 
 func xlsxCellValue(cell xlsxCell, sharedStrings []string) string {
@@ -365,11 +427,14 @@ func readZipFile(file *zip.File) ([]byte, error) {
 	return body, nil
 }
 
-func trimEmptyTail(values []string) []string {
+func trimEmptyTailWithRefs(values []string, refs []string) ([]string, []string) {
 	for len(values) > 0 && strings.TrimSpace(values[len(values)-1]) == "" {
 		values = values[:len(values)-1]
+		if len(refs) > len(values) {
+			refs = refs[:len(values)]
+		}
 	}
-	return values
+	return values, refs
 }
 
 func extractPDFText(data []byte) (string, error) {
@@ -416,12 +481,19 @@ func extractPDFText(data []byte) (string, error) {
 
 func parsePDFPromptText(value string) ([]ports.QuestionnaireQuestion, error) {
 	rows := []intakeRow{}
-	for _, line := range strings.Split(value, "\n") {
+	for lineIndex, line := range strings.Split(value, "\n") {
 		line = normalizePortalQuestionLine(line)
 		if line == "" || !looksLikeQuestionnairePrompt(line) {
 			continue
 		}
-		rows = append(rows, intakeRow{Question: line})
+		rows = append(rows, intakeRow{
+			Question: line,
+			SourceLocator: &ports.QuestionnaireSourceLocator{
+				SourceFormat: "pdf",
+				LineNumber:   lineIndex + 1,
+				Text:         line,
+			},
+		})
 	}
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("%w: pdf intake did not contain extractable questionnaire prompts", ErrInvalidRequest)

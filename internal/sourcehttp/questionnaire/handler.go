@@ -195,13 +195,14 @@ type createRequest struct {
 }
 
 type intakeRow struct {
-	ID                   string   `json:"id,omitempty"`
-	Question             string   `json:"question,omitempty"`
-	Section              string   `json:"section,omitempty"`
-	RequiredAnswerFormat string   `json:"required_answer_format,omitempty"`
-	MappedControls       []string `json:"mapped_controls,omitempty"`
-	RequiredSlots        []string `json:"required_evidence_slots,omitempty"`
-	OwnerID              string   `json:"owner_id,omitempty"`
+	ID                   string                            `json:"id,omitempty"`
+	Question             string                            `json:"question,omitempty"`
+	Section              string                            `json:"section,omitempty"`
+	RequiredAnswerFormat string                            `json:"required_answer_format,omitempty"`
+	MappedControls       []string                          `json:"mapped_controls,omitempty"`
+	RequiredSlots        []string                          `json:"required_evidence_slots,omitempty"`
+	OwnerID              string                            `json:"owner_id,omitempty"`
+	SourceLocator        *ports.QuestionnaireSourceLocator `json:"source_locator,omitempty"`
 }
 
 type assignmentRequest struct {
@@ -1042,7 +1043,31 @@ func questionsForCreate(request createRequest) ([]ports.QuestionnaireQuestion, e
 		}
 		questions = append(questions, parsed...)
 	}
+	questions = applyCreateSourceContext(questions, request)
 	return questionnairedomain.NormalizeQuestionsForIntake(questions), nil
+}
+
+func applyCreateSourceContext(questions []ports.QuestionnaireQuestion, request createRequest) []ports.QuestionnaireQuestion {
+	sourceFilename := strings.TrimSpace(request.SourceFilename)
+	portalURL := strings.TrimSpace(request.PortalURL)
+	for index := range questions {
+		if questions[index].SourceLocator == nil {
+			if sourceFilename == "" && portalURL == "" {
+				continue
+			}
+			questions[index].SourceLocator = &ports.QuestionnaireSourceLocator{}
+		}
+		if sourceFilename != "" && questions[index].SourceLocator.SourceFilename == "" {
+			questions[index].SourceLocator.SourceFilename = sourceFilename
+		}
+		if portalURL != "" && questions[index].SourceLocator.PortalURL == "" {
+			questions[index].SourceLocator.PortalURL = portalURL
+			if questions[index].SourceLocator.SourceFormat == "" {
+				questions[index].SourceLocator.SourceFormat = "portal"
+			}
+		}
+	}
+	return questions
 }
 
 func allowsPortalCaptureWithoutQuestions(request createRequest) bool {
@@ -1117,7 +1142,7 @@ func parseDelimitedIntake(value string, format string) ([]ports.QuestionnaireQue
 		return nil, fmt.Errorf("%w: %s intake must include a question column", ErrInvalidRequest, firstNonEmpty(format, "csv"))
 	}
 	rows := []intakeRow{}
-	for _, record := range records[1:] {
+	for rowIndex, record := range records[1:] {
 		if questionIndex >= len(record) || strings.TrimSpace(record[questionIndex]) == "" {
 			continue
 		}
@@ -1129,6 +1154,11 @@ func parseDelimitedIntake(value string, format string) ([]ports.QuestionnaireQue
 			MappedControls:       splitList(columnValue(record, header, "mapped_controls", "controls", "control_ids")),
 			RequiredSlots:        splitList(columnValue(record, header, "required_evidence_slots", "evidence_slots", "slots")),
 			OwnerID:              columnValue(record, header, "owner_id", "owner", "assignee"),
+			SourceLocator: &ports.QuestionnaireSourceLocator{
+				SourceFormat: firstNonEmpty(format, "csv"),
+				RowNumber:    rowIndex + 2,
+				ColumnName:   header[questionIndex],
+			},
 		})
 	}
 	return questionsFromIntakeRows(rows), nil
@@ -1136,14 +1166,21 @@ func parseDelimitedIntake(value string, format string) ([]ports.QuestionnaireQue
 
 func parsePlainTextIntake(value string) []ports.QuestionnaireQuestion {
 	rows := []intakeRow{}
-	for _, line := range strings.Split(value, "\n") {
+	for lineIndex, line := range strings.Split(value, "\n") {
 		line = strings.TrimSpace(line)
 		line = strings.TrimPrefix(line, "- ")
 		line = strings.TrimPrefix(line, "* ")
 		if line == "" {
 			continue
 		}
-		rows = append(rows, intakeRow{Question: line})
+		rows = append(rows, intakeRow{
+			Question: line,
+			SourceLocator: &ports.QuestionnaireSourceLocator{
+				SourceFormat: "text",
+				LineNumber:   lineIndex + 1,
+				Text:         line,
+			},
+		})
 	}
 	return questionsFromIntakeRows(rows)
 }
@@ -1155,7 +1192,7 @@ func parsePortalIntake(value string) ([]ports.QuestionnaireQuestion, error) {
 	}
 	rows := []intakeRow{}
 	section := ""
-	for _, line := range strings.Split(trimmed, "\n") {
+	for lineIndex, line := range strings.Split(trimmed, "\n") {
 		line = normalizePortalQuestionLine(line)
 		if line == "" {
 			continue
@@ -1167,7 +1204,16 @@ func parsePortalIntake(value string) ([]ports.QuestionnaireQuestion, error) {
 		if !looksLikeQuestionnairePrompt(line) {
 			continue
 		}
-		rows = append(rows, intakeRow{Question: line, Section: section})
+		rows = append(rows, intakeRow{
+			Question: line,
+			Section:  section,
+			SourceLocator: &ports.QuestionnaireSourceLocator{
+				SourceFormat:     "portal",
+				LineNumber:       lineIndex + 1,
+				Text:             line,
+				PortalFieldLabel: line,
+			},
+		})
 	}
 	return questionsFromIntakeRows(rows), nil
 }
@@ -1189,6 +1235,7 @@ func questionFromIntakeRow(row intakeRow) ports.QuestionnaireQuestion {
 		MappedControls:       row.MappedControls,
 		RequiredSlots:        row.RequiredSlots,
 		OwnerID:              row.OwnerID,
+		SourceLocator:        row.SourceLocator,
 	}
 }
 

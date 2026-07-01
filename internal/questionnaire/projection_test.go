@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
@@ -11,6 +12,7 @@ import (
 
 func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	dueAt := now.Add(24 * time.Hour)
 	record := ports.QuestionnaireRunRecord{
 		QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1", Title: "Core SSO review"},
 		QuestionnaireRunSource: ports.QuestionnaireRunSource{
@@ -30,24 +32,68 @@ func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 				ID:             "q-1",
 				Question:       "Do you enforce MFA?",
 				MappedControls: []string{"SOC2-CC6.1"},
+				RequiredSlots:  []string{"identity_mfa"},
+				OwnerID:        "security@example.com",
+				SourceLocator: &ports.QuestionnaireSourceLocator{
+					SourceFormat: "xlsx",
+					SheetName:    "sheet1",
+					RowNumber:    2,
+					Cell:         "B2",
+				},
 			}},
 			Answers: []ports.QuestionnaireRunAnswer{{
 				ID:          "a-1",
 				QuestionID:  "q-1",
 				AnswerState: ports.QuestionnaireAnswerSupported,
 				Controls:    []string{"SOC2-CC6.1"},
+				EvidenceSlots: []ports.QuestionnaireEvidenceSlot{{
+					ID:          "identity_mfa",
+					Label:       "MFA",
+					State:       "satisfied",
+					Required:    true,
+					CitationIDs: []string{"evidence-1"},
+				}},
 				Citations: []ports.QuestionnaireCitation{{
 					ID:               "evidence-1",
 					Label:            "MFA configuration",
+					SourceID:         "okta",
+					RuntimeID:        "okta-prod",
 					EvidenceID:       "evidence-1",
 					EvidencePacketID: "packet-1",
 					EvidenceType:     "identity_mfa",
+					ControlID:        "SOC2-CC6.1",
 					FreshnessStatus:  "current",
+					SourceEventIDs:   []string{"event-1"},
+					GraphRootURNs:    []string{"urn:cerebro:writer:okta_application:core-sso"},
+					GraphPathIDs:     []string{"path-1"},
+				}},
+				MissingEvidence: []ports.QuestionnaireEvidenceGap{{
+					ID:          "gap-1",
+					Code:        "stale_evidence",
+					Reason:      "Refresh MFA export before approval.",
+					SlotID:      "identity_mfa",
+					ControlID:   "SOC2-CC6.1",
+					PacketID:    "packet-1",
+					ReviewState: ports.QuestionnaireReviewNeedsReview,
 				}},
 				Freshness: ports.QuestionnaireFreshness{Status: "current"},
 			}},
+			Assignments: []ports.QuestionnaireAssignment{{
+				ID:         "assignment-1",
+				QuestionID: "q-1",
+				GapID:      "gap-1",
+				OwnerID:    "evidence@example.com",
+				Status:     "open",
+				DueAt:      &dueAt,
+			}},
 		},
-		QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{CreatedAt: now, UpdatedAt: now},
+		QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+			Attributes: map[string]string{
+				QuestionnaireAttributeSourceArtifactURN: "urn:cerebro:writer:assurance_document:intake-sheet",
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}
 
 	projection, err := BuildGraphProjection(record, nil, now)
@@ -60,6 +106,16 @@ func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 	}
 	if len(projection.Entities) < 4 {
 		t.Fatalf("entities = %d, want questionnaire, owner, control, and evidence entities", len(projection.Entities))
+	}
+	for _, entityType := range []string{
+		"questionnaire.question",
+		"questionnaire.answer",
+		"questionnaire.evidence_slot",
+		"questionnaire.evidence_gap",
+	} {
+		if !hasProjectedEntityType(projection.Entities, entityType) {
+			t.Fatalf("missing %s entity in %#v", entityType, projection.Entities)
+		}
 	}
 	if !hasAssociatedProjectedLink(projection.Links, questionnaireURN, "urn:cerebro:writer:vendor:core-sso") {
 		t.Fatalf("missing vendor association link in %#v", projection.Links)
@@ -75,6 +131,51 @@ func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 	}
 	if got := projection.Entities[0].Attributes["ready_answer_count"]; got != "1" {
 		t.Fatalf("ready answer count attr = %q, want 1", got)
+	}
+
+	questionURN := questionnaireQuestionURN("writer", "run-1", "q-1")
+	answerURN := questionnaireAnswerURN("writer", "run-1", "q-1", "a-1")
+	slotURN := questionnaireSlotURN("writer", "run-1", "q-1", "identity_mfa")
+	gapURN := questionnaireGapURN("writer", "run-1", "q-1", "gap-1")
+	evidenceURN := citationResourceURN("writer", record.Answers[0].Citations[0])
+	controlURN := controlEntityURN("writer", "SOC2-CC6.1")
+	ownerURN := ownerEntityURN("writer", "evidence@example.com")
+	if !hasProjectedLink(projection.Links, questionnaireURN, fabriccontract.RelationContains, questionURN) {
+		t.Fatalf("missing run contains question link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, answerURN, fabriccontract.RelationAttachedTo, questionURN) {
+		t.Fatalf("missing answer attached-to question link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, slotURN, fabriccontract.RelationHasEvidence, evidenceURN) {
+		t.Fatalf("missing slot evidence link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, questionURN, fabriccontract.RelationSupports, controlURN) {
+		t.Fatalf("missing question control link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, questionURN, fabriccontract.RelationHasContext, "urn:cerebro:writer:assurance_document:intake-sheet") {
+		t.Fatalf("missing question source-artifact context link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, answerURN, fabriccontract.RelationHasContext, "urn:cerebro:writer:okta_application:core-sso") {
+		t.Fatalf("missing answer graph-root context link in %#v", projection.Links)
+	}
+	if !hasProjectedLink(projection.Links, gapURN, fabriccontract.RelationAssignedTo, ownerURN) {
+		t.Fatalf("missing gap assignment link in %#v", projection.Links)
+	}
+}
+
+func TestProjectionAttributeValueTruncatesAtUTF8Boundary(t *testing.T) {
+	value := strings.Repeat("a", 511) + "界" + "tail"
+
+	got := projectionAttributeValue(value)
+
+	if !utf8.ValidString(got) {
+		t.Fatalf("projectionAttributeValue returned invalid UTF-8: %q", got)
+	}
+	if len(got) > 512 {
+		t.Fatalf("projectionAttributeValue length = %d, want at most 512 bytes", len(got))
+	}
+	if strings.Contains(got, "\uFFFD") {
+		t.Fatalf("projectionAttributeValue inserted replacement character: %q", got)
 	}
 }
 
@@ -122,6 +223,11 @@ func TestBuildGraphProjectionRemovesStaleLinks(t *testing.T) {
 	}
 	if !hasProjectedLinkToRelation(projection.RemovedLinks, fabriccontract.RelationHasEvidence) {
 		t.Fatalf("removed links missing stale evidence link: %#v", projection.RemovedLinks)
+	}
+	oldQuestionURN := questionnaireQuestionURN("writer", "run-1", "q-1")
+	oldControlURN := controlEntityURN("writer", "old-control")
+	if !hasProjectedLink(projection.RemovedLinks, oldQuestionURN, fabriccontract.RelationSupports, oldControlURN) {
+		t.Fatalf("removed links missing stale question control link: %#v", projection.RemovedLinks)
 	}
 	if hasAssociatedProjectedLink(projection.RemovedLinks, questionnaireURN, "urn:cerebro:writer:vendor:new") {
 		t.Fatalf("removed links include current vendor link: %#v", projection.RemovedLinks)
@@ -237,6 +343,24 @@ func hasAssociatedProjectedLink(links []*ports.ProjectedLink, fromURN string, to
 func hasProjectedLinkToRelation(links []*ports.ProjectedLink, relation string) bool {
 	for _, link := range links {
 		if link.Relation == relation {
+			return true
+		}
+	}
+	return false
+}
+
+func hasProjectedLink(links []*ports.ProjectedLink, fromURN string, relation string, toURN string) bool {
+	for _, link := range links {
+		if link.FromURN == fromURN && link.Relation == relation && link.ToURN == toURN {
+			return true
+		}
+	}
+	return false
+}
+
+func hasProjectedEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
+	for _, entity := range entities {
+		if entity.EntityType == entityType {
 			return true
 		}
 	}
