@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -52,6 +53,33 @@ func (s *Source) ReadPathParamValuesWithCheckpoint(ctx context.Context, cfg sour
 	return sourcecdk.Pull{}, nil
 }
 
+func (s *Source) ReadPathParamSetsWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, sets []map[string]string) (sourcecdk.Pull, error) {
+	sets = compactParamSets(sets)
+	if len(sets) == 0 {
+		return sourcecdk.Pull{}, fmt.Errorf("%w: %s path parameter sets are required", sourcecdk.ErrInvalidConfig, s.options.SourceID)
+	}
+	state := parseFanoutCursor(fanoutCursorToken(cursor))
+	for state.Index < len(sets) {
+		pull, err := s.ReadWithCheckpoint(ctx, configWithValues(cfg, sets[state.Index]), sourceCursor(state.Cursor), checkpoint)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		if next := sourcecdk.CursorToken(pull.NextCursor); next != "" {
+			pull.NextCursor = encodeFanoutCursor(s.options.SourceID, fanoutCursor{Index: state.Index, Cursor: next})
+			return pull, nil
+		}
+		if len(pull.Events) > 0 {
+			if state.Index+1 < len(sets) {
+				pull.NextCursor = encodeFanoutCursor(s.options.SourceID, fanoutCursor{Index: state.Index + 1})
+			}
+			return pull, nil
+		}
+		state.Index++
+		state.Cursor = ""
+	}
+	return sourcecdk.Pull{}, nil
+}
+
 // CheckPathParamValues validates a path-parameter scoped family with the first
 // configured value. Check calls should stay cheap while still proving the
 // scoped endpoint can be reached with the provided credentials.
@@ -61,6 +89,14 @@ func (s *Source) CheckPathParamValues(ctx context.Context, cfg sourcecdk.Config,
 		return fmt.Errorf("%w: %s %s values are required", sourcecdk.ErrInvalidConfig, s.options.SourceID, param)
 	}
 	return s.Check(ctx, configWithValue(cfg, param, values[0]))
+}
+
+func (s *Source) CheckPathParamSets(ctx context.Context, cfg sourcecdk.Config, sets []map[string]string) error {
+	sets = compactParamSets(sets)
+	if len(sets) == 0 {
+		return fmt.Errorf("%w: %s path parameter sets are required", sourcecdk.ErrInvalidConfig, s.options.SourceID)
+	}
+	return s.Check(ctx, configWithValues(cfg, sets[0]))
 }
 
 // DiscoverPathParamValues discovers URNs for a path-parameter scoped family
@@ -74,6 +110,29 @@ func (s *Source) DiscoverPathParamValues(ctx context.Context, cfg sourcecdk.Conf
 	urns := []sourcecdk.URN{}
 	for _, value := range values {
 		discovered, err := s.Discover(ctx, configWithValue(cfg, param, value))
+		if err != nil {
+			return nil, err
+		}
+		for _, urn := range discovered {
+			if _, ok := seen[urn]; ok {
+				continue
+			}
+			seen[urn] = struct{}{}
+			urns = append(urns, urn)
+		}
+	}
+	return urns, nil
+}
+
+func (s *Source) DiscoverPathParamSets(ctx context.Context, cfg sourcecdk.Config, sets []map[string]string) ([]sourcecdk.URN, error) {
+	sets = compactParamSets(sets)
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("%w: %s path parameter sets are required", sourcecdk.ErrInvalidConfig, s.options.SourceID)
+	}
+	seen := map[sourcecdk.URN]struct{}{}
+	urns := []sourcecdk.URN{}
+	for _, set := range sets {
+		discovered, err := s.Discover(ctx, configWithValues(cfg, set))
 		if err != nil {
 			return nil, err
 		}
@@ -159,6 +218,45 @@ func configWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.C
 	values := cfg.Values()
 	values[key] = value
 	return sourcecdk.NewConfig(values)
+}
+
+func configWithValues(cfg sourcecdk.Config, params map[string]string) sourcecdk.Config {
+	values := cfg.Values()
+	for key, value := range params {
+		if key = strings.TrimSpace(key); key != "" {
+			values[key] = strings.TrimSpace(value)
+		}
+	}
+	return sourcecdk.NewConfig(values)
+}
+
+func compactParamSets(sets []map[string]string) []map[string]string {
+	seen := map[string]struct{}{}
+	out := []map[string]string{}
+	for _, set := range sets {
+		next := map[string]string{}
+		parts := []string{}
+		for key, value := range set {
+			key = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
+			if key == "" || value == "" {
+				continue
+			}
+			next[key] = value
+			parts = append(parts, key+"="+value)
+		}
+		if len(next) == 0 {
+			continue
+		}
+		sort.Strings(parts)
+		key := strings.Join(parts, "\x00")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, next)
+	}
+	return out
 }
 
 func compactUniqueStrings(values []string) []string {

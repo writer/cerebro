@@ -15,10 +15,13 @@
       "description": "Manage identity security settings",
       "group_id": "role-1",
       "group_name": "Security Administrators",
+      "record_class": "identity_group",
       "resource_id": "role-1",
       "resource_name": "Security Administrators",
       "resource_type": "role",
       "resource_urn": "urn:cerebro:tenant:runtime_roles:role-1",
+      "role_id": "role-1",
+      "role_name": "Security Administrators",
       "source_event_id": "role-1",
       "tenant_id": "tenant"
     }

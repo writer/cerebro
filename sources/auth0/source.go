@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -14,26 +13,31 @@ import (
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
-//go:embed catalog.yaml
-var catalogFS embed.FS
+//go:embed catalog.yaml families.json
+var sourceFS embed.FS
 
 const (
-	sourceID                   = "auth0"
-	defaultFamily              = familyUsers
-	defaultHealthPath          = "/users"
-	defaultBaseURLTemplate     = "https://${config.domain}/api/v2"
-	tokenScheme                = "Bearer"
-	oauthTokenURLTemplate      = "https://${config.domain}/oauth/token" // #nosec G101 -- token endpoint URL template, not credential material.
-	oauthScopeSeparator        = " "
-	oauthTokenExpirationBuffer = 60 * time.Second
-	familyUsers                = "users"
-	familyRoles                = "roles"
-	familyAuditEvents          = "audit_events"
+	sourceID                      = "auth0"
+	defaultFamily                 = familyUsers
+	defaultBaseURLTemplate        = "https://${config.domain}/api/v2"
+	tokenScheme                   = "Bearer"
+	oauthTokenURLTemplate         = "https://${config.domain}/oauth/token" // #nosec G101 -- token endpoint URL template, not credential material.
+	oauthScopeSeparator           = " "
+	oauthTokenExpirationBuffer    = 60 * time.Second
+	familyUsers                   = "users"
+	familyRoles                   = "roles"
+	familyAuditEvents             = "audit_events"
+	familyClients                 = "clients"
+	familyConnections             = "connections"
+	familyOrganizations           = "organizations"
+	familyOrganizationMembers     = "organization_members"
+	familyRoleUsers               = "role_users"
+	familyOrganizationMemberRoles = "organization_member_roles"
 )
 
 var templateKeys = []string{"domain", "client_id", "client_secret"}
 
-var oauthScopes = []string{"read:logs", "read:roles", "read:users"}
+var oauthScopes = []string{"read:clients", "read:connections", "read:logs", "read:organization_member_roles", "read:organization_members", "read:organizations", "read:roles", "read:users"}
 
 var oauthTokenParams = map[string]string{"audience": "https://${config.domain}/api/v2/"}
 
@@ -48,55 +52,29 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	families, err := auth0Families()
+	if err != nil {
+		return nil, err
+	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
 		SourceID:        sourceID,
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
-			{
-				Name:                 familyUsers,
-				Path:                 "/users",
-				URNKind:              "runtime_users",
-				IDKeys:               []string{"user_id", "name", "id", "email", "primary_email", "login"},
-				PageSizeParams:       []string{"per_page"},
-				TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|user_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|user_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes:     map[string]string{"record_class": "identity_user", "resource_type": "identity_user", "schema": "users", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_users"},
-				IncrementalWatermark: true,
-			},
-			{
-				Name:                 familyRoles,
-				Path:                 "/roles",
-				URNKind:              "runtime_roles",
-				IDKeys:               []string{"id", "name", "group_id", "group_email", "email"},
-				PageSizeParams:       []string{"per_page"},
-				TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes:     map[string]string{"record_class": "identity_group", "resource_type": "role", "schema": "roles", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_roles"},
-				IncrementalWatermark: true,
-			},
-			{
-				Name:                 familyAuditEvents,
-				Path:                 "/logs",
-				URNKind:              "runtime_audit_events",
-				IDKeys:               []string{"log_id", "event_id", "id", "uuid", "request_id"},
-				CursorParam:          "from",
-				PageSizeParams:       []string{"take"},
-				TimestampKeys:        []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"actor_email": "actor_email|actor.email|email|user.email|user_name", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name|user_name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at|date", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id|client_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name|client_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|log_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes:     map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
-				IncrementalWatermark: true,
-			},
-		},
+		Families:        families,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func auth0Families() ([]jsonapi.Family, error) {
+	return jsonapi.LoadFamiliesFromFS(sourceFS, "families.json")
+}
+
+func familyNames() []string {
+	return []string{familyUsers, familyRoles, familyAuditEvents, familyClients, familyConnections, familyOrganizations, familyOrganizationMembers, familyRoleUsers, familyOrganizationMemberRoles}
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {
@@ -111,8 +89,15 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
-		return err
+	if sourcecdk.ConfigValue(runtimeCfg, "family") == familyOrganizationMemberRoles {
+		sets, err := organizationMemberRoleParamSets(runtimeCfg)
+		if err != nil {
+			return err
+		}
+		return s.inner.CheckPathParamSets(ctx, runtimeCfg, sets)
+	}
+	if param, values := pathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Check(ctx, runtimeCfg)
 }
@@ -122,6 +107,16 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
+	if sourcecdk.ConfigValue(runtimeCfg, "family") == familyOrganizationMemberRoles {
+		sets, err := organizationMemberRoleParamSets(runtimeCfg)
+		if err != nil {
+			return nil, err
+		}
+		return s.inner.DiscoverPathParamSets(ctx, runtimeCfg, sets)
+	}
+	if param, values := pathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	return s.inner.Discover(ctx, runtimeCfg)
 }
 
@@ -130,6 +125,16 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
+	if sourcecdk.ConfigValue(runtimeCfg, "family") == familyOrganizationMemberRoles {
+		sets, err := organizationMemberRoleParamSets(runtimeCfg)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return s.inner.ReadPathParamSetsWithCheckpoint(ctx, runtimeCfg, cursor, nil, sets)
+	}
+	if param, values := pathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.ReadPathParamValues(ctx, runtimeCfg, cursor, param, values)
+	}
 	return s.inner.Read(ctx, runtimeCfg, cursor)
 }
 
@@ -137,6 +142,16 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
 		return sourcecdk.Pull{}, err
+	}
+	if sourcecdk.ConfigValue(runtimeCfg, "family") == familyOrganizationMemberRoles {
+		sets, err := organizationMemberRoleParamSets(runtimeCfg)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return s.inner.ReadPathParamSetsWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, sets)
+	}
+	if param, values := pathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
 	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
@@ -187,46 +202,59 @@ func validateAuth0Domain(value string) error {
 	return nil
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, sourcecdk.ConfigValue(cfg, "base_url"), s != nil && s.allowLoopback)
-	if err != nil {
-		return err
-	}
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	path, err = sourcehttp.NormalizeRequestPath(sourceID, path)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
-	if err != nil {
-		return fmt.Errorf("build %s health request: %w", sourceID, err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if token := strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token"))); token != "" {
-		req.Header.Set("Authorization", tokenScheme+" "+token)
-	}
-	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback, Timeout: 10 * time.Second})
-	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("%s health endpoint %s returned HTTP %d", sourceID, path, resp.StatusCode)
-	}
-	return nil
-}
-
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
+	return sourcecdk.LoadSpecFromFS(sourceFS, "catalog.yaml")
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+func pathParamValues(cfg sourcecdk.Config, family string) (string, []string) {
+	switch strings.TrimSpace(family) {
+	case familyRoleUsers:
+		return "role_id", configListValues(cfg, "role_ids", "role_id")
+	case familyOrganizationMembers:
+		return "organization_id", configListValues(cfg, "organization_ids", "organization_id")
+	default:
+		return "", nil
+	}
+}
+
+func organizationMemberRoleParamSets(cfg sourcecdk.Config) ([]map[string]string, error) {
+	organizationIDs := configListValues(cfg, "organization_ids", "organization_id")
+	userIDs := configListValues(cfg, "user_ids", "user_id")
+	if len(organizationIDs) == 0 {
+		return nil, fmt.Errorf("%w: %s organization_ids values are required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("%w: %s user_ids values are required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	sets := make([]map[string]string, 0, len(organizationIDs)*len(userIDs))
+	seen := map[string]struct{}{}
+	for _, organizationID := range organizationIDs {
+		for _, userID := range userIDs {
+			key := organizationID + "\x00" + userID
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			sets = append(sets, map[string]string{"organization_id": organizationID, "user_id": userID})
 		}
 	}
-	return ""
+	return sets, nil
+}
+
+func configListValues(cfg sourcecdk.Config, keys ...string) []string {
+	values := []string{}
+	for _, key := range keys {
+		raw := strings.TrimSpace(sourcecdk.ConfigValue(cfg, key))
+		if raw == "" {
+			continue
+		}
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				values = append(values, part)
+			}
+		}
+	}
+	return values
 }
 
 func (s *Source) allowLoopbackForTest() {
