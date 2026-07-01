@@ -1,0 +1,37 @@
+[
+  {
+    "id": "jira-permission-schemes-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.permission_schemes",
+    "schema_ref": "jira/permission_schemes/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "description": "Default project access",
+      "external_id": "1001",
+      "family": "permission_schemes",
+      "policy_id": "1001",
+      "policy_name": "Default Permission Scheme",
+      "policy_type": "permission_scheme",
+      "provider": "jira",
+      "record_class": "policy",
+      "resource_id": "1001",
+      "resource_name": "Default Permission Scheme",
+      "resource_type": "permission_scheme",
+      "resource_urn": "urn:cerebro:tenant:jira_permission_schemes:1001",
+      "schema": "permission_schemes",
+      "source_event_id": "1001",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "tenant_id": "tenant"
+    },
+    "payload": {
+      "description": "Default project access",
+      "id": 1001,
+      "name": "Default Permission Scheme",
+      "permissions": [
+        {"id": 10, "permission": "BROWSE_PROJECTS", "holder": {"type": "group", "parameter": "jira-administrators", "value": "group-1"}}
+      ]
+    }
+  }
+]

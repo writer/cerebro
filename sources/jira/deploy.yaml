@@ -1,6 +1,7 @@
 sourceId: jira
 secretKeys:
-  - JIRA_TOKEN
+  - JIRA_USERNAME
+  - JIRA_API_TOKEN
 runtimes:
   - localId: users
     config:
@@ -10,4 +11,65 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:JIRA_TOKEN
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: groups
+    config:
+      family: groups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: group-members
+    config:
+      family: group_members
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "50"
+      group_ids: config:JIRA_GROUP_IDS
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: projects
+    config:
+      family: projects
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: project-roles
+    config:
+      family: project_roles
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      project_id_or_keys: config:JIRA_PROJECT_ID_OR_KEYS
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: permission-schemes
+    config:
+      family: permission_schemes
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /rest/api/3/myself
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "500"
+      username: env:JIRA_USERNAME
+      password: env:JIRA_API_TOKEN
