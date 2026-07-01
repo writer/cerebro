@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
@@ -964,7 +965,11 @@ func projectionAttributeValue(value string) string {
 	if len(value) <= maxProjectionAttributeBytes {
 		return value
 	}
-	return strings.TrimSpace(value[:maxProjectionAttributeBytes])
+	truncated := value[:maxProjectionAttributeBytes]
+	for !utf8.ValidString(truncated) && len(truncated) > 0 {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return strings.TrimSpace(truncated)
 }
 
 func staleProjectionLinks(previous []*ports.ProjectedLink, current []*ports.ProjectedLink) []*ports.ProjectedLink {

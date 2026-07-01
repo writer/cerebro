@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
@@ -159,6 +160,22 @@ func TestBuildGraphProjectionLinksQuestionnaireWork(t *testing.T) {
 	}
 	if !hasProjectedLink(projection.Links, gapURN, fabriccontract.RelationAssignedTo, ownerURN) {
 		t.Fatalf("missing gap assignment link in %#v", projection.Links)
+	}
+}
+
+func TestProjectionAttributeValueTruncatesAtUTF8Boundary(t *testing.T) {
+	value := strings.Repeat("a", 511) + "界" + "tail"
+
+	got := projectionAttributeValue(value)
+
+	if !utf8.ValidString(got) {
+		t.Fatalf("projectionAttributeValue returned invalid UTF-8: %q", got)
+	}
+	if len(got) > 512 {
+		t.Fatalf("projectionAttributeValue length = %d, want at most 512 bytes", len(got))
+	}
+	if strings.Contains(got, "\uFFFD") {
+		t.Fatalf("projectionAttributeValue inserted replacement character: %q", got)
 	}
 }
 

@@ -312,6 +312,9 @@ func questionsFromSpreadsheetRows(rows []spreadsheetRow) ([]ports.QuestionnaireQ
 		}
 		intakeRows := []intakeRow{}
 		for _, record := range rows[index+1:] {
+			if record.SheetName != row.SheetName {
+				break
+			}
 			if questionIndex >= len(record.Values) || strings.TrimSpace(record.Values[questionIndex]) == "" {
 				continue
 			}

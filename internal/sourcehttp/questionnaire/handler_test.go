@@ -99,6 +99,41 @@ func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
 	}
 }
 
+func TestQuestionsFromSpreadsheetRowsStopsAtSheetBoundary(t *testing.T) {
+	questions, err := questionsFromSpreadsheetRows([]spreadsheetRow{
+		{
+			Values:    []string{"section", "question", "required_evidence_slots"},
+			SheetName: "sheet1",
+			RowNumber: 1,
+			CellRefs:  []string{"A1", "B1", "C1"},
+		},
+		{
+			Values:    []string{"Access", "Do you enforce MFA?", "identity_mfa"},
+			SheetName: "sheet1",
+			RowNumber: 2,
+			CellRefs:  []string{"A2", "B2", "C2"},
+		},
+		{
+			Values:    []string{"Vendor profile", "This belongs to a different worksheet.", "ignored"},
+			SheetName: "sheet2",
+			RowNumber: 1,
+			CellRefs:  []string{"A1", "B1", "C1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("questionsFromSpreadsheetRows returned error: %v", err)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("questions = %d, want 1: %#v", len(questions), questions)
+	}
+	if questions[0].Question != "Do you enforce MFA?" {
+		t.Fatalf("question = %q, want first sheet question", questions[0].Question)
+	}
+	if locator := questions[0].SourceLocator; locator == nil || locator.SheetName != "sheet1" || locator.Cell != "B2" {
+		t.Fatalf("source locator = %#v, want sheet1 B2", locator)
+	}
+}
+
 func TestCreateRunAttributesIgnoreReservedGraphAttributes(t *testing.T) {
 	attrs := createRunAttributes(createRequest{
 		Attributes: map[string]string{
