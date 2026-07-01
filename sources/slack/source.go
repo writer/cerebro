@@ -239,7 +239,10 @@ func slackAccessLogFamily() jsonapi.Family {
 			"event_type":     "team_access",
 			"source_product": "slack",
 		},
-		Config: jsonapi.FamilyConfig{ConfigQuery: map[string]string{"before": "before"}},
+		Config: jsonapi.FamilyConfig{
+			ConfigQuery:  map[string]string{"before": "before"},
+			IdentityKeys: []string{"ip"},
+		},
 	}
 }
 

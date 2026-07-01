@@ -245,6 +245,62 @@ func TestReadSlackAccessLogUsesStableUserID(t *testing.T) {
 	}
 }
 
+func TestReadSlackAccessLogKeepsDistinctIPsForSameUser(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/team.accessLogs" {
+			t.Fatalf("request path = %q, want /team.accessLogs", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "logins": []map[string]any{
+			{
+				"user_id":    "U1",
+				"username":   "alice",
+				"ip":         "203.0.113.10",
+				"user_agent": "Mozilla/5.0",
+				"count":      3,
+				"date_first": 1780271000,
+				"date_last":  1780272000,
+			},
+			{
+				"user_id":    "U1",
+				"username":   "alice",
+				"ip":         "198.51.100.25",
+				"user_agent": "Mobile Safari",
+				"count":      1,
+				"date_first": 1780273000,
+				"date_last":  1780273100,
+			},
+		}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyAccessLog,
+		"tenant_id": "writer",
+		"token":     "slack-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want 2 access-log rows", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("access-log event IDs collapsed for same user on different IPs: %q", pull.Events[0].Id)
+	}
+	if pull.Events[0].Attributes["external_id"] != "U1" || pull.Events[1].Attributes["external_id"] != "U1" {
+		t.Fatalf("external IDs = %q/%q, want U1/U1", pull.Events[0].Attributes["external_id"], pull.Events[1].Attributes["external_id"])
+	}
+	if pull.Events[0].Attributes["ip_address"] != "203.0.113.10" || pull.Events[1].Attributes["ip_address"] != "198.51.100.25" {
+		t.Fatalf("ip addresses = %q/%q, want distinct access locations", pull.Events[0].Attributes["ip_address"], pull.Events[1].Attributes["ip_address"])
+	}
+}
+
 func TestReadSlackScalarMembershipFamilies(t *testing.T) {
 	for _, tt := range []struct {
 		name      string

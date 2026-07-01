@@ -122,11 +122,16 @@ type familyData struct {
 	LinkHeader            string
 	PageSizeParams        []string
 	DisablePageSize       bool
-	StaticQuery           map[string]string
-	ConfigQuery           map[string]string
+	Config                familyConfigData
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
 	Projection            *connectordefinitions.ProjectionSpec
+}
+
+type familyConfigData struct {
+	StaticQuery  map[string]string
+	ConfigQuery  map[string]string
+	IdentityKeys []string
 }
 
 type oauthClientCredentialsData struct {
@@ -545,6 +550,20 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
+func mergeStringMaps(first map[string]string, second map[string]string) map[string]string {
+	if len(first) == 0 {
+		return cloneStringMap(second)
+	}
+	if len(second) == 0 {
+		return cloneStringMap(first)
+	}
+	merged := cloneStringMap(first)
+	for key, value := range second {
+		merged[key] = value
+	}
+	return merged
+}
+
 func normalizeIdentifiers(label string, values []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
@@ -680,8 +699,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			LinkHeader:            linkHeaderForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			DisablePageSize:       disablePageSizeForResource(resource),
-			StaticQuery:           resource.StaticQuery,
-			ConfigQuery:           resource.ConfigQuery,
+			Config:                familyConfig(resource),
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 			Projection:            resource.Projection,
@@ -706,6 +724,20 @@ func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
 		}
 	}
 	return uniqueStrings(keys)
+}
+
+func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
+	config := familyConfigData{
+		StaticQuery: cloneStringMap(resource.StaticQuery),
+		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+	}
+	if resource.Config == nil {
+		return config
+	}
+	config.StaticQuery = mergeStringMaps(config.StaticQuery, resource.Config.StaticQuery)
+	config.ConfigQuery = mergeStringMaps(config.ConfigQuery, resource.Config.ConfigQuery)
+	config.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
+	return config
 }
 
 func listKeysForResource(resource connectordefinitions.ResourceFamily) []string {
@@ -1217,13 +1249,16 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
-		if len(family.StaticQuery) != 0 || len(family.ConfigQuery) != 0 {
+		if len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
-			if len(family.StaticQuery) != 0 {
-				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.StaticQuery))
+			if len(family.Config.StaticQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))
 			}
-			if len(family.ConfigQuery) != 0 {
-				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.ConfigQuery))
+			if len(family.Config.ConfigQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.ConfigQuery))
+			}
+			if len(family.Config.IdentityKeys) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tIdentityKeys: []string{%s},\n", quotedStrings(family.Config.IdentityKeys))
 			}
 			fmt.Fprintf(&b, "\t\t\t\t},\n")
 		}

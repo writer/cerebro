@@ -368,6 +368,9 @@ func TestBuiltinSlackAccessLogStartsAtPageOne(t *testing.T) {
 	if accessLog.Pagination == nil || accessLog.Pagination.Type != "page" || accessLog.Pagination.PageParam != "page" || accessLog.Pagination.PageSizeParam != "count" || accessLog.Pagination.StartPage != 1 {
 		t.Fatalf("access_log pagination = %#v, want page/count starting at 1", accessLog.Pagination)
 	}
+	if accessLog.Config == nil || len(accessLog.Config.IdentityKeys) != 1 || accessLog.Config.IdentityKeys[0] != "ip" {
+		t.Fatalf("access_log config = %#v, want ip identity key", accessLog.Config)
+	}
 }
 
 func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {

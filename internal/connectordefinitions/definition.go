@@ -321,6 +321,7 @@ type FamilyConfigSpec struct {
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
+	IdentityKeys     []string          `json:"identity_keys,omitempty"`
 }
 
 // ScopeOption exposes a resource family as a selectable scope option in the UI.
@@ -839,6 +840,11 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 		validateFamilyConfigMap(family.ID, "static_query", family.Config.StaticQuery, add)
 		validateFamilyConfigMap(family.ID, "config_query", family.Config.ConfigQuery, add)
 		validateFamilyConfigMap(family.ID, "config_attributes", family.Config.ConfigAttributes, add)
+		for _, key := range family.Config.IdentityKeys {
+			if strings.TrimSpace(key) == "" {
+				add(blocking("identity_keys_"+family.ID, "Identity keys", "Identity keys must not contain empty values."))
+			}
+		}
 	}
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
@@ -1022,6 +1028,7 @@ func knownProjectionAttributes(family ResourceFamily) map[string]struct{} {
 		for key := range family.Config.ConfigAttributes {
 			addKnown(key)
 		}
+		addKnown(family.Config.IdentityKeys...)
 	}
 	switch strings.TrimSpace(family.Projection.Template) {
 	case "finding", "vulnerability":
@@ -1236,7 +1243,8 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
-	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 {
+	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
+	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next

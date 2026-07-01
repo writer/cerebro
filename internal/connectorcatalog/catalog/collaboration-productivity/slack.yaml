@@ -198,6 +198,8 @@ entries:
           name_field: username
           config_query:
             before: before
+          config:
+            identity_keys: [ip]
           pagination:
             page_param: page
             page_size: 100
