@@ -1,0 +1,36 @@
+[
+  {
+    "id": "auth0-organization-member-org_1-user-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.organization_members",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/organization_members/v1",
+    "payload": {
+      "organization_id": "org_1",
+      "user_id": "user-1",
+      "email": "user@example.test",
+      "name": "User One"
+    },
+    "attributes": {
+      "display_name": "User One",
+      "email": "user@example.test",
+      "member_email": "user@example.test",
+      "member_name": "User One",
+      "member_type": "user",
+      "member_user_id": "user-1",
+      "organization_id": "org_1",
+      "resource_id": "user-1",
+      "resource_name": "User One",
+      "resource_type": "organization_member",
+      "resource_urn": "urn:cerebro:tenant:auth0_users:user-1",
+      "source_event_id": "user-1",
+      "subject_email": "user@example.test",
+      "subject_id": "user-1",
+      "subject_name": "User One",
+      "subject_type": "user",
+      "tenant_id": "tenant",
+      "user_id": "user-1"
+    }
+  }
+]
