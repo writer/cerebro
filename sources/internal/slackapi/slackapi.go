@@ -35,6 +35,7 @@ const (
 // hostname.
 type Options struct {
 	AllowLoopback bool
+	Client        *http.Client
 	PageSize      int
 }
 
@@ -265,8 +266,11 @@ func getJSON(ctx context.Context, cfg sourcecdk.Config, options Options, default
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: SourceID, AllowLoopback: options.AllowLoopback})
-	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
+	client := options.Client
+	if client == nil {
+		client = sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: SourceID, AllowLoopback: options.AllowLoopback})
+	}
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, slackRetryOptions())
 	if err != nil {
 		return err
 	}
@@ -282,6 +286,13 @@ func getJSON(ctx context.Context, cfg sourcecdk.Config, options Options, default
 		return fmt.Errorf("decode %s response: %w", SourceID, err)
 	}
 	return nil
+}
+
+func slackRetryOptions() sourcehttp.RetryOptions {
+	return sourcehttp.RetryOptions{
+		MaxAttempts: sourcehttp.DefaultRetryMaxAttempts,
+		Backoff:     sourcehttp.DefaultRetryBackoff,
+	}
 }
 
 // PageSize returns a bounded Slack page size from config.

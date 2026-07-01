@@ -4,9 +4,11 @@ import (
 	"context"
 	"embed"
 	"net/http"
+	"sync"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 	"github.com/writer/cerebro/sources/internal/slackapi"
 )
@@ -30,7 +32,12 @@ const (
 	defaultWebAPIBaseURL = slackapi.DefaultWebAPIBaseURL
 )
 
-type Source struct{ inner *jsonapi.Source }
+type Source struct {
+	inner                    *jsonapi.Source
+	slackClientMu            sync.Mutex
+	slackClient              *http.Client
+	slackClientAllowLoopback bool
+}
 
 func New() (*Source, error) {
 	spec, err := loadSpec()
@@ -77,10 +84,28 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 }
 
 func (s *Source) slackOptions(pageSize int) slackapi.Options {
+	allowLoopback := s != nil && s.inner != nil && s.inner.AllowLoopbackBaseURL
 	return slackapi.Options{
-		AllowLoopback: s != nil && s.inner != nil && s.inner.AllowLoopbackBaseURL,
+		AllowLoopback: allowLoopback,
+		Client:        s.slackHTTPClient(allowLoopback),
 		PageSize:      pageSize,
 	}
+}
+
+func (s *Source) slackHTTPClient(allowLoopback bool) *http.Client {
+	if s == nil {
+		return nil
+	}
+	s.slackClientMu.Lock()
+	defer s.slackClientMu.Unlock()
+	if s.slackClient == nil || s.slackClientAllowLoopback != allowLoopback {
+		s.slackClient = sourcehttp.NewClient(sourcehttp.ClientOptions{
+			SourceID:      sourceID,
+			AllowLoopback: allowLoopback,
+		})
+		s.slackClientAllowLoopback = allowLoopback
+	}
+	return s.slackClient
 }
 
 func slackFamilies() []jsonapi.Family {
@@ -190,6 +215,7 @@ func slackAccessLogFamily() jsonapi.Family {
 		Name:            familyAccessLog,
 		Path:            "/team.accessLogs",
 		URNKind:         "slack_access_log",
+		IDKeys:          []string{"user_id"},
 		ListKeys:        []string{"logins"},
 		CursorParam:     "page",
 		PageFirstCursor: "1",

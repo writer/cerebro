@@ -196,6 +196,55 @@ func TestReadSlackIdentityWorkspacePostureKinds(t *testing.T) {
 	}
 }
 
+func TestReadSlackAccessLogUsesStableUserID(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/team.accessLogs" {
+			t.Fatalf("request path = %q, want /team.accessLogs", got)
+		}
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "logins": []map[string]any{{
+			"user_id":    "U1",
+			"username":   "alice",
+			"ip":         "203.0.113.10",
+			"user_agent": "Mozilla/5.0",
+			"count":      requests,
+			"date_first": 1780271000,
+			"date_last":  1780272000 + requests,
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	config := sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyAccessLog,
+		"tenant_id": "writer",
+		"token":     "slack-token",
+	})
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("first Read() error = %v", err)
+	}
+	second, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("second Read() error = %v", err)
+	}
+	if len(first.Events) != 1 || len(second.Events) != 1 {
+		t.Fatalf("events = %d/%d, want 1/1", len(first.Events), len(second.Events))
+	}
+	if first.Events[0].Id != second.Events[0].Id {
+		t.Fatalf("access-log event IDs changed across mutable fields: %q then %q", first.Events[0].Id, second.Events[0].Id)
+	}
+	if got := second.Events[0].Attributes["login_count"]; got != "2" {
+		t.Fatalf("second login_count = %q, want 2", got)
+	}
+}
+
 func TestReadSlackScalarMembershipFamilies(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
