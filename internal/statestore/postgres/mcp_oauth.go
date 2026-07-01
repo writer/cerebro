@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -546,7 +545,15 @@ func lockMCPOAuthRefreshFamily(ctx context.Context, tx *sql.Tx, familyID string)
 
 func mcpOAuthRefreshFamilyLockKeys(familyID string) (int32, int32) {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(familyID)))
-	return int32(binary.BigEndian.Uint32(sum[0:4])), int32(binary.BigEndian.Uint32(sum[4:8]))
+	return signedBigEndianInt32(sum[0:4]), signedBigEndianInt32(sum[4:8])
+}
+
+func signedBigEndianInt32(bytes []byte) int32 {
+	var value int32
+	for _, b := range bytes {
+		value = value<<8 | int32(b)
+	}
+	return value
 }
 
 func (s *Store) ensureMCPOAuthTables(ctx context.Context) error {
