@@ -337,11 +337,11 @@ SELECT
   COALESCE(SUM(CASE WHEN %s THEN review_answer_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN missing_evidence_count ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN %s THEN stale_evidence_count ELSE 0 END), 0),
-  COALESCE(SUM(CASE WHEN %s THEN (
-    SELECT COUNT(*)
-    FROM jsonb_array_elements(assignments_json) AS assignment
-    WHERE COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open'
-  ) ELSE 0 END), 0)
+	  COALESCE(SUM(CASE WHEN %s THEN (
+	    SELECT COUNT(*)
+	    FROM jsonb_array_elements(%s) AS assignment
+	    WHERE COALESCE(assignment->>'status', '') = '' OR assignment->>'status' = 'open'
+	  ) ELSE 0 END), 0)
 FROM grc_questionnaire_runs
 WHERE %s
 GROUP BY vendor_urn
@@ -356,8 +356,13 @@ ORDER BY vendor_urn ASC`,
 		activeRun,
 		activeRun,
 		activeRun,
+		questionnaireAssignmentsArraySQL(),
 		strings.Join(clauses, " AND "))
 	return query, args
+}
+
+func questionnaireAssignmentsArraySQL() string {
+	return "CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END"
 }
 
 func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any) {
@@ -373,13 +378,13 @@ func questionnaireRunWhere(filter ports.QuestionnaireRunFilter) ([]string, []any
 	if ownerID := strings.TrimSpace(filter.OwnerID); ownerID != "" {
 		args = append(args, "%"+strings.ToLower(ownerID)+"%")
 		clauses = append(clauses, fmt.Sprintf(`(
-			lower(owner_id) LIKE $%d
-			OR lower(assigned_team) LIKE $%d
-			OR EXISTS (
-				SELECT 1 FROM jsonb_array_elements(assignments_json) AS assignment
-				WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
-			)
-		)`, len(args), len(args), len(args), len(args)))
+				lower(owner_id) LIKE $%d
+				OR lower(assigned_team) LIKE $%d
+				OR EXISTS (
+					SELECT 1 FROM jsonb_array_elements(%s) AS assignment
+					WHERE lower(assignment->>'owner_id') LIKE $%d OR lower(assignment->>'team') LIKE $%d
+				)
+			)`, len(args), len(args), questionnaireAssignmentsArraySQL(), len(args), len(args)))
 	}
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		args = append(args, "%"+strings.ToLower(query)+"%")
@@ -459,28 +464,35 @@ func marshalQuestionnaireRunJSON(record ports.QuestionnaireRunRecord) (questionn
 	}
 	var fields questionnaireRunJSONFields
 	var err error
-	if fields.questions, err = marshal("questions", record.Questions); err != nil {
+	if fields.questions, err = marshal("questions", emptySlice(record.Questions)); err != nil {
 		return fields, err
 	}
-	if fields.answers, err = marshal("answers", record.Answers); err != nil {
+	if fields.answers, err = marshal("answers", emptySlice(record.Answers)); err != nil {
 		return fields, err
 	}
-	if fields.assignments, err = marshal("assignments", record.Assignments); err != nil {
+	if fields.assignments, err = marshal("assignments", emptySlice(record.Assignments)); err != nil {
 		return fields, err
 	}
-	if fields.decisions, err = marshal("decisions", record.Decisions); err != nil {
+	if fields.decisions, err = marshal("decisions", emptySlice(record.Decisions)); err != nil {
 		return fields, err
 	}
-	if fields.comments, err = marshal("comments", record.Comments); err != nil {
+	if fields.comments, err = marshal("comments", emptySlice(record.Comments)); err != nil {
 		return fields, err
 	}
-	if fields.timeline, err = marshal("timeline", record.Timeline); err != nil {
+	if fields.timeline, err = marshal("timeline", emptySlice(record.Timeline)); err != nil {
 		return fields, err
 	}
 	if fields.attributes, err = marshal("attributes", emptyStringMap(record.Attributes)); err != nil {
 		return fields, err
 	}
 	return fields, nil
+}
+
+func emptySlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 func scanQuestionnaireRun(row scanner) (*ports.QuestionnaireRunRecord, error) {

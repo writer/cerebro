@@ -79,7 +79,7 @@ func TestQuestionnaireVendorRollupQueryBatchesVendors(t *testing.T) {
 		"vendor_urn IN ($2, $3)",
 		"due_at <= $4",
 		"status NOT IN ('approved', 'rejected')",
-		"jsonb_array_elements(assignments_json)",
+		"jsonb_array_elements(CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END)",
 		"GROUP BY vendor_urn",
 		"ORDER BY vendor_urn ASC",
 	} {
@@ -89,5 +89,44 @@ func TestQuestionnaireVendorRollupQueryBatchesVendors(t *testing.T) {
 	}
 	if len(args) != 4 || args[0] != "writer" || args[3] != now {
 		t.Fatalf("args = %#v, want tenant, two vendors, and cutoff", args)
+	}
+}
+
+func TestQuestionnaireRunOwnerFilterGuardsAssignmentJSONType(t *testing.T) {
+	clauses, args := questionnaireRunWhere(ports.QuestionnaireRunFilter{OwnerID: "security"})
+	query := strings.Join(clauses, "\n")
+	for _, fragment := range []string{
+		"jsonb_array_elements(CASE WHEN jsonb_typeof(assignments_json) = 'array' THEN assignments_json ELSE '[]'::jsonb END)",
+		"lower(assignment->>'owner_id') LIKE $1",
+		"lower(assignment->>'team') LIKE $1",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("questionnaire owner filter missing %q:\n%s", fragment, query)
+		}
+	}
+	if len(args) != 1 || args[0] != "%security%" {
+		t.Fatalf("args = %#v, want owner search arg", args)
+	}
+}
+
+func TestMarshalQuestionnaireRunJSONUsesArraysForNilSlices(t *testing.T) {
+	fields, err := marshalQuestionnaireRunJSON(ports.QuestionnaireRunRecord{})
+	if err != nil {
+		t.Fatalf("marshalQuestionnaireRunJSON() error = %v", err)
+	}
+	for label, value := range map[string]string{
+		"questions":   fields.questions,
+		"answers":     fields.answers,
+		"assignments": fields.assignments,
+		"decisions":   fields.decisions,
+		"comments":    fields.comments,
+		"timeline":    fields.timeline,
+	} {
+		if value != "[]" {
+			t.Fatalf("%s JSON = %q, want []", label, value)
+		}
+	}
+	if fields.attributes != "{}" {
+		t.Fatalf("attributes JSON = %q, want {}", fields.attributes)
 	}
 }

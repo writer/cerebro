@@ -128,6 +128,31 @@ func TestBuildGraphProjectionRemovesStaleLinks(t *testing.T) {
 	}
 }
 
+func TestCitationResourceURNOnlyPassesThroughRuntimeEvidenceURNs(t *testing.T) {
+	got := citationResourceURN("writer", ports.QuestionnaireCitation{
+		ResourceURN: "urn:cerebro:writer:vendor:core-sso",
+		EvidenceID:  "evidence-1",
+	})
+	if got != "urn:cerebro:writer:runtime_evidence:evidence-1" {
+		t.Fatalf("citationResourceURN() = %q, want minted runtime evidence urn", got)
+	}
+
+	got = citationResourceURN("writer", ports.QuestionnaireCitation{
+		ResourceURN: "urn:cerebro:writer:runtime_evidence:evidence-2",
+		EvidenceID:  "evidence-1",
+	})
+	if got != "urn:cerebro:writer:runtime_evidence:evidence-2" {
+		t.Fatalf("citationResourceURN() = %q, want existing runtime evidence urn", got)
+	}
+
+	got = citationResourceURN("writer", ports.QuestionnaireCitation{
+		EvidenceID: "urn:cerebro:writer:vendor:core-sso",
+	})
+	if got != "" {
+		t.Fatalf("citationResourceURN() = %q, want non-evidence urn ignored", got)
+	}
+}
+
 func hasProjectedLink(links []*ports.ProjectedLink, fromURN string, relation string, toURN string) bool {
 	for _, link := range links {
 		if link.FromURN == fromURN && link.Relation == relation && link.ToURN == toURN {

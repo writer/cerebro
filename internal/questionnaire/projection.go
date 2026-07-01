@@ -254,11 +254,11 @@ func controlEntityURN(tenantID string, controlID string) string {
 func citationResourceURN(tenantID string, citation ports.QuestionnaireCitation) string {
 	for _, value := range []string{citation.ResourceURN, citation.EvidenceID, citation.EvidencePacketID, citation.ID} {
 		value = strings.TrimSpace(value)
-		if strings.HasPrefix(value, "urn:cerebro:") {
+		if isRuntimeEvidenceURN(tenantID, value) {
 			return value
 		}
 	}
-	evidenceID := firstNonEmpty(citation.EvidenceID, citation.EvidencePacketID, citation.ID)
+	evidenceID := firstNonCerebroURN(citation.EvidenceID, citation.EvidencePacketID, citation.ID)
 	if evidenceID == "" {
 		return ""
 	}
@@ -267,6 +267,32 @@ func citationResourceURN(tenantID string, citation ports.QuestionnaireCitation) 
 		return ""
 	}
 	return value
+}
+
+func isRuntimeEvidenceURN(tenantID string, value string) bool {
+	parsed, err := cerebrourn.Parse(value)
+	if err != nil {
+		return false
+	}
+	if parsed.TenantID != strings.TrimSpace(tenantID) {
+		return false
+	}
+	switch parsed.Kind {
+	case "runtime_evidence", "runtime.evidence":
+		return true
+	default:
+		return false
+	}
+}
+
+func firstNonCerebroURN(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && !strings.HasPrefix(value, "urn:cerebro:") {
+			return value
+		}
+	}
+	return ""
 }
 
 func questionnaireControlIDs(record ports.QuestionnaireRunRecord) []string {
