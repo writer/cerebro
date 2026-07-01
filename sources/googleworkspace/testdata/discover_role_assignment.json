@@ -1,0 +1,9 @@
+[
+  {
+    "roleAssignmentId": "ra-1",
+    "roleId": "super-admin",
+    "assignedTo": "1001",
+    "assigneeType": "USER",
+    "scopeType": "CUSTOMER"
+  }
+]

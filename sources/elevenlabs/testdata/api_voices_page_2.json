@@ -1,0 +1,28 @@
+{
+  "voices": [
+    {
+      "voice_id": "EXAVITQu4vr4xnSDxMaL",
+      "name": "Bella",
+      "category": "premade",
+      "description": "Warm conversational voice.",
+      "preview_url": "https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/sample.mp3",
+      "available_for_tiers": [],
+      "settings": {
+        "stability": 0.45,
+        "similarity_boost": 0.7,
+        "style": 0,
+        "use_speaker_boost": true
+      },
+      "labels": {
+        "accent": "american",
+        "descriptive": "warm"
+      },
+      "high_quality_base_model_ids": [
+        "eleven_multilingual_v2"
+      ]
+    }
+  ],
+  "has_more": false,
+  "total_count": 2,
+  "next_page_token": null
+}

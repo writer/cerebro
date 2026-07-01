@@ -92,6 +92,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				exactControlMatch:  exactControlMatch,
 				dimensionMatched:   dimensionMatched,
 				evidenceMatched:    evidenceMatched,
+				supportRank:        sourceCoverageSupportRank(dimension.Support),
 				matchedControlRefs: len(matchedControls),
 			})
 		}
@@ -114,6 +115,9 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		}
 		if left.exactControlMatch != right.exactControlMatch {
 			return left.exactControlMatch
+		}
+		if left.supportRank != right.supportRank {
+			return left.supportRank > right.supportRank
 		}
 		if left.matchedControlRefs != right.matchedControlRefs {
 			return left.matchedControlRefs > right.matchedControlRefs
@@ -149,6 +153,7 @@ type sourceCoverageCandidate struct {
 	exactControlMatch  bool
 	dimensionMatched   bool
 	evidenceMatched    bool
+	supportRank        int
 	matchedControlRefs int
 }
 
@@ -199,6 +204,17 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 		matchedControls = 3
 	}
 	return score + matchedControls
+}
+
+func sourceCoverageSupportRank(support string) int {
+	switch strings.TrimSpace(support) {
+	case sourcecdk.CoverageSupportSupported:
+		return 2
+	case sourcecdk.CoverageSupportPartial:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {

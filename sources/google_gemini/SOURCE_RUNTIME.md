@@ -1,6 +1,6 @@
 # Google Gemini
 
-Generated Source Runtime SDK scaffold for `google_gemini`.
+Source Runtime SDK implementation for `google_gemini`.
 
 ## Runtime input
 
@@ -26,5 +26,4 @@ Generated Source Runtime SDK scaffold for `google_gemini`.
 
 ## Tests
 
-- `go test ./sources/google_gemini ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/google_gemini -count=1`

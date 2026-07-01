@@ -1,9 +1,9 @@
 ## Summary
 
-- Adds the `openrouter` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Updates the `openrouter` Source Runtime SDK with documented management endpoints for organization members, API keys, BYOK provider credentials, and endpoint activity.
+- Includes runtime adapter mappings, health check coverage, provider-shaped fixtures, tests, and a source-health receipt.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
@@ -12,5 +12,4 @@
 
 ## Tests
 
-- `go test ./sources/openrouter ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/openrouter -count=1`

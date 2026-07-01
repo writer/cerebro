@@ -1,6 +1,71 @@
 id: cloudflare
 name: Cloudflare
-description: Cloudflare account, IAM, edge, Zero Trust, Workers, load balancing, zone, and DNS source.
+description: Collects Cloudflare accounts, members, roles, Access applications and groups, Gateway rules, rulesets, Workers, load balancers, zones, DNS records, and account audit logs.
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://api.cloudflare.com/client/v4
+  references:
+    - https://github.com/cloudflare/api-schemas/blob/main/openapi.json
+  families:
+    - id: account
+      method: GET
+      path: /accounts
+    - id: member
+      method: GET
+      path: /accounts/{account_id}/members
+    - id: role
+      method: GET
+      path: /accounts/{account_id}/roles
+    - id: role
+      method: GET
+      path: /accounts/{account_id}/roles/{role_id}
+    - id: account_ruleset
+      method: GET
+      path: /accounts/{account_id}/rulesets
+    - id: account_ruleset
+      method: GET
+      path: /accounts/{account_id}/rulesets/{ruleset_id}
+    - id: worker_script
+      method: GET
+      path: /accounts/{account_id}/workers/scripts
+    - id: audit_log
+      method: GET
+      path: /accounts/{account_id}/audit_logs
+    - id: zone
+      method: GET
+      path: /zones
+    - id: dns_record
+      method: GET
+      path: /zones/{zone_id}/dns_records
+    - id: zone_ruleset
+      method: GET
+      path: /zones/{zone_id}/rulesets
+    - id: zone_ruleset
+      method: GET
+      path: /zones/{zone_id}/rulesets/{ruleset_id}
+    - id: load_balancer
+      method: GET
+      path: /zones/{zone_id}/load_balancers
+    - id: load_balancer_pool
+      method: GET
+      path: /accounts/{account_id}/load_balancers/pools
+    - id: access_application
+      method: GET
+      path: /accounts/{account_id}/access/apps
+    - id: zone_access_application
+      method: GET
+      path: /zones/{zone_id}/access/apps
+    - id: access_group
+      method: GET
+      path: /accounts/{account_id}/access/groups
+    - id: zone_access_group
+      method: GET
+      path: /zones/{zone_id}/access/groups
+    - id: gateway_rule
+      method: GET
+      path: /accounts/{account_id}/gateway/rules
 emitted_kinds:
   - cloudflare.access_application
   - cloudflare.access_group
@@ -24,17 +89,17 @@ runtime_families:
   - account
   - account_ruleset
   - audit_log
-  - dns_record
+  - member
   - gateway_rule
   - load_balancer
   - load_balancer_pool
-  - member
   - role
   - worker_script
   - zone
   - zone_access_application
   - zone_access_group
   - zone_ruleset
+  - dns_record
 coverage_contract:
   owner_domain: cloud
   authority_domain: cloudflare

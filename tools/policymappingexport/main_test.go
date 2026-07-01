@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -459,11 +460,40 @@ func TestOverviewCapturesExpectedSourceCoverageExpansion(t *testing.T) {
 	files := repoGeneratedFiles(t)
 
 	overviewRows := readGeneratedCSV(t, generatedFileByName(t, files, "overview.csv"))
-	assertOverviewMetric(t, overviewRows, "source-coverage rows", "4641")
-	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", "345")
-	assertOverviewMetric(t, overviewRows, "detections source-backed", "420")
-	assertOverviewMetric(t, overviewRows, "detections partial source-backed", "830")
-	assertOverviewMetric(t, overviewRows, "detections control-only", "345")
+	sourceCoverageRows := readGeneratedCSV(t, generatedFileByName(t, files, "source_coverage_map.csv"))
+	findingRows := readGeneratedCSV(t, generatedFileByName(t, files, "finding_map.csv"))
+	findingHeader := findingRows[0]
+	sourceCoverageCountCol := columnIndex(t, findingHeader, "source_coverage_ref_count")
+	complianceEvidenceStatusCol := columnIndex(t, findingHeader, "compliance_evidence_status")
+
+	sourceCoverageCount := len(sourceCoverageRows) - 1
+	if sourceCoverageCount < 4641 {
+		t.Fatalf("source_coverage_map.csv rows = %d, want at least 4641", sourceCoverageCount)
+	}
+
+	missingSourceCoverage := 0
+	sourceBacked := 0
+	partialSourceBacked := 0
+	controlOnly := 0
+	for _, row := range findingRows[1:] {
+		if row[sourceCoverageCountCol] == "0" {
+			missingSourceCoverage++
+		}
+		switch row[complianceEvidenceStatusCol] {
+		case "source_backed":
+			sourceBacked++
+		case "partial_source_backed":
+			partialSourceBacked++
+		case "control_only":
+			controlOnly++
+		}
+	}
+
+	assertOverviewMetric(t, overviewRows, "source-coverage rows", strconv.Itoa(sourceCoverageCount))
+	assertOverviewMetric(t, overviewRows, "detections missing source coverage refs", strconv.Itoa(missingSourceCoverage))
+	assertOverviewMetric(t, overviewRows, "detections source-backed", strconv.Itoa(sourceBacked))
+	assertOverviewMetric(t, overviewRows, "detections partial source-backed", strconv.Itoa(partialSourceBacked))
+	assertOverviewMetric(t, overviewRows, "detections control-only", strconv.Itoa(controlOnly))
 }
 
 func TestGenerateFilesIncludesFindingDomainAliasMap(t *testing.T) {

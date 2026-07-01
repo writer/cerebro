@@ -32,8 +32,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Cohere model list response under the top-level `models` key.
     - id: connectors
       type: entity_family
       title: "Connectors"
@@ -42,8 +45,12 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Cohere connector list response under the top-level `connectors` key; Cohere marks this endpoint deprecated.
+        - This family remains partial coverage and is expected to surface provider errors if Cohere removes the deprecated endpoint before a replacement list API is available.
     - id: datasets
       type: entity_family
       title: "Datasets"
@@ -52,8 +59,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Cohere dataset list response under the top-level `datasets` key.
     - id: fine_tuned_models
       type: deployment_state
       title: "Fine Tuned Models"
@@ -62,8 +72,13 @@ coverage_contract:
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official Cohere fine-tuned model list response under the top-level `finetuned_models` key.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

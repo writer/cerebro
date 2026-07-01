@@ -40,8 +40,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official models list response and maps model_id, name, capabilities, token cost, limits, and languages.
     - id: voices
       type: entity_family
       title: "Voices"
@@ -50,8 +53,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official voices search response and maps voice_id, name, category, labels, settings, preview URL, and pagination token.
     - id: service_accounts
       type: entity_family
       title: "Service Accounts"
@@ -59,9 +65,16 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official service-accounts response and maps service_account_user_id, name, and created_at_unix.
     - id: service_account_api_keys
       type: entity_family
       title: "Service Account Api Keys"
@@ -69,9 +82,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official service-account API keys response and maps key_id, name, created_at_unix, and disabled state.
     - id: webhooks
       type: deployment_state
       title: "Webhooks"
@@ -80,8 +98,13 @@ coverage_contract:
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official workspace webhooks response and maps webhook_id, name, URL, enabled state, and timestamps.
     - id: auth_connections
       type: entity_family
       title: "Auth Connections"
@@ -89,9 +112,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads the official workspace auth connections response and maps connection id, name, URLs, status, and created timestamp.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
