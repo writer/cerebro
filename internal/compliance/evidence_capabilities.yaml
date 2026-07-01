@@ -2533,6 +2533,44 @@ sources:
             control_id: A.5.18
           - framework: ISO 27001:2022
             control_id: A.8.2
+      - dimension_id: admin_membership
+        dimension_type: relationship
+        support_level: partial
+        high_value: true
+        families:
+          - admin_role
+          - privileged_role
+          - role_assignment
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: ISO 27001:2022
+            control_id: A.8.2
       - dimension_id: applications
         dimension_type: entity_family
         support_level: supported
@@ -2576,6 +2614,42 @@ sources:
         families:
           - app_assignment
         evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+      - dimension_id: app_access
+        dimension_type: app_entitlement
+        support_level: partial
+        high_value: true
+        families:
+          - app_access
+          - app_assignment
+          - application
+        evidence_types:
+          - access_review
           - identity_configuration
         control_domains:
           - identity_access
@@ -2687,7 +2761,7 @@ sources:
             control_id: A.8.5
       - dimension_id: mfa_posture
         dimension_type: app_entitlement
-        support_level: supported
+        support_level: partial
         high_value: true
         families:
           - enrolled_factor
@@ -2720,6 +2794,118 @@ sources:
             control_id: A.5.17
           - framework: ISO 27001:2022
             control_id: A.8.5
+      - dimension_id: dormant_users
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - dormant_user
+          - last_login
+          - never_logged_in
+          - stale_login
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.17
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+      - dimension_id: deprovisioning
+        dimension_type: lifecycle_state
+        support_level: partial
+        high_value: true
+        families:
+          - deprovisioned
+          - suspended
+          - terminated_account
+          - user_lifecycle
+        evidence_types:
+          - access_review
+          - identity_configuration
+          - remediation_state
+        control_domains:
+          - identity_access
+          - remediation
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.3
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: NIST 800-53 r5
+            control_id: PS-4
+          - framework: PCI DSS v4.0.1
+            control_id: "8.1.3"
+          - framework: ISO 27001:2022
+            control_id: A.5.11
+          - framework: ISO 27001:2022
+            control_id: A.5.18
+          - framework: ISO 27001:2022
+            control_id: A.6.5
+      - dimension_id: external_accounts
+        dimension_type: entity_family
+        support_level: partial
+        high_value: true
+        families:
+          - external_user
+          - personal_email
+          - third_party_access
+          - user
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: CIS Controls v8
+            control_id: "5"
+          - framework: CIS Controls v8
+            control_id: "6"
+          - framework: SOC 2
+            control_id: CC6.1
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: SOC 2
+            control_id: CC6.6
+          - framework: NIST 800-53 r5
+            control_id: AC-2
+          - framework: NIST 800-53 r5
+            control_id: AC-6
+          - framework: PCI DSS v4.0.1
+            control_id: "7.2"
+          - framework: ISO 27001:2022
+            control_id: A.5.15
+          - framework: ISO 27001:2022
+            control_id: A.5.18
       - dimension_id: audit_events
         dimension_type: audit_event
         support_level: supported
@@ -3089,7 +3275,7 @@ sources:
             control_id: A.8.9
       - dimension_id: user_lifecycle
         dimension_type: lifecycle_state
-        support_level: supported
+        support_level: partial
         high_value: true
         families:
           - active_account

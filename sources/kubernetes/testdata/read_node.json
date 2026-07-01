@@ -1,35 +1,52 @@
 [
   {
     "attributes": {
-      "cluster_id": "cluster-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
       "family": "node",
-      "node_name": "Node Name",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "ready": "active",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
+      "tenant_id": "tenant",
+      "provider": "kubernetes",
+      "source_provider": "kubernetes",
+      "resource_id": "ip-10-0-1-10",
+      "resource_name": "ip-10-0-1-10",
       "resource_type": "node",
-      "resource_urn": "urn:cerebro:tenant:runtime_node:record-1",
-      "source_event_id": "record-1",
-      "tenant_id": "tenant"
+      "resource_urn": "urn:cerebro:tenant:kubernetes_node:prod-eks-us-east-1:ip-10-0-1-10",
+      "cluster_id": "prod-eks-us-east-1",
+      "cluster_name": "prod-us-east-1",
+      "node_name": "ip-10-0-1-10",
+      "ready": "true",
+      "provider_id": "aws:///us-east-1a/i-1234567890abcdef0",
+      "internal_ip": "10.0.1.10",
+      "external_ip": "198.51.100.10",
+      "kubelet_version": "v1.30.2",
+      "container_runtime_version": "containerd://1.7.0"
     },
-    "id": "kubernetes-node-record-1",
+    "id": "kubernetes-node-ip-10-0-1-10",
     "kind": "kubernetes.node",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "node_info": "node-info-1",
-      "ready": "active",
-      "resource_id": "record-1",
-      "resource_type": "node",
-      "resource_urn": "urn:cerebro:tenant:runtime_node:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "uid": "node-uid-1",
+      "name": "ip-10-0-1-10",
+      "provider_id": "aws:///us-east-1a/i-1234567890abcdef0",
+      "ready": true,
+      "unschedulable": false,
+      "pod_cidr": "10.244.0.0/24",
+      "pod_cidrs": [
+        "10.244.0.0/24"
+      ],
+      "internal_ip": "10.0.1.10",
+      "external_ip": "198.51.100.10",
+      "node_info": {
+        "architecture": "amd64",
+        "containerRuntimeVersion": "containerd://1.7.0",
+        "kernelVersion": "6.1.0",
+        "kubeletVersion": "v1.30.2",
+        "operatingSystem": "linux",
+        "osImage": "Bottlerocket OS"
+      },
+      "labels": {
+        "kubernetes.io/os": "linux",
+        "node.kubernetes.io/instance-type": "m7i.large"
+      },
+      "taints": []
     },
     "schema_ref": "kubernetes/node/v1",
     "source_id": "kubernetes",

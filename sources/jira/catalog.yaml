@@ -1,18 +1,34 @@
 id: jira
 name: "Jira"
-description: "Collects users, projects, and audit events from Jira and projects them into the Cerebro graph as users, assets, and audit events for workspace, document, message, and collaboration context."
+description: "Collects Jira Cloud users, groups, group membership, projects, project role assignments, permission schemes, and audit records from the Jira REST API."
 emitted_kinds:
   - jira.users
+  - jira.groups
+  - jira.group_members
   - jira.projects
+  - jira.project_roles
+  - jira.permission_schemes
   - jira.audit_events
 runtime_families:
   - audit_events
+  - group_members
+  - groups
+  - permission_schemes
+  - project_roles
   - projects
   - users
 kind_lifecycle:
   - kind: jira.users
     status: active
+  - kind: jira.groups
+    status: active
+  - kind: jira.group_members
+    status: active
   - kind: jira.projects
+    status: active
+  - kind: jira.project_roles
+    status: active
+  - kind: jira.permission_schemes
     status: active
   - kind: jira.audit_events
     status: active
@@ -27,9 +43,29 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Jira Cloud users from /rest/api/3/users/search with startAt and maxResults pagination.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads Jira groups from /rest/api/3/group/bulk and keys them by groupId instead of mutable names.
+    - id: group_members
+      type: entity_family
+      title: "Group members"
+      families: [group_members]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Fans out configured group IDs into /rest/api/3/group/member and emits one user-to-group membership event per member.
     - id: projects
       type: entity_family
       title: "Projects"
@@ -37,25 +73,47 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads visible projects from /rest/api/3/project/search and preserves project id, key, type, lead, and lifecycle state.
+    - id: project_roles
+      type: entity_family
+      title: "Project role assignments"
+      families: [project_roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, authorization]
+      notes:
+        - Fans out configured project IDs or keys, reads /roledetails, enriches each role through /role/{id}, and projects actor assignments.
+    - id: permission_schemes
+      type: entity_family
+      title: "Permission schemes"
+      families: [permission_schemes]
+      support: partial
+      high_value: true
+      evidence_types: [policy_configuration]
+      control_domains: [authorization, change_management]
+      notes:
+        - Reads /rest/api/3/permissionscheme with permissions expanded and projects permission grants to groups, users, roles, and application roles.
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Audit events"
       families: [audit_events]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads Jira audit records from /rest/api/3/auditing/record with offset and limit pagination.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      support: partial
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - Cursor pagination is provider-backed for users, groups, members, projects, and audit records. Relationship fanout preserves provider cursors per configured scope.
 event_contracts:
   - kind: jira.users
     schema_ref: jira/users/v1
@@ -63,18 +121,68 @@ event_contracts:
       - tenant_id
       - source_event_id
       - user_id
+      - resource_id
+      - resource_type
     required_payload_fields:
-      - id
+      - accountId
+  - kind: jira.groups
+    schema_ref: jira/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - group_name
+      - resource_id
+    required_payload_fields:
+      - groupId
+  - kind: jira.group_members
+    schema_ref: jira/group_members/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_user_id
+    required_payload_fields:
+      - accountId
+      - group_id
   - kind: jira.projects
     schema_ref: jira/projects/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
+      - project_id
+      - project_key
+      - resource_id
       - resource_type
+    required_payload_fields:
+      - id
+      - key
+  - kind: jira.project_roles
+    schema_ref: jira/project_roles/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - project_id_or_key
+      - role_id
+      - role_name
+      - resource_id
+      - resource_type
+    required_payload_fields:
+      - id
+      - actors
+      - project_id_or_key
+  - kind: jira.permission_schemes
+    schema_ref: jira/permission_schemes/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - policy_id
+      - policy_name
+      - policy_type
       - resource_id
     required_payload_fields:
       - id
+      - permissions
   - kind: jira.audit_events
     schema_ref: jira/audit_events/v1
     required_attributes:
@@ -84,3 +192,4 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - id
+      - created

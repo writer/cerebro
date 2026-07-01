@@ -50,6 +50,7 @@ coverage_contract:
           control_id: CC6.1
       notes:
         - Maps the official Cohere connector list response under the top-level `connectors` key; Cohere marks this endpoint deprecated.
+        - This family remains partial coverage and is expected to surface provider errors if Cohere removes the deprecated endpoint before a replacement list API is available.
     - id: datasets
       type: entity_family
       title: "Datasets"

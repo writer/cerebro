@@ -98,6 +98,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
+      - resource_urn
       - user_id
     required_payload_fields:
       - id
@@ -106,6 +107,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
+      - resource_urn
       - secret_id
       - secret_name
     required_payload_fields:
@@ -115,6 +117,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
+      - resource_urn
       - secret_id
       - secret_name
     required_payload_fields:
@@ -124,6 +127,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
+      - resource_urn
       - resource_type
       - resource_id
     required_payload_fields:

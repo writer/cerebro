@@ -13,12 +13,12 @@
       "record_class": "identity_user",
       "resource_id": "user_2dHFtVWx2n56w6HkM0000000000",
       "resource_name": "jane.doe@example.com",
+      "resource_urn": "urn:cerebro:tenant:openrouter_organization_members:user_2dHFtVWx2n56w6HkM0000000000",
       "role": "org:admin",
       "schema": "organization_members",
       "source_event_id": "user_2dHFtVWx2n56w6HkM0000000000",
       "source_provider": "openrouter",
       "source_system": "openrouter",
-      "status": "org:admin",
       "tenant_id": "tenant",
       "user_id": "user_2dHFtVWx2n56w6HkM0000000000"
     },

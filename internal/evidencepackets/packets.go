@@ -483,6 +483,9 @@ type QuestionnaireEvidenceRef struct {
 	Freshness        EvidenceFreshness `json:"freshness"`
 	ReviewState      string            `json:"review_state,omitempty"`
 	Citations        EvidenceCitations `json:"citations"`
+	SourceEventIDs   []string          `json:"source_event_ids,omitempty"`
+	GraphRootURNs    []string          `json:"graph_root_urns,omitempty"`
+	GraphPathIDs     []string          `json:"graph_path_ids,omitempty"`
 }
 
 type QuestionnaireEvidenceGap struct {
@@ -1351,11 +1354,11 @@ func answerText(control ControlPosture, request EvidenceRequest, state string, s
 	}
 	switch state {
 	case "supported":
-		return fmt.Sprintf("Supported for %s: %s. Freshness: %s.", subject, evidence, freshnessStatus)
+		return fmt.Sprintf("Current citations cover %s. Evidence: %s. Freshness: %s.", subject, evidence, freshnessStatus)
 	case "manual_review":
-		return fmt.Sprintf("Reviewer approval required for %s: %s. Freshness: %s.", subject, evidence, freshnessStatus)
+		return fmt.Sprintf("Review required for %s. Evidence: %s. Freshness: %s.", subject, evidence, freshnessStatus)
 	case "partial":
-		return fmt.Sprintf("Partial support for %s: %s. Open gaps: %d.", subject, evidence, len(gaps))
+		return fmt.Sprintf("Some evidence is available for %s. Evidence: %s. Open gaps: %d.", subject, evidence, len(gaps))
 	case "not_required":
 		return "No answer required for " + subject + " in this evidence packet."
 	default:
@@ -1450,6 +1453,9 @@ func answerEvidenceRefs(packets []EvidencePacket, itemsByEvidenceID map[string]E
 				Freshness:        packet.Freshness,
 				ReviewState:      packet.Review.Status,
 				Citations:        packet.Citations,
+				SourceEventIDs:   uniqueSortedStrings(append(append([]string(nil), packet.Citations.EventIDs...), item.EventIDs...)),
+				GraphRootURNs:    uniqueSortedStrings(append(append([]string(nil), packet.Citations.GraphRoots...), item.GraphRoots...)),
+				GraphPathIDs:     uniqueSortedStrings(item.GraphPaths),
 			})
 		}
 	}

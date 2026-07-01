@@ -2262,6 +2262,65 @@ export type GRCQuestionnaireAnswerConfidence = {
   score: number;
 };
 
+export type GRCQuestionnaireAssignment = {
+  created_at?: string;
+  due_at?: string;
+  gap_id?: string;
+  id?: string;
+  owner_id?: string;
+  question_id?: string;
+  reason?: string;
+  slot_id?: string;
+  status?: string;
+  team?: string;
+  updated_at?: string;
+};
+
+export type GRCQuestionnaireAssignmentRequest = {
+  due_at?: string;
+  gap_id?: string;
+  owner_id?: string;
+  question_id?: string;
+  reason?: string;
+  slot_id?: string;
+  status?: string;
+  team?: string;
+  tenant_id?: string;
+};
+
+export type GRCQuestionnaireCitation = {
+  control_id?: string;
+  evidence_id?: string;
+  evidence_packet_id?: string;
+  evidence_type?: string;
+  expires_at?: string;
+  freshness_status?: string;
+  graph_path_ids?: string[];
+  graph_root_urns?: string[];
+  id?: string;
+  label?: string;
+  observed_at?: string;
+  resource_urn?: string;
+  runtime_id?: string;
+  source?: string;
+  source_event_ids?: string[];
+  source_id?: string;
+};
+
+export type GRCQuestionnaireComment = {
+  actor_id?: string;
+  body?: string;
+  created_at?: string;
+  id?: string;
+  question_id?: string;
+};
+
+export type GRCQuestionnaireCommentRequest = {
+  body: string;
+  question_id?: string;
+  tenant_id?: string;
+};
+
 export type GRCQuestionnaireControlRef = {
   control_id?: string;
   framework_id?: string;
@@ -2269,6 +2328,49 @@ export type GRCQuestionnaireControlRef = {
   id: string;
   status?: string;
   title?: string;
+};
+
+export type GRCQuestionnaireCreateRunRequest = {
+  assigned_team?: string;
+  attributes?: Record<string, string>;
+  customer_name?: string;
+  direction: "customer_security_review" | "vendor_review";
+  due_at?: string;
+  intake_content_type?: string;
+  intake_file_base64?: string;
+  intake_format?: "json" | "csv" | "tsv" | "text" | "portal" | "pdf" | "xlsx" | "xlsm";
+  intake_rows?: GRCQuestionnaireIntakeRow[];
+  intake_text?: string;
+  owner_id?: string;
+  portal_instructions?: string;
+  portal_url?: string;
+  questions?: GRCQuestionnaireQuestion[];
+  requester?: string;
+  runtime_id?: string;
+  source_filename?: string;
+  source_format?: string;
+  source_id?: string;
+  tenant_id?: string;
+  title?: string;
+  upload_id?: string;
+  vendor_id?: string;
+  vendor_urn?: string;
+};
+
+export type GRCQuestionnaireDecision = {
+  actor_id?: string;
+  created_at?: string;
+  decision?: "approved" | "approved_with_conditions" | "rejected" | "needs_input";
+  id?: string;
+  question_id?: string;
+  reason?: string;
+};
+
+export type GRCQuestionnaireDecisionRequest = {
+  question_id?: string;
+  reason?: string;
+  state: "approved" | "approved_with_conditions" | "rejected" | "needs_input";
+  tenant_id?: string;
 };
 
 export type GRCQuestionnaireEvidenceGap = {
@@ -2287,11 +2389,23 @@ export type GRCQuestionnaireEvidenceRef = {
   evidence_packet_id?: string;
   evidence_type?: string;
   freshness: GRCEvidenceFreshness;
+  graph_path_ids?: string[];
+  graph_root_urns?: string[];
   id: string;
   review_state?: string;
   runtime_id?: string;
   source?: string;
+  source_event_ids?: string[];
   source_id?: string;
+};
+
+export type GRCQuestionnaireEvidenceSlot = {
+  citation_ids?: string[];
+  id?: string;
+  label?: string;
+  missing_reasons?: string[];
+  required?: boolean;
+  state?: "satisfied" | "missing" | "stale" | "needs_review";
 };
 
 export type GRCQuestionnaireFrameworkMapping = {
@@ -2303,6 +2417,54 @@ export type GRCQuestionnaireFrameworkMapping = {
   framework_name?: string;
   framework_version?: string;
   mapped_rules?: string[];
+};
+
+export type GRCQuestionnaireFreshness = {
+  expires_at?: string;
+  observed_at?: string;
+  reason?: string;
+  status?: string;
+};
+
+export type GRCQuestionnaireIntakeRow = {
+  id?: string;
+  mapped_controls?: string[];
+  owner_id?: string;
+  question?: string;
+  required_answer_format?: string;
+  required_evidence_slots?: string[];
+  section?: string;
+  source_locator?: GRCQuestionnaireSourceLocator;
+};
+
+export type GRCQuestionnaireProcessRunRequest = {
+  tenant_id?: string;
+};
+
+export type GRCQuestionnaireQuestion = {
+  answer_state?: "supported" | "needs_review" | "partial" | "blocked" | "not_applicable";
+  id?: string;
+  mapped_controls?: string[];
+  normalized_question?: string;
+  owner_id?: string;
+  question: string;
+  required_answer_format?: string;
+  required_evidence_slots?: string[];
+  review_state?: "ready" | "needs_review" | "blocked" | "approved" | "rejected";
+  section?: string;
+  source_locator?: GRCQuestionnaireSourceLocator;
+};
+
+export type GRCQuestionnaireQuestionUpdateRequest = {
+  clear_mapped_controls?: boolean;
+  clear_owner?: boolean;
+  clear_required_evidence_slots?: boolean;
+  mapped_controls?: string[];
+  owner_id?: string;
+  question_id: string;
+  reason?: string;
+  required_evidence_slots?: string[];
+  tenant_id?: string;
 };
 
 export type GRCQuestionnaireReasoningContract = {
@@ -2318,6 +2480,144 @@ export type GRCQuestionnaireReasoningContract = {
   source_citations?: string[];
   surface: string;
   unsupported_claims?: string[];
+};
+
+export type GRCQuestionnaireRun = {
+  answer_count?: number;
+  answers?: GRCQuestionnaireRunAnswer[];
+  assigned_team?: string;
+  assignments?: GRCQuestionnaireAssignment[];
+  attributes?: Record<string, string>;
+  blocked_answer_count?: number;
+  comments?: GRCQuestionnaireComment[];
+  created_at?: string;
+  customer_name?: string;
+  decision?: string;
+  decision_reason?: string;
+  decisions?: GRCQuestionnaireDecision[];
+  direction?: "customer_security_review" | "vendor_review";
+  due_at?: string;
+  id?: string;
+  missing_evidence_count?: number;
+  owner_id?: string;
+  question_count?: number;
+  questions?: GRCQuestionnaireQuestion[];
+  ready_answer_count?: number;
+  requester?: string;
+  review_answer_count?: number;
+  run_id?: string;
+  source_filename?: string;
+  source_format?: string;
+  stale_evidence_count?: number;
+  status?: "intake" | "processing" | "needs_input" | "ready_for_approval" | "approved" | "rejected";
+  tenant_id?: string;
+  timeline?: GRCQuestionnaireTimelineEvent[];
+  title?: string;
+  unassigned_count?: number;
+  updated_at?: string;
+  vendor_id?: string;
+  vendor_urn?: string;
+};
+
+export type GRCQuestionnaireRunAnswer = {
+  answer_state?: "supported" | "needs_review" | "partial" | "blocked" | "not_applicable";
+  attributes?: Record<string, string>;
+  citations?: GRCQuestionnaireCitation[];
+  confidence?: string;
+  confidence_score?: number;
+  conflicts?: GRCQuestionnaireRunEvidenceGap[];
+  controls?: string[];
+  draft_answer?: string;
+  evidence_slots?: GRCQuestionnaireEvidenceSlot[];
+  freshness?: GRCQuestionnaireFreshness;
+  id?: string;
+  missing_evidence?: GRCQuestionnaireRunEvidenceGap[];
+  question?: string;
+  question_id?: string;
+  review_state?: "ready" | "needs_review" | "blocked" | "approved" | "rejected";
+  reviewer_decision?: string;
+  reviewer_reason?: string;
+  source_answer_id?: string;
+};
+
+export type GRCQuestionnaireRunEvent = {
+  actor_id?: string;
+  created_at?: string;
+  event_type?: string;
+  id?: string;
+  payload?: Record<string, string>;
+  run_id?: string;
+  summary?: string;
+  tenant_id?: string;
+  version?: number;
+};
+
+export type GRCQuestionnaireRunEvidenceGap = {
+  code?: string;
+  control_id?: string;
+  evidence_packet_id?: string;
+  id?: string;
+  reason?: string;
+  review_state?: string;
+  slot_id?: string;
+};
+
+export type GRCQuestionnaireRunResponse = {
+  events?: GRCQuestionnaireRunEvent[];
+  generated_at?: string;
+  run?: GRCQuestionnaireRun;
+};
+
+export type GRCQuestionnaireRunSummary = {
+  blocked_answers?: number;
+  customer_runs?: number;
+  due_runs?: number;
+  missing_evidence?: number;
+  ready_answers?: number;
+  review_answers?: number;
+  stale_evidence?: number;
+  total_runs?: number;
+  unassigned?: number;
+  vendor_runs?: number;
+};
+
+export type GRCQuestionnaireRunsResponse = {
+  generated_at?: string;
+  runs?: GRCQuestionnaireRun[];
+  summary?: GRCQuestionnaireRunSummary;
+};
+
+export type GRCQuestionnaireSourceLocator = {
+  cell?: string;
+  column_name?: string;
+  line_number?: number;
+  page_number?: number;
+  portal_field_id?: string;
+  portal_field_label?: string;
+  portal_url?: string;
+  row_number?: number;
+  sheet_name?: string;
+  source_artifact_urn?: string;
+  source_filename?: string;
+  source_format?: string;
+  text?: string;
+};
+
+export type GRCQuestionnaireTimelineEvent = {
+  actor_id?: string;
+  attributes?: Record<string, string>;
+  created_at?: string;
+  event_type?: string;
+  id?: string;
+  summary?: string;
+};
+
+export type GRCQuestionnaireVendorLinkRequest = {
+  reason?: string;
+  tenant_id?: string;
+  unlink?: boolean;
+  vendor_id?: string;
+  vendor_urn?: string;
 };
 
 export type GRCReportMetadata = Record<string, unknown>;

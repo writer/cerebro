@@ -1,41 +1,47 @@
 [
   {
     "attributes": {
-      "cluster_id": "cluster-1",
-      "display_name": "User One",
-      "email": "user@example.test",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/record-1",
       "family": "rbac_role",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "record-1",
-      "resource_name": "Record One",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:runtime_rbac_role:record-1",
-      "role_kind": "role-kind-1",
-      "role_name": "Role Name",
-      "source_event_id": "record-1",
       "tenant_id": "tenant",
-      "user_id": "user-1"
+      "provider": "kubernetes",
+      "source_provider": "kubernetes",
+      "resource_id": "payments-secret-reader-role",
+      "resource_name": "secret-reader",
+      "resource_type": "rbac_role",
+      "resource_urn": "urn:cerebro:tenant:kubernetes_rbac_role:prod-eks-us-east-1:Role:payments:secret-reader",
+      "cluster_id": "prod-eks-us-east-1",
+      "cluster_name": "prod-us-east-1",
+      "namespace": "payments",
+      "role_name": "secret-reader",
+      "role_kind": "Role",
+      "role_scope": "namespace",
+      "api_groups": "",
+      "resources": "secrets",
+      "verbs": "get,list"
     },
-    "id": "kubernetes-rbac_role-record-1",
+    "id": "kubernetes-rbac-role-payments-secret-reader-role",
     "kind": "kubernetes.rbac_role",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "display_name": "User One",
-      "email": "user@example.test",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:runtime_rbac_role:record-1",
-      "role_kind": "role-kind-1",
-      "rules": "rules-1",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "user-1"
+      "uid": "role-uid-secret-reader",
+      "name": "secret-reader",
+      "namespace": "payments",
+      "role_kind": "Role",
+      "role_scope": "namespace",
+      "rules": [
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "secrets"
+          ],
+          "verbs": [
+            "get",
+            "list"
+          ]
+        }
+      ]
     },
     "schema_ref": "kubernetes/rbac_role/v1",
     "source_id": "kubernetes",

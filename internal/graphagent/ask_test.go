@@ -260,6 +260,74 @@ func TestPostProcessQuestionnaireEvidenceRowsDeduplicatesAndLimitsCandidates(t *
 	}
 }
 
+func TestPostProcessQuestionnaireEvidenceRowsFansOutAcrossControls(t *testing.T) {
+	rows := []map[string]any{}
+	for i := 0; i < 6; i++ {
+		rows = append(rows, map[string]any{
+			"control_urn":  "urn:cerebro:writer:policy:control:noisy",
+			"support_urn":  "urn:cerebro:writer:runtime_evidence:noisy-support",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:noisy-" + strconv.Itoa(i),
+		})
+	}
+	rows = append(rows,
+		map[string]any{
+			"control_urn":  "urn:cerebro:writer:policy:control:encryption",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:encryption",
+		},
+		map[string]any{
+			"control_urn":  "urn:cerebro:writer:policy:control:incident-response",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:incident-response",
+		},
+	)
+
+	result := postProcessQuestionnaireEvidenceRows(AskQueryPlan{Intent: IntentQuestionnaireEvidence, Limit: 3}, rows)
+	if len(result) != 3 {
+		t.Fatalf("rows = %#v, want three candidates", result)
+	}
+	gotControls := map[string]bool{}
+	for _, row := range result {
+		gotControls[stringRowValue(row, "control_urn")] = true
+	}
+	for _, want := range []string{
+		"urn:cerebro:writer:policy:control:noisy",
+		"urn:cerebro:writer:policy:control:encryption",
+		"urn:cerebro:writer:policy:control:incident-response",
+	} {
+		if !gotControls[want] {
+			t.Fatalf("selected controls = %#v, want %s included", result, want)
+		}
+	}
+}
+
+func TestQuestionnaireCandidateLimitRefusesSaturatedWindow(t *testing.T) {
+	rows := make([]ports.CypherRow, 0, questionnaireEvidenceCandidateRowLimit)
+	for i := 0; i < questionnaireEvidenceCandidateRowLimit; i++ {
+		rows = append(rows, ports.CypherRow{Values: map[string]any{
+			"control_urn":  "urn:cerebro:writer:policy:control:iam-1",
+			"evidence_urn": "urn:cerebro:writer:runtime_evidence:okta-" + strconv.Itoa(i),
+		}})
+	}
+	store := &askStore{rows: rows}
+	service := NewService(store, &StubLLMClient{DraftResponse: &DraftResponse{
+		Rationale: "questionnaire evidence",
+		Plan:      &AskQueryPlan{Intent: IntentQuestionnaireEvidence, Filters: map[string]string{"topic": "okta_mfa"}, Limit: 25},
+	}}, ValidatorOptions{})
+	var events []Event
+	if err := service.Stream(context.Background(), AskRequest{TenantID: "writer", Question: "Does Okta enforce MFA for access?"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	}); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	summary := eventData[SummaryEvent](t, events, EventSummary)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "post_processing_candidate_limit" {
+		t.Fatalf("unsupported query = %#v, want post_processing_candidate_limit", summary.UnsupportedQuery)
+	}
+	if countEvents(events, EventRows) != 0 {
+		t.Fatalf("saturated questionnaire candidate window emitted rows: %#v", events)
+	}
+}
+
 func TestValidateRequestRejectsUnsupportedModel(t *testing.T) {
 	err := ValidateRequest(AskRequest{
 		TenantID: "writer",
