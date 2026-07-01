@@ -1,61 +1,38 @@
 [
   {
+    "id": "new_relic-tenant-assets-NR-ENTITY-1",
+    "tenant_id": "tenant",
+    "source_id": "new_relic",
+    "kind": "new_relic.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "new_relic/assets/v1",
+    "payload": {
+      "guid": "NR-ENTITY-1",
+      "name": "Checkout service",
+      "type": "SERVICE",
+      "entityType": "APM_APPLICATION_ENTITY",
+      "domain": "APM",
+      "permalink": "https://example.com/entities/NR-ENTITY-1",
+      "reporting": true,
+      "account": {
+        "id": 42,
+        "name": "Production"
+      }
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/entities",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-new_relic-assets-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-new_relic-assets-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/new_relic/assets/source-new_relic-assets-1",
-      "external_id": "source-new_relic-assets-1",
+      "external_id": "NR-ENTITY-1",
       "family": "assets",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "new_relic",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-new_relic-assets-1",
-      "resource_name": "New Relic Assets Fixture",
-      "resource_type": "assets",
-      "resource_urn": "urn:cerebro:tenant:new_relic_assets:source-new_relic-assets-1",
+      "resource_id": "NR-ENTITY-1",
+      "resource_name": "Checkout service",
+      "resource_type": "APM_APPLICATION_ENTITY",
+      "resource_urn": "urn:cerebro:tenant:runtime_new_relic_entity:NR-ENTITY-1",
       "schema": "assets",
-      "source_event_id": "source-new_relic-assets-1",
+      "source_event_id": "NR-ENTITY-1",
       "source_provider": "new_relic",
       "source_system": "new_relic",
       "tenant_id": "tenant"
-    },
-    "id": "source-new_relic-assets-event-1",
-    "kind": "new_relic.assets",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/entities",
-      "event_id": "source-new_relic-assets-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-new_relic-assets-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-new_relic-assets-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/new_relic/assets/source-new_relic-assets-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/new_relic/assets/source-new_relic-assets-1",
-      "family": "assets",
-      "id": "source-new_relic-assets-1",
-      "name": "New Relic Assets Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-new_relic-assets-1",
-      "resource_type": "assets",
-      "resource_urn": "urn:cerebro:tenant:new_relic_assets:source-new_relic-assets-1",
-      "schema_ref": "new_relic/assets/v1",
-      "source_id": "new_relic",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "new_relic/assets/v1",
-    "source_id": "new_relic",
-    "tenant_id": "tenant"
+    }
   }
 ]

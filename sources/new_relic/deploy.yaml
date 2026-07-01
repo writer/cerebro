@@ -1,13 +1,32 @@
 sourceId: new_relic
 secretKeys:
-  - NEW_RELIC_API_TOKEN
+  - NEW_RELIC_API_KEY
+  - NEW_RELIC_ACCOUNT_ID
+  - NEW_RELIC_AUDIT_NRQL
+  - NEW_RELIC_ENTITY_QUERY
 runtimes:
   - localId: assets
     config:
       family: assets
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /graphql
-      expected_cadence_seconds: "86400"
-      stale_after_seconds: "86400"
-      per_page: "100"
-      api_token: env:NEW_RELIC_API_TOKEN
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      api_key: env:NEW_RELIC_API_KEY
+      entity_query: env:NEW_RELIC_ENTITY_QUERY
+  - localId: findings
+    config:
+      family: findings
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "900"
+      stale_after_seconds: "1800"
+      api_key: env:NEW_RELIC_API_KEY
+      account_id: env:NEW_RELIC_ACCOUNT_ID
+  - localId: audit-events
+    config:
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      api_key: env:NEW_RELIC_API_KEY
+      account_id: env:NEW_RELIC_ACCOUNT_ID
+      audit_nrql: env:NEW_RELIC_AUDIT_NRQL
