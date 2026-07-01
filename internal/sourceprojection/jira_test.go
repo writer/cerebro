@@ -59,7 +59,9 @@ func TestJiraProjectRoleProjectionLinksRoleActors(t *testing.T) {
 		Kind:     "jira.project_roles",
 		Attributes: map[string]string{
 			"admin":             "true",
+			"project_id":        "10001",
 			"project_id_or_key": "ENG",
+			"project_key":       "ENG",
 			"role_id":           "10002",
 			"role_name":         "Administrators",
 		},
@@ -69,9 +71,9 @@ func TestJiraProjectRoleProjectionLinksRoleActors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	roleURN := projectionURN("tenant", "jira_admin_role", "ENG:10002")
+	roleURN := projectionURN("tenant", "jira_admin_role", "10001:10002")
 	globalRoleURN := projectionURN("tenant", "jira_role", "10002")
-	projectURN := projectionURN("tenant", "jira_project", "ENG")
+	projectURN := projectionURN("tenant", "jira_project", "10001")
 	userURN := projectionURN("tenant", "jira_user", "acct-1")
 	groupURN := projectionURN("tenant", "jira_group", "group-1")
 	assertJiraEntity(t, entities, roleURN, "jira.admin_role")
@@ -100,7 +102,7 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 		t.Fatalf("projection error = %v", err)
 	}
 	policyURN := projectionURN("tenant", "jira_permission_scheme", "1001")
-	groupURN := projectionURN("tenant", "jira_group", "jira-administrators")
+	groupURN := projectionURN("tenant", "jira_group", "group-1")
 	grantURN := projectionURN("tenant", "jira_permission_grant", "1001", "10")
 	roleURN := projectionURN("tenant", "jira_role", "10002")
 	roleGrantURN := projectionURN("tenant", "jira_permission_grant", "1001", "11")

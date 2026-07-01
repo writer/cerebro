@@ -230,7 +230,7 @@ entries:
               resource_id: id
               resource_name: name|key
               resource_type: project
-              resource_urn: self
+              resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
           record_selector: $.values[*]
         - coverage:

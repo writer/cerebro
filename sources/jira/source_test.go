@@ -249,7 +249,11 @@ func TestReadGroupMembersFansOutConfiguredGroupIDs(t *testing.T) {
 			t.Fatalf("includeInactiveUsers = %q, want true", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{{"accountId": "acct-" + groupID, "displayName": "Member " + groupID, "emailAddress": groupID + "@example.test", "active": true, "accountType": "atlassian"}}})
+		members := []map[string]any{{"accountId": "acct-" + groupID, "displayName": "Member " + groupID, "emailAddress": groupID + "@example.test", "active": true, "accountType": "atlassian"}}
+		if groupID == "group-a" {
+			members = append(members, map[string]any{"accountId": "acct-" + groupID + "-2", "displayName": "Second " + groupID, "emailAddress": "second-" + groupID + "@example.test", "active": true, "accountType": "atlassian"})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": members})
 	}))
 	defer server.Close()
 
@@ -267,11 +271,14 @@ func TestReadGroupMembersFansOutConfiguredGroupIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read(first) error = %v", err)
 	}
-	if len(first.Events) != 1 {
-		t.Fatalf("first events = %d, want 1", len(first.Events))
+	if len(first.Events) != 2 {
+		t.Fatalf("first events = %d, want 2", len(first.Events))
 	}
 	if got := first.Events[0].Attributes["group_id"]; got != "group-a" {
 		t.Fatalf("first group_id = %q, want group-a", got)
+	}
+	if first.Events[0].Id == first.Events[1].Id {
+		t.Fatalf("same-group member event ids collapsed: %q", first.Events[0].Id)
 	}
 	if got := first.Events[0].Attributes["member_type"]; got != "user" {
 		t.Fatalf("first member_type = %q, want user", got)
@@ -316,6 +323,7 @@ func TestReadProjectRolesEnrichesRoleActors(t *testing.T) {
 				"id":          10002,
 				"name":        "Administrators",
 				"description": "Project administrators",
+				"scope":       map[string]any{"type": "PROJECT", "project": map[string]any{"id": "10001", "key": "ENG"}},
 				"actors": []map[string]any{
 					{"id": 20001, "type": "atlassian-user-role-actor", "displayName": "User One", "actorUser": map[string]any{"accountId": "acct-1"}},
 					{"id": 20002, "type": "atlassian-group-role-actor", "displayName": "jira-administrators", "actorGroup": map[string]any{"groupId": "group-1", "name": "jira-administrators"}},
@@ -345,6 +353,8 @@ func TestReadProjectRolesEnrichesRoleActors(t *testing.T) {
 	event := pull.Events[0]
 	for key, want := range map[string]string{
 		"project_id_or_key": "ENG",
+		"project_id":        "10001",
+		"project_key":       "ENG",
 		"resource_id":       "10002",
 		"role_id":           "10002",
 		"role_name":         "Administrators",

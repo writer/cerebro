@@ -73,7 +73,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	projectID := firstNonEmpty(attributes["project_id_or_key"], attributes["project_id"], attributes["project_key"])
+	projectID := firstNonEmpty(attributes["project_id"], attributes["project_key"], attributes["project_id_or_key"])
 	roleID := firstNonEmpty(attributes["role_id"], attributes["resource_id"], event.GetId())
 	if roleID == "" {
 		return nil, nil, nil
@@ -109,6 +109,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		Attributes: map[string]string{
 			"is_admin":          strings.TrimSpace(attributes["admin"]),
 			"project_id":        projectID,
+			"project_key":       strings.TrimSpace(attributes["project_key"]),
 			"role_id":           roleID,
 			"role_name":         firstNonEmpty(attributes["role_name"], attributes["resource_name"]),
 			"role_type":         firstNonEmpty(attributes["role_type"], "project_role"),
@@ -118,7 +119,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, globalRoleURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "jira_project_role_definition"}))
 	if projectID != "" {
 		projectURN := projectionURN(tenantID, "jira_project", projectID)
-		addEntity(entities, &ports.ProjectedEntity{URN: projectURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "jira.project", Label: projectID, Attributes: map[string]string{"project_id": projectID}})
+		addEntity(entities, &ports.ProjectedEntity{URN: projectURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "jira.project", Label: firstNonEmpty(attributes["project_key"], projectID), Attributes: map[string]string{"project_id": projectID, "project_key": strings.TrimSpace(attributes["project_key"])}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, projectURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "jira_project_role_scope"}))
 	}
 	for _, actor := range jiraRoleActors(event) {
@@ -259,7 +260,7 @@ func jiraPermissionGrants(event *cerebrov1.EventEnvelope) []map[string]any {
 
 func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, string, string) {
 	holderType := normalizeIdentifier(jiraAnyString(holder["type"]))
-	holderID := firstNonEmpty(jiraAnyString(holder["value"]), jiraAnyString(holder["parameter"]), holderType)
+	holderID := firstNonEmpty(jiraAnyString(holder["parameter"]), jiraAnyString(holder["value"]), holderType)
 	switch holderType {
 	case "group":
 		return identityGroupURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "group", holderID

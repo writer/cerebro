@@ -141,6 +141,7 @@ func groupMembersFamily() jsonapi.Family {
 		StaticAttributes: map[string]string{"member_type": "user", "record_class": "identity_group_membership", "resource_type": "group_membership", "schema": FamilyGroupMembers, "source_system": SourceID},
 		Config: jsonapi.FamilyConfig{
 			ConfigQuery:     map[string]string{"groupId": "group_id"},
+			EncodeURNID:     true,
 			IdentityKeys:    []string{"group_id"},
 			StaticQuery:     map[string]string{"includeInactiveUsers": "true"},
 			ResourceURNKind: "jira_users",
@@ -199,8 +200,9 @@ func projectRolesFamily() jsonapi.Family {
 			"admin":             "admin",
 			"default":           "default",
 			"description":       "description",
-			"project_id":        "project_id_or_key",
+			"project_id":        "scope.project.id|project.id|projectId|project_id",
 			"project_id_or_key": "project_id_or_key",
+			"project_key":       "scope.project.key|project.key|projectKey|project_id_or_key",
 			"resource_id":       "id|self",
 			"resource_name":     "name|translatedName|id",
 			"resource_type":     "project_role",
