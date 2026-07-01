@@ -1,6 +1,11 @@
 package boxapi
 
-import "github.com/writer/cerebro/sources/internal/jsonapi"
+import (
+	"strings"
+
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/jsonapi"
+)
 
 const (
 	SourceID               = "box"
@@ -15,6 +20,8 @@ const (
 	FamilyAuditEvents      = "audit_events"
 )
 
+var TemplateKeys = []string{"client_id", "client_secret", "enterprise_id", "box_subject_id"}
+
 func Families() []jsonapi.Family {
 	return []jsonapi.Family{
 		boxUsersFamily(),
@@ -23,6 +30,17 @@ func Families() []jsonapi.Family {
 		boxGroupMembershipsFamily(),
 		boxAuditEventsFamily(),
 	}
+}
+
+func PathParamValues(cfg sourcecdk.Config) (string, []string) {
+	if familyName(cfg) != FamilyGroupMemberships {
+		return "", nil
+	}
+	values := configListValues(cfg, "group_ids", "group_id")
+	if len(values) == 0 {
+		return "", nil
+	}
+	return "group_id", values
 }
 
 func boxUsersFamily() jsonapi.Family {
@@ -214,4 +232,23 @@ func boxStaticAttributes(schema string, recordClass string, resourceType string)
 		"schema":        schema,
 		"source_system": "box",
 	}
+}
+
+func configListValues(cfg sourcecdk.Config, keys ...string) []string {
+	values := []string{}
+	for _, key := range keys {
+		for _, value := range strings.Split(sourcecdk.ConfigValue(cfg, key), ",") {
+			if value = strings.TrimSpace(value); value != "" {
+				values = append(values, value)
+			}
+		}
+	}
+	return values
+}
+
+func familyName(cfg sourcecdk.Config) string {
+	if family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")); family != "" {
+		return family
+	}
+	return DefaultFamily
 }

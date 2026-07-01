@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/boxapi"
 )
 
 func TestSourceCheckAndRead(t *testing.T) {
@@ -173,14 +174,14 @@ func TestRuntimeUsesBoxAPIPathsAndCursors(t *testing.T) {
 }
 
 func TestGroupMembershipsRequireConfiguredGroupIDs(t *testing.T) {
-	param, values := boxPathParamValues(sourcecdk.NewConfig(map[string]string{
+	param, values := boxapi.PathParamValues(sourcecdk.NewConfig(map[string]string{
 		"family": familyGroupMemberships,
 	}))
 	if param != "" || len(values) != 0 {
 		t.Fatalf("boxPathParamValues() = %q, %v; want no path params without group_ids", param, values)
 	}
 
-	param, values = boxPathParamValues(sourcecdk.NewConfig(map[string]string{
+	param, values = boxapi.PathParamValues(sourcecdk.NewConfig(map[string]string{
 		"family":    familyGroupMemberships,
 		"group_ids": "group-1, group-2",
 	}))

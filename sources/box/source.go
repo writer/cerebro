@@ -27,7 +27,7 @@ const (
 	familyAuditEvents      = boxapi.FamilyAuditEvents
 )
 
-var templateKeys = []string{"client_id", "client_secret", "enterprise_id", "box_subject_id"}
+var templateKeys = boxapi.TemplateKeys
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -71,7 +71,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if param, values := boxPathParamValues(runtimeCfg); param != "" {
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
 		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
@@ -85,7 +85,7 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
-	if param, values := boxPathParamValues(runtimeCfg); param != "" {
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
 		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Discover(ctx, runtimeCfg)
@@ -100,7 +100,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	if param, values := boxPathParamValues(runtimeCfg); param != "" {
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
 		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
 	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
@@ -136,36 +136,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func boxPathParamValues(cfg sourcecdk.Config) (string, []string) {
-	if familyName(cfg) != familyGroupMemberships {
-		return "", nil
-	}
-	values := configListValues(cfg, "group_ids", "group_id")
-	if len(values) == 0 {
-		return "", nil
-	}
-	return "group_id", values
-}
-
-func configListValues(cfg sourcecdk.Config, keys ...string) []string {
-	values := []string{}
-	for _, key := range keys {
-		for _, value := range strings.Split(sourcecdk.ConfigValue(cfg, key), ",") {
-			if value = strings.TrimSpace(value); value != "" {
-				values = append(values, value)
-			}
-		}
-	}
-	return values
-}
-
-func familyName(cfg sourcecdk.Config) string {
-	if family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family")); family != "" {
-		return family
-	}
-	return defaultFamily
 }
 
 func (s *Source) allowLoopbackForTest() {
