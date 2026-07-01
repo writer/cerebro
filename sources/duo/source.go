@@ -3,6 +3,7 @@ package duo
 import (
 	"context"
 	"embed"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -64,14 +65,23 @@ func New() (*Source, error) {
 
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.inner.Spec() }
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	return s.inner.Check(ctx, cfg)
+	return s.inner.Check(ctx, normalizeBaseURLConfig(cfg))
 }
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	return s.inner.Discover(ctx, cfg)
+	return s.inner.Discover(ctx, normalizeBaseURLConfig(cfg))
 }
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	return s.inner.Read(ctx, cfg, cursor)
+	return s.inner.Read(ctx, normalizeBaseURLConfig(cfg), cursor)
 }
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
+}
+
+func normalizeBaseURLConfig(cfg sourcecdk.Config) sourcecdk.Config {
+	values := cfg.Values()
+	baseURL := strings.TrimRight(strings.TrimSpace(values["base_url"]), "/")
+	if strings.HasSuffix(baseURL, "/admin/v1") {
+		values["base_url"] = strings.TrimSuffix(baseURL, "/admin/v1")
+	}
+	return sourcecdk.NewConfig(values)
 }

@@ -204,6 +204,38 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 	}
 }
 
+func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
+			t.Fatalf("request path = %q, want /admin/v1/users", got)
+		}
+		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": []map[string]any{{
+			"user_id": "user-1", "username": "alice", "status": "active",
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":      server.URL + "/admin/v1",
+		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
+		"client_secret": "deadbeefsecret",
+		"family":        "user",
+		"tenant_id":     "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}
+
 func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, secretKey string) {
 	t.Helper()
 	date := r.Header.Get("Date")
