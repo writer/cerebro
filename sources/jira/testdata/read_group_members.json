@@ -1,40 +1,42 @@
 [
   {
-    "id": "jira-users-event-1",
+    "id": "jira-group-members-event-1",
     "tenant_id": "tenant",
     "source_id": "jira",
-    "kind": "jira.users",
-    "schema_ref": "jira/users/v1",
+    "kind": "jira.group_members",
+    "schema_ref": "jira/group_members/v1",
     "occurred_at": "2026-06-01T00:00:00Z",
     "attributes": {
       "account_id": "acct-1",
-      "account_type": "atlassian",
       "display_name": "User One",
       "email": "user@example.test",
       "external_id": "acct-1",
-      "family": "users",
+      "family": "group_members",
+      "group_id": "group-1",
+      "member_email": "user@example.test",
+      "member_name": "User One",
+      "member_status": "true",
+      "member_type": "user",
+      "member_user_id": "acct-1",
       "provider": "jira",
-      "record_class": "identity_user",
+      "record_class": "identity_group_membership",
       "resource_id": "acct-1",
       "resource_name": "User One",
-      "resource_type": "identity_user",
+      "resource_type": "group_membership",
       "resource_urn": "urn:cerebro:tenant:jira_users:acct-1",
-      "schema": "users",
+      "schema": "group_members",
       "source_event_id": "acct-1",
       "source_provider": "jira",
       "source_system": "jira",
-      "status": "true",
       "tenant_id": "tenant",
-      "time_zone": "America/Los_Angeles",
       "user_id": "acct-1"
     },
     "payload": {
       "accountId": "acct-1",
-      "accountType": "atlassian",
       "active": true,
       "displayName": "User One",
       "emailAddress": "user@example.test",
-      "timeZone": "America/Los_Angeles"
+      "group_id": "group-1"
     }
   }
 ]

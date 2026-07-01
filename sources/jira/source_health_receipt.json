@@ -11,6 +11,15 @@
   ],
   "health_endpoint": "/source-runtimes/health?source_id=jira",
   "receipt_kind": "source_health.receipt",
+  "runtime_families": [
+    "audit_events",
+    "group_members",
+    "groups",
+    "permission_schemes",
+    "project_roles",
+    "projects",
+    "users"
+  ],
   "source_id": "jira",
   "source_type": "json_api",
   "stale_after_seconds": 86400
