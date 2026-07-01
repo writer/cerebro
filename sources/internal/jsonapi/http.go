@@ -68,14 +68,17 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if err != nil {
 		return nil, "", err
 	}
-	items, next, err := parseListResponse(family, body)
+	items, next, responseCursorKnown, err := parseListResponse(family, body)
 	if err != nil {
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 	}
 	if next == "" {
 		next = linkHeaderCursor(family, headers)
+		responseCursorKnown = responseCursorKnown || next != ""
 	}
-	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
+	if !responseCursorKnown {
+		next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
+	}
 	records := make([]record, 0, len(items))
 	for _, item := range items {
 		item, err = rawWithPathParams(item, settings.request.pathParams)
@@ -192,11 +195,18 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 }
 
 func synthesizedPageCursorStep(family Family, pageSize int) int {
-	switch cursorParam(family) {
-	case "offset", "start", "startAt":
+	if isOffsetCursorParam(cursorParam(family)) {
 		return pageSize
+	}
+	return 1
+}
+
+func isOffsetCursorParam(param string) bool {
+	switch strings.TrimSpace(param) {
+	case "offset", "skip", "start", "startAt":
+		return true
 	default:
-		return 1
+		return false
 	}
 }
 
@@ -330,26 +340,27 @@ func requestEndpoint(sourceID string, baseURL string, defaultPath string, path s
 	return sourcehttp.SameOriginAbsoluteURL(sourceID, baseURL, path)
 }
 
-func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, error) {
+func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, string, bool, error) {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err == nil {
-		return items, "", nil
+		return items, "", false, nil
 	}
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
+	next, responseCursorKnown := responseCursor(family, object)
 	if family.Singleton {
 		item, err := singletonRecord(raw, family.Name)
 		if err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
-		return []json.RawMessage{item}, responseCursor(family, object), nil
+		return []json.RawMessage{item}, next, responseCursorKnown, nil
 	}
 	for _, key := range responseListKeys(family) {
 		if value, ok := object[key]; ok {
 			if err := json.Unmarshal(value, &items); err == nil {
-				return items, responseCursor(family, object), nil
+				return items, next, responseCursorKnown, nil
 			}
 		}
 	}
@@ -357,12 +368,12 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		if value, ok := object[objectKey]; ok {
 			items, err := recordsFromObjectMap(value, valueKey)
 			if err != nil {
-				return nil, "", err
+				return nil, "", false, err
 			}
-			return items, responseCursor(family, object), nil
+			return items, next, responseCursorKnown, nil
 		}
 	}
-	return nil, "", fmt.Errorf("response did not contain a record list")
+	return nil, "", false, fmt.Errorf("response did not contain a record list")
 }
 
 func responseListKeys(family Family) []string {
@@ -418,16 +429,16 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 	return json.Marshal(object)
 }
 
-func responseCursor(family Family, object map[string]json.RawMessage) string {
-	if value := offsetResponseCursor(family, object); value != "" {
-		return value
+func responseCursor(family Family, object map[string]json.RawMessage) (string, bool) {
+	if value, ok := offsetResponseCursor(family, object); ok {
+		return value, true
 	}
 	if !responseHasMore(family, object) {
-		return ""
+		return "", strings.TrimSpace(family.HasMoreKey) != ""
 	}
 	for _, key := range responseCursorKeys(family) {
 		if value := rawStringAtPath(object, key); value != "" {
-			return responseCursorValue(family, value)
+			return responseCursorValue(family, value), true
 		}
 	}
 	for _, key := range []string{"pagination", "page", "pageInfo", "meta", "result_info", "resultInfo"} {
@@ -437,14 +448,14 @@ func responseCursor(family Family, object map[string]json.RawMessage) string {
 		}
 		for _, nestedKey := range responseCursorKeys(family) {
 			if value := valueString(nested[nestedKey]); value != "" {
-				return responseCursorValue(family, value)
+				return responseCursorValue(family, value), true
 			}
 		}
 		if value := nextPageCursor(nested); value != "" {
-			return value
+			return value, true
 		}
 	}
-	return ""
+	return "", false
 }
 
 func responseCursorValue(family Family, value string) string {
@@ -523,27 +534,31 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 	return ""
 }
 
-func offsetResponseCursor(family Family, object map[string]json.RawMessage) string {
-	if cursorParam(family) != "offset" {
-		return ""
+func offsetResponseCursor(family Family, object map[string]json.RawMessage) (string, bool) {
+	cursorKey := cursorParam(family)
+	if !isOffsetCursorParam(cursorKey) {
+		return "", false
 	}
 	total, totalOK := intValueAtResponsePath(object, responseIntPaths(family.Config.TotalKeys, "totalCount", "total_count", "total", "metadata.page.total_count", "metadata.page.totalCount", "metadata.page.total", "meta.page.total_count", "meta.page.totalCount", "meta.page.total")...)
-	offset, offsetOK := intValueAtResponsePath(object, responseIntPaths(family.Config.OffsetKeys, "offset", "pagination.offset", "metadata.page.offset", "meta.page.offset")...)
+	offset, offsetOK := intValueAtResponsePath(object, responseIntPaths(family.Config.OffsetKeys, cursorKey, "offset", "skip", "start", "startAt", "pagination."+cursorKey, "pagination.offset", "pagination.skip", "pagination.start", "pagination.startAt", "metadata.page."+cursorKey, "metadata.page.offset", "metadata.page.skip", "metadata.page.start", "metadata.page.startAt", "meta.page."+cursorKey, "meta.page.offset", "meta.page.skip", "meta.page.start", "meta.page.startAt")...)
 	limit, limitOK := intValueAtResponsePath(object, responseIntPaths(family.Config.LimitKeys, "limit", "pagination.limit", "metadata.page.limit", "meta.page.limit")...)
 	if !offsetOK || !limitOK || limit <= 0 {
-		return ""
+		return "", false
 	}
 	next := offset + limit
 	if totalOK && total >= 0 {
 		if next >= total {
-			return ""
+			return "", true
 		}
-		return strconv.Itoa(next)
+		return strconv.Itoa(next), true
 	}
-	if strings.TrimSpace(family.HasMoreKey) == "" || !responseHasMore(family, object) {
-		return ""
+	if strings.TrimSpace(family.HasMoreKey) == "" {
+		return "", false
 	}
-	return strconv.Itoa(next)
+	if !responseHasMore(family, object) {
+		return "", true
+	}
+	return strconv.Itoa(next), true
 }
 
 func responseHasMore(family Family, object map[string]json.RawMessage) bool {

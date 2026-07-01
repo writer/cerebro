@@ -1,0 +1,36 @@
+[
+  {
+    "attributes": {
+      "active": "true",
+      "external_id": "system-1",
+      "family": "systems",
+      "hostname": "mac-1.local",
+      "os": "macOS",
+      "provider": "jumpcloud",
+      "record_class": "asset",
+      "resource_id": "system-1",
+      "resource_name": "Mac 1",
+      "resource_type": "system",
+      "resource_urn": "urn:cerebro:tenant:jumpcloud_systems:system-1",
+      "schema": "systems",
+      "source_event_id": "system-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "system_id": "system-1",
+      "tenant_id": "tenant"
+    },
+    "id": "jumpcloud-systems-event-1",
+    "kind": "jumpcloud.systems",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "_id": "system-1",
+      "active": true,
+      "displayName": "Mac 1",
+      "hostname": "mac-1.local",
+      "os": "macOS"
+    },
+    "schema_ref": "jumpcloud/systems/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]
