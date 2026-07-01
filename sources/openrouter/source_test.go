@@ -271,6 +271,32 @@ func TestSourceReadReturnsOpenRouterErrorBody(t *testing.T) {
 	}
 }
 
+func TestSourceReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireOpenRouterAuth(t, r)
+		if r.URL.Path != "/v1/byok" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		writeJSON(t, w, map[string]any{"error": "provider temporarily unavailable"})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyProviderKeys, "token": "test-token"})
+	_, err := source.Read(context.Background(), cfg, nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider unavailable error")
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Read() error = %v, want HTTP 503", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "openrouter API returned 503") || !strings.Contains(got, "provider temporarily unavailable") {
+		t.Fatalf("Read() error = %q, want provider unavailable detail", got)
+	}
+}
+
 func TestFixtureContractsLoad(t *testing.T) {
 	fixture, err := NewFixture()
 	if err != nil {
