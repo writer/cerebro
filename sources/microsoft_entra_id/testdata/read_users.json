@@ -15,6 +15,7 @@
       "createdDateTime": "2026-05-01T00:00:00Z"
     },
     "attributes": {
+      "account_enabled": "true",
       "display_name": "User One",
       "email": "user@example.test",
       "external_id": "user-1",
@@ -31,7 +32,6 @@
       "source_event_id": "user-1",
       "source_provider": "microsoft_entra_id",
       "source_system": "microsoft_entra_id",
-      "status": "true",
       "tenant_id": "tenant",
       "user_id": "user-1"
     }

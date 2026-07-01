@@ -42,7 +42,6 @@
       "resource_id": "user-1",
       "resource_name": "User One",
       "resource_type": "User",
-      "resource_urn": "urn:cerebro:tenant:runtime_users:user-1",
       "schema": "audit_events",
       "source_event_id": "audit-1",
       "source_provider": "microsoft_entra_id",
