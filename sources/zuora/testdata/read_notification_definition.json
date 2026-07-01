@@ -3,7 +3,6 @@
     "attributes": {
       "alert_id": "6e569e1e05f040eda51a927b140c0ac2",
       "alert_name": "Account Edit Email",
-      "alert_severity": "true",
       "alert_status": "true",
       "name": "Account Edit Email",
       "provider_id": "6e569e1e05f040eda51a927b140c0ac2",

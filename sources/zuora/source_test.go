@@ -57,7 +57,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"createdOn":       "2026-06-01T00:00:00Z",
 				"updatedOn":       "2026-06-02T00:00:00Z",
 			}}},
-			wantAttributes: map[string]string{"name": "Subscription Revenue", "status": "Active"},
+			wantAttributes: map[string]string{"name": "Subscription Revenue", "observed_at": "2026-06-02T00:00:00Z", "status": "Active"},
 			wantPayloadKey: "glAccountNumber",
 		},
 		{
@@ -77,7 +77,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"createdOn":             "2026-06-01T00:00:00Z",
 				"updatedOn":             "2026-06-02T00:00:00Z",
 			}}},
-			wantAttributes: map[string]string{"name": "Jun 2026", "status": "Open"},
+			wantAttributes: map[string]string{"name": "Jun 2026", "observed_at": "2026-06-02T00:00:00Z", "status": "Open"},
 			wantPayloadKey: "runTrialBalanceStatus",
 		},
 		{
@@ -94,7 +94,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"notification":  "New Subscription Created",
 				"createTime":    "2026-06-01T03:33:51",
 			}}},
-			wantAttributes: map[string]string{"alert_id": "3", "alert_status": "3"},
+			wantAttributes: map[string]string{"alert_id": "3", "alert_name": "New Subscription Created", "alert_source": "https://callback.example.test/zuora", "alert_status": "405", "resource_id": "3", "resource_name": "New Subscription Created", "source_event_id": "3"},
 			wantPayloadKey: "requestUrl",
 		},
 		{
@@ -116,7 +116,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"sendTime":      "2026-06-01T03:31:43",
 				"errorMessage":  nil,
 			}}},
-			wantAttributes: map[string]string{"name": "New subscription was created", "provider_id": "audit@example.test"},
+			wantAttributes: map[string]string{"name": "New subscription was created", "provider_id": "audit@example.test", "resource_name": "New subscription was created"},
 			wantPayloadKey: "toEmail",
 		},
 		{
@@ -211,7 +211,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"eventNumber":             "REV-EVT-0001",
 				"subscriptionNumber":      "A-S00000003",
 			}}},
-			wantAttributes: map[string]string{"source_event_id": "2026-06-30", "event_type": "Revenue Distributed"},
+			wantAttributes: map[string]string{"source_event_id": "REV-EVT-0001", "event_type": "Revenue Distributed", "resource_id": "REV-EVT-0001"},
 			wantPayloadKey: "eventNumber",
 		},
 		{
@@ -227,7 +227,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"revenueScheduleNumber": "RS-0001",
 				"subscriptionNumber":    "A-S00000003",
 			}}},
-			wantAttributes: map[string]string{"source_event_id": "2c92c0f86c99b4eb016cae1ee301728f", "event_type": "Revenue Schedule Updated"},
+			wantAttributes: map[string]string{"source_event_id": "RS-0001", "event_type": "Revenue Schedule Updated", "resource_id": "RS-0001"},
 			wantPayloadKey: "revenueScheduleNumber",
 		},
 		{
@@ -309,6 +309,16 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			for key, want := range tc.wantAttributes {
 				if got := event.Attributes[key]; got != want {
 					t.Fatalf("attribute %q = %q, want %q; attrs=%#v", key, got, want, event.Attributes)
+				}
+			}
+			if tc.family == familyCallout {
+				if got := event.Attributes["alert_severity"]; got != "" {
+					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+				}
+			}
+			if tc.family == familyNotificationDefinition {
+				if got := event.Attributes["alert_severity"]; got != "" {
+					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
 				}
 			}
 			var payload map[string]any

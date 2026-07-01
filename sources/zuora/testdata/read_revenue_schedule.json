@@ -3,18 +3,18 @@
     "attributes": {
       "event_type": "Revenue Schedule Updated",
       "name": "RS-0001",
-      "provider_id": "2c92c0f86c99b4eb016cae1ee301728f",
+      "provider_id": "RS-0001",
       "record_class": "audit_event",
       "resource_id": "RS-0001",
       "resource_name": "RS-0001",
       "resource_type": "revenue_schedule",
-      "resource_urn": "urn:cerebro:tenant:zuora_revenue_schedule:2c92c0f86c99b4eb016cae1ee301728f",
+      "resource_urn": "urn:cerebro:tenant:zuora_revenue_schedule:RS-0001",
       "schema": "revenue_schedule",
-      "source_event_id": "2c92c0f86c99b4eb016cae1ee301728f",
+      "source_event_id": "RS-0001",
       "source_system": "zuora",
       "tenant_id": "tenant"
     },
-    "id": "zuora-revenue_schedule-2c92c0f86c99b4eb016cae1ee301728f-observed",
+    "id": "zuora-revenue_schedule-RS-0001-observed",
     "kind": "zuora.revenue_schedule",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
@@ -22,7 +22,6 @@
       "amount": 1250.0,
       "currency": "USD",
       "eventType": "Revenue Schedule Updated",
-      "resource_id": "RS-0001",
       "revenueScheduleNumber": "RS-0001",
       "subscriptionNumber": "A-S00000003"
     },

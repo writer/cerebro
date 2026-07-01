@@ -3,18 +3,18 @@
     "attributes": {
       "event_type": "Revenue Distributed",
       "name": "REV-EVT-0001",
-      "provider_id": "2026-06-30",
+      "provider_id": "REV-EVT-0001",
       "record_class": "audit_event",
       "resource_id": "REV-EVT-0001",
       "resource_name": "REV-EVT-0001",
       "resource_type": "revenue_event",
-      "resource_urn": "urn:cerebro:tenant:zuora_revenue_event:2026-06-30",
+      "resource_urn": "urn:cerebro:tenant:zuora_revenue_event:REV-EVT-0001",
       "schema": "revenue_event",
-      "source_event_id": "2026-06-30",
+      "source_event_id": "REV-EVT-0001",
       "source_system": "zuora",
       "tenant_id": "tenant"
     },
-    "id": "zuora-revenue_event-2026-06-30-observed",
+    "id": "zuora-revenue_event-REV-EVT-0001-observed",
     "kind": "zuora.revenue_event",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
@@ -23,7 +23,6 @@
       "currency": "USD",
       "eventNumber": "REV-EVT-0001",
       "eventType": "Revenue Distributed",
-      "resource_id": "REV-EVT-0001",
       "subscriptionNumber": "A-S00000003"
     },
     "schema_ref": "zuora/revenue_event/v1",
