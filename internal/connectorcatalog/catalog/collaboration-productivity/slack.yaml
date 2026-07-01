@@ -202,6 +202,7 @@ entries:
             page_param: page
             page_size: 100
             page_size_param: count
+            start_page: 1
             type: page
           path: /team.accessLogs
           permissions_needed: [team:read]

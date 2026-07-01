@@ -356,6 +356,20 @@ func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
 	}
 }
 
+func TestBuiltinSlackAccessLogStartsAtPageOne(t *testing.T) {
+	entry, ok, err := BuiltinEntry("slack")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(slack) ok = false, want true")
+	}
+	accessLog := catalogFamily(t, entry.Definition.ResourceFamilies, "access_log")
+	if accessLog.Pagination == nil || accessLog.Pagination.Type != "page" || accessLog.Pagination.PageParam != "page" || accessLog.Pagination.PageSizeParam != "count" || accessLog.Pagination.StartPage != 1 {
+		t.Fatalf("access_log pagination = %#v, want page/count starting at 1", accessLog.Pagination)
+	}
+}
+
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {
