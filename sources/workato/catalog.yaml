@@ -7,6 +7,12 @@ emitted_kinds:
   - workato.repositories
   - workato.deployments
   - workato.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: workato.users
     status: active

@@ -1,14 +1,39 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "attributes": {
+      "display_name": "jane.doe@example.com",
+      "email": "jane.doe@example.com",
+      "external_id": "user_2dHFtVWx2n56w6HkM0000000000",
+      "family": "organization_members",
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "login": "jane.doe@example.com",
+      "primary_email": "jane.doe@example.com",
+      "provider": "openrouter",
+      "record_class": "identity_user",
+      "resource_id": "user_2dHFtVWx2n56w6HkM0000000000",
+      "resource_name": "jane.doe@example.com",
+      "resource_urn": "urn:cerebro:tenant:openrouter_organization_members:user_2dHFtVWx2n56w6HkM0000000000",
+      "role": "org:admin",
+      "schema": "organization_members",
+      "source_event_id": "user_2dHFtVWx2n56w6HkM0000000000",
+      "source_provider": "openrouter",
+      "source_system": "openrouter",
+      "tenant_id": "tenant",
+      "user_id": "user_2dHFtVWx2n56w6HkM0000000000"
+    },
+    "id": "openrouter-tenant-organization-members-user-2dhftvwx2n56w6hkm0000000000",
+    "kind": "openrouter.organization_members",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "email": "jane.doe@example.com",
+      "first_name": "Jane",
+      "id": "user_2dHFtVWx2n56w6HkM0000000000",
+      "last_name": "Doe",
+      "role": "org:admin"
+    },
+    "schema_ref": "openrouter/organization_members/v1",
+    "source_id": "openrouter",
+    "tenant_id": "tenant"
+  }
+]

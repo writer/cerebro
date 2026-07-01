@@ -7,6 +7,12 @@ emitted_kinds:
   - dragos_worldview.vulnerabilities
   - dragos_worldview.policies
   - dragos_worldview.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: dragos_worldview.assets
     status: active

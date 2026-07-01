@@ -8,6 +8,7 @@
     "schema_ref": "asana/audit_events/v1",
     "payload": {
       "id": "audit-1",
+      "gid": "audit-1",
       "event_type": "project.created",
       "actor": {
         "id": "user-1",

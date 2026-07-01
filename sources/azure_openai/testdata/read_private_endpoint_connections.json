@@ -1,0 +1,44 @@
+[
+  {
+    "attributes": {
+      "external_id": "pec-prod",
+      "family": "private_endpoint_connections",
+      "private_endpoint_id": "/subscriptions/sub-0000/resourceGroups/rg-network/providers/Microsoft.Network/privateEndpoints/pe-openai-prod",
+      "private_link_service_connection_actions_required": "None",
+      "private_link_service_connection_description": "Approved for production traffic",
+      "private_link_service_connection_status": "Approved",
+      "provider": "azure_openai",
+      "record_class": "asset",
+      "resource_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/privateEndpointConnections/pec-prod",
+      "resource_name": "pec-prod",
+      "resource_type": "Microsoft.CognitiveServices/accounts/privateEndpointConnections",
+      "resource_urn": "urn:cerebro:tenant:azure_openai_private_endpoint_connections:pec-prod",
+      "schema": "private_endpoint_connections",
+      "source_event_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/privateEndpointConnections/pec-prod",
+      "source_provider": "azure_openai",
+      "source_system": "azure_openai",
+      "tenant_id": "tenant"
+    },
+    "id": "azure-openai-private-endpoint-connections-pec-prod",
+    "kind": "azure_openai.private_endpoint_connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/privateEndpointConnections/pec-prod",
+      "name": "pec-prod",
+      "type": "Microsoft.CognitiveServices/accounts/privateEndpointConnections",
+      "properties": {
+        "privateEndpoint": {
+          "id": "/subscriptions/sub-0000/resourceGroups/rg-network/providers/Microsoft.Network/privateEndpoints/pe-openai-prod"
+        },
+        "privateLinkServiceConnectionState": {
+          "status": "Approved",
+          "description": "Approved for production traffic",
+          "actionsRequired": "None"
+        }
+      }
+    },
+    "schema_ref": "azure_openai/private_endpoint_connections/v1",
+    "source_id": "azure_openai",
+    "tenant_id": "tenant"
+  }
+]

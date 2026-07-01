@@ -1,0 +1,63 @@
+[
+  {
+    "attributes": {
+      "external_id": "content-filter-prod",
+      "family": "rai_policies",
+      "policy_description": "DefaultV2",
+      "policy_id": "content-filter-prod",
+      "policy_name": "content-filter-prod",
+      "policy_severity": "Medium,Medium,High",
+      "policy_status": "Blocking",
+      "policy_type": "Microsoft.CognitiveServices/accounts/raiPolicies",
+      "provider": "azure_openai",
+      "record_class": "policy",
+      "resource_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiPolicies/content-filter-prod",
+      "resource_name": "content-filter-prod",
+      "resource_type": "Microsoft.CognitiveServices/accounts/raiPolicies",
+      "resource_urn": "urn:cerebro:tenant:azure_openai_rai_policies:content-filter-prod",
+      "schema": "rai_policies",
+      "source_event_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiPolicies/content-filter-prod",
+      "source_provider": "azure_openai",
+      "source_system": "azure_openai",
+      "tenant_id": "tenant"
+    },
+    "id": "azure-openai-rai-policies-content-filter-prod",
+    "kind": "azure_openai.rai_policies",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiPolicies/content-filter-prod",
+      "name": "content-filter-prod",
+      "type": "Microsoft.CognitiveServices/accounts/raiPolicies",
+      "properties": {
+        "basePolicyName": "DefaultV2",
+        "mode": "Blocking",
+        "contentFilters": [
+          {
+            "name": "Hate",
+            "blocking": true,
+            "enabled": true,
+            "severityThreshold": "Medium",
+            "source": "Prompt"
+          },
+          {
+            "name": "Violence",
+            "blocking": true,
+            "enabled": true,
+            "severityThreshold": "Medium",
+            "source": "Completion"
+          },
+          {
+            "name": "Selfharm",
+            "blocking": true,
+            "enabled": true,
+            "severityThreshold": "High",
+            "source": "Prompt"
+          }
+        ]
+      }
+    },
+    "schema_ref": "azure_openai/rai_policies/v1",
+    "source_id": "azure_openai",
+    "tenant_id": "tenant"
+  }
+]

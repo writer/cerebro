@@ -1,14 +1,40 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "attributes": {
+      "external_id": "models/gemini-2.5-pro",
+      "family": "model_catalog",
+      "provider": "google_gemini",
+      "record_class": "asset",
+      "resource_id": "models/gemini-2.5-pro",
+      "resource_name": "Gemini 2.5 Pro",
+      "resource_type": "model_catalog",
+      "resource_urn": "urn:cerebro:tenant:google_gemini_model_catalog:models/gemini-2.5-pro",
+      "schema": "model_catalog",
+      "source_event_id": "models/gemini-2.5-pro",
+      "source_provider": "google_gemini",
+      "source_system": "google_gemini",
+      "tenant_id": "tenant"
+    },
+    "id": "google-gemini-model-catalog-models-gemini-2-5-pro",
+    "kind": "google_gemini.model_catalog",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "name": "models/gemini-2.5-pro",
+      "version": "2.5",
+      "displayName": "Gemini 2.5 Pro",
+      "description": "Sanitized Gemini model catalog entry.",
+      "inputTokenLimit": 1048576,
+      "outputTokenLimit": 65536,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens"
+      ],
+      "temperature": 1,
+      "topP": 0.95,
+      "topK": 64
+    },
+    "schema_ref": "google_gemini/model_catalog/v1",
+    "source_id": "google_gemini",
+    "tenant_id": "tenant"
+  }
+]

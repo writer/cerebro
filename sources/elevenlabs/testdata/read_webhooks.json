@@ -1,0 +1,28 @@
+[
+  {
+    "id": "elevenlabs-tenant-webhooks-wh_01J6QBRZGW8QX94C1N6",
+    "tenant_id": "tenant",
+    "source_id": "elevenlabs",
+    "kind": "elevenlabs.webhooks",
+    "schema_ref": "elevenlabs/webhooks/v1",
+    "occurred_at": "2026-06-01T12:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "wh_01J6QBRZGW8QX94C1N6",
+      "deployment_id": "wh_01J6QBRZGW8QX94C1N6",
+      "deployment_name": "Conversation complete",
+      "deployment_url": "https://hooks.example.test/elevenlabs/conversation",
+      "record_class": "deployment",
+      "schema": "webhooks",
+      "source_system": "elevenlabs"
+    },
+    "payload": {
+      "webhook_id": "wh_01J6QBRZGW8QX94C1N6",
+      "name": "Conversation complete",
+      "webhook_url": "https://hooks.example.test/elevenlabs/conversation",
+      "is_enabled": true,
+      "created_at": "2026-06-01T12:00:00Z",
+      "updated_at": "2026-06-02T12:00:00Z"
+    }
+  }
+]

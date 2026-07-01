@@ -7,6 +7,12 @@ emitted_kinds:
   - quickbase.records
   - quickbase.policies
   - quickbase.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: quickbase.users
     status: active

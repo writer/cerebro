@@ -1,14 +1,30 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "snyk-asset-asset-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/assets/v1",
+    "payload": {
+      "id": "asset-1",
+      "type": "asset",
+      "attributes": {
+        "name": "writer/cerebro",
+        "type": "repository"
+      }
+    },
+    "attributes": {
+      "external_id": "asset-1",
+      "family": "assets",
+      "org_id": "org-1",
+      "asset_id": "asset-1",
+      "resource_id": "asset-1",
+      "resource_name": "writer/cerebro",
+      "resource_type": "repository",
+      "resource_urn": "urn:cerebro:tenant:snyk_assets:asset-1",
+      "source_event_id": "asset-1",
+      "source_provider": "snyk"
     }
-  ]
-}
+  }
+]

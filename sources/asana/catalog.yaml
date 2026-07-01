@@ -1,10 +1,35 @@
 id: asana
 name: "Asana"
-description: "Asana connector definition catalog entry for high-value security and operations resources."
+description: "Asana work-management source covering users, projects, and workspace audit log events. The runtime reads Asana REST collections from the official API, keeps workspace-scoped audit events tied to actors and resources, and emits project and user records for ownership, access, and change review."
 emitted_kinds:
   - asana.users
   - asana.projects
   - asana.audit_events
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://app.asana.com/api/1.0
+  references:
+    - https://github.com/Asana/openapi/blob/master/defs/asana_oas.yaml
+    - https://developers.asana.com/reference/getusers
+    - https://developers.asana.com/reference/getprojects
+    - https://developers.asana.com/reference/getauditlogevents
+    - https://developers.asana.com/docs/authentication
+  families:
+    - id: users
+      method: GET
+      path: /users
+    - id: projects
+      method: GET
+      path: /projects
+    - id: audit_events
+      method: GET
+      path: /workspaces/{workspace_gid}/audit_log_events
+runtime_families:
+  - users
+  - projects
+  - audit_events
 kind_lifecycle:
   - kind: asana.users
     status: active
@@ -20,36 +45,41 @@ coverage_contract:
       type: entity_family
       title: "Users"
       families: [users]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /users` with optional workspace filtering and preserves user gid, name, and email fields for identity matching and access review.
     - id: projects
       type: entity_family
       title: "Projects"
       families: [projects]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /projects` with workspace filtering and emits project gid, name, archive state, and timestamps as project inventory.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
       families: [audit_events]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /workspaces/{workspace_gid}/audit_log_events`; each event keeps actor, resource, event type, and observed timestamp for workspace change review.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, projects, audit_events]
+      support: supported
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Uses Asana `limit` and `offset` pagination and stores `next_page.offset` in the Source CDK cursor for continued reads.
 event_contracts:
   - kind: asana.users
     schema_ref: asana/users/v1
@@ -58,7 +88,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
+      - gid
   - kind: asana.projects
     schema_ref: asana/projects/v1
     required_attributes:
@@ -68,7 +98,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - gid
   - kind: asana.audit_events
     schema_ref: asana/audit_events/v1
     required_attributes:
@@ -77,4 +107,4 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - gid

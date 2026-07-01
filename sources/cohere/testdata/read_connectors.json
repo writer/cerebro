@@ -1,0 +1,31 @@
+[
+  {
+    "attributes": {
+      "external_id": "connector_01HX",
+      "family": "connectors",
+      "provider": "cohere",
+      "record_class": "asset",
+      "resource_id": "connector_01HX",
+      "resource_name": "support_docs",
+      "resource_type": "connectors",
+      "resource_urn": "urn:cerebro:tenant:cohere_connectors:connector_01HX",
+      "schema": "connectors",
+      "source_event_id": "connector_01HX",
+      "source_provider": "cohere",
+      "source_system": "cohere",
+      "tenant_id": "tenant"
+    },
+    "id": "cohere-connector-connector-01hx",
+    "kind": "cohere.connectors",
+    "occurred_at": "2024-05-03T12:00:00Z",
+    "payload": {
+      "id": "connector_01HX",
+      "name": "support_docs",
+      "created_at": "2024-05-01T12:00:00Z",
+      "updated_at": "2024-05-03T12:00:00Z"
+    },
+    "schema_ref": "cohere/connectors/v1",
+    "source_id": "cohere",
+    "tenant_id": "tenant"
+  }
+]

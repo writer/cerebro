@@ -1,0 +1,41 @@
+[
+  {
+    "attributes": {
+      "external_id": "gpt-4o",
+      "family": "model_catalog",
+      "provider": "azure_openai",
+      "record_class": "asset",
+      "resource_id": "gpt-4o",
+      "resource_name": "gpt-4o",
+      "resource_type": "OpenAI",
+      "resource_urn": "urn:cerebro:tenant:azure_openai_model_catalog:gpt-4o",
+      "schema": "model_catalog",
+      "source_event_id": "gpt-4o",
+      "source_provider": "azure_openai",
+      "source_system": "azure_openai",
+      "tenant_id": "tenant"
+    },
+    "id": "azure-openai-model-catalog-gpt-4o",
+    "kind": "azure_openai.model_catalog",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "kind": "OpenAI",
+      "skuName": "GlobalStandard",
+      "model": {
+        "format": "OpenAI",
+        "name": "gpt-4o",
+        "version": "2024-08-06",
+        "publisher": "OpenAI",
+        "source": "AzureOpenAI",
+        "lifecycleStatus": "GenerallyAvailable",
+        "capabilities": {
+          "chatCompletion": "true",
+          "assistants": "true"
+        }
+      }
+    },
+    "schema_ref": "azure_openai/model_catalog/v1",
+    "source_id": "azure_openai",
+    "tenant_id": "tenant"
+  }
+]

@@ -1604,6 +1604,216 @@ func TestProjectOktaDurableConfigurationEntities(t *testing.T) {
 	}
 }
 
+func TestProjectOktaRuntimeAssetKindsAreExplicitDepthEvidence(t *testing.T) {
+	tests := []struct {
+		name           string
+		event          *cerebrov1.EventEnvelope
+		wantEntityType string
+	}{
+		{
+			name: "api token",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-api-token-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.api_token",
+				Attributes: map[string]string{
+					"api_token_id": "tok-admin",
+					"domain":       "writer.okta.com",
+					"name":         "Admin automation",
+				},
+			},
+			wantEntityType: "okta.api_token",
+		},
+		{
+			name: "authenticator",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-authenticator-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.authenticator",
+				Attributes: map[string]string{
+					"authenticator_id": "auth-password",
+					"domain":           "writer.okta.com",
+					"key":              "okta_password",
+					"name":             "Password",
+					"status":           "ACTIVE",
+					"type":             "password",
+				},
+			},
+			wantEntityType: "okta.authenticator",
+		},
+		{
+			name: "authorization server",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-authorization-server-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.authorization_server",
+				Attributes: map[string]string{
+					"authorization_server_id": "aus-api",
+					"domain":                  "writer.okta.com",
+					"issuer_host":             "login.example.com",
+					"name":                    "API Gateway",
+					"status":                  "ACTIVE",
+				},
+			},
+			wantEntityType: "okta.authorization_server",
+		},
+		{
+			name: "brand",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-brand-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.brand",
+				Attributes: map[string]string{
+					"brand_id": "brand-prod",
+					"domain":   "writer.okta.com",
+					"name":     "Writer Login",
+				},
+			},
+			wantEntityType: "okta.brand",
+		},
+		{
+			name: "device assurance",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-device-assurance-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.device_assurance",
+				Attributes: map[string]string{
+					"device_assurance_id": "device-assurance-macos",
+					"domain":              "writer.okta.com",
+					"name":                "Managed macOS",
+					"platform":            "MACOS",
+				},
+			},
+			wantEntityType: "okta.device_assurance",
+		},
+		{
+			name: "event hook",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-event-hook-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.event_hook",
+				Attributes: map[string]string{
+					"domain":        "writer.okta.com",
+					"event_hook_id": "hook-event-prod",
+					"name":          "Security event egress",
+					"uri_host":      "hooks.example.com",
+				},
+			},
+			wantEntityType: "okta.event_hook",
+		},
+		{
+			name: "identity provider",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-identity-provider-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.identity_provider",
+				Attributes: map[string]string{
+					"domain": "writer.okta.com",
+					"idp_id": "idp-saml",
+					"issuer": "https://idp.example.com",
+					"name":   "Partner SAML IdP",
+					"type":   "SAML2",
+				},
+			},
+			wantEntityType: "okta.identity_provider",
+		},
+		{
+			name: "inline hook",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-inline-hook-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.inline_hook",
+				Attributes: map[string]string{
+					"domain":         "writer.okta.com",
+					"inline_hook_id": "hook-inline-prod",
+					"name":           "Token transform",
+					"uri_host":       "token-hooks.example.com",
+				},
+			},
+			wantEntityType: "okta.inline_hook",
+		},
+		{
+			name: "log stream",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-log-stream-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.log_stream",
+				Attributes: map[string]string{
+					"domain":        "writer.okta.com",
+					"log_stream_id": "logstream-splunk",
+					"name":          "Splunk Cloud",
+					"status":        "ACTIVE",
+				},
+			},
+			wantEntityType: "okta.log_stream",
+		},
+		{
+			name: "network zone",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-network-zone-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.network_zone",
+				Attributes: map[string]string{
+					"domain":          "writer.okta.com",
+					"name":            "Corporate VPN",
+					"network_zone_id": "zone-corp",
+					"status":          "ACTIVE",
+					"type":            "IP",
+					"zone_id":         "zone-corp",
+				},
+			},
+			wantEntityType: "okta.network_zone",
+		},
+		{
+			name: "trusted origin",
+			event: &cerebrov1.EventEnvelope{
+				Id:       "okta-trusted-origin-event",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.trusted_origin",
+				Attributes: map[string]string{
+					"domain":            "writer.okta.com",
+					"name":              "Production Console",
+					"origin_host":       "app.example.com",
+					"trusted_origin_id": "origin-prod",
+				},
+			},
+			wantEntityType: "okta.trusted_origin",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			graph := &projectionRecorder{}
+			service := New(state, graph)
+
+			result, err := service.Project(context.Background(), tt.event)
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			if result.EntitiesProjected == 0 {
+				t.Fatalf("Project().EntitiesProjected = 0, want at least one entity")
+			}
+			for _, entity := range state.entities {
+				if entity.EntityType == tt.wantEntityType {
+					return
+				}
+			}
+			t.Fatalf("projected entities did not include %q: %#v", tt.wantEntityType, state.entities)
+		})
+	}
+}
+
 func TestProjectOktaThreatInsightLinksExcludedNetworkZones(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -2515,6 +2725,7 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 		SourceId:   "okta",
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(historicalProfileEdit),
+		Payload:    []byte(`{"timestamps":{"last_login_at":"2022-12-15T10:00:00Z","last_updated_at":"2023-01-01T00:00:00Z"}}`),
 		Attributes: map[string]string{
 			"department":      "Design",
 			"domain":          "writer.okta.com",
@@ -2524,6 +2735,7 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 			"login":           "alice@writer.com",
 			"manager":         "manager@example.com",
 			"manager_id":      "00u-manager",
+			"mfa_enrolled":    "false",
 			"organization":    "Writer",
 			"status":          "DEPROVISIONED",
 			"user_id":         "00u1",
@@ -2559,15 +2771,31 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	for key, want := range map[string]string{
 		"department":      "Design",
 		"employee_number": "E-1001",
+		"event_kind":      "okta.user",
 		"job_title":       "Product Designer",
+		"last_login_at":   "2022-12-15T10:00:00Z",
+		"last_updated_at": "2023-01-01T00:00:00Z",
 		"manager":         "manager@example.com",
 		"manager_id":      "00u-manager",
+		"mfa_enrolled":    "false",
 		"organization":    "Writer",
+		"source_event_id": "okta-user-stale-profile",
 		"user_type":       "employee",
 	} {
 		if got := entity.Attributes[key]; got != want {
 			t.Fatalf("user entity attributes[%q] = %q, want %q", key, got, want)
 		}
+	}
+	rawObservedAt := entity.Attributes["observed_at"]
+	observedAt, err := time.Parse(time.RFC3339, rawObservedAt)
+	if err != nil {
+		t.Fatalf("user entity observed_at = %q is not RFC3339: %v", rawObservedAt, err)
+	}
+	if observedAt.Equal(historicalProfileEdit) {
+		t.Fatalf("user entity observed_at = %q matches profile history; expected projection observation time", rawObservedAt)
+	}
+	if observedAt.Before(before.Add(-time.Second)) || observedAt.After(after.Add(time.Second)) {
+		t.Fatalf("user entity observed_at = %v not within projection window [%v, %v]", observedAt, before, after)
 	}
 }
 

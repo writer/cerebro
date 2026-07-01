@@ -43,10 +43,14 @@ type Family struct {
 // FamilyConfig groups request and event bindings that are derived from family
 // configuration rather than directly from provider records.
 type FamilyConfig struct {
+	BaseURL          string
 	StaticQuery      map[string]string
 	ConfigQuery      map[string]string
 	ConfigAttributes map[string]string
 	EncodeURNID      bool
+	IdentityKeys     []string
+	OffsetCursor     bool
+	RequireDetail    bool
 	ResourceURNKind  string
 	TotalKeys        []string
 	OffsetKeys       []string

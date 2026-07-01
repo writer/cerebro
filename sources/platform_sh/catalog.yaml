@@ -7,6 +7,12 @@ emitted_kinds:
   - platform_sh.repositories
   - platform_sh.deployments
   - platform_sh.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: platform_sh.users
     status: active

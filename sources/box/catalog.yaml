@@ -1,10 +1,35 @@
 id: box
 name: "Box"
-description: "Box connector definition catalog entry for high-value security and operations resources."
+description: "Box content governance source covering managed users, root folder content items, and enterprise admin log events. The runtime reads Box Platform API collections, preserves marker and stream cursors, and emits identity, content asset, and audit event records for graph projection and review."
 emitted_kinds:
   - box.users
   - box.content_assets
   - box.audit_events
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_authorization_code
+  base_url: https://api.box.com/2.0
+  references:
+    - https://github.com/box/box-openapi/blob/main/openapi.json
+    - https://developer.box.com/reference/get-users/
+    - https://developer.box.com/reference/get-folders-id-items/
+    - https://developer.box.com/reference/get-events/
+    - https://developer.box.com/guides/authentication/
+  families:
+    - id: users
+      method: GET
+      path: /users
+    - id: content_assets
+      method: GET
+      path: /folders/0/items
+    - id: audit_events
+      method: GET
+      path: /events
+runtime_families:
+  - users
+  - content_assets
+  - audit_events
 kind_lifecycle:
   - kind: box.users
     status: active
@@ -20,36 +45,41 @@ coverage_contract:
       type: entity_family
       title: "Users"
       families: [users]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /users` with marker pagination and preserves user ID, login email, display name, and account status fields for identity review.
     - id: content_assets
       type: entity_family
       title: "Content Assets"
       families: [content_assets]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /folders/0/items` with marker pagination to seed Box content inventory from the enterprise root folder.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
       families: [audit_events]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /events` with `stream_type=admin_logs_streaming` and records event ID, actor, source item, event type, and stream position.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, content_assets, audit_events]
+      support: supported
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Uses Box `next_marker` for users and content items and `next_stream_position` for enterprise events.
 event_contracts:
   - kind: box.users
     schema_ref: box/users/v1

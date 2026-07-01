@@ -5,6 +5,10 @@ emitted_kinds:
   - kandji.application
   - kandji.device
   - kandji.vulnerability
+runtime_families:
+  - application
+  - device
+  - vulnerability
 event_contracts:
   - kind: kandji.application
     schema_ref: kandji/application/v1

@@ -7,6 +7,12 @@ emitted_kinds:
   - ordway.records
   - ordway.policies
   - ordway.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ordway.users
     status: active

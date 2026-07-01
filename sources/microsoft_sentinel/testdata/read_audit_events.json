@@ -1,14 +1,73 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@microsoft-sentinel.example.test",
+      "actor_id": "microsoft_sentinel-users-1",
+      "actor_name": "actor-name-source-microsoft_sentinel-audit_events-1",
+      "api_method": "GET",
+      "api_path": "/v1/events",
+      "event_type": "microsoft_sentinel.audit_events.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-microsoft_sentinel-audit_events-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-microsoft_sentinel-audit_events-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/microsoft_sentinel/audit_events/source-microsoft_sentinel-audit_events-1",
+      "external_id": "source-microsoft_sentinel-audit_events-1",
+      "family": "audit_events",
+      "id": "source-microsoft_sentinel-audit_events-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "microsoft_sentinel",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@microsoft-sentinel.example.test",
+      "resource_id": "source-microsoft_sentinel-audit_events-1",
+      "resource_name": "Microsoft Sentinel Audit Events Fixture",
+      "resource_type": "audit_events",
+      "resource_urn": "urn:cerebro:tenant:microsoft_sentinel_audit_events:source-microsoft_sentinel-audit_events-1",
+      "schema": "audit_events",
+      "source_event_id": "source-microsoft_sentinel-audit_events-1",
+      "source_provider": "microsoft_sentinel",
+      "source_system": "microsoft_sentinel",
+      "tenant_id": "tenant"
+    },
+    "id": "source-microsoft_sentinel-audit_events-event-1",
+    "kind": "microsoft_sentinel.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@microsoft-sentinel.example.test",
+      "actor_id": "microsoft_sentinel-users-1",
+      "actor_name": "actor-name-source-microsoft_sentinel-audit_events-1",
+      "api_method": "GET",
+      "api_path": "/v1/events",
+      "event_id": "source-microsoft_sentinel-audit_events-1",
+      "event_type": "microsoft_sentinel.audit_events.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-microsoft_sentinel-audit_events-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-microsoft_sentinel-audit_events-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/microsoft_sentinel/audit_events/source-microsoft_sentinel-audit_events-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/microsoft_sentinel/audit_events/source-microsoft_sentinel-audit_events-1",
+      "family": "audit_events",
+      "id": "source-microsoft_sentinel-audit_events-1",
+      "name": "Microsoft Sentinel Audit Events Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.data[*]",
+      "resource_email": "resource@microsoft-sentinel.example.test",
+      "resource_id": "source-microsoft_sentinel-audit_events-1",
+      "resource_name": "Microsoft Sentinel Audit Events Fixture",
+      "resource_type": "audit_events",
+      "resource_urn": "urn:cerebro:tenant:microsoft_sentinel_audit_events:source-microsoft_sentinel-audit_events-1",
+      "schema_ref": "microsoft_sentinel/audit_events/v1",
+      "source_id": "microsoft_sentinel",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "microsoft_sentinel/audit_events/v1",
+    "source_id": "microsoft_sentinel",
+    "tenant_id": "tenant"
+  }
+]

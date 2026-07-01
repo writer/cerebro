@@ -50,46 +50,58 @@ func New() (*Source, error) {
 			{
 				Name:             familyModelCatalog,
 				Path:             "/v1/models",
+				CursorParam:      "page_token",
+				NextCursorKeys:   []string{"next_page_token"},
 				URNKind:          "cohere_model_catalog",
 				IDKeys:           []string{"name", "id", "urn", "resource_urn"},
-				DisablePageSize:  true,
+				PageSizeParams:   []string{"page_size"},
 				ListKeys:         []string{"models"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "name", "resource_name": "name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "model_catalog", "source_system": "cohere"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "name", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|name|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "model_catalog", "schema": "model_catalog", "source_system": "cohere"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cohere_model_catalog"},
 			},
 			{
 				Name:             familyConnectors,
 				Path:             "/v1/connectors",
+				CursorParam:      "offset",
+				PageFirstCursor:  "0",
 				URNKind:          "cohere_connectors",
 				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				DisablePageSize:  true,
+				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"connectors"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "connectors", "source_system": "cohere"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "connectors", "schema": "connectors", "source_system": "cohere"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cohere_connectors", TotalKeys: []string{"total_count"}},
 			},
 			{
 				Name:             familyDatasets,
 				Path:             "/v1/datasets",
+				CursorParam:      "offset",
+				PageFirstCursor:  "0",
 				URNKind:          "cohere_datasets",
 				IDKeys:           []string{"id", "name", "urn", "resource_urn"},
-				DisablePageSize:  true,
+				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"datasets"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "datasets", "source_system": "cohere"},
+				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "datasets", "schema": "datasets", "source_system": "cohere"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cohere_datasets"},
 			},
 			{
 				Name:             familyFineTunedModels,
 				Path:             "/v1/finetuning/finetuned-models",
+				CursorParam:      "page_token",
+				NextCursorKeys:   []string{"next_page_token"},
 				URNKind:          "cohere_fine_tuned_models",
 				IDKeys:           []string{"id", "name", "deployment_id", "url", "uid"},
-				DisablePageSize:  true,
+				PageSizeParams:   []string{"page_size"},
 				ListKeys:         []string{"finetuned_models"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"deployment_branch": "branch|ref|git_branch|head_branch", "deployment_commit_sha": "commit_sha|commit|sha|revision|git_sha", "deployment_created_at": "created_at|created|date_created", "deployment_environment": "environment|env|stage|target", "deployment_id": "id", "deployment_name": "name", "deployment_status": "status|state|ready", "deployment_updated_at": "updated_at|updated|last_modified", "deployment_url": "url|deployment_url|endpoint|domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "deployment", "schema": "fine_tuned_models", "source_system": "cohere"},
+				StaticAttributes: map[string]string{"record_class": "deployment", "resource_type": "fine_tuned_models", "schema": "fine_tuned_models", "source_system": "cohere"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cohere_fine_tuned_models"},
 			},
 		},
 	})
@@ -134,6 +146,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
+	if strings.TrimSpace(sourcecdk.ConfigValue(cfg, "token")) == "" {
+		return sourcecdk.Config{}, fmt.Errorf("%w: %s token is required", sourcecdk.ErrInvalidConfig, sourceID)
+	}
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 

@@ -202,6 +202,66 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	)
 }
 
+func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T) {
+	analysis, err := BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	var okta *Entry
+	for index := range analysis.Entries {
+		if analysis.Entries[index].Definition.SourceID == "okta" {
+			okta = &analysis.Entries[index]
+			break
+		}
+	}
+	if okta == nil {
+		t.Fatal("okta connector catalog entry not found")
+	}
+	dimensions := map[string]connectordefinitions.CoverageDimensionSpec{}
+	for _, family := range okta.Definition.ResourceFamilies {
+		for _, dimension := range family.Coverage {
+			dimensions[dimension.ID] = dimension
+		}
+	}
+	for _, want := range []struct {
+		id             string
+		dimensionType  string
+		support        string
+		evidenceType   string
+		controlDomain  string
+		requiredFamily string
+	}{
+		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "dormant_user"},
+		{id: "mfa_posture", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
+		{id: "external_accounts", dimensionType: "entity_family", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "external_user"},
+		{id: "group_memberships", dimensionType: "relationship", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
+		{id: "admin_membership", dimensionType: "relationship", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "privileged_role"},
+		{id: "app_access", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "app_assignment"},
+		{id: "identity_audit_events", dimensionType: "audit_event", support: "partial", evidenceType: "logging_configuration", controlDomain: "logging_monitoring", requiredFamily: "session"},
+	} {
+		dimension, ok := dimensions[want.id]
+		if !ok {
+			t.Fatalf("okta coverage dimension %q not found; got %#v", want.id, dimensions)
+		}
+		if dimension.Type != want.dimensionType || dimension.Support != want.support {
+			t.Fatalf("dimension %s type/support = %s/%s, want %s/%s", want.id, dimension.Type, dimension.Support, want.dimensionType, want.support)
+		}
+		if !hasString(dimension.EvidenceTypes, want.evidenceType) {
+			t.Fatalf("dimension %s evidence types = %#v, want %q", want.id, dimension.EvidenceTypes, want.evidenceType)
+		}
+		if !hasString(dimension.ControlDomains, want.controlDomain) {
+			t.Fatalf("dimension %s control domains = %#v, want %q", want.id, dimension.ControlDomains, want.controlDomain)
+		}
+		if !hasString(dimension.Families, want.requiredFamily) {
+			t.Fatalf("dimension %s families = %#v, want %q", want.id, dimension.Families, want.requiredFamily)
+		}
+	}
+	groupMemberships := dimensions["group_memberships"]
+	if !hasString(groupMemberships.Notes, "The declarative groups endpoint does not enumerate memberships; dedicated okta.group_membership events in the hand-written Okta source runtime provide full membership projection support.") {
+		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
+	}
+}
+
 func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	analysis, err := BuiltinRuntime()
 	if err != nil {
@@ -293,6 +353,50 @@ func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
 	}
 	if len(enrollments.Coverage) != 1 || !hasString(enrollments.Coverage[0].Families, "training_enrollments") {
 		t.Fatalf("training enrollments coverage = %#v, want family reference to training_enrollments", enrollments.Coverage)
+	}
+}
+
+func TestBuiltinSlackAccessLogStartsAtPageOne(t *testing.T) {
+	entry, ok, err := BuiltinEntry("slack")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(slack) ok = false, want true")
+	}
+	accessLog := catalogFamily(t, entry.Definition.ResourceFamilies, "access_log")
+	if accessLog.Pagination == nil || accessLog.Pagination.Type != "page" || accessLog.Pagination.PageParam != "page" || accessLog.Pagination.PageSizeParam != "count" || accessLog.Pagination.StartPage != 1 {
+		t.Fatalf("access_log pagination = %#v, want page/count starting at 1", accessLog.Pagination)
+	}
+	if accessLog.Config == nil || len(accessLog.Config.IdentityKeys) != 1 || accessLog.Config.IdentityKeys[0] != "ip" {
+		t.Fatalf("access_log config = %#v, want ip identity key", accessLog.Config)
+	}
+}
+
+func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {
+	entry, ok, err := BuiltinEntry("slack")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(slack) ok = false, want true")
+	}
+	channelMember := catalogFamily(t, entry.Definition.ResourceFamilies, "channel_member")
+	if channelMember.ConfigQuery["channel"] != "channel_id" {
+		t.Fatalf("channel_member config_query = %#v, want channel from channel_id", channelMember.ConfigQuery)
+	}
+	if channelMember.Read == nil || len(channelMember.Read.PathParams) != 1 || channelMember.Read.PathParams[0] != "channel_id" {
+		t.Fatalf("channel_member read = %#v, want channel_id path param", channelMember.Read)
+	}
+	userGroupMember := catalogFamily(t, entry.Definition.ResourceFamilies, "user_group_member")
+	if userGroupMember.ConfigQuery["usergroup"] != "usergroup_id" {
+		t.Fatalf("user_group_member config_query = %#v, want usergroup from usergroup_id", userGroupMember.ConfigQuery)
+	}
+	if userGroupMember.Read == nil || len(userGroupMember.Read.PathParams) != 1 || userGroupMember.Read.PathParams[0] != "usergroup_id" {
+		t.Fatalf("user_group_member read = %#v, want usergroup_id path param", userGroupMember.Read)
+	}
+	if userGroupMember.StaticQuery["include_disabled"] != "true" {
+		t.Fatalf("user_group_member static_query = %#v, want include_disabled=true", userGroupMember.StaticQuery)
 	}
 }
 

@@ -14,6 +14,19 @@ emitted_kinds:
   - apacta.contact_person
   - apacta.projects_user
   - apacta.user_custom_field_value
+runtime_families:
+  - activity
+  - changelog
+  - city
+  - contact_person
+  - event
+  - mass_messages_user
+  - projects_user
+  - role
+  - time_entry_rule_group
+  - user
+  - user_custom_field_attribute
+  - user_custom_field_value
 kind_lifecycle:
   - kind: apacta.activity
     status: active

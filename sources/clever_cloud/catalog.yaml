@@ -6,6 +6,11 @@ emitted_kinds:
   - clever_cloud.token
   - clever_cloud.networkgroup
   - clever_cloud.deployment
+runtime_families:
+  - deployment
+  - email
+  - networkgroup
+  - token
 kind_lifecycle:
   - kind: clever_cloud.email
     status: active

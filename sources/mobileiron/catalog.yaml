@@ -7,6 +7,12 @@ emitted_kinds:
   - mobileiron.roles
   - mobileiron.applications
   - mobileiron.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: mobileiron.users
     status: active

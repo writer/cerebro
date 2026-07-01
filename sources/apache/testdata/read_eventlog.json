@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@apache.example.test",
+      "actor_id": "apache-users-1",
+      "actor_name": "actor-name-source-apache-eventlog-1",
+      "api_method": "GET",
+      "api_path": "/eventLogs",
+      "event_type": "apache.eventlog.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-apache-eventlog-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-apache-eventlog-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/apache/eventlog/source-apache-eventlog-1",
+      "external_id": "source-apache-eventlog-1",
+      "family": "eventlog",
+      "id": "source-apache-eventlog-1",
+      "name": "Apache Eventlog Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "apache",
+      "provider_id": "provider-id-source-apache-eventlog-1",
+      "record_class": "audit_event",
+      "record_selector": "$.event_logs[*]",
+      "resource_email": "resource@apache.example.test",
+      "resource_id": "source-apache-eventlog-1",
+      "resource_name": "Apache Eventlog Fixture",
+      "resource_type": "eventlog",
+      "resource_urn": "urn:cerebro:tenant:apache_eventlog:source-apache-eventlog-1",
+      "schema": "eventlog",
+      "source_event_id": "source-apache-eventlog-1",
+      "source_provider": "apache",
+      "source_system": "apache",
+      "tenant_id": "tenant"
+    },
+    "id": "source-apache-eventlog-event-1",
+    "kind": "apache.eventlog",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@apache.example.test",
+      "actor_id": "apache-users-1",
+      "actor_name": "actor-name-source-apache-eventlog-1",
+      "api_method": "GET",
+      "api_path": "/eventLogs",
+      "dag_id": "source-apache-eventlog-1",
+      "event_id": "source-apache-eventlog-1",
+      "event_type": "apache.eventlog.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-apache-eventlog-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-apache-eventlog-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/apache/eventlog/source-apache-eventlog-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/apache/eventlog/source-apache-eventlog-1",
+      "family": "eventlog",
+      "id": "source-apache-eventlog-1",
+      "name": "Apache Eventlog Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.event_logs[*]",
+      "resource_email": "resource@apache.example.test",
+      "resource_id": "source-apache-eventlog-1",
+      "resource_name": "Apache Eventlog Fixture",
+      "resource_type": "eventlog",
+      "resource_urn": "urn:cerebro:tenant:apache_eventlog:source-apache-eventlog-1",
+      "schema_ref": "apache/eventlog/v1",
+      "source_id": "apache",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "apache/eventlog/v1",
+    "source_id": "apache",
+    "tenant_id": "tenant"
+  }
+]

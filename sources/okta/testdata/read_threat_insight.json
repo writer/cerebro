@@ -1,0 +1,26 @@
+[
+  {
+    "id": "okta-threat-insight-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.threat_insight",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/threat_insight/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "action": "block",
+      "exclude_zones": [
+        "zone-corp"
+      ]
+    },
+    "attributes": {
+      "action": "block",
+      "domain": "writer.okta.com",
+      "exclude_zone_count": "1",
+      "exclude_zones": "zone-corp",
+      "family": "threat_insight",
+      "resource_id": "threat_insight_config",
+      "resource_type": "ThreatInsightConfiguration"
+    }
+  }
+]

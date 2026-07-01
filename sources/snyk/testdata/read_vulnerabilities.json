@@ -1,0 +1,33 @@
+[
+  {
+    "id": "snyk-vulnerability-vuln-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.vulnerabilities",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/vulnerabilities/v1",
+    "payload": {
+      "id": "vuln-1",
+      "type": "issue",
+      "attributes": {
+        "title": "CVE-2026-0001",
+        "effective_severity_level": "high",
+        "status": "open",
+        "type": "package_vulnerability"
+      }
+    },
+    "attributes": {
+      "external_id": "vuln-1",
+      "family": "vulnerabilities",
+      "org_id": "org-1",
+      "finding_id": "vuln-1",
+      "issue_type": "package_vulnerability",
+      "title": "CVE-2026-0001",
+      "severity": "high",
+      "status": "open",
+      "resource_urn": "urn:cerebro:tenant:snyk_assets:asset-1",
+      "source_event_id": "vuln-1",
+      "source_provider": "snyk"
+    }
+  }
+]

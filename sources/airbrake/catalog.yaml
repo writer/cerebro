@@ -7,6 +7,12 @@ emitted_kinds:
   - airbrake.monitors
   - airbrake.dashboards
   - airbrake.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: airbrake.alerts
     status: active

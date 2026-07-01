@@ -5,6 +5,10 @@ emitted_kinds:
   - ramp.users
   - ramp.cards
   - ramp.transactions
+runtime_families:
+  - cards
+  - transactions
+  - users
 kind_lifecycle:
   - kind: ramp.users
     status: active

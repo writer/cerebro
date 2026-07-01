@@ -1,0 +1,57 @@
+[
+  {
+    "attributes": {
+      "allowed_api_key_hashes": "fixture-openrouter-key-hash-1",
+      "allowed_models": "openai/gpt-4.1",
+      "allowed_user_ids": "user_2dHFtVWx2n56w6HkM0000000000",
+      "external_id": "11111111-2222-3333-4444-555555555555",
+      "family": "provider_keys",
+      "is_fallback": "false",
+      "label": "masked-provider-credential",
+      "observed_at": "2025-08-24T10:30:00Z",
+      "provider": "openrouter",
+      "provider_key_disabled": "false",
+      "provider_key_provider": "openai",
+      "record_class": "secret",
+      "resource_id": "11111111-2222-3333-4444-555555555555",
+      "resource_name": "Production OpenAI credential",
+      "resource_urn": "urn:cerebro:tenant:openrouter_provider_keys:11111111-2222-3333-4444-555555555555",
+      "schema": "provider_keys",
+      "secret_created_at": "2025-08-24T10:30:00Z",
+      "secret_id": "11111111-2222-3333-4444-555555555555",
+      "secret_name": "Production OpenAI credential",
+      "secret_type": "byok_provider_credential",
+      "source_event_id": "11111111-2222-3333-4444-555555555555",
+      "source_provider": "openrouter",
+      "source_system": "openrouter",
+      "tenant_id": "tenant",
+      "workspace_id": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "id": "openrouter-tenant-provider-keys-11111111-2222-3333-4444-555555555555",
+    "kind": "openrouter.provider_keys",
+    "occurred_at": "2025-08-24T10:30:00Z",
+    "payload": {
+      "allowed_api_key_hashes": [
+        "fixture-openrouter-key-hash-1"
+      ],
+      "allowed_models": [
+        "openai/gpt-4.1"
+      ],
+      "allowed_user_ids": [
+        "user_2dHFtVWx2n56w6HkM0000000000"
+      ],
+      "created_at": "2025-08-24T10:30:00Z",
+      "disabled": false,
+      "id": "11111111-2222-3333-4444-555555555555",
+      "is_fallback": false,
+      "label": "masked-provider-credential",
+      "name": "Production OpenAI credential",
+      "provider": "openai",
+      "sort_order": 0,
+      "workspace_id": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "schema_ref": "openrouter/provider_keys/v1",
+    "source_id": "openrouter",
+    "tenant_id": "tenant"
+  }
+]

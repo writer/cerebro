@@ -1,14 +1,37 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "attributes": {
+      "display_name": "User One",
+      "email": "user.one@example.test",
+      "external_id": "user-1",
+      "family": "users",
+      "login": "user.one",
+      "primary_email": "user.one@example.test",
+      "provider": "jumpcloud",
+      "record_class": "identity_user",
+      "resource_id": "user-1",
+      "resource_name": "User One",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:jumpcloud_users:user-1",
+      "schema": "users",
+      "source_event_id": "user-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "tenant_id": "tenant",
+      "user_id": "user-1"
+    },
+    "id": "jumpcloud-users-event-1",
+    "kind": "jumpcloud.users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "_id": "user-1",
+      "created": "2026-06-01T00:00:00Z",
+      "displayname": "User One",
+      "email": "user.one@example.test",
+      "username": "user.one"
+    },
+    "schema_ref": "jumpcloud/users/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]

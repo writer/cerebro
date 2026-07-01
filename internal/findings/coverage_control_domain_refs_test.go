@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,18 +20,28 @@ func TestCoverageControlDomainRefsLoad(t *testing.T) {
 	if coverageControlDomainRefSet.Version == "" {
 		t.Fatal("coverage control domain refs version is empty")
 	}
-	refs := controlRefsForControlDomains([]string{"identity_access"})
-	if len(refs) == 0 {
-		t.Fatal("identity_access produced no control refs")
-	}
-	found := false
-	for _, ref := range refs {
-		if ref.FrameworkName == "SOC 2" && ref.ControlID == "CC6.1" {
-			found = true
+	for _, tc := range []struct {
+		domain    string
+		framework string
+		control   string
+	}{
+		{domain: "identity_access", framework: "SOC 2", control: "CC6.1"},
+		{domain: "authorization", framework: "NIST 800-53 r5", control: "AC-3"},
+		{domain: "change_management", framework: "SOC 2", control: "CC8.1"},
+	} {
+		refs := controlRefsForControlDomains([]string{tc.domain})
+		if len(refs) == 0 {
+			t.Fatalf("%s produced no control refs", tc.domain)
 		}
-	}
-	if !found {
-		t.Fatalf("identity_access refs missing SOC 2 CC6.1: %+v", refs)
+		found := false
+		for _, ref := range refs {
+			if ref.FrameworkName == tc.framework && ref.ControlID == tc.control {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s refs missing %s %s: %+v", tc.domain, tc.framework, tc.control, refs)
+		}
 	}
 }
 
@@ -473,6 +484,65 @@ func TestPolicySourceCoverageAllowsGenericIdentityEvidenceProviders(t *testing.T
 	if strings.Join(got, ",") != "google_workspace/mfa_posture,okta/authenticators" {
 		t.Fatalf("SourceCoverageRefs = %v, want generic identity providers only", got)
 	}
+}
+
+func TestSourceCoverageCapKeepsSupportedRefsOverPartialTies(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "gcp-sa-impersonation",
+		Name:        "GCP service accounts impersonation",
+		Description: "Flags GCP service accounts impersonation risk.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"gcp", "iam", "impersonation", "service-accounts"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	partialDimensions := make([]sourcecdk.CoverageDimension, 0, maxPublicDetectionSourceCoverageRefs)
+	for i := 0; i < maxPublicDetectionSourceCoverageRefs; i++ {
+		partialDimensions = append(partialDimensions, sourcecdk.CoverageDimension{
+			ID:        "service_accounts_" + strconv.Itoa(i),
+			Type:      "entity_family",
+			Families:  []string{"service_accounts"},
+			Support:   sourcecdk.CoverageSupportPartial,
+			HighValue: true,
+			ControlRefs: []sourcecdk.CoverageControlRef{
+				{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+			},
+		})
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID:   "elevenlabs",
+			Dimensions: partialDimensions,
+		},
+		{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "support_access_events",
+				Type:      "audit_event",
+				Families:  []string{"impersonation", "support_access"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.2",
+				}},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != maxPublicDetectionSourceCoverageRefs {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
+	}
+	for _, ref := range refs {
+		if ref.SourceID == "okta" && ref.DimensionID == "support_access_events" {
+			return
+		}
+	}
+	t.Fatalf("SourceCoverageRefs omitted supported okta/support_access_events: %#v", refs)
 }
 
 func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *testing.T) {

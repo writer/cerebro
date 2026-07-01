@@ -1,0 +1,39 @@
+[
+  {
+    "attributes": {
+      "external_id": "files/abc123",
+      "family": "files",
+      "observed_at": "2026-06-01T00:05:00Z",
+      "provider": "google_gemini",
+      "record_class": "asset",
+      "resource_id": "files/abc123",
+      "resource_name": "prompt-context.pdf",
+      "resource_type": "files",
+      "resource_urn": "urn:cerebro:tenant:google_gemini_files:files/abc123",
+      "schema": "files",
+      "source_event_id": "files/abc123",
+      "source_provider": "google_gemini",
+      "source_system": "google_gemini",
+      "tenant_id": "tenant"
+    },
+    "id": "google-gemini-files-abc123",
+    "kind": "google_gemini.files",
+    "occurred_at": "2026-06-01T00:05:00Z",
+    "payload": {
+      "name": "files/abc123",
+      "displayName": "prompt-context.pdf",
+      "mimeType": "application/pdf",
+      "sizeBytes": "12345",
+      "createTime": "2026-06-01T00:00:00Z",
+      "updateTime": "2026-06-01T00:05:00Z",
+      "expirationTime": "2026-06-03T00:00:00Z",
+      "sha256Hash": "MDEyMzQ1Njc4OWFiY2RlZg==",
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+      "state": "ACTIVE",
+      "source": "UPLOADED"
+    },
+    "schema_ref": "google_gemini/files/v1",
+    "source_id": "google_gemini",
+    "tenant_id": "tenant"
+  }
+]

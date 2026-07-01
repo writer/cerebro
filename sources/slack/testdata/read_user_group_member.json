@@ -1,0 +1,24 @@
+[
+  {
+    "id": "slack-user-group-member-S1-U1",
+    "tenant_id": "tenant",
+    "source_id": "slack",
+    "kind": "slack.user_group_member",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "slack/user_group_member/v1",
+    "payload": {
+      "usergroup_id": "S1",
+      "user_id": "U1"
+    },
+    "attributes": {
+      "external_id": "S1-U1",
+      "family": "user_group_member",
+      "membership_type": "user_group",
+      "provider": "slack",
+      "source_product": "slack",
+      "source_provider": "slack",
+      "user_id": "U1",
+      "usergroup_id": "S1"
+    }
+  }
+]

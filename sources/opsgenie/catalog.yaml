@@ -5,6 +5,10 @@ emitted_kinds:
   - opsgenie.users
   - opsgenie.tickets
   - opsgenie.audit_events
+runtime_families:
+  - audit_events
+  - tickets
+  - users
 kind_lifecycle:
   - kind: opsgenie.users
     status: active

@@ -1,6 +1,6 @@
 sourceId: google_gemini
 secretKeys:
-  - GOOGLE_GEMINI_API_TOKEN
+  - GOOGLE_GEMINI_API_KEY
 runtimes:
   - localId: model-catalog
     config:
@@ -10,4 +10,40 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      api_token: env:GOOGLE_GEMINI_API_TOKEN
+      api_key: env:GOOGLE_GEMINI_API_KEY
+  - localId: files
+    config:
+      family: files
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1beta/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:GOOGLE_GEMINI_API_KEY
+  - localId: cached-contents
+    config:
+      family: cached_contents
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1beta/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:GOOGLE_GEMINI_API_KEY
+  - localId: tuned-models
+    config:
+      family: tuned_models
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1beta/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:GOOGLE_GEMINI_API_KEY
+  - localId: batch-jobs
+    config:
+      family: batch_jobs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /v1beta/models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_key: env:GOOGLE_GEMINI_API_KEY

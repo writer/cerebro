@@ -1,6 +1,7 @@
 package evidencepackets
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestContractVersionIncludesQuestionnaireAnswerFields(t *testing.T) {
+	if ContractVersion < "2026-06-29" {
+		t.Fatalf("contract version = %q, want questionnaire answer fields advertised in 2026-06-29 or later", ContractVersion)
+	}
+}
 
 func TestBuildUsesStableFrameworkIDAndRuleScopedTestResults(t *testing.T) {
 	observedAt := time.Unix(90, 0).UTC()
@@ -207,6 +214,194 @@ func TestBuildKeepsNotApplicableFrameworkReadyAndTrimsEvidenceKeys(t *testing.T)
 	}
 	if len(response.GraphPaths) != 1 || response.GraphPaths[0].EvidenceID != "ev-space" || response.GraphPaths[0].FindingID != "finding-space" {
 		t.Fatalf("graph paths = %#v, want trimmed evidence and finding IDs", response.GraphPaths)
+	}
+}
+
+func TestBuildAddsEvidenceBackedQuestionnaireAnswers(t *testing.T) {
+	observedAt := time.Unix(300, 0).UTC()
+	nearExpiry := observedAt.Add(24 * time.Hour)
+	farExpiry := observedAt.Add(72 * time.Hour)
+	response := Build(grccontrol.PacketResult{
+		Profile: grccontrol.Profile{ID: "security-core", Name: "Security Core"},
+		Packet: compliance.ControlEvidencePacket{
+			GeneratedAt: observedAt,
+			Controls: []compliance.ControlEvidencePacketControl{{
+				Control: compliance.ControlPostureControl{FrameworkName: "SOC 2", FrameworkID: "soc2", ControlID: "CC6.1", Title: "Logical access", FamilyID: "CC6", FamilyName: "Access Controls"},
+				Status:  compliance.ControlPosturePassing,
+				Evidence: compliance.ControlEvidencePacketEvidence{
+					Expectations: []compliance.ControlEvidenceExpectationPosture{{
+						ID:           "mfa-policy",
+						Title:        "MFA enforcement",
+						Description:  "Show that MFA is enforced for privileged access.",
+						Required:     true,
+						Status:       compliance.ControlEvidenceExpectationSatisfied,
+						Quality:      compliance.ControlEvidenceQualityStrong,
+						EvidenceIDs:  []string{"ev-okta", "ev-policy"},
+						FreshnessSLA: "P30D",
+						AcceptedFrom: []string{"okta", "policy_document"},
+					}},
+					Items: []compliance.ControlEvidencePacketEvidenceItem{{
+						ID:           "ev-okta",
+						RuleID:       "okta.mfa.enforced",
+						EvidenceType: "source_snapshot",
+						Quality:      compliance.ControlEvidenceQualityStrong,
+						Source:       "policy_engine",
+						ObservedAt:   observedAt,
+						ExpiresAt:    farExpiry,
+					}, {
+						ID:           "ev-policy",
+						EvidenceType: "policy_document",
+						Quality:      compliance.ControlEvidenceQualityStrong,
+						Source:       "policy_document",
+						ObservedAt:   observedAt,
+						ExpiresAt:    nearExpiry,
+					}},
+				},
+				Readiness: compliance.ControlEvidencePacketReadiness{Score: 100, Rating: compliance.ControlEvidenceQualityStrong},
+				MappedRules: []string{
+					"okta.mfa.enforced",
+				},
+			}, {
+				Control: compliance.ControlPostureControl{FrameworkName: "SOC 2", FrameworkID: "soc2", ControlID: "CC7.2", Title: "Monitoring"},
+				Status:  compliance.ControlPostureMissingEvidence,
+				Evidence: compliance.ControlEvidencePacketEvidence{
+					Expectations: []compliance.ControlEvidenceExpectationPosture{{
+						ID:          "monitoring-review",
+						Title:       "Monitoring review",
+						Description: "Show that monitoring evidence was reviewed.",
+						Required:    true,
+						Status:      compliance.ControlEvidenceExpectationMissing,
+						Quality:     compliance.ControlEvidenceQualityMissing,
+					}},
+				},
+				Readiness: compliance.ControlEvidencePacketReadiness{Score: 25, Rating: compliance.ControlEvidenceQualityMissing, MissingEvidence: 1},
+			}},
+		},
+		Controls: []grccontrol.ControlItem{{
+			FrameworkName: "SOC 2",
+			FrameworkID:   "soc2",
+			FamilyID:      "CC6",
+			FamilyName:    "Access Controls",
+			ControlID:     "CC6.1",
+			Title:         "Logical access",
+			Status:        "passing",
+			EvidenceScore: 100,
+			MappedRules:   []string{"okta.mfa.enforced"},
+		}, {
+			FrameworkName:   "SOC 2",
+			FrameworkID:     "soc2",
+			ControlID:       "CC7.2",
+			Title:           "Monitoring",
+			Status:          "missing_evidence",
+			EvidenceScore:   25,
+			MissingEvidence: 1,
+		}},
+		Evidence: []*cerebrov1.FindingEvidence{{
+			Id:             "ev-okta",
+			RuntimeId:      "runtime-okta",
+			RuleId:         "okta.mfa.enforced",
+			RunId:          "run-okta",
+			ClaimIds:       []string{"claim-okta"},
+			EventIds:       []string{"event-okta"},
+			GraphRootUrns:  []string{"urn:cerebro:test:identity:admin"},
+			GraphPathUrns:  []string{"urn:cerebro:test:okta:principal:00u123", "urn:cerebro:test:okta:application:payroll"},
+			LastObservedAt: timestamppb.New(observedAt),
+		}, {
+			Id:             "ev-policy",
+			RuntimeId:      "runtime-grc",
+			ClaimIds:       []string{"claim-policy"},
+			LastObservedAt: timestamppb.New(observedAt),
+		}},
+		SourceIDs: map[string]string{"runtime-okta": "okta", "runtime-grc": "grc"},
+	})
+
+	if len(response.Answers) != 2 {
+		t.Fatalf("questionnaire answers = %d, want one per evidence request", len(response.Answers))
+	}
+	answers := map[string]QuestionnaireAnswer{}
+	for _, answer := range response.Answers {
+		answers[answer.Question] = answer
+	}
+	supported := answers["MFA enforcement"]
+	if supported.AnswerState != "supported" || supported.Confidence.Level != "high" || supported.Freshness.Status != "fresh" {
+		t.Fatalf("supported answer = %#v, want high-confidence fresh answer", supported)
+	}
+	for _, want := range []string{"2 evidence packets linked", "source evidence from okta", "policy documents from grc"} {
+		if !strings.Contains(supported.Answer, want) {
+			t.Fatalf("supported answer text = %q, want evidence detail %q", supported.Answer, want)
+		}
+	}
+	if supported.Freshness.ExpiresAt != nearExpiry.Format(time.RFC3339) {
+		t.Fatalf("freshness expires_at = %q, want nearest expiry %q", supported.Freshness.ExpiresAt, nearExpiry.Format(time.RFC3339))
+	}
+	if supported.Reasoning.Intent != "questionnaire_evidence_answer" || supported.Reasoning.Surface != "graph-reasoning" {
+		t.Fatalf("reasoning contract = %#v, want graph-backed questionnaire intent", supported.Reasoning)
+	}
+	if supported.Reasoning.Confidence != "high" || supported.Reasoning.ManualReviewState != "ready" || len(supported.Reasoning.UnsupportedClaims) != 0 {
+		t.Fatalf("supported reasoning = %#v, want high confidence ready state without unsupported claims", supported.Reasoning)
+	}
+	if len(supported.SourceEvidence) != 1 || supported.SourceEvidence[0].SourceID != "okta" {
+		t.Fatalf("source evidence = %#v, want Okta source evidence", supported.SourceEvidence)
+	}
+	if !containsString(supported.SourceEvidence[0].SourceEventIDs, "event-okta") ||
+		!containsString(supported.SourceEvidence[0].GraphRootURNs, "urn:cerebro:test:identity:admin") ||
+		!containsString(supported.SourceEvidence[0].GraphPathIDs, "urn:cerebro:test:okta:application:payroll") {
+		t.Fatalf("source evidence provenance = %#v, want graph source provenance", supported.SourceEvidence[0])
+	}
+	if len(supported.PolicyDocuments) != 1 || supported.PolicyDocuments[0].SourceID != "grc" {
+		t.Fatalf("policy documents = %#v, want policy document evidence", supported.PolicyDocuments)
+	}
+	if len(supported.FrameworkMappings) != 1 || supported.FrameworkMappings[0].ControlID != "CC6.1" || supported.FrameworkMappings[0].MappedRules[0] != "okta.mfa.enforced" {
+		t.Fatalf("framework mappings = %#v, want control and mapped rule", supported.FrameworkMappings)
+	}
+	if len(supported.Citations.EventIDs) != 1 || supported.Citations.EventIDs[0] != "event-okta" || len(supported.Citations.ClaimIDs) != 2 {
+		t.Fatalf("citations = %#v, want source provenance citations", supported.Citations)
+	}
+	if len(supported.Reasoning.SourceCitations) != 1 || supported.Reasoning.SourceCitations[0] != "ev-okta" {
+		t.Fatalf("source citations = %#v, want Okta evidence citation", supported.Reasoning.SourceCitations)
+	}
+	if len(supported.Reasoning.PolicyCitations) != 1 || supported.Reasoning.PolicyCitations[0] != "ev-policy" {
+		t.Fatalf("policy citations = %#v, want policy evidence citation", supported.Reasoning.PolicyCitations)
+	}
+	missing := answers["Monitoring review"]
+	if missing.AnswerState != "not_answered" || missing.ReviewState != "blocked" || len(missing.MissingEvidence) != 1 {
+		t.Fatalf("missing answer = %#v, want blocked missing-evidence state", missing)
+	}
+	if !strings.Contains(missing.Answer, "missing_required_evidence") {
+		t.Fatalf("missing answer text = %q, want gap code", missing.Answer)
+	}
+	if missing.Reasoning.ManualReviewState != "blocked" || len(missing.Reasoning.UnsupportedClaims) == 0 || len(missing.Reasoning.MissingEvidenceIDs) != 1 {
+		t.Fatalf("missing reasoning = %#v, want unsupported claim and missing evidence id", missing.Reasoning)
+	}
+	if missing.MissingEvidence[0].Code != "missing_required_evidence" || len(missing.Guardrails) == 0 {
+		t.Fatalf("missing evidence gap = %#v guardrails=%#v, want explicit gap and guardrails", missing.MissingEvidence, missing.Guardrails)
+	}
+}
+
+func TestTimeStringAggregationComparesRFC3339Instants(t *testing.T) {
+	earlierWithOffset := "2026-01-01T23:00:00+09:00"
+	laterUTC := "2026-01-01T15:00:00Z"
+
+	if got, want := minTimeString(laterUTC, earlierWithOffset), "2026-01-01T14:00:00Z"; got != want {
+		t.Fatalf("minTimeString() = %q, want chronological earliest %q", got, want)
+	}
+	if got, want := maxTimeString(earlierWithOffset, laterUTC), laterUTC; got != want {
+		t.Fatalf("maxTimeString() = %q, want chronological latest %q", got, want)
+	}
+}
+
+func TestEvidencePacketPolicyDocumentClassificationUsesEvidenceType(t *testing.T) {
+	for _, evidenceType := range []string{"policy_document", "policy.document", "assurance-document", "procedure document"} {
+		if !evidencePacketIsPolicyDocument(EvidencePacket{EvidenceType: evidenceType}) {
+			t.Fatalf("evidence type %q not classified as policy document", evidenceType)
+		}
+	}
+	packet := EvidencePacket{
+		EvidenceType: "source_snapshot",
+		Reason:       "Required policy document evidence is missing.",
+	}
+	if evidencePacketIsPolicyDocument(packet) {
+		t.Fatalf("source evidence classified as policy document from reason text")
 	}
 }
 

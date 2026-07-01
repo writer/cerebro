@@ -1,9 +1,9 @@
 ## Summary
 
-- Adds the `google_gemini` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Updates the `google_gemini` Source Runtime SDK with Gemini REST APIs for models, tuned models, files, cached contents, and batch jobs.
+- Includes runtime adapter mappings, health checks, provider-shaped fixtures, tests, and a source-health receipt.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `api_key`
@@ -12,5 +12,4 @@
 
 ## Tests
 
-- `go test ./sources/google_gemini ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/google_gemini -count=1`

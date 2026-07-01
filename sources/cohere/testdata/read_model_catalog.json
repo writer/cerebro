@@ -1,14 +1,36 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "attributes": {
+      "external_id": "command-r-08-2024",
+      "family": "model_catalog",
+      "provider": "cohere",
+      "record_class": "asset",
+      "resource_id": "command-r-08-2024",
+      "resource_name": "command-r-08-2024",
+      "resource_type": "model_catalog",
+      "resource_urn": "urn:cerebro:tenant:cohere_model_catalog:command-r-08-2024",
+      "schema": "model_catalog",
+      "source_event_id": "command-r-08-2024",
+      "source_provider": "cohere",
+      "source_system": "cohere",
+      "tenant_id": "tenant"
+    },
+    "id": "cohere-model-catalog-command-r-08-2024",
+    "kind": "cohere.model_catalog",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "name": "command-r-08-2024",
+      "endpoints": [
+        "chat"
+      ],
+      "context_length": 128000,
+      "tokenizer_url": "https://storage.googleapis.com/cohere-public/tokenizers/command-r.json",
+      "default_endpoints": {
+        "chat": "command-r-08-2024"
+      }
+    },
+    "schema_ref": "cohere/model_catalog/v1",
+    "source_id": "cohere",
+    "tenant_id": "tenant"
+  }
+]

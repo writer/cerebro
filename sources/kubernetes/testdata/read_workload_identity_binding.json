@@ -1,0 +1,48 @@
+[
+  {
+    "attributes": {
+      "cloud_provider": "aws",
+      "cluster_id": "cluster-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "family": "workload_identity_binding",
+      "group_id": "group-1",
+      "group_name": "Group One",
+      "member_email": "user@example.test",
+      "member_id": "user-1",
+      "namespace": "default",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "relationship",
+      "resource_urn": "urn:cerebro:tenant:runtime_workload_identity_binding:record-1",
+      "service_account_name": "Service Account Name",
+      "source_event_id": "record-1",
+      "target_id": "target-1",
+      "tenant_id": "tenant"
+    },
+    "id": "kubernetes-workload_identity_binding-record-1",
+    "kind": "kubernetes.workload_identity_binding",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "cloud_provider": "aws",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/record-1",
+      "group_id": "group-1",
+      "group_name": "Group One",
+      "id": "record-1",
+      "member_id": "user-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "resource_type": "relationship",
+      "resource_urn": "urn:cerebro:tenant:runtime_workload_identity_binding:record-1",
+      "service_account_name": "Service Account Name",
+      "target_id": "target-1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "kubernetes/workload_identity_binding/v1",
+    "source_id": "kubernetes",
+    "tenant_id": "tenant"
+  }
+]

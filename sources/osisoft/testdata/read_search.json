@@ -1,14 +1,77 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@osisoft.example.test",
+      "actor_id": "osisoft-users-1",
+      "actor_name": "actor-name-source-osisoft-search-1",
+      "api_method": "GET",
+      "api_path": "/eventframes/search",
+      "event_type": "osisoft.search.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-osisoft-search-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-osisoft-search-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/osisoft/search/source-osisoft-search-1",
+      "external_id": "source-osisoft-search-1",
+      "family": "search",
+      "id": "source-osisoft-search-1",
+      "name": "Osisoft Search Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "osisoft",
+      "provider_id": "provider-id-source-osisoft-search-1",
+      "record_class": "audit_event",
+      "record_selector": "$.Items[*]",
+      "resource_email": "resource@osisoft.example.test",
+      "resource_id": "source-osisoft-search-1",
+      "resource_name": "Osisoft Search Fixture",
+      "resource_type": "search",
+      "resource_urn": "urn:cerebro:tenant:osisoft_search:source-osisoft-search-1",
+      "schema": "search",
+      "source_event_id": "source-osisoft-search-1",
+      "source_provider": "osisoft",
+      "source_system": "osisoft",
+      "tenant_id": "tenant"
+    },
+    "id": "source-osisoft-search-event-1",
+    "kind": "osisoft.search",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "Id": "source-osisoft-search-1",
+      "Name": "Osisoft Search Fixture",
+      "actor_email": "actor@osisoft.example.test",
+      "actor_id": "osisoft-users-1",
+      "actor_name": "actor-name-source-osisoft-search-1",
+      "api_method": "GET",
+      "api_path": "/eventframes/search",
+      "event_id": "source-osisoft-search-1",
+      "event_type": "osisoft.search.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-osisoft-search-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-osisoft-search-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/osisoft/search/source-osisoft-search-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/osisoft/search/source-osisoft-search-1",
+      "family": "search",
+      "id": "source-osisoft-search-1",
+      "name": "Osisoft Search Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.Items[*]",
+      "resource_email": "resource@osisoft.example.test",
+      "resource_id": "source-osisoft-search-1",
+      "resource_name": "Osisoft Search Fixture",
+      "resource_type": "search",
+      "resource_urn": "urn:cerebro:tenant:osisoft_search:source-osisoft-search-1",
+      "schema_ref": "osisoft/search/v1",
+      "source_id": "osisoft",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "osisoft/search/v1",
+    "source_id": "osisoft",
+    "tenant_id": "tenant"
+  }
+]

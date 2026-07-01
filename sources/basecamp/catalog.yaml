@@ -7,6 +7,12 @@ emitted_kinds:
   - basecamp.workspaces
   - basecamp.documents
   - basecamp.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: basecamp.users
     status: active

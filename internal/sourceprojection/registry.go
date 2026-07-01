@@ -782,10 +782,14 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"probely.framework":                             probelyFrameworkProjections,
 	"probely.needs_attention_top":                   probelyNeedsAttentionTopProjections,
 	"probely.user":                                  probelyUserProjections,
+	"slack.access_log":                              slackAccessLogProjections,
+	"slack.audit_log":                               slackAuditLogProjections,
 	"slack.channel":                                 slackTeamScopedProjections,
+	"slack.channel_member":                          slackChannelMemberProjections,
 	"slack.team":                                    slackTeamProjections,
 	"slack.user":                                    slackUserProjections,
 	"slack.user_group":                              slackTeamScopedProjections,
+	"slack.user_group_member":                       slackUserGroupMemberProjections,
 	"tailscale.device":                              tailscaleDeviceProjections,
 	"tailscale.grant":                               tailscaleGrantProjections,
 	"tailscale.group":                               tailscaleGroupProjections,
@@ -3391,9 +3395,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"jfrog_xray.users":        jfrogXrayUsersProjections,
 
 	// jira generated projectors (sourcegen promotion)
-	"jira.audit_events": jiraAuditEventsProjections,
-	"jira.projects":     jiraProjectsProjections,
-	"jira.users":        jiraUsersProjections,
+	"jira.audit_events":       jiraAuditEventsProjections,
+	"jira.group_members":      jiraGroupMembersProjections,
+	"jira.groups":             jiraGroupsProjections,
+	"jira.permission_schemes": jiraPermissionSchemesProjections,
+	"jira.project_roles":      jiraProjectRolesProjections,
+	"jira.projects":           jiraProjectsProjections,
+	"jira.users":              jiraUsersProjections,
 
 	// journy_io generated projectors (sourcegen promotion)
 	"journy_io.account":          journyIoAccountProjections,
@@ -3403,9 +3411,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"journy_io.user":             journyIoUserProjections,
 
 	// jumpcloud generated projectors (sourcegen promotion)
-	"jumpcloud.audit_events": jumpcloudAuditEventsProjections,
-	"jumpcloud.groups":       jumpcloudGroupsProjections,
-	"jumpcloud.users":        jumpcloudUsersProjections,
+	"jumpcloud.applications":  jumpcloudApplicationsProjections,
+	"jumpcloud.audit_events":  jumpcloudAuditEventsProjections,
+	"jumpcloud.group_members": jumpcloudGroupMembersProjections,
+	"jumpcloud.groups":        jumpcloudGroupsProjections,
+	"jumpcloud.system_groups": jumpcloudSystemGroupsProjections,
+	"jumpcloud.systems":       jumpcloudSystemsProjections,
+	"jumpcloud.users":         jumpcloudUsersProjections,
 
 	// jumpseller generated projectors (sourcegen promotion)
 	"jumpseller.checkout_custom_fields_json": jumpsellerCheckoutCustomFieldsJsonProjections,
@@ -5178,6 +5190,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"snowflake.vulnerabilities":        snowflakeVulnerabilitiesProjections,
 
 	// snyk generated projectors (sourcegen promotion)
+	"snyk.groups":          genericInventoryProjections,
+	"snyk.orgs":            genericInventoryProjections,
+	"snyk.projects":        genericInventoryProjections,
+	"snyk.targets":         genericInventoryProjections,
 	"snyk.assets":          snykAssetsProjections,
 	"snyk.findings":        snykFindingsProjections,
 	"snyk.vulnerabilities": snykVulnerabilitiesProjections,

@@ -1,0 +1,54 @@
+[
+  {
+    "attributes": {
+      "external_id": "cachedContents/cache-001",
+      "family": "cached_contents",
+      "observed_at": "2026-06-01T00:05:00Z",
+      "provider": "google_gemini",
+      "record_class": "asset",
+      "resource_id": "cachedContents/cache-001",
+      "resource_name": "support-policy-context",
+      "resource_type": "cached_contents",
+      "resource_urn": "urn:cerebro:tenant:google_gemini_cached_contents:cachedContents/cache-001",
+      "schema": "cached_contents",
+      "source_event_id": "cachedContents/cache-001",
+      "source_provider": "google_gemini",
+      "source_system": "google_gemini",
+      "tenant_id": "tenant"
+    },
+    "id": "google-gemini-cached-contents-cache-001",
+    "kind": "google_gemini.cached_contents",
+    "occurred_at": "2026-06-01T00:05:00Z",
+    "payload": {
+      "name": "cachedContents/cache-001",
+      "model": "models/gemini-2.5-pro",
+      "displayName": "support-policy-context",
+      "createTime": "2026-06-01T00:00:00Z",
+      "updateTime": "2026-06-01T00:05:00Z",
+      "expireTime": "2026-06-02T00:00:00Z",
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Use the current support policy."
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "Answer from the cached support policy."
+          }
+        ]
+      },
+      "usageMetadata": {
+        "totalTokenCount": 1536
+      }
+    },
+    "schema_ref": "google_gemini/cached_contents/v1",
+    "source_id": "google_gemini",
+    "tenant_id": "tenant"
+  }
+]

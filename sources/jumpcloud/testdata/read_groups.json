@@ -1,0 +1,32 @@
+[
+  {
+    "attributes": {
+      "external_id": "group-1",
+      "family": "groups",
+      "group_id": "group-1",
+      "group_name": "Engineering",
+      "group_type": "user_group",
+      "provider": "jumpcloud",
+      "record_class": "identity_group",
+      "resource_id": "group-1",
+      "resource_name": "Engineering",
+      "resource_type": "user_group",
+      "schema": "groups",
+      "source_event_id": "group-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "tenant_id": "tenant"
+    },
+    "id": "jumpcloud-groups-event-1",
+    "kind": "jumpcloud.groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "group-1",
+      "name": "Engineering",
+      "type": "user_group"
+    },
+    "schema_ref": "jumpcloud/groups/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]

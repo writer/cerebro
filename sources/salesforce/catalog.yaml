@@ -5,6 +5,10 @@ emitted_kinds:
   - salesforce.users
   - salesforce.assets
   - salesforce.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - users
 kind_lifecycle:
   - kind: salesforce.users
     status: active

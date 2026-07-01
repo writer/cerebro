@@ -14,6 +14,19 @@ emitted_kinds:
   - zuora.revenue_event
   - zuora.revenue_schedule
   - zuora.account
+runtime_families:
+  - account
+  - accounting_code
+  - accounting_period
+  - callout
+  - email
+  - email_template
+  - event_trigger
+  - hostedpage
+  - notification_definition
+  - product
+  - revenue_event
+  - revenue_schedule
 kind_lifecycle:
   - kind: zuora.event_trigger
     status: active

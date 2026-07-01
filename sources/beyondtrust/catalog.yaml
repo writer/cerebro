@@ -5,6 +5,10 @@ emitted_kinds:
   - beyondtrust.users
   - beyondtrust.secrets
   - beyondtrust.audit_events
+runtime_families:
+  - audit_events
+  - secrets
+  - users
 kind_lifecycle:
   - kind: beyondtrust.users
     status: active

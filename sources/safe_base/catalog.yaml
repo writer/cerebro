@@ -7,6 +7,12 @@ emitted_kinds:
   - safe_base.vulnerabilities
   - safe_base.policies
   - safe_base.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: safe_base.assets
     status: active

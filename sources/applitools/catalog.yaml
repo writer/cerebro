@@ -7,6 +7,12 @@ emitted_kinds:
   - applitools.repositories
   - applitools.deployments
   - applitools.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: applitools.users
     status: active

@@ -1,11 +1,62 @@
 id: snyk
 name: "Snyk"
-description: "Collects assets, findings, and vulnerabilities from Snyk and projects them into the Cerebro graph as assets, findings, and vulnerabilities for asset exposure, vulnerability, finding, and remediation context."
+description: "Snyk application security source covering organizations, groups, projects, targets, inventory assets, issues, and package vulnerabilities. The runtime reads Snyk REST JSON:API endpoints with versioned requests and org-scoped paths, then projects asset inventory and remediation state into the graph."
 emitted_kinds:
+  - snyk.orgs
+  - snyk.groups
+  - snyk.projects
+  - snyk.targets
   - snyk.assets
   - snyk.findings
   - snyk.vulnerabilities
+provider_api:
+  status: verified
+  transport: rest
+  auth: snyk_api_token
+  base_url: https://api.snyk.io/rest
+  references:
+    - https://github.com/snyk/user-docs/blob/main/developer-tools/.gitbook/assets/rest-spec.json
+    - https://docs.snyk.io/snyk-api/rest-api/about-the-rest-api
+    - https://docs.snyk.io/snyk-api/authentication-for-api
+  families:
+    - id: orgs
+      method: GET
+      path: /orgs
+    - id: groups
+      method: GET
+      path: /groups
+    - id: projects
+      method: GET
+      path: /orgs/{org_id}/projects
+    - id: targets
+      method: GET
+      path: /orgs/{org_id}/targets
+    - id: assets
+      method: GET
+      path: /orgs/{org_id}/inventory/assets
+    - id: findings
+      method: GET
+      path: /orgs/{org_id}/issues
+    - id: vulnerabilities
+      method: GET
+      path: /orgs/{org_id}/issues
+runtime_families:
+  - orgs
+  - groups
+  - projects
+  - targets
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
+  - kind: snyk.orgs
+    status: active
+  - kind: snyk.groups
+    status: active
+  - kind: snyk.projects
+    status: active
+  - kind: snyk.targets
+    status: active
   - kind: snyk.assets
     status: active
   - kind: snyk.findings
@@ -16,48 +67,131 @@ coverage_contract:
   owner_domain: source_runtime
   authority_domain: snyk
   dimensions:
-    - id: assets
+    - id: orgs
       type: entity_family
-      title: "Assets"
-      families: [assets]
-      support: partial
+      title: "Organizations"
+      families: [orgs]
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /orgs` with Snyk REST versioning and preserves organization IDs, names, slugs, and group references.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads `GET /groups` and preserves group IDs, names, and slugs for tenant-level Snyk inventory context.
+    - id: projects
+      type: entity_family
+      title: "Projects"
+      families: [projects]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, remediation]
+      notes:
+        - Reads `GET /orgs/{org_id}/projects` and records project IDs, names, origins, types, and target references.
+    - id: targets
+      type: entity_family
+      title: "Targets"
+      families: [targets]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads `GET /orgs/{org_id}/targets` and records target display name, URL, source type, and privacy state.
+    - id: assets
+      type: entity_family
+      title: "Assets"
+      families: [assets]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+      notes:
+        - Reads `GET /orgs/{org_id}/inventory/assets` and keeps Snyk asset IDs, display names, types, and org scope for inventory review.
     - id: findings
       type: remediation_state
       title: "Findings"
       families: [findings]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /orgs/{org_id}/issues` and records issue IDs, titles, severity, status, type, and scan item references for remediation state.
     - id: vulnerabilities
       type: remediation_state
       title: "Vulnerabilities"
       families: [vulnerabilities]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /orgs/{org_id}/issues` filtered to package vulnerability issues for vulnerability review.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [orgs, groups, projects, targets, assets, findings, vulnerabilities]
+      support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - Uses Snyk REST `version`, `limit`, and `starting_after` pagination, storing `links.next` as the Source CDK cursor when returned.
 event_contracts:
+  - kind: snyk.orgs
+    schema_ref: snyk/orgs/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - org_id
+    required_payload_fields:
+      - id
+  - kind: snyk.groups
+    schema_ref: snyk/groups/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - group_id
+    required_payload_fields:
+      - id
+  - kind: snyk.projects
+    schema_ref: snyk/projects/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - org_id
+      - project_id
+    required_payload_fields:
+      - id
+  - kind: snyk.targets
+    schema_ref: snyk/targets/v1
+    required_attributes:
+      - external_id
+      - family
+      - source_provider
+      - org_id
+      - target_id
+    required_payload_fields:
+      - id
   - kind: snyk.assets
     schema_ref: snyk/assets/v1
     required_attributes:
-      - tenant_id
-      - source_event_id
+      - external_id
+      - family
+      - source_provider
+      - org_id
       - resource_urn
       - resource_type
       - resource_id
@@ -66,10 +200,11 @@ event_contracts:
   - kind: snyk.findings
     schema_ref: snyk/findings/v1
     required_attributes:
-      - tenant_id
-      - source_event_id
+      - external_id
+      - family
+      - source_provider
+      - org_id
       - finding_id
-      - resource_urn
       - severity
       - status
     required_payload_fields:
@@ -77,10 +212,11 @@ event_contracts:
   - kind: snyk.vulnerabilities
     schema_ref: snyk/vulnerabilities/v1
     required_attributes:
-      - tenant_id
-      - source_event_id
+      - external_id
+      - family
+      - source_provider
+      - org_id
       - finding_id
-      - resource_urn
       - severity
       - status
     required_payload_fields:

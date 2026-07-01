@@ -1,12 +1,47 @@
 id: google_workspace
 name: Google Workspace
-description: Google Workspace Directory and Admin audit source.
+description: Reads Google Workspace Directory users, groups, group memberships, admin role assignments, and Reports API admin activity. Emits identity, membership, privileged assignment, and audit records for access review and graph projection.
 emitted_kinds:
   - google_workspace.audit
   - google_workspace.group
   - google_workspace.group_member
   - google_workspace.role_assignment
   - google_workspace.user
+runtime_families:
+  - audit
+  - group
+  - group_member
+  - role_assignment
+  - user
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://admin.googleapis.com
+  references:
+    - https://raw.githubusercontent.com/googleapis/google-api-go-client/main/admin/directory/v1/admin-api.json
+    - https://raw.githubusercontent.com/googleapis/google-api-go-client/main/admin/reports/v1/admin-api.json
+    - https://developers.google.com/workspace/admin/directory/reference/rest/v1/users/list
+    - https://developers.google.com/workspace/admin/directory/reference/rest/v1/groups/list
+    - https://developers.google.com/workspace/admin/directory/reference/rest/v1/members/list
+    - https://developers.google.com/workspace/admin/directory/reference/rest/v1/roleAssignments/list
+    - https://developers.google.com/workspace/admin/reports/reference/rest/v1/activities/list
+  families:
+    - id: audit
+      method: GET
+      path: /admin/reports/v1/activity/users/{userKey}/applications/{applicationName}
+    - id: group
+      method: GET
+      path: /admin/directory/v1/groups
+    - id: group_member
+      method: GET
+      path: /admin/directory/v1/groups/{groupKey}/members
+    - id: role_assignment
+      method: GET
+      path: /admin/directory/v1/customer/{customer}/roleassignments
+    - id: user
+      method: GET
+      path: /admin/directory/v1/users
 families:
   - id: audit
     incremental: watermark

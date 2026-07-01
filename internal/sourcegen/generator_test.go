@@ -35,6 +35,7 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	for _, path := range []string{
 		"sources/demo_source/catalog.yaml",
 		"sources/demo_source/deploy.yaml",
+		"sources/demo_source/fixture.go",
 		"sources/demo_source/source.go",
 		"sources/demo_source/source_test.go",
 		"sources/demo_source/testdata/discover_asset_host.json",
@@ -59,6 +60,8 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		"- demo_source.asset_host",
 		"- demo_source.finding_vulnerability",
 		"- demo_source.evidence_cas_reference",
+		"runtime_families:",
+		"- asset_host",
 		"kind_lifecycle:",
 		"status: active",
 		"coverage_contract:",
@@ -85,13 +88,13 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
 	}
 	discoverFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/discover_finding_vulnerability.json")
-	for _, want := range []string{`"family": "finding_vulnerability"`, `"sync_operation": "discover"`} {
+	for _, want := range []string{"urn:cerebro:tenant:runtime_finding_vulnerability:source-demo_source-finding_vulnerability-1"} {
 		if !strings.Contains(discoverFixture, want) {
 			t.Fatalf("discover fixture missing %q:\n%s", want, discoverFixture)
 		}
 	}
 	readFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/read_asset_host.json")
-	for _, want := range []string{`"family": "asset_host"`, `"resource_type": "asset"`} {
+	for _, want := range []string{`"family": "asset_host"`, `"record_class": "asset"`, `"resource_type": "host"`} {
 		if !strings.Contains(readFixture, want) {
 			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
 		}
@@ -100,18 +103,56 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse deploy manifest: %v", err)
 	}
-	if len(deploy.Runtimes) != 1 {
-		t.Fatalf("deploy runtimes = %d, want 1", len(deploy.Runtimes))
+	if len(deploy.Runtimes) != 3 {
+		t.Fatalf("deploy runtimes = %d, want 3", len(deploy.Runtimes))
 	}
-	config := deploy.Runtimes[0].Config
-	if config["expected_cadence_seconds"] != "7200" || config["stale_after_seconds"] != "7200" {
-		t.Fatalf("deploy freshness config = %#v", config)
+	deployFamilies := map[string]bool{}
+	for _, runtime := range deploy.Runtimes {
+		deployFamilies[runtime.Config["family"]] = true
+		if runtime.Config["expected_cadence_seconds"] != "7200" || runtime.Config["stale_after_seconds"] != "7200" {
+			t.Fatalf("deploy freshness config = %#v", runtime.Config)
+		}
+	}
+	for _, family := range []string{"asset_host", "finding_vulnerability", "evidence_cas_reference"} {
+		if !deployFamilies[family] {
+			t.Fatalf("deploy manifest missing family %q: %#v", family, deploy.Runtimes)
+		}
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/demo_source/source_test.go")
 	authCheck := strings.Index(sourceTest, `r.Header.Get("Authorization")`)
 	healthCheck := strings.Index(sourceTest, `r.URL.RequestURI() == `)
 	if authCheck < 0 || healthCheck < 0 || authCheck > healthCheck {
 		t.Fatalf("generated source test must assert health auth before health short-circuit:\n%s", sourceTest)
+	}
+	for _, want := range []string{
+		"familyAssetHost",
+		"familyFindingVulnerability",
+		"familyEvidenceCasReference",
+		`"/assets/host"`,
+		`"/findings/vulnerability"`,
+		`"/evidence-cas/references"`,
+		"for _, tc := range familyCases",
+		`readCfgValues["family"] = tc.name`,
+		`"finding_id":`,
+		`"evidence_cas_uri":`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("generated source test missing %q:\n%s", want, sourceTest)
+		}
+	}
+	if got, want := strings.Count(sourceTest, "json.RawMessage(`"), 3; got != want {
+		t.Fatalf("generated source test response cases = %d, want %d:\n%s", got, want, sourceTest)
+	}
+	if strings.Contains(sourceTest, "Record One") {
+		t.Fatalf("generated source test still uses generic synthetic record:\n%s", sourceTest)
+	}
+	for _, forbidden := range []string{
+		`t.Fatalf("Authorization"+" = %q"`,
+		`t.Fatalf("path = %q", r.URL.Path)`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("generated source test handler still calls %q:\n%s", forbidden, sourceTest)
+		}
 	}
 }
 
@@ -171,6 +212,11 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 				},
 				Projection: &connectordefinitions.ProjectionSpec{
 					Template: "identity_user",
+					Fields: map[string]string{
+						"id":    "id",
+						"email": "email",
+						"name":  "email",
+					},
 				},
 				Coverage: []connectordefinitions.CoverageDimensionSpec{{
 					Type:    "entity_family",
@@ -204,6 +250,236 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/example_idp/source_test.go")
 	if strings.Contains(sourceTest, "evidence_cas_uri") {
 		t.Fatalf("definition generated source test should not assume EvidenceCAS fields:\n%s", sourceTest)
+	}
+	fixtureGo := readGeneratedFile(t, outputDir, "sources/example_idp/fixture.go")
+	for _, want := range []string{
+		"// Code generated by sourcegen; DO NOT EDIT.",
+		"func NewFixture() (sourcecdk.Source, error)",
+		"sourcecdk.LoadFixtureEventsWithContracts",
+		"Contracts:     catalog.EventContracts",
+	} {
+		if !strings.Contains(fixtureGo, want) {
+			t.Fatalf("fixture.go missing %q:\n%s", want, fixtureGo)
+		}
+	}
+	readFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/read_users.json")
+	for _, want := range []string{
+		`"api_path": "/v1/users"`,
+		`"kind": "example_idp.user"`,
+		`"record_selector": "$.data[*]"`,
+		`"schema_ref": "example_idp/user/v1"`,
+		`"source_id": "example_idp"`,
+		`"user_id":`,
+		`source-example_idp-users-1`,
+	} {
+		if !strings.Contains(readFixture, want) {
+			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
+		}
+	}
+	if strings.Contains(readFixture, "Record One") {
+		t.Fatalf("read fixture still uses generic synthetic name:\n%s", readFixture)
+	}
+	var events []struct {
+		Payload    map[string]any    `json:"payload"`
+		Attributes map[string]string `json:"attributes"`
+	}
+	if err := json.Unmarshal([]byte(readFixture), &events); err != nil {
+		t.Fatalf("decode read fixture: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("read fixture events = %d, want 1", len(events))
+	}
+	if got, want := events[0].Payload["email"], events[0].Attributes["email"]; got != want {
+		t.Fatalf("read fixture email mismatch: payload=%q attributes=%q\n%s", got, want, readFixture)
+	}
+	discoverFixture := readGeneratedFile(t, outputDir, "sources/example_idp/testdata/discover_users.json")
+	if !strings.Contains(discoverFixture, "urn:cerebro:tenant:") {
+		t.Fatalf("discover fixture missing urn:\n%s", discoverFixture)
+	}
+}
+
+func TestGenerateDefinitionSourceTestUsesEveryFamilyProviderResponses(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
+			ID:            "tenant-a-provider_shapes",
+			TenantID:      "tenant-a",
+			SourceID:      "provider_shapes",
+			DisplayName:   "Provider Shapes",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "bearer_token",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api.example.test",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/v1/health",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "users",
+				Path:           "/v1/users",
+				RecordSelector: "$.members[*]",
+				IDField:        "uuid",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "provider_shapes.user",
+					SchemaRef: "provider_shapes/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+					Fields: map[string]string{
+						"user_id":      "uuid",
+						"email":        "profile.email",
+						"display_name": "profile.name",
+					},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}, {
+				ID:             "groups",
+				Path:           "/v1/groups",
+				RecordSelector: "$[*]",
+				IDField:        "group_id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "provider_shapes.group",
+					SchemaRef: "provider_shapes/group/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_group",
+					Fields: map[string]string{
+						"group_id":   "group.id",
+						"group_name": "group.name",
+					},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}, {
+				ID:             "audit_events",
+				Path:           "/v1/audit/events",
+				RecordSelector: "$.logs[*]",
+				IDField:        "event_id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "provider_shapes.audit",
+					SchemaRef: "provider_shapes/audit/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "audit_event",
+					Fields: map[string]string{
+						"event_type":  "action",
+						"actor_id":    "actor.id",
+						"actor_email": "actor.email",
+						"resource_id": "target.id",
+					},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "audit_event", Support: "supported"}},
+			}, {
+				ID:        "settings",
+				Path:      "/v1/settings",
+				Singleton: true,
+				IDField:   "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "provider_shapes.settings",
+					SchemaRef: "provider_shapes/settings/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+					Fields: map[string]string{
+						"resource_id":   "id",
+						"resource_type": "kind",
+						"resource_name": "display_name",
+					},
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/provider_shapes/source_test.go")
+	for _, want := range []string{
+		"familyUsers",
+		"familyGroups",
+		"familyAuditEvents",
+		"familySettings",
+		`"/v1/users"`,
+		`"/v1/groups"`,
+		`"/v1/audit/events"`,
+		`"/v1/settings"`,
+		`"members":[`,
+		`"logs":[`,
+		`"profile":{"email":`,
+		`"group":{"id":`,
+		`"actor":{"email":`,
+		`"kind":"settings"`,
+		`"uuid":`,
+		`readCfgValues["family"] = tc.name`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("generated source test missing %q:\n%s", want, sourceTest)
+		}
+	}
+	if got, want := strings.Count(sourceTest, "json.RawMessage(`"), 4; got != want {
+		t.Fatalf("generated source test response cases = %d, want %d:\n%s", got, want, sourceTest)
+	}
+	if strings.Contains(sourceTest, "Record One") {
+		t.Fatalf("generated source test still uses generic synthetic record:\n%s", sourceTest)
+	}
+}
+
+func TestFixtureEmailLocalPartForPayloadPath(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{path: "email", want: "email"},
+		{path: "primary_email", want: "primary"},
+		{path: "login", want: "login"},
+		{path: "actor_email", want: "actor"},
+		{path: "actor.email", want: "actor"},
+		{path: "group.email", want: "group"},
+		{path: "member.email", want: "member"},
+		{path: "resource.email", want: "resource"},
+		{path: "user.email", want: "user"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			got, ok := fixtureEmailLocalPartForPayloadPath(tc.path)
+			if !ok || got != tc.want {
+				t.Fatalf("fixtureEmailLocalPartForPayloadPath(%q) = %q, %v; want %q, true", tc.path, got, ok, tc.want)
+			}
+		})
+	}
+
+	request := normalizedRequest{Request: Request{SourceID: "example_idp"}}
+	if got, want := fixtureAttributeValue(request, "actor_email", familyData{}), "actor@example-idp.example.test"; got != want {
+		t.Fatalf("fixtureAttributeValue(actor_email) = %q, want %q", got, want)
+	}
+}
+
+func TestFixturePayloadValueUsesRecordIDForFamilyIDField(t *testing.T) {
+	request := normalizedRequest{Request: Request{SourceID: "elevenlabs"}}
+	family := familyData{
+		Name:   "service_account_api_keys",
+		IDKeys: []string{"key_id", "name"},
+	}
+
+	if got, want := fixturePayloadValue(request, "key_id", family), "source-elevenlabs-service_account_api_keys-1"; got != want {
+		t.Fatalf("fixturePayloadValue(key_id) = %q, want %q", got, want)
+	}
+	if got := fixturePayloadValue(request, "config_file", family); got == "source-elevenlabs-service_account_api_keys-1" {
+		t.Fatalf("fixturePayloadValue(config_file) unexpectedly used record ID: %q", got)
+	}
+
+	emailFamily := familyData{
+		Name:   "users",
+		IDKeys: []string{"email"},
+	}
+	if got, want := fixturePayloadValue(request, "email", emailFamily), "email@elevenlabs.example.test"; got != want {
+		t.Fatalf("fixturePayloadValue(email ID field) = %q, want %q", got, want)
 	}
 }
 
@@ -580,11 +856,20 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/auth0/source_test.go")
 	for _, want := range []string{
 		`r.URL.Path == "/oauth/token"`,
-		`tokenRequests != 1`,
+		`tokenRequests < 1 || tokenRequests > len(familyCases)`,
 		`"token_url": server.URL + "/oauth/token"`,
 	} {
 		if !strings.Contains(sourceTest, want) {
 			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+	for _, forbidden := range []string{
+		`t.Fatalf("token method = %s"`,
+		`t.Fatalf("ParseForm() error = %v"`,
+		`t.Fatalf("grant_type = %q"`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("source_test.go token handler still calls %q:\n%s", forbidden, sourceTest)
 		}
 	}
 }
@@ -778,6 +1063,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				IDField:        "id",
 				StaticQuery:    map[string]string{"full": "true"},
 				ConfigQuery:    map[string]string{"author": "organization"},
+				Config:         &connectordefinitions.FamilyConfigSpec{IdentityKeys: []string{"id"}},
 				Event: connectordefinitions.EventMappingSpec{
 					Kind:      "huggingface.repositories",
 					SchemaRef: "huggingface/repositories/v1",
@@ -845,8 +1131,9 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
-		`StaticQuery: map[string]string{"full": "true"}`,
-		`ConfigQuery: map[string]string{"author": "organization"}`,
+		`StaticQuery:  map[string]string{"full": "true"}`,
+		`ConfigQuery:  map[string]string{"author": "organization"}`,
+		`IdentityKeys: []string{"id"}`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)
@@ -969,6 +1256,14 @@ func TestGenerateDefinitionSupportsAWSSigV4Auth(t *testing.T) {
 	for _, want := range []string{`strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ")`, `strings.Contains(auth, "Credential=test-access-key/")`, `"access_key": "test-access-key"`, `"secret_key": "test-secret-key"`} {
 		if !strings.Contains(sourceTest, want) {
 			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+	for _, forbidden := range []string{
+		`t.Fatalf("Authorization"+" = %q"`,
+		`t.Fatalf("Authorization"+" missing credential scope: %q"`,
+	} {
+		if strings.Contains(sourceTest, forbidden) {
+			t.Fatalf("source_test.go SigV4 handler still calls %q:\n%s", forbidden, sourceTest)
 		}
 	}
 	if strings.Contains(sourceTest, `"AWS4-HMAC-SHA256 test-token"`) {
@@ -1251,6 +1546,16 @@ func FuzzGenerateDryRun(f *testing.F) {
 			t.Fatalf("receipt/PR paths do not include source id: %#v", result)
 		}
 	})
+}
+
+func TestFixtureAttributeValueKeepsAlertSeverityCritical(t *testing.T) {
+	request := normalizedRequest{Request: Request{SourceID: "demo_source"}}
+	if got := fixtureAttributeValue(request, "severity", familyData{Name: "alerts"}); got != "high" {
+		t.Fatalf("severity = %q, want high", got)
+	}
+	if got := fixtureAttributeValue(request, "alert_severity", familyData{Name: "alerts"}); got != "critical" {
+		t.Fatalf("alert_severity = %q, want critical", got)
+	}
 }
 
 func readGeneratedFile(t *testing.T, root string, path string) string {

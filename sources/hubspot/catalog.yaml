@@ -5,6 +5,10 @@ emitted_kinds:
   - hubspot.users
   - hubspot.assets
   - hubspot.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - users
 kind_lifecycle:
   - kind: hubspot.users
     status: active

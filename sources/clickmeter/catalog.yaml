@@ -14,6 +14,19 @@ emitted_kinds:
   - clickmeter.summary_group
   - clickmeter.datapoint
   - clickmeter.aggregated_list
+runtime_families:
+  - aggregated_list
+  - clickstream
+  - conversions_hit
+  - datapoint
+  - datapoints_hit
+  - group
+  - groups_hit
+  - hit
+  - ipblacklist
+  - list
+  - summary_group
+  - tags_group
 kind_lifecycle:
   - kind: clickmeter.clickstream
     status: active

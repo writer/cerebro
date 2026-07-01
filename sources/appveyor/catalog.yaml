@@ -6,6 +6,11 @@ emitted_kinds:
   - appveyor.user
   - appveyor.artifact
   - appveyor.collaborator
+runtime_families:
+  - artifact
+  - collaborator
+  - role
+  - user
 kind_lifecycle:
   - kind: appveyor.role
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - magento.role
   - magento.search
   - magento.coupons_search
+runtime_families:
+  - attribute
+  - coupons_search
+  - role
+  - search
 kind_lifecycle:
   - kind: magento.attribute
     status: active

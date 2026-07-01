@@ -1,0 +1,42 @@
+[
+  {
+    "id": "elevenlabs-tenant-voices-21m00Tcm4TlvDq8ikWAM",
+    "tenant_id": "tenant",
+    "source_id": "elevenlabs",
+    "kind": "elevenlabs.voices",
+    "schema_ref": "elevenlabs/voices/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "21m00Tcm4TlvDq8ikWAM",
+      "resource_urn": "urn:cerebro:tenant:elevenlabs_voices:21m00Tcm4TlvDq8ikWAM",
+      "resource_type": "voice",
+      "resource_id": "21m00Tcm4TlvDq8ikWAM",
+      "resource_name": "Rachel",
+      "record_class": "asset",
+      "schema": "voices",
+      "source_system": "elevenlabs"
+    },
+    "payload": {
+      "voice_id": "21m00Tcm4TlvDq8ikWAM",
+      "name": "Rachel",
+      "category": "premade",
+      "description": "Calm narration voice.",
+      "preview_url": "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/sample.mp3",
+      "available_for_tiers": [],
+      "labels": {
+        "accent": "american",
+        "descriptive": "calm"
+      },
+      "settings": {
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+        "style": 0,
+        "use_speaker_boost": true
+      },
+      "high_quality_base_model_ids": [
+        "eleven_multilingual_v2"
+      ]
+    }
+  }
+]

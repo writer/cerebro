@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/oauth2"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gopkg.in/yaml.v3"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -179,6 +180,46 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
 			}
 		})
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   gcpRuntimeFamilyConfigsForTest(t),
+		RequireDiscover: true,
+	})
+}
+
+func TestGCPProviderUnavailableReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"provider unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyServiceAcct,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	})
+
+	if err := source.Check(context.Background(), cfg); !strings.Contains(errString(err), "gcp API returned 503") {
+		t.Fatalf("Check(%s) error = %v, want provider unavailable status", familyServiceAcct, err)
+	}
+	if _, err := source.Discover(context.Background(), cfg); !strings.Contains(errString(err), "gcp API returned 503") {
+		t.Fatalf("Discover(%s) error = %v, want provider unavailable status", familyServiceAcct, err)
+	}
+	if _, err := source.Read(context.Background(), cfg, nil); !strings.Contains(errString(err), "gcp API returned 503") {
+		t.Fatalf("Read(%s) error = %v, want provider unavailable status", familyServiceAcct, err)
 	}
 }
 
@@ -1150,6 +1191,50 @@ func newLiveTestSource() (*Source, error) {
 	source.allowLoopbackBaseURL = true
 	source.client = source.safeClient()
 	return source, nil
+}
+
+func gcpRuntimeFamilyConfigsForTest(t *testing.T) map[string]sourcecdk.Config {
+	t.Helper()
+	configs := map[string]sourcecdk.Config{}
+	for _, family := range runtimeFamiliesForTest(t) {
+		configs[family] = sourcecdk.NewConfig(map[string]string{
+			"artifact_repository":   "projects/writer-prod/locations/us/repositories/app",
+			"customer_id":           "C01",
+			"family":                family,
+			"group_key":             "security@writer.com",
+			"key_ring":              "prod",
+			"location":              "us",
+			"project_id":            "writer-prod",
+			"service_account_email": "sa@writer-prod.iam.gserviceaccount.com",
+			"token":                 "test-token",
+		})
+	}
+	return configs
+}
+
+func runtimeFamiliesForTest(t *testing.T) []string {
+	t.Helper()
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog.yaml: %v", err)
+	}
+	var catalog struct {
+		RuntimeFamilies []string `yaml:"runtime_families"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog.yaml: %v", err)
+	}
+	if len(catalog.RuntimeFamilies) == 0 {
+		t.Fatal("catalog runtime_families is empty")
+	}
+	return catalog.RuntimeFamilies
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func newGCPAPIHandler(t *testing.T) http.Handler {

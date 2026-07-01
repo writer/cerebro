@@ -7,6 +7,12 @@ emitted_kinds:
   - catchpoint.monitors
   - catchpoint.dashboards
   - catchpoint.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: catchpoint.alerts
     status: active

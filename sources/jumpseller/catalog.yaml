@@ -14,6 +14,19 @@ emitted_kinds:
   - jumpseller.pages_json
   - jumpseller.payment_methods_json
   - jumpseller.products_json
+runtime_families:
+  - checkout_custom_fields_json
+  - countries_json
+  - custom_fields_json
+  - customer_categories_json
+  - customers_json
+  - fulfillments_json
+  - hooks_json
+  - jsapps_json
+  - orders_json
+  - pages_json
+  - payment_methods_json
+  - products_json
 kind_lifecycle:
   - kind: jumpseller.hooks_json
     status: active

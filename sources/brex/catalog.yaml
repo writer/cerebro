@@ -5,6 +5,10 @@ emitted_kinds:
   - brex.cards
   - brex.users
   - brex.audit_events
+runtime_families:
+  - audit_events
+  - cards
+  - users
 kind_lifecycle:
   - kind: brex.cards
     status: active

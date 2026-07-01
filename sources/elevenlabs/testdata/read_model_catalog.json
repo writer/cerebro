@@ -1,14 +1,43 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "elevenlabs-tenant-model_catalog-eleven_multilingual_v2",
+    "tenant_id": "tenant",
+    "source_id": "elevenlabs",
+    "kind": "elevenlabs.model_catalog",
+    "schema_ref": "elevenlabs/model_catalog/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "eleven_multilingual_v2",
+      "resource_urn": "urn:cerebro:tenant:elevenlabs_model_catalog:eleven_multilingual_v2",
+      "resource_type": "tts",
+      "resource_id": "eleven_multilingual_v2",
+      "resource_name": "Eleven Multilingual v2",
+      "record_class": "asset",
+      "schema": "model_catalog",
+      "source_system": "elevenlabs"
+    },
+    "payload": {
+      "model_id": "eleven_multilingual_v2",
+      "name": "Eleven Multilingual v2",
+      "can_be_finetuned": true,
+      "can_do_text_to_speech": true,
+      "can_do_voice_conversion": false,
+      "can_use_style": true,
+      "can_use_speaker_boost": true,
+      "serves_pro_voices": true,
+      "token_cost_factor": 1,
+      "description": "Multilingual voice generation model.",
+      "requires_alpha_access": false,
+      "max_characters_request_free_user": 2500,
+      "max_characters_request_subscribed_user": 5000,
+      "languages": [
+        {
+          "language_id": "en",
+          "name": "English"
+        }
+      ],
+      "resource_type": "tts"
     }
-  ]
-}
+  }
+]

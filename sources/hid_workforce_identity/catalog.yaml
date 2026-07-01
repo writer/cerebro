@@ -7,6 +7,12 @@ emitted_kinds:
   - hid_workforce_identity.roles
   - hid_workforce_identity.applications
   - hid_workforce_identity.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: hid_workforce_identity.users
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - tyk.key
   - tyk.api
   - tyk.client
+runtime_families:
+  - api
+  - client
+  - key
 kind_lifecycle:
   - kind: tyk.key
     status: active

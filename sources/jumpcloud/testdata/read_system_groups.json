@@ -1,0 +1,32 @@
+[
+  {
+    "attributes": {
+      "external_id": "system-group-1",
+      "family": "system_groups",
+      "group_id": "system-group-1",
+      "group_name": "Mac laptops",
+      "group_type": "system",
+      "provider": "jumpcloud",
+      "record_class": "identity_group",
+      "resource_id": "system-group-1",
+      "resource_name": "Mac laptops",
+      "resource_type": "system_group",
+      "schema": "system_groups",
+      "source_event_id": "system-group-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "tenant_id": "tenant"
+    },
+    "id": "jumpcloud-system-groups-event-1",
+    "kind": "jumpcloud.system_groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "system-group-1",
+      "name": "Mac laptops",
+      "type": "system"
+    },
+    "schema_ref": "jumpcloud/system_groups/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]

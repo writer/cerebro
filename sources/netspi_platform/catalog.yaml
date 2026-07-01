@@ -7,6 +7,12 @@ emitted_kinds:
   - netspi_platform.vulnerabilities
   - netspi_platform.policies
   - netspi_platform.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: netspi_platform.assets
     status: active

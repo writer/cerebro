@@ -1,0 +1,53 @@
+[
+  {
+    "attributes": {
+      "deployment_created_at": "2026-06-01T00:00:00Z",
+      "deployment_id": "batches/support-batch-001",
+      "deployment_name": "support-batch-001",
+      "deployment_status": "SUCCEEDED",
+      "deployment_updated_at": "2026-06-01T00:12:00Z",
+      "external_id": "batches/support-batch-001",
+      "family": "batch_jobs",
+      "observed_at": "2026-06-01T00:12:00Z",
+      "provider": "google_gemini",
+      "record_class": "deployment",
+      "resource_id": "batches/support-batch-001",
+      "resource_name": "support-batch-001",
+      "resource_type": "batch_jobs",
+      "schema": "batch_jobs",
+      "source_event_id": "batches/support-batch-001",
+      "source_provider": "google_gemini",
+      "source_system": "google_gemini",
+      "tenant_id": "tenant"
+    },
+    "id": "google-gemini-batch-jobs-support-batch-001",
+    "kind": "google_gemini.batch_jobs",
+    "occurred_at": "2026-06-01T00:12:00Z",
+    "payload": {
+      "name": "batches/support-batch-001",
+      "metadata": {
+        "displayName": "support-batch-001",
+        "state": "SUCCEEDED",
+        "createTime": "2026-06-01T00:00:00Z",
+        "updateTime": "2026-06-01T00:12:00Z",
+        "model": "models/gemini-2.5-flash",
+        "inputConfig": {
+          "fileName": "files/batch-input-001"
+        },
+        "outputConfig": {
+          "fileName": "files/batch-output-001"
+        }
+      },
+      "done": true,
+      "response": {
+        "name": "batches/support-batch-001",
+        "state": "SUCCEEDED",
+        "createTime": "2026-06-01T00:00:00Z",
+        "updateTime": "2026-06-01T00:12:00Z"
+      }
+    },
+    "schema_ref": "google_gemini/batch_jobs/v1",
+    "source_id": "google_gemini",
+    "tenant_id": "tenant"
+  }
+]

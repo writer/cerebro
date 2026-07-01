@@ -1,6 +1,6 @@
 {
-  "adapter_health_path": "/rest/orgs",
-  "auth_model": "bearer_token",
+  "adapter_health_path": "/orgs?version=2026-03-25",
+  "auth_model": "api_token",
   "evidence_cas_reference_kind": "snyk.evidence_cas_reference",
   "expected_cadence_seconds": 86400,
   "failure_modes": [

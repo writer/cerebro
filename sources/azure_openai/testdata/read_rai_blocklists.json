@@ -1,0 +1,44 @@
+[
+  {
+    "attributes": {
+      "external_id": "customer-terms",
+      "family": "rai_blocklists",
+      "policy_created_at": "2026-06-01T00:00:00Z",
+      "policy_description": "Custom moderation terms",
+      "policy_id": "customer-terms",
+      "policy_name": "customer-terms",
+      "policy_status": "Succeeded",
+      "policy_type": "Microsoft.CognitiveServices/accounts/raiBlocklists",
+      "provider": "azure_openai",
+      "record_class": "policy",
+      "resource_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiBlocklists/customer-terms",
+      "resource_name": "customer-terms",
+      "resource_type": "Microsoft.CognitiveServices/accounts/raiBlocklists",
+      "resource_urn": "urn:cerebro:tenant:azure_openai_rai_blocklists:customer-terms",
+      "schema": "rai_blocklists",
+      "source_event_id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiBlocklists/customer-terms",
+      "source_provider": "azure_openai",
+      "source_system": "azure_openai",
+      "tenant_id": "tenant"
+    },
+    "id": "azure-openai-rai-blocklists-customer-terms",
+    "kind": "azure_openai.rai_blocklists",
+    "occurred_at": "2026-06-01T00:05:00Z",
+    "payload": {
+      "id": "/subscriptions/sub-0000/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/acct-openai/raiBlocklists/customer-terms",
+      "name": "customer-terms",
+      "type": "Microsoft.CognitiveServices/accounts/raiBlocklists",
+      "properties": {
+        "description": "Custom moderation terms",
+        "provisioningState": "Succeeded"
+      },
+      "systemData": {
+        "createdAt": "2026-06-01T00:00:00Z",
+        "lastModifiedAt": "2026-06-01T00:05:00Z"
+      }
+    },
+    "schema_ref": "azure_openai/rai_blocklists/v1",
+    "source_id": "azure_openai",
+    "tenant_id": "tenant"
+  }
+]

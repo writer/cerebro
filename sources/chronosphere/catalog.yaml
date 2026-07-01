@@ -7,6 +7,12 @@ emitted_kinds:
   - chronosphere.monitors
   - chronosphere.dashboards
   - chronosphere.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: chronosphere.alerts
     status: active

@@ -14,6 +14,19 @@ emitted_kinds:
   - opendatasoft.datasets_facet
   - opendatasoft.record
   - opendatasoft.reuses
+runtime_families:
+  - aggregate
+  - attachment
+  - dataset
+  - datasets_aggregate
+  - datasets_facet
+  - facet
+  - metadata_template
+  - page
+  - record
+  - resource
+  - resource_2
+  - reuses
 kind_lifecycle:
   - kind: opendatasoft.aggregate
     status: active

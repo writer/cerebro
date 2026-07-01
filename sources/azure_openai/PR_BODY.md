@@ -1,9 +1,9 @@
 ## Summary
 
-- Adds the `azure_openai` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Updates the `azure_openai` Source Runtime SDK with Azure AI Services management APIs for deployments, models, RAI policies, RAI blocklists, and private endpoint connections.
+- Includes runtime adapter mappings, health checks, provider-shaped fixtures, tests, and a source-health receipt.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
@@ -12,5 +12,4 @@
 
 ## Tests
 
-- `go test ./sources/azure_openai ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/azure_openai -count=1`

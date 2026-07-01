@@ -1,0 +1,31 @@
+[
+  {
+    "id": "snyk-finding-issue-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.findings",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/findings/v1",
+    "payload": {
+      "id": "issue-1",
+      "type": "issue",
+      "attributes": {
+        "title": "Critical package issue",
+        "effective_severity_level": "critical",
+        "status": "open"
+      }
+    },
+    "attributes": {
+      "external_id": "issue-1",
+      "family": "findings",
+      "org_id": "org-1",
+      "finding_id": "issue-1",
+      "title": "Critical package issue",
+      "severity": "critical",
+      "status": "open",
+      "resource_urn": "urn:cerebro:tenant:snyk_assets:asset-1",
+      "source_event_id": "issue-1",
+      "source_provider": "snyk"
+    }
+  }
+]

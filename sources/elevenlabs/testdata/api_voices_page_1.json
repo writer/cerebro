@@ -1,0 +1,35 @@
+{
+  "voices": [
+    {
+      "voice_id": "21m00Tcm4TlvDq8ikWAM",
+      "name": "Rachel",
+      "category": "premade",
+      "description": "Calm narration voice.",
+      "preview_url": "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/sample.mp3",
+      "available_for_tiers": [],
+      "settings": {
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+        "style": 0,
+        "use_speaker_boost": true
+      },
+      "labels": {
+        "accent": "american",
+        "descriptive": "calm"
+      },
+      "high_quality_base_model_ids": [
+        "eleven_multilingual_v2"
+      ],
+      "verified_languages": [
+        {
+          "language": "en",
+          "model_id": "eleven_multilingual_v2",
+          "accent": "american"
+        }
+      ]
+    }
+  ],
+  "has_more": true,
+  "total_count": 2,
+  "next_page_token": "voice-page-2"
+}

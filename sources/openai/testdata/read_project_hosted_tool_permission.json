@@ -1,0 +1,81 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/organization/projects/{project_id}/hosted_tool_permissions",
+      "code_interpreter_enabled": "true",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/openai/project_hosted_tool_permission/source-openai-project_hosted_tool_permission-1",
+      "external_id": "source-openai-project_hosted_tool_permission-1",
+      "family": "project_hosted_tool_permission",
+      "file_search_enabled": "true",
+      "image_generation_enabled": "true",
+      "mcp_enabled": "true",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policy_id": "source-openai-policy-1",
+      "policy_name": "Openai Project Hosted Tool Permission Fixture",
+      "project_id": "project-id-source-openai-project_hosted_tool_permission-1",
+      "provider": "openai",
+      "resource_id": "source-openai-project_hosted_tool_permission-1",
+      "resource_name": "Openai Project Hosted Tool Permission Fixture",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:openai_project_hosted_tool_permission:source-openai-project_hosted_tool_permission-1",
+      "source_event_id": "source-openai-project_hosted_tool_permission-1",
+      "source_product": "openai",
+      "source_provider": "openai",
+      "source_system": "openai",
+      "status": "active",
+      "tenant_id": "tenant",
+      "web_search_enabled": "true"
+    },
+    "id": "source-openai-project_hosted_tool_permission-event-1",
+    "kind": "openai.project_hosted_tool_permission",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/organization/projects/{project_id}/hosted_tool_permissions",
+      "code_interpreter": {
+        "enabled": "true"
+      },
+      "event_id": "source-openai-project_hosted_tool_permission-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openai/project_hosted_tool_permission/source-openai-project_hosted_tool_permission-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/openai/project_hosted_tool_permission/source-openai-project_hosted_tool_permission-1",
+      "family": "project_hosted_tool_permission",
+      "file_search": {
+        "enabled": "true"
+      },
+      "id": "source-openai-project_hosted_tool_permission-1",
+      "image_generation": {
+        "enabled": "true"
+      },
+      "mcp": {
+        "enabled": "true"
+      },
+      "name": "Openai Project Hosted Tool Permission Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "policy_id": "source-openai-policy-1",
+      "policy_name": "Openai Project Hosted Tool Permission Fixture",
+      "project_id": "project-id-source-openai-project_hosted_tool_permission-1",
+      "resource_id": "source-openai-project_hosted_tool_permission-1",
+      "resource_type": "policy",
+      "resource_urn": "urn:cerebro:tenant:openai_project_hosted_tool_permission:source-openai-project_hosted_tool_permission-1",
+      "schema_ref": "openai/project_hosted_tool_permission/v1",
+      "source_id": "openai",
+      "status": "active",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "web_search": {
+        "enabled": "true"
+      }
+    },
+    "schema_ref": "openai/project_hosted_tool_permission/v1",
+    "source_id": "openai",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "auth_connections": [
+    {
+      "id": "authconn_01J6QBF9HY9C3ZJWQ2V",
+      "name": "convai-prod-oauth",
+      "authorization_url": "https://login.example.test/oauth2/authorize",
+      "token_url": "https://login.example.test/oauth2/token",
+      "created_at": "2026-06-01T13:00:00Z",
+      "status": "active"
+    }
+  ]
+}

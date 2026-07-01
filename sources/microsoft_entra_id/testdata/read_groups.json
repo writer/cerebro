@@ -1,0 +1,36 @@
+[
+  {
+    "id": "microsoft-entra-id-group-group-1",
+    "tenant_id": "tenant",
+    "source_id": "microsoft_entra_id",
+    "kind": "microsoft_entra_id.groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "microsoft_entra_id/groups/v1",
+    "payload": {
+      "id": "group-1",
+      "displayName": "Security Administrators",
+      "mail": "security@example.test",
+      "description": "Security operations group",
+      "createdDateTime": "2026-05-01T00:00:00Z"
+    },
+    "attributes": {
+      "description": "Security operations group",
+      "external_id": "group-1",
+      "family": "groups",
+      "group_email": "security@example.test",
+      "group_id": "group-1",
+      "group_name": "Security Administrators",
+      "provider": "microsoft_entra_id",
+      "record_class": "identity_group",
+      "resource_id": "group-1",
+      "resource_name": "Security Administrators",
+      "resource_type": "identity_group",
+      "resource_urn": "urn:cerebro:tenant:runtime_groups:group-1",
+      "schema": "groups",
+      "source_event_id": "group-1",
+      "source_provider": "microsoft_entra_id",
+      "source_system": "microsoft_entra_id",
+      "tenant_id": "tenant"
+    }
+  }
+]

@@ -7,6 +7,12 @@ emitted_kinds:
   - recharge.records
   - recharge.policies
   - recharge.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: recharge.users
     status: active

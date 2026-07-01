@@ -7,6 +7,12 @@ emitted_kinds:
   - zscaler_internet_access.roles
   - zscaler_internet_access.applications
   - zscaler_internet_access.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: zscaler_internet_access.users
     status: active

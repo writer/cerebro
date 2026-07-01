@@ -1,0 +1,37 @@
+[
+  {
+    "attributes": {
+      "deployment_created_at": "2024-05-06T12:00:00Z",
+      "deployment_id": "ft_01HZ",
+      "deployment_name": "support-reranker",
+      "deployment_status": "READY",
+      "deployment_updated_at": "2024-05-07T12:00:00Z",
+      "external_id": "ft_01HZ",
+      "family": "fine_tuned_models",
+      "provider": "cohere",
+      "record_class": "deployment",
+      "resource_id": "ft_01HZ",
+      "resource_name": "support-reranker",
+      "resource_type": "fine_tuned_models",
+      "resource_urn": "urn:cerebro:tenant:cohere_fine_tuned_models:ft_01HZ",
+      "schema": "fine_tuned_models",
+      "source_event_id": "ft_01HZ",
+      "source_provider": "cohere",
+      "source_system": "cohere",
+      "tenant_id": "tenant"
+    },
+    "id": "cohere-fine-tuned-model-ft-01hz",
+    "kind": "cohere.fine_tuned_models",
+    "occurred_at": "2024-05-07T12:00:00Z",
+    "payload": {
+      "id": "ft_01HZ",
+      "name": "support-reranker",
+      "status": "READY",
+      "created_at": "2024-05-06T12:00:00Z",
+      "updated_at": "2024-05-07T12:00:00Z"
+    },
+    "schema_ref": "cohere/fine_tuned_models/v1",
+    "source_id": "cohere",
+    "tenant_id": "tenant"
+  }
+]

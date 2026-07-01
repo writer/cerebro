@@ -1,9 +1,9 @@
 ## Summary
 
-- Adds the `elevenlabs` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Updates the `elevenlabs` Source Runtime SDK with documented model, voice, service-account, webhook, and auth-connection APIs.
+- Includes runtime adapter mappings, health checks, provider-shaped fixtures, tests, and a source-health receipt.
 
-## Generated runtime contract
+## Runtime contract
 
 - Source type: `json_api`
 - Auth model: `api_key`
@@ -12,5 +12,4 @@
 
 ## Tests
 
-- `go test ./sources/elevenlabs ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/elevenlabs -count=1`

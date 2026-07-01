@@ -7,6 +7,12 @@ emitted_kinds:
   - incident_io.monitors
   - incident_io.dashboards
   - incident_io.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: incident_io.alerts
     status: active

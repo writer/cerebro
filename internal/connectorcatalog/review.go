@@ -48,15 +48,18 @@ type ReviewSummary struct {
 }
 
 type RuntimeDepthSummary struct {
-	BaselineScore               int `json:"baseline_score"`
-	RuntimeBackedSources        int `json:"runtime_backed_sources"`
-	ReferenceRuntimeSources     int `json:"reference_runtime_sources"`
-	NeedsRuntimeDepth           int `json:"needs_runtime_depth"`
-	SourcesWithReadFixtures     int `json:"sources_with_read_fixtures"`
-	SourcesWithDiscoverFixtures int `json:"sources_with_discover_fixtures"`
-	SourcesWithRuntimeFixtures  int `json:"sources_with_runtime_fixtures"`
-	SourcesWithDeployManifest   int `json:"sources_with_deploy_manifest"`
-	SourcesWithProjectorTests   int `json:"sources_with_projector_tests"`
+	BaselineScore                    int `json:"baseline_score"`
+	RuntimeBackedSources             int `json:"runtime_backed_sources"`
+	ReferenceRuntimeSources          int `json:"reference_runtime_sources"`
+	NeedsRuntimeDepth                int `json:"needs_runtime_depth"`
+	SourcesWithReadFixtures          int `json:"sources_with_read_fixtures"`
+	SourcesWithDiscoverFixtures      int `json:"sources_with_discover_fixtures"`
+	SourcesWithProviderAPIContract   int `json:"sources_with_provider_api_contract"`
+	SourcesWithProviderAPIMapping    int `json:"sources_with_provider_api_mapping"`
+	SourcesWithRuntimeTransportMatch int `json:"sources_with_runtime_transport_match"`
+	SourcesWithRuntimeFixtures       int `json:"sources_with_runtime_fixtures"`
+	SourcesWithDeployManifest        int `json:"sources_with_deploy_manifest"`
+	SourcesWithProjectorTests        int `json:"sources_with_projector_tests"`
 }
 
 type PromotionQueue struct {
@@ -158,6 +161,10 @@ type RuntimeDepthFields struct {
 	HasRuntimeFixtures         bool     `json:"has_runtime_fixtures,omitempty"`
 	HasDeployManifest          bool     `json:"has_deploy_manifest,omitempty"`
 	HasProjectorTests          bool     `json:"has_projector_tests,omitempty"`
+	HasProviderAPIContract     bool     `json:"has_provider_api_contract,omitempty"`
+	HasProviderAPIMapping      bool     `json:"has_provider_api_mapping,omitempty"`
+	HasRuntimeTransportMatch   bool     `json:"has_runtime_transport_match,omitempty"`
+	ProviderAPITransport       string   `json:"provider_api_transport,omitempty"`
 	RuntimeFamilies            []string `json:"runtime_families,omitempty"`
 }
 
@@ -176,7 +183,7 @@ type ProjectionCoverage struct {
 }
 
 const fidelityReviewThreshold = 90
-const runtimeDepthReviewThreshold = 90
+const runtimeDepthReviewThreshold = 100
 
 // ReviewAnalysis builds a deterministic maintenance report from a catalog
 // analysis. It does not re-read files or run source generation.
@@ -266,6 +273,15 @@ func reviewAnalysis(analysis Analysis, runtimeInventory RuntimeDepthInventory, i
 			}
 			if sourceReview.HasRuntimeDiscoverFixtures {
 				review.Summary.RuntimeDepth.SourcesWithDiscoverFixtures++
+			}
+			if sourceReview.HasProviderAPIContract {
+				review.Summary.RuntimeDepth.SourcesWithProviderAPIContract++
+			}
+			if sourceReview.HasProviderAPIMapping {
+				review.Summary.RuntimeDepth.SourcesWithProviderAPIMapping++
+			}
+			if sourceReview.HasProviderAPIContract && sourceReview.HasRuntimeTransportMatch {
+				review.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch++
 			}
 			if sourceReview.HasDeployManifest {
 				review.Summary.RuntimeDepth.SourcesWithDeployManifest++
@@ -380,6 +396,10 @@ func buildSourceReview(entry Entry, runtimeDepth RuntimeDepth, includeRuntimeDep
 		review.HasRuntimeFixtures = runtimeDepth.HasFixturePair
 		review.HasDeployManifest = runtimeDepth.HasDeployManifest
 		review.HasProjectorTests = runtimeDepth.HasProjectorTests
+		review.HasProviderAPIContract = runtimeDepth.ProviderAPI.HasContract
+		review.HasProviderAPIMapping = runtimeDepth.ProviderAPI.HasMapping
+		review.HasRuntimeTransportMatch = runtimeDepth.ProviderAPI.HasRuntimeTransport
+		review.ProviderAPITransport = runtimeDepth.ProviderAPI.Transport
 		review.RuntimeFamilies = append([]string(nil), runtimeDepth.RuntimeFamilies...)
 		switch {
 		case review.RuntimeDepthScore >= runtimeDepthReviewThreshold:

@@ -7,6 +7,12 @@ emitted_kinds:
   - teampay.records
   - teampay.policies
   - teampay.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: teampay.users
     status: active

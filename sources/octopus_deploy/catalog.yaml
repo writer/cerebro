@@ -7,6 +7,12 @@ emitted_kinds:
   - octopus_deploy.repositories
   - octopus_deploy.deployments
   - octopus_deploy.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: octopus_deploy.users
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - zapier_enterprise.repositories
   - zapier_enterprise.deployments
   - zapier_enterprise.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: zapier_enterprise.users
     status: active

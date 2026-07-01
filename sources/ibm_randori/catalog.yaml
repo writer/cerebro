@@ -7,6 +7,12 @@ emitted_kinds:
   - ibm_randori.vulnerabilities
   - ibm_randori.policies
   - ibm_randori.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: ibm_randori.assets
     status: active

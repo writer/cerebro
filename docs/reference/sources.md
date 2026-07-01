@@ -670,7 +670,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `skedda` | Skedda source | skedda.audit_events, skedda.documents, skedda.groups, skedda.users, skedda.workspaces |
 | `skillsoft_percipio` | Skillsoft Percipio source | skillsoft_percipio.accounts, skillsoft_percipio.audit_events, skillsoft_percipio.policies, skillsoft_percipio.records, skillsoft_percipio.users |
 | `slab` | Slab source | slab.audit_events, slab.documents, slab.groups, slab.users, slab.workspaces |
-| `slack` | Slack workspace source | teams, users, channels, user groups |
+| `slack` | Slack workspace, membership, and audit source | teams, users, channels, user groups, access logs, channel members, user group members, audit logs |
 | `slideroom` | Slideroom source | slideroom.attributes_name, slideroom.export, slideroom.name |
 | `slite` | Slite source | slite.audit_events, slite.documents, slite.groups, slite.users, slite.workspaces |
 | `smartrecruiters` | Smartrecruiters source | smartrecruiters.accounts, smartrecruiters.audit_events, smartrecruiters.policies, smartrecruiters.records, smartrecruiters.users |

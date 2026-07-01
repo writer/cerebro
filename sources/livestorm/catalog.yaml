@@ -7,6 +7,12 @@ emitted_kinds:
   - livestorm.workspaces
   - livestorm.documents
   - livestorm.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: livestorm.users
     status: active

@@ -1,6 +1,6 @@
 # Cohere
 
-Generated Source Runtime SDK scaffold for `cohere`.
+Source Runtime SDK implementation for `cohere`.
 
 ## Runtime input
 
@@ -25,5 +25,4 @@ Generated Source Runtime SDK scaffold for `cohere`.
 
 ## Tests
 
-- `go test ./sources/cohere ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/cohere -count=1`

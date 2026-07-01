@@ -5,6 +5,10 @@ emitted_kinds:
   - haveibeenpwned.breaches
   - haveibeenpwned.affected_accounts
   - haveibeenpwned.audit_events
+runtime_families:
+  - affected_accounts
+  - audit_events
+  - breaches
 kind_lifecycle:
   - kind: haveibeenpwned.breaches
     status: active

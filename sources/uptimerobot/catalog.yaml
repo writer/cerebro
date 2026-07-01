@@ -5,6 +5,10 @@ emitted_kinds:
   - uptimerobot.monitors
   - uptimerobot.alert_contacts
   - uptimerobot.audit_events
+runtime_families:
+  - alert_contacts
+  - audit_events
+  - monitors
 kind_lifecycle:
   - kind: uptimerobot.monitors
     status: active

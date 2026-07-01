@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "external_id": "dataset_01HY",
+      "family": "datasets",
+      "provider": "cohere",
+      "record_class": "asset",
+      "resource_id": "dataset_01HY",
+      "resource_name": "support-chat-eval",
+      "resource_type": "datasets",
+      "resource_urn": "urn:cerebro:tenant:cohere_datasets:dataset_01HY",
+      "schema": "datasets",
+      "source_event_id": "dataset_01HY",
+      "source_provider": "cohere",
+      "source_system": "cohere",
+      "tenant_id": "tenant"
+    },
+    "id": "cohere-dataset-dataset-01hy",
+    "kind": "cohere.datasets",
+    "occurred_at": "2024-05-05T12:00:00Z",
+    "payload": {
+      "id": "dataset_01HY",
+      "name": "support-chat-eval",
+      "created_at": "2024-05-04T12:00:00Z",
+      "updated_at": "2024-05-05T12:00:00Z",
+      "status": "ready",
+      "validation_status": "validated"
+    },
+    "schema_ref": "cohere/datasets/v1",
+    "source_id": "cohere",
+    "tenant_id": "tenant"
+  }
+]

@@ -4,6 +4,9 @@ description: "Collects attribute group list json and attribute attributeset list
 emitted_kinds:
   - api2cart.attribute_group_list_json
   - api2cart.attribute_attributeset_list_json
+runtime_families:
+  - attribute_attributeset_list_json
+  - attribute_group_list_json
 kind_lifecycle:
   - kind: api2cart.attribute_group_list_json
     status: active

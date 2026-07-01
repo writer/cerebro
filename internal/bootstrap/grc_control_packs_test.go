@@ -269,6 +269,17 @@ func TestGRCEvidencePacketsEndpointBuildsPackagedAuditRecords(t *testing.T) {
 	if !foundReview {
 		t.Fatalf("reviews = %#v, want packet or request review records", payload.Reviews)
 	}
+	if len(payload.Answers) == 0 {
+		t.Fatal("questionnaire answers are empty, want evidence-backed answer records")
+	}
+	if payload.Program.AnswerCount != len(payload.Answers) || payload.Snapshot.AnswerCount != len(payload.Answers) {
+		t.Fatalf("answer counts program=%d snapshot=%d answers=%d", payload.Program.AnswerCount, payload.Snapshot.AnswerCount, len(payload.Answers))
+	}
+	for _, answer := range payload.Answers {
+		if answer.Question == "" || answer.Answer == "" || answer.AnswerState == "" || answer.Confidence.Level == "" {
+			t.Fatalf("answer = %#v, want question, answer, state, and confidence", answer)
+		}
+	}
 }
 
 func TestGRCControlEvidencePacketDetailEndpointReturnsOneControl(t *testing.T) {

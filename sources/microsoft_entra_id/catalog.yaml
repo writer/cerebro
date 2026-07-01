@@ -1,10 +1,35 @@
 id: microsoft_entra_id
 name: "Microsoft Entra ID"
 description: "Collects users, groups, and audit events from Microsoft Entra ID and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_client_credentials
+  base_url: https://graph.microsoft.com
+  references:
+    - https://github.com/microsoftgraph/msgraph-metadata/blob/master/openapi/v1.0/openapi.yaml
+    - https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0
+    - https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0
+    - https://learn.microsoft.com/en-us/graph/api/directoryaudit-list?view=graph-rest-1.0
+    - https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow
+  families:
+    - id: users
+      method: GET
+      path: /v1.0/users
+    - id: groups
+      method: GET
+      path: /v1.0/groups
+    - id: audit_events
+      method: GET
+      path: /v1.0/auditLogs/directoryAudits
 emitted_kinds:
   - microsoft_entra_id.users
   - microsoft_entra_id.groups
   - microsoft_entra_id.audit_events
+runtime_families:
+  - users
+  - groups
+  - audit_events
 kind_lifecycle:
   - kind: microsoft_entra_id.users
     status: active

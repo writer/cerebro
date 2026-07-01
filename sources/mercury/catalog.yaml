@@ -5,6 +5,10 @@ emitted_kinds:
   - mercury.accounts
   - mercury.transactions
   - mercury.users
+runtime_families:
+  - accounts
+  - transactions
+  - users
 kind_lifecycle:
   - kind: mercury.accounts
     status: active

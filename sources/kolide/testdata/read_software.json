@@ -1,0 +1,88 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/packages",
+      "app_name": "Kolide Software Fixture",
+      "application_name": "Kolide Software Fixture",
+      "bundle_identifier": "bundle-identifier-source-kolide-software-1",
+      "device_id": "device-id-source-kolide-software-1",
+      "device_name": "Kolide Software Fixture",
+      "ecosystem": "ecosystem-source-kolide-software-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/kolide/software/source-kolide-software-1",
+      "external_id": "source-kolide-software-1",
+      "family": "software",
+      "hostname": "Kolide Software Fixture",
+      "installed_at": "2026-06-01T00:00:00Z",
+      "installed_version": "installed-version-source-kolide-software-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "owner_email": "owner@kolide.example.test",
+      "package_name": "Kolide Software Fixture",
+      "platform": "platform-source-kolide-software-1",
+      "provider": "kolide",
+      "publisher": "publisher-source-kolide-software-1",
+      "purl": "purl-source-kolide-software-1",
+      "resource_id": "source-kolide-software-1",
+      "resource_name": "Kolide Software Fixture",
+      "resource_type": "software",
+      "resource_urn": "urn:cerebro:tenant:kolide_software:source-kolide-software-1",
+      "software_id": "software-id-source-kolide-software-1",
+      "source_event_id": "source-kolide-software-1",
+      "source_product": "kolide",
+      "source_provider": "kolide",
+      "source_system": "kolide",
+      "tenant_id": "tenant",
+      "user_email": "user@kolide.example.test",
+      "version": "version-source-kolide-software-1"
+    },
+    "id": "source-kolide-software-event-1",
+    "kind": "kolide.software",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/packages",
+      "bundle_identifier": "bundle-identifier-source-kolide-software-1",
+      "device": {
+        "name": "Kolide Software Fixture"
+      },
+      "device_id": "device-id-source-kolide-software-1",
+      "ecosystem": "ecosystem-source-kolide-software-1",
+      "event_id": "source-kolide-software-1",
+      "evidence_cas": {
+        "digest": "sha256:test",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/kolide/software/source-kolide-software-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/kolide/software/source-kolide-software-1",
+      "family": "software",
+      "hostname": "Kolide Software Fixture",
+      "id": "software-id-source-kolide-software-1",
+      "installed_at": "2026-06-01T00:00:00Z",
+      "name": "Kolide Software Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "owner": {
+        "email": "owner@kolide.example.test"
+      },
+      "platform": "platform-source-kolide-software-1",
+      "publisher": "publisher-source-kolide-software-1",
+      "purl": "purl-source-kolide-software-1",
+      "resource_id": "source-kolide-software-1",
+      "resource_type": "software",
+      "resource_urn": "urn:cerebro:tenant:kolide_software:source-kolide-software-1",
+      "schema_ref": "kolide/software/v1",
+      "source_id": "kolide",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user": {
+        "email": "user@kolide.example.test"
+      },
+      "version": "installed-version-source-kolide-software-1"
+    },
+    "schema_ref": "kolide/software/v1",
+    "source_id": "kolide",
+    "tenant_id": "tenant"
+  }
+]

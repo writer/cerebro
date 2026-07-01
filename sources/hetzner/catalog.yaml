@@ -6,6 +6,11 @@ emitted_kinds:
   - hetzner.certificate
   - hetzner.firewall
   - hetzner.ssh_key
+runtime_families:
+  - certificate
+  - firewall
+  - placement_group
+  - ssh_key
 kind_lifecycle:
   - kind: hetzner.placement_group
     status: active

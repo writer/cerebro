@@ -5,6 +5,10 @@ emitted_kinds:
   - ethena.users
   - ethena.training_statuses
   - ethena.course_assignments
+runtime_families:
+  - course_assignments
+  - training_statuses
+  - users
 kind_lifecycle:
   - kind: ethena.users
     status: active

@@ -24,29 +24,38 @@ type RuntimeDepthInventory map[string]RuntimeDepth
 // from reference sources such as GitHub: source package, catalog, fixtures,
 // deploy manifest, and projector coverage.
 type RuntimeDepth struct {
-	SourceID                string   `json:"source_id"`
-	PackagePath             string   `json:"package_path,omitempty"`
-	Score                   int      `json:"score"`
-	Missing                 []string `json:"missing,omitempty"`
-	HasSourcePackage        bool     `json:"has_source_package,omitempty"`
-	HasSourceCatalog        bool     `json:"has_source_catalog,omitempty"`
-	HasSourceImplementation bool     `json:"has_source_implementation,omitempty"`
-	HasSourceTests          bool     `json:"has_source_tests,omitempty"`
-	HasReadFixtures         bool     `json:"has_read_fixtures,omitempty"`
-	HasDiscoverFixtures     bool     `json:"has_discover_fixtures,omitempty"`
-	HasFixturePair          bool     `json:"has_fixture_pair,omitempty"`
-	HasDeployManifest       bool     `json:"has_deploy_manifest,omitempty"`
-	HasProjectorTests       bool     `json:"has_projector_tests,omitempty"`
-	HasEventContracts       bool     `json:"has_event_contracts,omitempty"`
-	HasCoverageContract     bool     `json:"has_coverage_contract,omitempty"`
-	RuntimeFamilies         []string `json:"runtime_families,omitempty"`
-	ReadFixtureFamilies     []string `json:"read_fixture_families,omitempty"`
-	DiscoverFixtureFamilies []string `json:"discover_fixture_families,omitempty"`
-	MissingReadFixtures     []string `json:"missing_read_fixtures,omitempty"`
-	MissingDiscoverFixtures []string `json:"missing_discover_fixtures,omitempty"`
-	RequiredProjectorKinds  []string `json:"required_projector_kinds,omitempty"`
-	ProjectedKinds          []string `json:"projected_kinds,omitempty"`
-	MissingProjectorKinds   []string `json:"missing_projector_kinds,omitempty"`
+	SourceID                string                  `json:"source_id"`
+	PackagePath             string                  `json:"package_path,omitempty"`
+	Score                   int                     `json:"score"`
+	Missing                 []string                `json:"missing,omitempty"`
+	HasSourcePackage        bool                    `json:"has_source_package,omitempty"`
+	HasSourceCatalog        bool                    `json:"has_source_catalog,omitempty"`
+	HasSourceImplementation bool                    `json:"has_source_implementation,omitempty"`
+	HasSourceTests          bool                    `json:"has_source_tests,omitempty"`
+	HasReadFixtures         bool                    `json:"has_read_fixtures,omitempty"`
+	HasDiscoverFixtures     bool                    `json:"has_discover_fixtures,omitempty"`
+	HasFixturePair          bool                    `json:"has_fixture_pair,omitempty"`
+	HasDeployManifest       bool                    `json:"has_deploy_manifest,omitempty"`
+	HasProjectorTests       bool                    `json:"has_projector_tests,omitempty"`
+	HasEventContracts       bool                    `json:"has_event_contracts,omitempty"`
+	HasCoverageContract     bool                    `json:"has_coverage_contract,omitempty"`
+	ProviderAPI             RuntimeProviderAPIDepth `json:"provider_api,omitempty"`
+	RuntimeFamilies         []string                `json:"runtime_families,omitempty"`
+	ReadFixtureFamilies     []string                `json:"read_fixture_families,omitempty"`
+	DiscoverFixtureFamilies []string                `json:"discover_fixture_families,omitempty"`
+	MissingReadFixtures     []string                `json:"missing_read_fixtures,omitempty"`
+	MissingDiscoverFixtures []string                `json:"missing_discover_fixtures,omitempty"`
+	RequiredProjectorKinds  []string                `json:"required_projector_kinds,omitempty"`
+	ProjectedKinds          []string                `json:"projected_kinds,omitempty"`
+	MissingProjectorKinds   []string                `json:"missing_projector_kinds,omitempty"`
+}
+
+type RuntimeProviderAPIDepth struct {
+	HasContract           bool     `json:"has_contract,omitempty"`
+	HasMapping            bool     `json:"has_mapping,omitempty"`
+	HasRuntimeTransport   bool     `json:"has_runtime_transport,omitempty"`
+	Transport             string   `json:"transport,omitempty"`
+	MissingFamilyMappings []string `json:"missing_family_mappings,omitempty"`
 }
 
 type runtimeCatalogFields struct {
@@ -59,7 +68,23 @@ type runtimeCatalogFields struct {
 	EventContracts []struct {
 		Kind string `yaml:"kind"`
 	} `yaml:"event_contracts"`
-	CoverageContract *struct{} `yaml:"coverage_contract"`
+	CoverageContract *struct{}                `yaml:"coverage_contract"`
+	ProviderAPI      runtimeProviderAPIFields `yaml:"provider_api"`
+}
+
+type runtimeProviderAPIFields struct {
+	Status     string   `yaml:"status"`
+	Transport  string   `yaml:"transport"`
+	Auth       string   `yaml:"auth"`
+	BaseURL    string   `yaml:"base_url"`
+	Endpoint   string   `yaml:"endpoint"`
+	References []string `yaml:"references"`
+	Families   []struct {
+		ID        string `yaml:"id"`
+		Method    string `yaml:"method"`
+		Path      string `yaml:"path"`
+		Operation string `yaml:"operation"`
+	} `yaml:"families"`
 }
 
 // DiscoverRuntimeDepth scans repository source packages and sourceprojection
@@ -126,8 +151,14 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.RequiredProjectorKinds = projectorKindsFromCatalog(catalog)
 		depth.HasEventContracts = len(catalog.EventContracts) > 0
 		depth.HasCoverageContract = catalog.CoverageContract != nil
+		depth.ProviderAPI.Transport = strings.TrimSpace(catalog.ProviderAPI.Transport)
+		depth.ProviderAPI.HasContract = hasProviderAPIContract(catalog.ProviderAPI)
+		depth.ProviderAPI.MissingFamilyMappings = missingValues(depth.RuntimeFamilies, providerAPIFamilies(catalog.ProviderAPI))
+		depth.ProviderAPI.HasMapping = depth.ProviderAPI.HasContract && len(depth.ProviderAPI.MissingFamilyMappings) == 0
 	}
 	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
+	sourceGoPath := filepath.ToSlash(filepath.Join(depth.PackagePath, "source.go"))
+	depth.ProviderAPI.HasRuntimeTransport = depth.ProviderAPI.HasContract && runtimeTransportMatchesProviderAPI(repoRoot, sourceGoPath, depth.ProviderAPI.Transport)
 	depth.HasSourceTests = hasSourceTests(sourceDir)
 	depth.HasDeployManifest = hasRegularFile(filepath.Join(sourceDir, "deploy.yaml"))
 	depth.ReadFixtureFamilies, depth.DiscoverFixtureFamilies = fixtureFamilies(sourceDir)
@@ -152,6 +183,7 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 	sort.Strings(depth.RequiredProjectorKinds)
 	sort.Strings(depth.ProjectedKinds)
 	sort.Strings(depth.MissingProjectorKinds)
+	sort.Strings(depth.ProviderAPI.MissingFamilyMappings)
 	sort.Strings(depth.Missing)
 	return depth, nil
 }
@@ -181,8 +213,22 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 	} else {
 		missing = append(missing, "runtime:catalog")
 	}
-	if depth.HasEventContracts && depth.HasCoverageContract {
+	if depth.ProviderAPI.HasContract && depth.ProviderAPI.HasMapping && depth.ProviderAPI.HasRuntimeTransport {
 		score += 15
+	} else {
+		missing = append(missing, "runtime:provider_api_contract")
+		if !depth.ProviderAPI.HasContract {
+			missing = append(missing, "runtime:provider_api_reference")
+		}
+		for _, family := range depth.ProviderAPI.MissingFamilyMappings {
+			missing = append(missing, "runtime:provider_api_family:"+family)
+		}
+		if depth.ProviderAPI.HasContract && !depth.ProviderAPI.HasRuntimeTransport {
+			missing = append(missing, "runtime:provider_api_transport_mismatch")
+		}
+	}
+	if depth.HasEventContracts && depth.HasCoverageContract {
+		score += 10
 	} else {
 		missing = append(missing, "runtime:catalog_contracts")
 	}
@@ -192,7 +238,7 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 		missing = append(missing, "runtime:source_go")
 	}
 	if depth.HasSourceTests {
-		score += 15
+		score += 10
 	} else {
 		missing = append(missing, "runtime:source_tests")
 	}
@@ -208,7 +254,7 @@ func runtimeDepthScore(depth RuntimeDepth) (int, []string) {
 		}
 	}
 	if depth.HasDeployManifest {
-		score += 10
+		score += 5
 	} else {
 		missing = append(missing, "runtime:deploy_manifest")
 	}
@@ -439,6 +485,69 @@ func runtimeFamiliesFromCatalog(catalog runtimeCatalogFields) []string {
 		}
 	}
 	return sortedKeys(seen)
+}
+
+func hasProviderAPIContract(api runtimeProviderAPIFields) bool {
+	if strings.TrimSpace(api.Status) != "verified" {
+		return false
+	}
+	if strings.TrimSpace(api.Transport) == "" || strings.TrimSpace(api.Auth) == "" {
+		return false
+	}
+	if strings.TrimSpace(api.BaseURL) == "" && strings.TrimSpace(api.Endpoint) == "" {
+		return false
+	}
+	return len(normalizedList(api.References)) > 0
+}
+
+func providerAPIFamilies(api runtimeProviderAPIFields) []string {
+	seen := map[string]struct{}{}
+	for _, family := range api.Families {
+		id := strings.TrimSpace(family.ID)
+		if id == "" {
+			continue
+		}
+		switch strings.TrimSpace(api.Transport) {
+		case "graphql":
+			if strings.TrimSpace(family.Operation) == "" {
+				continue
+			}
+		default:
+			if strings.TrimSpace(family.Method) == "" || strings.TrimSpace(family.Path) == "" {
+				continue
+			}
+		}
+		seen[id] = struct{}{}
+	}
+	return sortedKeys(seen)
+}
+
+func runtimeTransportMatchesProviderAPI(repoRoot *os.Root, sourceGoPath string, transport string) bool {
+	transport = strings.TrimSpace(transport)
+	if transport == "" {
+		return true
+	}
+	if repoRoot == nil {
+		return false
+	}
+	payload, err := repoRoot.ReadFile(sourceGoPath)
+	if err != nil {
+		return false
+	}
+	source := string(payload)
+	switch transport {
+	case "graphql":
+		return !strings.Contains(source, "sources/internal/jsonapi")
+	case "json_api":
+		return strings.Contains(source, "sources/internal/jsonapi")
+	case "rest":
+		return strings.Contains(source, "sources/internal/jsonapi") ||
+			strings.Contains(source, "github.com/google/go-github") ||
+			strings.Contains(source, "sources/internal/githubapi") ||
+			strings.Contains(source, "net/http")
+	default:
+		return true
+	}
 }
 
 func projectorKindsFromCatalog(catalog runtimeCatalogFields) []string {

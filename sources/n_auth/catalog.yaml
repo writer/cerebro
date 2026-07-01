@@ -6,6 +6,11 @@ emitted_kinds:
   - n_auth.account
   - n_auth.permission
   - n_auth.user
+runtime_families:
+  - account
+  - apikey
+  - permission
+  - user
 kind_lifecycle:
   - kind: n_auth.apikey
     status: active

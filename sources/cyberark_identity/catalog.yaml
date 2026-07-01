@@ -5,6 +5,10 @@ emitted_kinds:
   - cyberark_identity.users
   - cyberark_identity.groups
   - cyberark_identity.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: cyberark_identity.users
     status: active

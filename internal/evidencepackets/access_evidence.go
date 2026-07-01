@@ -185,7 +185,7 @@ func AddGraphBackedAccessEvidence(response Response, input GraphBackedAccessEvid
 	sort.Slice(response.GraphPaths, func(i, j int) bool { return response.GraphPaths[i].ID < response.GraphPaths[j].ID })
 	response.Program.GraphPathCount = len(response.GraphPaths)
 	response.Snapshot.GraphPathCount = len(response.GraphPaths)
-	response.Snapshot.Hash = snapshotHash(response.Program, response.Frameworks, response.Controls, response.Requests, response.Packets, response.Items, response.Findings, response.Resources, response.Lineage, response.Claims, response.Runs, response.GraphRows, response.GraphPaths, response.Access, response.Reasoning, response.Exceptions)
+	response.Snapshot.Hash = snapshotHash(response.Program, response.Frameworks, response.Controls, response.Requests, response.Packets, response.Items, response.Findings, response.Resources, response.Lineage, response.Claims, response.Runs, response.GraphRows, response.GraphPaths, response.Access, response.Reasoning, response.Exceptions, response.Answers)
 	response.Artifacts = exportArtifacts(response.Export, response.Snapshot)
 	return response
 }

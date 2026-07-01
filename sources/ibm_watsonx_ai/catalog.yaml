@@ -7,6 +7,12 @@ emitted_kinds:
   - ibm_watsonx_ai.custom_models
   - ibm_watsonx_ai.deployments
   - ibm_watsonx_ai.training_jobs
+runtime_families:
+  - custom_models
+  - deployments
+  - foundation_model_specs
+  - foundation_model_tasks
+  - training_jobs
 kind_lifecycle:
   - kind: ibm_watsonx_ai.foundation_model_specs
     status: active

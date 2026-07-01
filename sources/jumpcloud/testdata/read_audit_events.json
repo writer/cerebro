@@ -1,0 +1,38 @@
+[
+  {
+    "attributes": {
+      "actor_email": "admin@example.test",
+      "actor_id": "admin-1",
+      "event_type": "admin_login_attempt",
+      "external_id": "event-1",
+      "family": "audit_events",
+      "provider": "jumpcloud",
+      "record_class": "audit_event",
+      "resource_email": "admin@example.test",
+      "resource_id": "admin-1",
+      "resource_type": "admin",
+      "schema": "audit_events",
+      "source_event_id": "event-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "tenant_id": "tenant"
+    },
+    "id": "jumpcloud-audit-events-event-1",
+    "kind": "jumpcloud.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "event_type": "admin_login_attempt",
+      "id": "event-1",
+      "resource": {
+        "email": "admin@example.test",
+        "id": "admin-1",
+        "type": "admin"
+      },
+      "success": true,
+      "timestamp": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "jumpcloud/audit_events/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]

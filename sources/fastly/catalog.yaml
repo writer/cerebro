@@ -5,6 +5,10 @@ emitted_kinds:
   - fastly.services
   - fastly.acl_entries
   - fastly.audit_events
+runtime_families:
+  - acl_entries
+  - audit_events
+  - services
 kind_lifecycle:
   - kind: fastly.services
     status: active

@@ -5,6 +5,10 @@ emitted_kinds:
   - argo_cd.pipelines
   - argo_cd.findings
   - argo_cd.audit_events
+runtime_families:
+  - audit_events
+  - findings
+  - pipelines
 kind_lifecycle:
   - kind: argo_cd.pipelines
     status: active

@@ -303,10 +303,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 		},
 	}
 	inventory := RuntimeDepthInventory{
-		"github": {
+		"github": scoredRuntimeDepth(RuntimeDepth{
 			SourceID:                "github",
 			PackagePath:             "sources/github",
-			Score:                   100,
 			HasSourcePackage:        true,
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
@@ -318,12 +317,17 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasProjectorTests:       true,
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
-			RuntimeFamilies:         []string{"audit"},
-		},
-		"generated": {
+			ProviderAPI: RuntimeProviderAPIDepth{
+				HasContract:         true,
+				HasMapping:          true,
+				HasRuntimeTransport: true,
+				Transport:           "rest",
+			},
+			RuntimeFamilies: []string{"audit"},
+		}),
+		"generated": scoredRuntimeDepth(RuntimeDepth{
 			SourceID:                "generated",
 			PackagePath:             "sources/generated",
-			Score:                   75,
 			HasSourcePackage:        true,
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
@@ -332,9 +336,14 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasDeployManifest:       true,
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
-			RuntimeFamilies:         []string{"users"},
-			Missing:                 []string{"runtime:fixture_pair", "runtime:projector_tests"},
-		},
+			ProviderAPI: RuntimeProviderAPIDepth{
+				HasContract:         true,
+				HasMapping:          true,
+				HasRuntimeTransport: true,
+				Transport:           "rest",
+			},
+			RuntimeFamilies: []string{"users"},
+		}),
 	}
 
 	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
@@ -382,6 +391,11 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if hasQueue(report, "sourcegen_ready", "github") || hasQueue(report, "runtime_depth", "github") {
 		t.Fatalf("promotion queues = %#v, did not expect reference runtime github in promotion queues", report.PromotionQueues)
 	}
+}
+
+func scoredRuntimeDepth(depth RuntimeDepth) RuntimeDepth {
+	depth.Score, depth.Missing = runtimeDepthScore(depth)
+	return depth
 }
 
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {

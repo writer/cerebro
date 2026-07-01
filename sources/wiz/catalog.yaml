@@ -5,6 +5,10 @@ emitted_kinds:
   - wiz.assets
   - wiz.findings
   - wiz.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: wiz.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - contractbook.records
   - contractbook.policies
   - contractbook.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: contractbook.users
     status: active

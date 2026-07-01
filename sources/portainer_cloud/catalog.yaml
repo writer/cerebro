@@ -7,6 +7,12 @@ emitted_kinds:
   - portainer_cloud.repositories
   - portainer_cloud.deployments
   - portainer_cloud.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: portainer_cloud.users
     status: active

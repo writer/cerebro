@@ -5,6 +5,10 @@ emitted_kinds:
   - swif_ai.users
   - swif_ai.devices
   - swif_ai.device_compliance
+runtime_families:
+  - device_compliance
+  - devices
+  - users
 kind_lifecycle:
   - kind: swif_ai.users
     status: active

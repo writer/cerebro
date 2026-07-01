@@ -10,6 +10,57 @@ emitted_kinds:
   - datadog.dashboards
   - datadog.incidents
   - datadog.audit_events
+provider_api:
+  status: verified
+  transport: rest
+  auth: dd_api_and_application_keys
+  base_url: https://api.datadoghq.com
+  references:
+    - https://github.com/DataDog/datadog-api-client-python/blob/master/.generator/schemas/v1/openapi.yaml
+    - https://github.com/DataDog/datadog-api-client-python/blob/master/.generator/schemas/v2/openapi.yaml
+    - https://docs.datadoghq.com/api/latest/authentication/
+    - https://docs.datadoghq.com/api/latest/users/
+    - https://docs.datadoghq.com/api/latest/roles/
+    - https://docs.datadoghq.com/api/latest/teams/
+    - https://docs.datadoghq.com/api/latest/monitors/
+    - https://docs.datadoghq.com/api/latest/service-level-objectives/
+    - https://docs.datadoghq.com/api/latest/dashboards/
+    - https://docs.datadoghq.com/api/latest/incidents/
+    - https://docs.datadoghq.com/api/latest/audit/
+  families:
+    - id: users
+      method: GET
+      path: /api/v2/users
+    - id: roles
+      method: GET
+      path: /api/v2/roles
+    - id: teams
+      method: GET
+      path: /api/v2/team
+    - id: monitors
+      method: GET
+      path: /api/v1/monitor
+    - id: slos
+      method: GET
+      path: /api/v1/slo
+    - id: dashboards
+      method: GET
+      path: /api/v1/dashboard
+    - id: incidents
+      method: GET
+      path: /api/v2/incidents
+    - id: audit_events
+      method: GET
+      path: /api/v2/audit/events
+runtime_families:
+  - users
+  - roles
+  - teams
+  - monitors
+  - slos
+  - dashboards
+  - incidents
+  - audit_events
 families:
   - id: users
     incremental: cursor

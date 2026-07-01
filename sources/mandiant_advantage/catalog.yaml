@@ -7,6 +7,12 @@ emitted_kinds:
   - mandiant_advantage.vulnerabilities
   - mandiant_advantage.policies
   - mandiant_advantage.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: mandiant_advantage.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - sonrai_security.roles
   - sonrai_security.applications
   - sonrai_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: sonrai_security.users
     status: active

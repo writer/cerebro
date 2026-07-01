@@ -6,6 +6,11 @@ emitted_kinds:
   - fireworks_ai.service_accounts
   - fireworks_ai.audit_logs
   - fireworks_ai.billing_metrics
+runtime_families:
+  - audit_logs
+  - billing_metrics
+  - model_deployments
+  - service_accounts
 kind_lifecycle:
   - kind: fireworks_ai.model_deployments
     status: active

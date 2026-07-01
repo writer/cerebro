@@ -7,6 +7,12 @@ emitted_kinds:
   - ironclad.records
   - ironclad.policies
   - ironclad.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ironclad.users
     status: active

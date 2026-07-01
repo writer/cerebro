@@ -7,6 +7,12 @@ emitted_kinds:
   - grip_security.roles
   - grip_security.applications
   - grip_security.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: grip_security.users
     status: active
