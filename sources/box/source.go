@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/boxapi"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
@@ -14,16 +15,16 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID               = "box"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/users/me"
-	defaultBaseURLTemplate = "https://api.box.com/2.0"
-	tokenScheme            = "Bearer"
-	familyUsers            = "users"
-	familyContentAssets    = "content_assets"
-	familyGroups           = "groups"
-	familyGroupMemberships = "group_memberships"
-	familyAuditEvents      = "audit_events"
+	sourceID               = boxapi.SourceID
+	defaultFamily          = boxapi.DefaultFamily
+	defaultHealthPath      = boxapi.DefaultHealthPath
+	defaultBaseURLTemplate = boxapi.DefaultBaseURLTemplate
+	tokenScheme            = boxapi.TokenScheme
+	familyUsers            = boxapi.FamilyUsers
+	familyContentAssets    = boxapi.FamilyContentAssets
+	familyGroups           = boxapi.FamilyGroups
+	familyGroupMemberships = boxapi.FamilyGroupMemberships
+	familyAuditEvents      = boxapi.FamilyAuditEvents
 )
 
 var templateKeys = []string{"client_id", "client_secret", "enterprise_id", "box_subject_id"}
@@ -49,7 +50,7 @@ func New() (*Source, error) {
 			"box_subject_type": "${config.box_subject_type}",
 			"box_subject_id":   "${config.box_subject_id}",
 		},
-		Families: boxFamilies(),
+		Families: boxapi.Families(),
 	})
 	if err != nil {
 		return nil, err

@@ -1,8 +1,21 @@
-package box
+package boxapi
 
 import "github.com/writer/cerebro/sources/internal/jsonapi"
 
-func boxFamilies() []jsonapi.Family {
+const (
+	SourceID               = "box"
+	DefaultFamily          = FamilyUsers
+	DefaultHealthPath      = "/users/me"
+	DefaultBaseURLTemplate = "https://api.box.com/2.0"
+	TokenScheme            = "Bearer"
+	FamilyUsers            = "users"
+	FamilyContentAssets    = "content_assets"
+	FamilyGroups           = "groups"
+	FamilyGroupMemberships = "group_memberships"
+	FamilyAuditEvents      = "audit_events"
+)
+
+func Families() []jsonapi.Family {
 	return []jsonapi.Family{
 		boxUsersFamily(),
 		boxContentAssetsFamily(),
@@ -14,7 +27,7 @@ func boxFamilies() []jsonapi.Family {
 
 func boxUsersFamily() jsonapi.Family {
 	return boxMarkerFamily(jsonapi.Family{
-		Name:          familyUsers,
+		Name:          FamilyUsers,
 		Path:          "/users",
 		URNKind:       "runtime_users",
 		IDKeys:        []string{"id", "user_id", "email", "primary_email", "login"},
@@ -44,15 +57,13 @@ func boxUsersFamily() jsonapi.Family {
 			"evidence_cas_commit_id":   "evidence_cas.commit_id|evidence_cas_commit_id|commit_id",
 		},
 		StaticAttributes: boxStaticAttributes("users", "identity_user", "identity_user"),
-		Config: jsonapi.FamilyConfig{
-			ResourceURNKind: "runtime_users",
-		},
+		Config:           jsonapi.FamilyConfig{ResourceURNKind: "runtime_users"},
 	})
 }
 
 func boxContentAssetsFamily() jsonapi.Family {
 	return boxMarkerFamily(jsonapi.Family{
-		Name:          familyContentAssets,
+		Name:          FamilyContentAssets,
 		Path:          "/folders/0/items",
 		URNKind:       "runtime_content_assets",
 		IDKeys:        []string{"id", "urn", "resource_urn", "name"},
@@ -75,15 +86,13 @@ func boxContentAssetsFamily() jsonapi.Family {
 			"evidence_cas_commit_id":   "evidence_cas.commit_id|evidence_cas_commit_id|commit_id",
 		},
 		StaticAttributes: boxStaticAttributes("content_assets", "asset", "box_content"),
-		Config: jsonapi.FamilyConfig{
-			ResourceURNKind: "runtime_content_assets",
-		},
+		Config:           jsonapi.FamilyConfig{ResourceURNKind: "runtime_content_assets"},
 	})
 }
 
 func boxGroupsFamily() jsonapi.Family {
 	return boxOffsetFamily(jsonapi.Family{
-		Name:          familyGroups,
+		Name:          FamilyGroups,
 		Path:          "/groups",
 		URNKind:       "box_groups",
 		IDKeys:        []string{"id", "name"},
@@ -112,7 +121,7 @@ func boxGroupsFamily() jsonapi.Family {
 
 func boxGroupMembershipsFamily() jsonapi.Family {
 	return boxOffsetFamily(jsonapi.Family{
-		Name:       familyGroupMemberships,
+		Name:       FamilyGroupMemberships,
 		Path:       "/groups/{group_id}/memberships",
 		PathParams: []string{"group_id"},
 		URNKind:    "box_group_memberships",
@@ -148,7 +157,7 @@ func boxGroupMembershipsFamily() jsonapi.Family {
 
 func boxAuditEventsFamily() jsonapi.Family {
 	return jsonapi.Family{
-		Name:           familyAuditEvents,
+		Name:           FamilyAuditEvents,
 		Path:           "/events",
 		URNKind:        "runtime_audit_events",
 		IDKeys:         []string{"event_id", "id", "uuid", "request_id"},
