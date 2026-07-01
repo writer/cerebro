@@ -89,6 +89,21 @@ func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
 	}
 }
 
+func TestCreateRunAttributesIgnoreUserProvidedQuestionnaireURN(t *testing.T) {
+	attrs := createRunAttributes(createRequest{
+		Attributes: map[string]string{
+			"questionnaire_urn": "urn:cerebro:tenant-1:vendor:core-sso",
+			"business_unit":     "enterprise",
+		},
+	}, 1)
+	if _, ok := attrs["questionnaire_urn"]; ok {
+		t.Fatalf("attributes = %#v, want questionnaire_urn filtered", attrs)
+	}
+	if attrs["business_unit"] != "enterprise" {
+		t.Fatalf("attributes = %#v, want non-reserved attributes retained", attrs)
+	}
+}
+
 func TestCreateRunInfersXLSXFromFilenameWhenMimeTypeIsGeneric(t *testing.T) {
 	store := &processRunStore{}
 	handler := NewHandler(store, Options{

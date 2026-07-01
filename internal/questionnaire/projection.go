@@ -48,9 +48,6 @@ func EnsureGraphIdentity(record ports.QuestionnaireRunRecord) (ports.Questionnai
 	if record.Attributes == nil {
 		record.Attributes = map[string]string{}
 	}
-	if strings.TrimSpace(record.Attributes[QuestionnaireAttributeQuestionnaireURN]) != "" {
-		return record, nil
-	}
 	questionnaireURN, err := cerebroQuestionnaireURN(record.TenantID, record.RunID)
 	if err != nil {
 		return ports.QuestionnaireRunRecord{}, err

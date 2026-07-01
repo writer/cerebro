@@ -128,6 +128,26 @@ func TestBuildGraphProjectionRemovesStaleLinks(t *testing.T) {
 	}
 }
 
+func TestEnsureGraphIdentityOverwritesUserProvidedQuestionnaireURN(t *testing.T) {
+	record := ports.QuestionnaireRunRecord{
+		QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1"},
+		QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{Attributes: map[string]string{
+			QuestionnaireAttributeQuestionnaireURN: "urn:cerebro:writer:vendor:core-sso",
+		}},
+	}
+
+	normalized, err := EnsureGraphIdentity(record)
+	if err != nil {
+		t.Fatalf("EnsureGraphIdentity() error = %v", err)
+	}
+	if got := normalized.Attributes[QuestionnaireAttributeQuestionnaireURN]; got != "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1" {
+		t.Fatalf("questionnaire urn = %q, want minted questionnaire urn", got)
+	}
+	if got := record.Attributes[QuestionnaireAttributeQuestionnaireURN]; got != "urn:cerebro:writer:vendor:core-sso" {
+		t.Fatalf("original attributes mutated to %q", got)
+	}
+}
+
 func TestCitationResourceURNOnlyPassesThroughRuntimeEvidenceURNs(t *testing.T) {
 	got := citationResourceURN("writer", ports.QuestionnaireCitation{
 		ResourceURN: "urn:cerebro:writer:vendor:core-sso",
