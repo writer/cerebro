@@ -7,6 +7,12 @@ emitted_kinds:
   - dig_security.vulnerabilities
   - dig_security.policies
   - dig_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: dig_security.assets
     status: active

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -20,9 +21,11 @@ const (
 	IntentOktaPrivilegedWeakMFA     = "okta_privileged_weak_mfa"
 	IntentOktaDormantAccess         = "okta_dormant_access"
 	IntentOktaGroupAccessRisk       = "okta_group_access_risk"
+	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
 
-	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
-	confidentPlanThreshold          = 0.70
+	postProcessingCandidateRowLimit        = ports.MaxCypherQueryRows
+	questionnaireEvidenceCandidateRowLimit = postProcessingCandidateRowLimit
+	confidentPlanThreshold                 = 0.70
 )
 
 type AskQueryPlan struct {
@@ -213,6 +216,11 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 		plan.Filters = fastPathTopRiskFilters(question)
 	case IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
 		plan.Filters = map[string]string{}
+	case IntentQuestionnaireEvidence:
+		plan.Filters = fastPathQuestionnaireEvidenceFilters(question)
+		if planFilterValue(plan.Filters, "topic") == "" {
+			return AskQueryPlan{}, false
+		}
 	case IntentExplainFinding:
 		if plan.ScopeURN == "" {
 			return AskQueryPlan{}, false
@@ -249,6 +257,151 @@ func fastPathTopRiskFilters(question string) map[string]string {
 		filters["resource_type"] = "repository"
 	}
 	return filters
+}
+
+func looksLikeQuestionnaireEvidenceQuestion(haystack string) bool {
+	return planFilterValue(fastPathQuestionnaireEvidenceFilters(haystack), "topic") != ""
+}
+
+func fastPathQuestionnaireEvidenceFilters(question string) map[string]string {
+	filters := map[string]string{"answer_mode": "bounded_graph_evidence"}
+	if topic := questionnaireEvidenceTopic(question); topic != "" {
+		filters["topic"] = topic
+	}
+	return filters
+}
+
+func questionnaireEvidenceTopic(question string) string {
+	terms := newQuestionnaireEvidenceTerms(question)
+	if terms.hasFindingRetrievalContext() || terms.hasInventoryContext() {
+		return ""
+	}
+	answerContext := terms.hasQuestionnaireAnswerContext()
+	oktaContext := answerContext || terms.startsWith("show")
+	evidencePacketCoverageContext := terms.hasPhrase("evidence packet") &&
+		(terms.has("coverage") || terms.has("gap") || terms.has("gaps") || terms.has("control") || terms.has("controls"))
+	switch {
+	case terms.has("okta") && (terms.has("mfa") || terms.hasPhrase("multi factor") || terms.has("multifactor")) && oktaContext:
+		return "okta_mfa"
+	case terms.has("okta") && terms.has("lifecycle") && oktaContext:
+		return "okta_lifecycle"
+	case terms.has("okta") && terms.has("access") && oktaContext:
+		return "okta_access"
+	case (terms.has("mfa") || terms.hasPhrase("multi factor") || terms.has("multifactor")) && answerContext:
+		return "identity_mfa"
+	case (terms.hasPhrase("access review") ||
+		terms.has("sso") ||
+		terms.has("permission") ||
+		terms.has("permissions") ||
+		terms.has("provision") ||
+		terms.has("deprovision") ||
+		(terms.has("access") && terms.hasAnswerContext())) && answerContext:
+		return "access_review"
+	case (terms.has("encrypt") || terms.has("encryption") || terms.has("encrypted") || terms.has("key") || terms.has("keys") || terms.has("kms") || terms.has("tls")) && answerContext:
+		return "encryption"
+	case (terms.has("incident") || terms.has("breach") || terms.hasPhrase("incident response")) && answerContext:
+		return "incident_response"
+	case (terms.has("vendor") || terms.has("vendors") || terms.hasPhrase("third party")) && (terms.hasPhrase("due diligence") || terms.has("diligence") || terms.has("assurance") || terms.has("review")) && (answerContext || terms.startsWith("show")):
+		return "vendor_due_diligence"
+	case (terms.has("subprocessor") || terms.has("subprocessors") || terms.hasPhrase("third party")) && answerContext:
+		return "subprocessors"
+	case (terms.has("soc") || terms.has("soc2") || terms.hasPhrase("soc 2") || terms.has("iso") || terms.has("audit") || terms.has("assurance")) && (terms.has("report") || terms.has("reports") || answerContext):
+		return "audit_report"
+	case (terms.hasPhrase("policy doc") || terms.hasPhrase("policy document")) && terms.hasAnswerContext():
+		return "policy_documents"
+	case (terms.has("policy") || terms.has("policies") || terms.has("document") || terms.has("documents")) && answerContext:
+		return "policy_documents"
+	case (terms.has("ai") || terms.has("model") || terms.has("models") || terms.has("training") || terms.hasPhrase("data use") || terms.has("retention")) && answerContext:
+		return "ai_data_use"
+	case (terms.hasPhrase("control coverage") ||
+		terms.hasPhrase("coverage gap") ||
+		terms.hasPhrase("evidence gap") ||
+		evidencePacketCoverageContext ||
+		terms.hasPhrase("mapped control")) &&
+		(terms.hasAnswerContext() || terms.has("show")):
+		return "control_coverage"
+	default:
+		return ""
+	}
+}
+
+type questionnaireEvidenceTerms struct {
+	normalized string
+	tokens     map[string]struct{}
+	firstToken string
+}
+
+var questionnaireEvidenceTokenPattern = regexp.MustCompile(`[a-z0-9]+`)
+
+func newQuestionnaireEvidenceTerms(question string) questionnaireEvidenceTerms {
+	normalized := strings.ToLower(strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(question))
+	tokenValues := questionnaireEvidenceTokenPattern.FindAllString(normalized, -1)
+	tokens := make(map[string]struct{}, len(tokenValues))
+	for _, token := range tokenValues {
+		tokens[token] = struct{}{}
+	}
+	firstToken := ""
+	if len(tokenValues) > 0 {
+		firstToken = tokenValues[0]
+	}
+	return questionnaireEvidenceTerms{
+		normalized: " " + strings.Join(tokenValues, " ") + " ",
+		tokens:     tokens,
+		firstToken: firstToken,
+	}
+}
+
+func (terms questionnaireEvidenceTerms) has(token string) bool {
+	_, ok := terms.tokens[strings.ToLower(strings.TrimSpace(token))]
+	return ok
+}
+
+func (terms questionnaireEvidenceTerms) hasPhrase(phrase string) bool {
+	phraseTerms := questionnaireEvidenceTokenPattern.FindAllString(strings.ToLower(phrase), -1)
+	if len(phraseTerms) == 0 {
+		return false
+	}
+	return strings.Contains(terms.normalized, " "+strings.Join(phraseTerms, " ")+" ")
+}
+
+func (terms questionnaireEvidenceTerms) startsWith(tokens ...string) bool {
+	for _, token := range tokens {
+		if terms.firstToken == strings.ToLower(strings.TrimSpace(token)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (terms questionnaireEvidenceTerms) hasAnswerContext() bool {
+	return terms.has("answer") ||
+		terms.has("answers") ||
+		terms.has("audit") ||
+		terms.has("auditor") ||
+		terms.has("compliance") ||
+		terms.has("question") ||
+		terms.has("questionnaire")
+}
+
+func (terms questionnaireEvidenceTerms) hasQuestionnaireAnswerContext() bool {
+	return terms.hasAnswerContext() ||
+		terms.has("evidence") ||
+		terms.has("proof") ||
+		terms.has("review") ||
+		terms.startsWith("does", "can", "do", "is", "are", "provide", "explain")
+}
+
+func (terms questionnaireEvidenceTerms) hasFindingRetrievalContext() bool {
+	return (terms.has("finding") || terms.has("findings")) &&
+		(terms.has("show") || terms.has("list") || terms.has("source") || terms.has("evidence"))
+}
+
+func (terms questionnaireEvidenceTerms) hasInventoryContext() bool {
+	return terms.has("inventory") ||
+		terms.has("catalog") ||
+		terms.has("count") ||
+		terms.has("counts") ||
+		terms.hasPhrase("list all")
 }
 
 func containsWord(haystack string, needle string) bool {
@@ -296,6 +449,10 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 		out.Filters = map[string]string{}
 		return out
 	}
+	if isOktaDeterministicIntent(out.Intent) {
+		out.Filters = map[string]string{}
+		return out
+	}
 	for key, value := range out.Filters {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -315,6 +472,15 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 		out.Filters[key] = trimmed
 	}
 	return out
+}
+
+func isOktaDeterministicIntent(intent string) bool {
+	switch intent {
+	case IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, defaultMaxRows int) AskQueryPlan {
@@ -356,6 +522,8 @@ func canonicalIntent(value string) string {
 		return IntentOktaDormantAccess
 	case "okta_group_access_risk", "okta_risky_group_memberships":
 		return IntentOktaGroupAccessRisk
+	case "questionnaire_evidence_answer", "questionnaire_answer", "compliance_answer", "control_coverage":
+		return IntentQuestionnaireEvidence
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
@@ -384,6 +552,8 @@ func inferIntent(question string, cypher string) string {
 		return IntentOktaGroupAccessRisk
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
+	case looksLikeQuestionnaireEvidenceQuestion(haystack):
+		return IntentQuestionnaireEvidence
 	default:
 		return IntentRawCypher
 	}
@@ -639,9 +809,137 @@ RETURN group.urn AS group_urn,
        'Group risk is derived from Okta group-to-application assignments and projected entitlement capability edges; enumerate members from member_of edges or okta.group_membership events, not group attributes.' AS overclaim_guard
 ORDER BY risk_signal DESC, group_label, app_label
 LIMIT %d`, cypherJSONStringAttributes("assignment.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("assignment.attributes_json", "at", "observed_at"), limit), true
+	case IntentQuestionnaireEvidence:
+		topicPredicate := questionnaireEvidenceTopicPredicate(plan.Filters)
+		if topicPredicate == "" {
+			return "", false
+		}
+		return renderQuestionnaireEvidenceQuery(topicPredicate), true
 	default:
 		return "", false
 	}
+}
+
+var questionnaireEvidenceQueryFragments = []string{
+	`MATCH (control:Entity {tenant_id: $tenant_id, entity_type: 'policy'})
+WITH control,
+     coalesce(__CONTROL_POLICY_TYPE__, '') AS control_policy_type,
+     coalesce(__CONTROL_REF__, '') AS control_ref
+WHERE control_policy_type = 'control'
+  AND CASE
+        WHEN $scope_urn = '' THEN true
+        WHEN control.urn = $scope_urn THEN true
+        ELSE false
+      END`,
+	`OPTIONAL MATCH (support:Entity {tenant_id: $tenant_id})-[supportRel:RELATION {relation: 'supports'}]->(control)
+WHERE CASE
+        WHEN $scope_urn = '' THEN true
+        WHEN support.urn = $scope_urn THEN true
+        WHEN control.urn = $scope_urn THEN true
+        ELSE false
+      END
+OPTIONAL MATCH (support)-[supportEvidenceRel:RELATION {relation: 'has_evidence'}]->(supportEvidence:Entity {tenant_id: $tenant_id})
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel`,
+	`OPTIONAL MATCH (control)-[controlEvidenceRel:RELATION {relation: 'has_evidence'}]->(controlEvidence:Entity {tenant_id: $tenant_id})
+WITH DISTINCT control, control_ref, support, supportRel,
+     supportEvidence,
+     supportEvidenceRel,
+     controlEvidence,
+     controlEvidenceRel,
+     coalesce(supportEvidence, controlEvidence) AS evidence,
+     coalesce(supportEvidenceRel, controlEvidenceRel) AS evidenceRel
+WHERE evidence IS NOT NULL OR support IS NOT NULL`,
+	`OPTIONAL MATCH (support)-[findingRel:RELATION]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE findingRel.relation IN ['associated_with', 'supports', 'has_finding'] OR finding IS NULL
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel
+OPTIONAL MATCH (exception:Entity {tenant_id: $tenant_id})-[exceptionRel:RELATION]->(control)
+WHERE exception IS NULL OR exception.entity_type CONTAINS 'exception' OR exception.urn CONTAINS 'exception'
+WITH DISTINCT control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel`,
+	`WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
+     coalesce(__CONTROL_MATCH_ATTRIBUTES__, '') AS control_match_attributes,
+     coalesce(__SUPPORT_MATCH_ATTRIBUTES__, '') AS support_match_attributes,
+     coalesce(__EVIDENCE_MATCH_ATTRIBUTES__, '') AS evidence_match_attributes,
+     coalesce(__DIRECT_EVIDENCE_MATCH_ATTRIBUTES__, '') AS direct_evidence_match_attributes
+WITH control, control_ref, support, supportRel, supportEvidence, supportEvidenceRel, controlEvidence, controlEvidenceRel, evidence, evidenceRel, finding, findingRel, exception, exceptionRel,
+     toLower(coalesce(control.label, '') + ' ' +
+             coalesce(control.source_id, '') + ' ' +
+             coalesce(control_ref, '') + ' ' +
+             control_match_attributes + ' ' +
+             coalesce(support.label, '') + ' ' +
+             coalesce(support.source_id, '') + ' ' +
+             support_match_attributes + ' ' +
+             coalesce(evidence.label, '') + ' ' +
+             coalesce(evidence.source_id, '') + ' ' +
+             evidence_match_attributes + ' ' +
+             coalesce(controlEvidence.label, '') + ' ' +
+             coalesce(controlEvidence.source_id, '') + ' ' +
+             direct_evidence_match_attributes) AS questionnaire_match_text,
+     coalesce(evidence.source_id, support.source_id, control.source_id, '') AS evidence_source_id
+__TOPIC_PREDICATE__
+OPTIONAL MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
+WHERE evidence_source_id <> '' AND source.source_id = evidence_source_id`,
+	`RETURN DISTINCT control.urn AS control_urn,
+       coalesce(control.label, control_ref, control.urn) AS control_label,
+       control_ref,
+       coalesce(control.attributes_json, '') AS control_attributes_json_internal,
+       support.urn AS support_urn,
+       coalesce(support.label, support.urn) AS support_label,
+       support.entity_type AS support_type,
+       support.source_id AS support_source_id,
+       supportRel.relation AS support_relation,
+       coalesce(support.attributes_json, '') AS support_attributes_json_internal,
+       evidence.urn AS evidence_urn,
+       coalesce(evidence.label, evidence.urn) AS evidence_label,
+       evidence.entity_type AS evidence_type,
+       evidence_source_id,
+       evidenceRel.relation AS evidence_relation,
+       coalesce(evidence.attributes_json, '') AS evidence_attributes_json_internal,
+       controlEvidence.urn AS direct_evidence_urn,
+       coalesce(controlEvidence.label, controlEvidence.urn) AS direct_evidence_label,
+       controlEvidence.entity_type AS direct_evidence_type,
+       controlEvidence.source_id AS direct_evidence_source_id,
+       controlEvidenceRel.relation AS direct_evidence_relation,
+       coalesce(controlEvidence.attributes_json, '') AS direct_evidence_attributes_json_internal,
+       finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       findingRel.relation AS finding_relation,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json_internal,
+       exception.urn AS exception_urn,
+       coalesce(exception.label, exception.urn) AS exception_label,
+       exception.entity_type AS exception_type,
+       exceptionRel.relation AS exception_relation,
+       coalesce(exception.attributes_json, '') AS exception_attributes_json_internal,
+       source.urn AS source_urn,
+       coalesce(source.label, source.urn) AS source_label,
+       coalesce(source.attributes_json, '') AS source_attributes_json_internal
+ORDER BY control_label, support_label, evidence_label
+LIMIT __CANDIDATE_LIMIT__`,
+}
+
+func renderQuestionnaireEvidenceQuery(topicPredicate string) string {
+	return replaceQuestionnaireEvidencePlaceholders(strings.Join(questionnaireEvidenceQueryFragments, "\n"), map[string]string{
+		"__CONTROL_POLICY_TYPE__":              cypherJSONStringAttributes("control.attributes_json", "policy_type"),
+		"__CONTROL_REF__":                      cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"),
+		"__CONTROL_MATCH_ATTRIBUTES__":         cypherJSONStringAttributes("control.attributes_json", "control_external_id", "control_id", "policy_id"),
+		"__SUPPORT_MATCH_ATTRIBUTES__":         cypherJSONStringAttributes("support.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__EVIDENCE_MATCH_ATTRIBUTES__":        cypherJSONStringAttributes("evidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__DIRECT_EVIDENCE_MATCH_ATTRIBUTES__": cypherJSONStringAttributes("controlEvidence.attributes_json", "evidence_type", "document_type", "policy_document_type", "policy_type", "questionnaire_type", "source_system"),
+		"__TOPIC_PREDICATE__":                  topicPredicate,
+		"__CANDIDATE_LIMIT__":                  fmt.Sprint(questionnaireEvidenceCandidateRowLimit),
+	})
+}
+
+func replaceQuestionnaireEvidencePlaceholders(template string, values map[string]string) string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	replacements := make([]string, 0, len(keys)*2)
+	for _, key := range keys {
+		replacements = append(replacements, key, values[key])
+	}
+	return strings.NewReplacer(replacements...).Replace(template)
 }
 
 func cypherJSONStringAttributes(expression string, keys ...string) string {
@@ -704,6 +1002,127 @@ func resourceTypePredicate(value string) string {
 	}
 }
 
+func questionnaireEvidenceTopicPredicate(filters map[string]string) string {
+	switch strings.ToLower(planFilterValue(filters, "topic")) {
+	case "okta_mfa":
+		return `WHERE CASE
+        WHEN NOT ` + questionnaireMatchWordPredicate("okta") + ` THEN false
+        WHEN ` + questionnaireMatchWordPredicate("mfa") + ` THEN true
+        WHEN questionnaire_match_text CONTAINS 'multi factor' THEN true
+        WHEN questionnaire_match_text CONTAINS 'multi-factor' THEN true
+        WHEN ` + questionnaireMatchWordPredicate("multifactor") + ` THEN true
+        ELSE false
+      END`
+	case "okta_lifecycle":
+		return `WHERE CASE
+        WHEN NOT ` + questionnaireMatchWordPredicate("okta") + ` THEN false
+        WHEN ` + questionnaireMatchWordPredicate("lifecycle") + ` THEN true
+        WHEN ` + questionnaireMatchWordPredicate("deprovision") + ` THEN true
+        WHEN ` + questionnaireMatchWordPredicate("provision") + ` THEN true
+        ELSE false
+      END`
+	case "okta_access":
+		return `WHERE CASE
+        WHEN NOT ` + questionnaireMatchWordPredicate("okta") + ` THEN false
+        WHEN ` + questionnaireMatchWordPredicate("access") + ` THEN true
+        WHEN ` + questionnaireMatchWordPredicate("sso") + ` THEN true
+        WHEN ` + questionnaireMatchWordPredicate("group") + ` THEN true
+        ELSE false
+      END`
+	case "identity_mfa":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("mfa"),
+			"questionnaire_match_text CONTAINS 'multi factor'",
+			"questionnaire_match_text CONTAINS 'multi-factor'",
+			questionnaireMatchWordPredicate("multifactor"),
+		)
+	case "access_review":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'access review'",
+			questionnaireMatchWordPredicate("access"),
+			questionnaireMatchWordPredicate("sso"),
+			questionnaireMatchWordPredicate("permission"),
+			questionnaireMatchWordPredicate("permissions"),
+			questionnaireMatchWordPredicate("provision"),
+			questionnaireMatchWordPredicate("deprovision"),
+		)
+	case "encryption":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("encrypt"),
+			questionnaireMatchWordPredicate("encryption"),
+			questionnaireMatchWordPredicate("encrypted"),
+			questionnaireMatchWordPredicate("key"),
+			questionnaireMatchWordPredicate("keys"),
+			questionnaireMatchWordPredicate("kms"),
+			questionnaireMatchWordPredicate("tls"),
+		)
+	case "incident_response":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'incident response'",
+			questionnaireMatchWordPredicate("incident"),
+			questionnaireMatchWordPredicate("breach"),
+			questionnaireMatchWordPredicate("response"),
+		)
+	case "subprocessors":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("subprocessor"),
+			questionnaireMatchWordPredicate("subprocessors"),
+			"questionnaire_match_text CONTAINS 'third party'",
+			"questionnaire_match_text CONTAINS 'third-party'",
+		)
+	case "audit_report":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("soc"),
+			questionnaireMatchWordPredicate("soc2"),
+			"questionnaire_match_text CONTAINS 'soc 2'",
+			questionnaireMatchWordPredicate("iso"),
+			questionnaireMatchWordPredicate("audit"),
+			questionnaireMatchWordPredicate("assurance"),
+			questionnaireMatchWordPredicate("report"),
+		)
+	case "policy_documents":
+		return "WHERE questionnaire_match_text CONTAINS 'policy document' OR questionnaire_match_text CONTAINS 'policy_document' OR " + questionnaireMatchWordPredicate("document")
+	case "ai_data_use":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			questionnaireMatchWordPredicate("ai"),
+			questionnaireMatchWordPredicate("model"),
+			questionnaireMatchWordPredicate("models"),
+			questionnaireMatchWordPredicate("training"),
+			"questionnaire_match_text CONTAINS 'data use'",
+			"questionnaire_match_text CONTAINS 'data-use'",
+			questionnaireMatchWordPredicate("retention"),
+		)
+	case "vendor_due_diligence":
+		return "WHERE " + questionnaireAnyMatchPredicate(
+			"questionnaire_match_text CONTAINS 'due diligence'",
+			questionnaireMatchWordPredicate("vendor"),
+			questionnaireMatchWordPredicate("vendors"),
+			questionnaireMatchWordPredicate("assurance"),
+			questionnaireMatchWordPredicate("subprocessor"),
+			"questionnaire_match_text CONTAINS 'third party'",
+			"questionnaire_match_text CONTAINS 'third-party'",
+		)
+	case "control_coverage":
+		return "WHERE " + questionnaireMatchWordPredicate("coverage") + " OR questionnaire_match_text CONTAINS 'coverage_gap' OR " + questionnaireMatchWordPredicate("gap") + " OR " + questionnaireMatchWordPredicate("missing")
+	default:
+		return ""
+	}
+}
+
+func questionnaireAnyMatchPredicate(predicates ...string) string {
+	nonEmpty := make([]string, 0, len(predicates))
+	for _, predicate := range predicates {
+		if strings.TrimSpace(predicate) != "" {
+			nonEmpty = append(nonEmpty, predicate)
+		}
+	}
+	return strings.Join(nonEmpty, " OR ")
+}
+
+func questionnaireMatchWordPredicate(word string) string {
+	return "questionnaire_match_text =~ '(?s).*\\\\b" + regexp.QuoteMeta(strings.ToLower(word)) + "\\\\b.*'"
+}
+
 func planFilterValue(filters map[string]string, key string) string {
 	for filterKey, value := range filters {
 		if strings.EqualFold(filterKey, key) {
@@ -729,6 +1148,10 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 		switch plan.Intent {
 		case IntentTopRiskFindings:
 			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
+				return true
+			}
+		case IntentQuestionnaireEvidence:
+			if normalized != "topic" && normalized != "answer_mode" {
 				return true
 			}
 		case IntentFailingControls:

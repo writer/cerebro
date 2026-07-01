@@ -5,6 +5,10 @@ emitted_kinds:
   - bamboohr.users
   - bamboohr.groups
   - bamboohr.audit_events
+runtime_families:
+  - audit_events
+  - groups
+  - users
 kind_lifecycle:
   - kind: bamboohr.users
     status: active

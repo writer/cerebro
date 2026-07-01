@@ -1,14 +1,40 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+[
+  {
+    "id": "jira-users-event-1",
+    "tenant_id": "tenant",
+    "source_id": "jira",
+    "kind": "jira.users",
+    "schema_ref": "jira/users/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "attributes": {
+      "account_id": "acct-1",
+      "account_type": "atlassian",
+      "display_name": "User One",
+      "email": "user@example.test",
+      "external_id": "acct-1",
+      "family": "users",
+      "provider": "jira",
+      "record_class": "identity_user",
+      "resource_id": "acct-1",
+      "resource_name": "User One",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:jira_users:acct-1",
+      "schema": "users",
+      "source_event_id": "acct-1",
+      "source_provider": "jira",
+      "source_system": "jira",
+      "status": "true",
+      "tenant_id": "tenant",
+      "time_zone": "America/Los_Angeles",
+      "user_id": "acct-1"
+    },
+    "payload": {
+      "accountId": "acct-1",
+      "accountType": "atlassian",
+      "active": true,
+      "displayName": "User One",
+      "emailAddress": "user@example.test",
+      "timeZone": "America/Los_Angeles"
     }
-  ]
-}
+  }
+]

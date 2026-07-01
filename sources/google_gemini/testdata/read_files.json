@@ -1,0 +1,62 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1beta/files",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-google_gemini-files-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-google_gemini-files-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/google_gemini/files/source-google_gemini-files-1",
+      "external_id": "source-google_gemini-files-1",
+      "family": "files",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "google_gemini",
+      "record_class": "asset",
+      "record_selector": "$.files[*]",
+      "resource_id": "source-google_gemini-files-1",
+      "resource_name": "Google Gemini Files Fixture",
+      "resource_type": "files",
+      "resource_urn": "urn:cerebro:tenant:google_gemini_files:source-google_gemini-files-1",
+      "schema": "files",
+      "source_event_id": "source-google_gemini-files-1",
+      "source_provider": "google_gemini",
+      "source_system": "google_gemini",
+      "tenant_id": "tenant"
+    },
+    "id": "source-google_gemini-files-event-1",
+    "kind": "google_gemini.files",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1beta/files",
+      "displayName": "Google Gemini Files Fixture",
+      "event_id": "source-google_gemini-files-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-google_gemini-files-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-google_gemini-files-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/google_gemini/files/source-google_gemini-files-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/google_gemini/files/source-google_gemini-files-1",
+      "family": "files",
+      "id": "source-google_gemini-files-1",
+      "name": "Google Gemini Files Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.files[*]",
+      "resource_id": "source-google_gemini-files-1",
+      "resource_type": "files",
+      "resource_urn": "urn:cerebro:tenant:google_gemini_files:source-google_gemini-files-1",
+      "schema_ref": "google_gemini/files/v1",
+      "source_id": "google_gemini",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "google_gemini/files/v1",
+    "source_id": "google_gemini",
+    "tenant_id": "tenant"
+  }
+]

@@ -7,6 +7,12 @@ emitted_kinds:
   - bazaarvoice.records
   - bazaarvoice.policies
   - bazaarvoice.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: bazaarvoice.users
     status: active

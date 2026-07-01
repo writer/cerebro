@@ -26,6 +26,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | `events` | Subject prefix for append-log events. |
 | `CEREBRO_JETSTREAM_DRAIN_TIMEOUT` | NATS default | Optional timeout for graceful NATS connection drain during shutdown. |
 | `CEREBRO_JETSTREAM_PUBLISH_MAX_IN_FLIGHT` | unlimited | Optional per-process bulkhead for concurrent JetStream publishes. |
+| `CEREBRO_JETSTREAM_PUBLISH_FINDINGS_MAX_IN_FLIGHT` | unlimited | Optional per-process bulkhead for `sec.findings.v1.*` publishes. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_ATTEMPTS` | `10` | Optional maximum outer publish attempts for retryable JetStream publish errors. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_INITIAL_BACKOFF` | `250ms` | Optional first outer publish retry backoff. |
 | `CEREBRO_JETSTREAM_PUBLISH_RETRY_MAX_BACKOFF` | `5s` | Optional cap for outer publish retry backoff. |

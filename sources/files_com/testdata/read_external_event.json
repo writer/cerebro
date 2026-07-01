@@ -1,14 +1,76 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@files-com.example.test",
+      "actor_id": "files_com-users-1",
+      "actor_name": "actor-name-source-files_com-external_event-1",
+      "api_method": "GET",
+      "api_path": "/external_events",
+      "event_type": "files_com.external_event.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-files_com-external_event-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-files_com-external_event-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/files_com/external_event/source-files_com-external_event-1",
+      "external_id": "source-files_com-external_event-1",
+      "family": "external_event",
+      "id": "source-files_com-external_event-1",
+      "name": "Files Com External Event Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "files_com",
+      "provider_id": "provider-id-source-files_com-external_event-1",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@files-com.example.test",
+      "resource_id": "source-files_com-external_event-1",
+      "resource_name": "Files Com External Event Fixture",
+      "resource_type": "external_event",
+      "resource_urn": "urn:cerebro:tenant:files_external_event:source-files_com-external_event-1",
+      "schema": "external_event",
+      "source_event_id": "source-files_com-external_event-1",
+      "source_provider": "files_com",
+      "source_system": "files_com",
+      "tenant_id": "tenant"
+    },
+    "id": "source-files_com-external_event-event-1",
+    "kind": "files_com.external_event",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@files-com.example.test",
+      "actor_id": "files_com-users-1",
+      "actor_name": "actor-name-source-files_com-external_event-1",
+      "api_method": "GET",
+      "api_path": "/external_events",
+      "body": "Files Com External Event Fixture",
+      "event_id": "source-files_com-external_event-1",
+      "event_type": "files_com.external_event.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-files_com-external_event-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-files_com-external_event-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/files_com/external_event/source-files_com-external_event-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/files_com/external_event/source-files_com-external_event-1",
+      "family": "external_event",
+      "id": "source-files_com-external_event-1",
+      "name": "Files Com External Event Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$[*]",
+      "resource_email": "resource@files-com.example.test",
+      "resource_id": "source-files_com-external_event-1",
+      "resource_name": "Files Com External Event Fixture",
+      "resource_type": "external_event",
+      "resource_urn": "urn:cerebro:tenant:files_external_event:source-files_com-external_event-1",
+      "schema_ref": "files_com/external_event/v1",
+      "source_id": "files_com",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "files_com/external_event/v1",
+    "source_id": "files_com",
+    "tenant_id": "tenant"
+  }
+]

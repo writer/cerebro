@@ -1,0 +1,256 @@
+sourceId: openai
+secretKeys:
+  - OPENAI_TOKEN
+runtimes:
+  - localId: admin-api-key
+    config:
+      family: admin_api_key
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: api-key
+    config:
+      family: api_key
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: audit-log
+    config:
+      family: audit_log
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: certificate
+    config:
+      family: certificate
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: cost
+    config:
+      family: cost
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: data-retention
+    config:
+      family: data_retention
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: group
+    config:
+      family: group
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: group-role
+    config:
+      family: group_role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      group_id: group-1
+  - localId: group-user
+    config:
+      family: group_user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      group_id: group-1
+  - localId: invite
+    config:
+      family: invite
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: project
+    config:
+      family: project
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: project-api-key
+    config:
+      family: project_api_key
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-certificate
+    config:
+      family: project_certificate
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-data-retention
+    config:
+      family: project_data_retention
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-group
+    config:
+      family: project_group
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-group-role
+    config:
+      family: project_group_role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      group_id: group-1
+      project_id: project-1
+  - localId: project-hosted-tool-permission
+    config:
+      family: project_hosted_tool_permission
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-model-permission
+    config:
+      family: project_model_permission
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-rate-limit
+    config:
+      family: project_rate_limit
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-role
+    config:
+      family: project_role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-service-account
+    config:
+      family: project_service_account
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-spend-alert
+    config:
+      family: project_spend_alert
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-user
+    config:
+      family: project_user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+  - localId: project-user-role
+    config:
+      family: project_user_role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      project_id: project-1
+      user_id: user-1
+  - localId: role
+    config:
+      family: role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: service-account
+    config:
+      family: service_account
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: spend-alert
+    config:
+      family: spend_alert
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-audio-speech
+    config:
+      family: usage_audio_speech
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-audio-transcription
+    config:
+      family: usage_audio_transcription
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-code-interpreter-session
+    config:
+      family: usage_code_interpreter_session
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-completion
+    config:
+      family: usage_completion
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-embedding
+    config:
+      family: usage_embedding
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-file-search-call
+    config:
+      family: usage_file_search_call
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-image
+    config:
+      family: usage_image
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-moderation
+    config:
+      family: usage_moderation
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-vector-store
+    config:
+      family: usage_vector_store
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: usage-web-search-call
+    config:
+      family: usage_web_search_call
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: user
+    config:
+      family: user
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+  - localId: user-role
+    config:
+      family: user_role
+      per_page: "100"
+      tenant_id: tenant
+      token: env:OPENAI_TOKEN
+      user_id: user-1

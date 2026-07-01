@@ -7,6 +7,12 @@ emitted_kinds:
   - oracle_hcm.records
   - oracle_hcm.policies
   - oracle_hcm.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: oracle_hcm.users
     status: active

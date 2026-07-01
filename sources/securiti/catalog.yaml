@@ -7,6 +7,12 @@ emitted_kinds:
   - securiti.vulnerabilities
   - securiti.policies
   - securiti.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: securiti.assets
     status: active

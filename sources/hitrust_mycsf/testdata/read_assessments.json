@@ -1,14 +1,61 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/api/v1/assessments",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-hitrust_mycsf-assessments-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-hitrust_mycsf-assessments-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/hitrust_mycsf/assessments/source-hitrust_mycsf-assessments-1",
+      "external_id": "source-hitrust_mycsf-assessments-1",
+      "family": "assessments",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "hitrust_mycsf",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-hitrust_mycsf-assessments-1",
+      "resource_name": "Hitrust Mycsf Assessments Fixture",
+      "resource_type": "assessments",
+      "resource_urn": "urn:cerebro:tenant:hitrust_mycsf_assessments:source-hitrust_mycsf-assessments-1",
+      "schema": "assessments",
+      "source_event_id": "source-hitrust_mycsf-assessments-1",
+      "source_provider": "hitrust_mycsf",
+      "source_system": "hitrust_mycsf",
+      "tenant_id": "tenant"
+    },
+    "id": "source-hitrust_mycsf-assessments-event-1",
+    "kind": "hitrust_mycsf.assessments",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/api/v1/assessments",
+      "event_id": "source-hitrust_mycsf-assessments-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-hitrust_mycsf-assessments-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-hitrust_mycsf-assessments-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/hitrust_mycsf/assessments/source-hitrust_mycsf-assessments-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/hitrust_mycsf/assessments/source-hitrust_mycsf-assessments-1",
+      "family": "assessments",
+      "id": "source-hitrust_mycsf-assessments-1",
+      "name": "Hitrust Mycsf Assessments Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-hitrust_mycsf-assessments-1",
+      "resource_type": "assessments",
+      "resource_urn": "urn:cerebro:tenant:hitrust_mycsf_assessments:source-hitrust_mycsf-assessments-1",
+      "schema_ref": "hitrust_mycsf/assessments/v1",
+      "source_id": "hitrust_mycsf",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "hitrust_mycsf/assessments/v1",
+    "source_id": "hitrust_mycsf",
+    "tenant_id": "tenant"
+  }
+]

@@ -6,6 +6,11 @@ emitted_kinds:
   - godaddy.domain
   - godaddy.maintenance
   - godaddy.tld
+runtime_families:
+  - domain
+  - maintenance
+  - optin
+  - tld
 kind_lifecycle:
   - kind: godaddy.optin
     status: active

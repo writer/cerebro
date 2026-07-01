@@ -7,6 +7,12 @@ emitted_kinds:
   - mimecast.vulnerabilities
   - mimecast.policies
   - mimecast.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: mimecast.assets
     status: active

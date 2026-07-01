@@ -6,6 +6,11 @@ emitted_kinds:
   - sendgrid.api_key
   - sendgrid.group
   - sendgrid.invalid_email
+runtime_families:
+  - activity
+  - api_key
+  - group
+  - invalid_email
 kind_lifecycle:
   - kind: sendgrid.activity
     status: active

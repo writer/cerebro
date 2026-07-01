@@ -5,6 +5,10 @@ emitted_kinds:
   - snyk.assets
   - snyk.findings
   - snyk.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: snyk.assets
     status: active

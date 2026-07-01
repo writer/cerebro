@@ -1,12 +1,19 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
+GOLANGCI_LINT_CONCURRENCY ?= 4
 GOLANGCI_LINT_TIMEOUT ?= 20m
+GO_TEST_SHARD_TOTAL ?= 1
+GO_TEST_SHARD_INDEX ?= 0
+GO_TEST_SHARD_WEIGHTS ?= scripts/go_package_test_weights.json
+GO_TEST_SHARD_DEFAULT_WEIGHT ?= 1
+GO_RACE_SHARD_WEIGHTS ?= scripts/go_package_race_weights.json
+GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
@@ -17,9 +24,19 @@ DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
 DOCKER_SMOKE_GOARCH ?= amd64
 DOCKER_RUNTIME_BASE_IMAGE ?= alpine:3.24
 DOCKER_SMOKE_BASE_IMAGES ?= $(DOCKER_RUNTIME_BASE_IMAGE) public.ecr.aws/docker/library/alpine:3.24 mirror.gcr.io/library/alpine:3.24
+DOCKER_BUILD ?= docker build
+DOCKER_BUILD_CACHE_ARGS ?=
 DOCKER_BUILD_ATTEMPTS ?= 3
 DOCKER_BUILD_RETRY_SLEEP ?= 10
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
+APP_API_CMD_PACKAGES := ./api/... ./cmd/...
+APP_INTERNAL_PACKAGES := ./internal/...
+APP_SOURCE_PACKAGES := ./sources/...
+LINT_PACKAGES ?= $(APP_PACKAGES)
+LINT_SHARD_TOTAL ?= 1
+LINT_SHARD_INDEX ?= 0
+LINT_SHARD_WEIGHTS ?=
+LINT_SHARD_DEFAULT_WEIGHT ?= 1
 COVER_PACKAGES ?= ./internal/runtimeresponse ./internal/graphagent ./internal/deviceauth ./internal/sourceprojection ./internal/findings
 COVERAGE_OUT ?= tmp/coverage.out
 COVERAGE_MIN ?= 80.0
@@ -136,11 +153,29 @@ serve: build ## Build and run the local HTTP server.
 serve-dev: build ## Build and run the local HTTP server with acknowledged dev-mode auth/rate-limit opt-out.
 	CEREBRO_DEV_MODE=1 CEREBRO_DEV_MODE_ACK=1 ./bin/cerebro serve
 
-test: ## Run all Go tests.
-	go test ./...
+test: ## Run all Go tests. Set GO_TEST_SHARD_TOTAL and GO_TEST_SHARD_INDEX to run one stable shard.
+	@set -e; \
+	package_file="$$(mktemp)"; \
+	trap 'rm -f "$$package_file"' EXIT; \
+	go list ./... > "$$package_file"; \
+	packages="$$( $(PYTHON) scripts/go_package_shard.py --total "$(GO_TEST_SHARD_TOTAL)" --index "$(GO_TEST_SHARD_INDEX)" --weights "$(GO_TEST_SHARD_WEIGHTS)" --default-weight "$(GO_TEST_SHARD_DEFAULT_WEIGHT)" < "$$package_file")"; \
+	if [ -z "$$packages" ]; then \
+		echo "no Go packages selected for shard $(GO_TEST_SHARD_INDEX)/$(GO_TEST_SHARD_TOTAL)"; \
+	else \
+		go test $$packages; \
+	fi
 
-test-race: ## Run all Go tests with the race detector.
-	go test -race -timeout 20m ./...
+test-race: ## Run all Go tests with the race detector. Set GO_TEST_SHARD_TOTAL and GO_TEST_SHARD_INDEX to run one stable shard.
+	@set -e; \
+	package_file="$$(mktemp)"; \
+	trap 'rm -f "$$package_file"' EXIT; \
+	go list ./... > "$$package_file"; \
+	packages="$$( $(PYTHON) scripts/go_package_shard.py --total "$(GO_TEST_SHARD_TOTAL)" --index "$(GO_TEST_SHARD_INDEX)" --weights "$(GO_RACE_SHARD_WEIGHTS)" --default-weight "$(GO_RACE_SHARD_DEFAULT_WEIGHT)" < "$$package_file")"; \
+	if [ -z "$$packages" ]; then \
+		echo "no Go packages selected for shard $(GO_TEST_SHARD_INDEX)/$(GO_TEST_SHARD_TOTAL)"; \
+	else \
+		go test -race -timeout 20m $$packages; \
+	fi
 
 cover: ## Run Go coverage for high-stakes packages.
 	mkdir -p "$(dir $(COVERAGE_OUT))"
@@ -273,7 +308,34 @@ mcp-sdk-compat: build ## Check MCP SDK compatibility against local server.
 # ==== Lint and Contracts ====
 ##@ Lint and Contracts
 lint: lint-bootstrap ## Run golangci-lint over application packages.
-	$(GOLANGCI_LINT) run --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_PACKAGES)
+	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_PACKAGES)
+
+lint-shard: lint-bootstrap ## Run golangci-lint over one stable application package shard.
+	@set -e; \
+	package_file="$$(mktemp)"; \
+	trap 'rm -f "$$package_file"' EXIT; \
+	module_path="$$(go list -m)"; \
+	go list $(LINT_PACKAGES) > "$$package_file"; \
+	weight_args=""; \
+	if [ -n "$(LINT_SHARD_WEIGHTS)" ]; then \
+		weight_args="--weights $(LINT_SHARD_WEIGHTS) --default-weight $(LINT_SHARD_DEFAULT_WEIGHT)"; \
+	fi; \
+	packages="$$( $(PYTHON) scripts/go_package_shard.py --total "$(LINT_SHARD_TOTAL)" --index "$(LINT_SHARD_INDEX)" $$weight_args < "$$package_file")"; \
+	if [ -z "$$packages" ]; then \
+		echo "no Go packages selected for lint shard $(LINT_SHARD_INDEX)/$(LINT_SHARD_TOTAL)"; \
+	else \
+		lint_packages="$$(printf '%s\n' $$packages | sed "s|^$${module_path}$$|.|; s|^$${module_path}/|./|")"; \
+		$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $$lint_packages; \
+	fi
+
+lint-api-cmd: lint-bootstrap ## Run golangci-lint over API and command packages.
+	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_API_CMD_PACKAGES)
+
+lint-internal: lint-bootstrap ## Run golangci-lint over internal packages.
+	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_INTERNAL_PACKAGES)
+
+lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
+	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_SOURCE_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
@@ -504,7 +566,7 @@ docker-smoke: ## Build and smoke-test the runtime Docker image.
 		attempt=1; \
 		while :; do \
 			echo "building runtime image with base $$base_image (attempt $$attempt/$(DOCKER_BUILD_ATTEMPTS))"; \
-			if docker build --build-arg RUNTIME_BASE_IMAGE="$$base_image" -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
+			if $(DOCKER_BUILD) --build-arg RUNTIME_BASE_IMAGE="$$base_image" $(DOCKER_BUILD_CACHE_ARGS) -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .; then \
 				build_ok=1; \
 				break 2; \
 			fi; \

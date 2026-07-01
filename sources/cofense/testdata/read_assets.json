@@ -1,14 +1,64 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-cofense-assets-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-cofense-assets-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/cofense/assets/source-cofense-assets-1",
+      "external_id": "source-cofense-assets-1",
+      "family": "assets",
+      "id": "source-cofense-assets-1",
+      "name": "Cofense Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "cofense",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-cofense-assets-1",
+      "resource_name": "Cofense Assets Fixture",
       "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "resource_urn": "urn:cerebro:tenant:cofense_assets:source-cofense-assets-1",
+      "schema": "assets",
+      "source_event_id": "source-cofense-assets-1",
+      "source_provider": "cofense",
+      "source_system": "cofense",
+      "tenant_id": "tenant"
+    },
+    "id": "source-cofense-assets-event-1",
+    "kind": "cofense.assets",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/assets",
+      "asset": "asset",
+      "event_id": "source-cofense-assets-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-cofense-assets-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-cofense-assets-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/cofense/assets/source-cofense-assets-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/cofense/assets/source-cofense-assets-1",
+      "family": "assets",
+      "id": "source-cofense-assets-1",
+      "name": "Cofense Assets Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-cofense-assets-1",
+      "resource_type": "assets",
+      "resource_urn": "urn:cerebro:tenant:cofense_assets:source-cofense-assets-1",
+      "schema_ref": "cofense/assets/v1",
+      "source_id": "cofense",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "cofense/assets/v1",
+    "source_id": "cofense",
+    "tenant_id": "tenant"
+  }
+]

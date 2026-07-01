@@ -7,6 +7,12 @@ emitted_kinds:
   - grammarly_business.workspaces
   - grammarly_business.documents
   - grammarly_business.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: grammarly_business.users
     status: active

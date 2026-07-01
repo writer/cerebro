@@ -1,14 +1,75 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "actor_email": "actor@biapi.example.test",
+      "actor_id": "biapi-users-1",
+      "actor_name": "actor-name-source-biapi-logo-1",
+      "api_method": "GET",
+      "api_path": "/banks/${config.id_connector}/logos",
+      "event_type": "biapi.logo.observed",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-biapi-logo-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-biapi-logo-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/biapi/logo/source-biapi-logo-1",
+      "external_id": "source-biapi-logo-1",
+      "family": "logo",
+      "id": "source-biapi-logo-1",
+      "name": "Biapi Logo Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "biapi",
+      "provider_id": "provider-id-source-biapi-logo-1",
+      "record_class": "audit_event",
+      "record_selector": "$.connectorlogos[*]",
+      "resource_email": "resource@biapi.example.test",
+      "resource_id": "source-biapi-logo-1",
+      "resource_name": "Biapi Logo Fixture",
+      "resource_type": "logo",
+      "resource_urn": "urn:cerebro:tenant:biapi_logo:source-biapi-logo-1",
+      "schema": "logo",
+      "source_event_id": "source-biapi-logo-1",
+      "source_provider": "biapi",
+      "source_system": "biapi",
+      "tenant_id": "tenant"
+    },
+    "id": "source-biapi-logo-event-1",
+    "kind": "biapi.logo",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_email": "actor@biapi.example.test",
+      "actor_id": "biapi-users-1",
+      "actor_name": "actor-name-source-biapi-logo-1",
+      "api_method": "GET",
+      "api_path": "/banks/${config.id_connector}/logos",
+      "event_id": "source-biapi-logo-1",
+      "event_type": "biapi.logo.observed",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-biapi-logo-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-biapi-logo-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/biapi/logo/source-biapi-logo-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/biapi/logo/source-biapi-logo-1",
+      "family": "logo",
+      "id": "source-biapi-logo-1",
+      "name": "Biapi Logo Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "audit_event",
+      "record_selector": "$.connectorlogos[*]",
+      "resource_email": "resource@biapi.example.test",
+      "resource_id": "source-biapi-logo-1",
+      "resource_name": "Biapi Logo Fixture",
+      "resource_type": "logo",
+      "resource_urn": "urn:cerebro:tenant:biapi_logo:source-biapi-logo-1",
+      "schema_ref": "biapi/logo/v1",
+      "source_id": "biapi",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "biapi/logo/v1",
+    "source_id": "biapi",
+    "tenant_id": "tenant"
+  }
+]

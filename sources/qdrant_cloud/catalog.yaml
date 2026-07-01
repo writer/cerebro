@@ -10,6 +10,15 @@ emitted_kinds:
   - qdrant_cloud.backup_restores
   - qdrant_cloud.backup_schedules
   - qdrant_cloud.roles
+runtime_families:
+  - account_members
+  - accounts
+  - backup_restores
+  - backup_schedules
+  - backups
+  - clusters
+  - database_api_keys
+  - roles
 kind_lifecycle:
   - kind: qdrant_cloud.accounts
     status: active

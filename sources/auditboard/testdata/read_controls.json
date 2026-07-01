@@ -1,0 +1,61 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v1/controls",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-auditboard-controls-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-auditboard-controls-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/auditboard/controls/source-auditboard-controls-1",
+      "external_id": "source-auditboard-controls-1",
+      "family": "controls",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "auditboard",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-auditboard-controls-1",
+      "resource_name": "Auditboard Controls Fixture",
+      "resource_type": "controls",
+      "resource_urn": "urn:cerebro:tenant:auditboard_controls:source-auditboard-controls-1",
+      "schema": "controls",
+      "source_event_id": "source-auditboard-controls-1",
+      "source_provider": "auditboard",
+      "source_system": "auditboard",
+      "tenant_id": "tenant"
+    },
+    "id": "source-auditboard-controls-event-1",
+    "kind": "auditboard.controls",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v1/controls",
+      "event_id": "source-auditboard-controls-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-auditboard-controls-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-auditboard-controls-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/auditboard/controls/source-auditboard-controls-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/auditboard/controls/source-auditboard-controls-1",
+      "family": "controls",
+      "id": "source-auditboard-controls-1",
+      "name": "Auditboard Controls Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-auditboard-controls-1",
+      "resource_type": "controls",
+      "resource_urn": "urn:cerebro:tenant:auditboard_controls:source-auditboard-controls-1",
+      "schema_ref": "auditboard/controls/v1",
+      "source_id": "auditboard",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "schema_ref": "auditboard/controls/v1",
+    "source_id": "auditboard",
+    "tenant_id": "tenant"
+  }
+]

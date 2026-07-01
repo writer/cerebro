@@ -7,6 +7,12 @@ emitted_kinds:
   - adp_workforce_now.records
   - adp_workforce_now.policies
   - adp_workforce_now.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: adp_workforce_now.users
     status: active

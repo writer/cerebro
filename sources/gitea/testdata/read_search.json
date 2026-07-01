@@ -1,14 +1,75 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/repos/issues/search",
+      "description": "Gitea Search Fixture finding",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-gitea-search-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-gitea-search-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/gitea/search/source-gitea-search-1",
+      "external_id": "source-gitea-search-1",
+      "family": "search",
+      "finding_id": "source-gitea-search-1",
+      "id": "source-gitea-search-1",
+      "name": "Gitea Search Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "gitea",
+      "record_class": "finding",
+      "record_selector": "$[*]",
+      "resource_id": "source-gitea-search-1",
+      "resource_name": "Gitea Search Fixture",
+      "resource_type": "search",
+      "resource_urn": "urn:cerebro:tenant:gitea_search:source-gitea-search-1",
+      "schema": "search",
+      "severity": "high",
+      "source_event_id": "source-gitea-search-1",
+      "source_provider": "gitea",
+      "source_system": "gitea",
+      "status": "open",
+      "tenant_id": "tenant",
+      "title": "Gitea Search Fixture"
+    },
+    "id": "source-gitea-search-event-1",
+    "kind": "gitea.search",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/repos/issues/search",
+      "assets": "high",
+      "description": "Gitea Search Fixture finding",
+      "event_id": "source-gitea-search-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-gitea-search-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-gitea-search-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/gitea/search/source-gitea-search-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/gitea/search/source-gitea-search-1",
+      "family": "search",
+      "finding_id": "source-gitea-search-1",
+      "id": "source-gitea-search-1",
+      "name": "Gitea Search Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "finding",
+      "record_selector": "$[*]",
+      "resource_id": "source-gitea-search-1",
+      "resource_type": "search",
+      "resource_urn": "urn:cerebro:tenant:gitea_search:source-gitea-search-1",
+      "schema_ref": "gitea/search/v1",
+      "severity": "high",
+      "source_id": "gitea",
+      "state": "open",
+      "status": "open",
+      "tenant_id": "tenant",
+      "title": "Gitea Search Fixture",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "gitea/search/v1",
+    "source_id": "gitea",
+    "tenant_id": "tenant"
+  }
+]

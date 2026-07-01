@@ -7,6 +7,12 @@ emitted_kinds:
   - fathom_video.workspaces
   - fathom_video.documents
   - fathom_video.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: fathom_video.users
     status: active

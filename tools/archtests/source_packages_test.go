@@ -153,6 +153,9 @@ func sourcePackageGoLines(dir string) (int, error) {
 		if err != nil {
 			return err
 		}
+		if isSourcegenGeneratedBody(body) {
+			return nil
+		}
 		for _, line := range strings.Split(string(body), "\n") {
 			if strings.TrimSpace(line) != "" {
 				total++

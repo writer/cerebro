@@ -139,6 +139,41 @@ var canonicalGraphOntology = GraphOntology{
 			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
 			Examples:    []string{"urn:cerebro:writer:privileged_capability:identity_admin"},
 		},
+		{
+			Type:        "policy",
+			Description: "GRC policy, control, and policy-document anchors. Control nodes use attributes_json.policy_type = 'control'.",
+			Aliases:     []string{"control", "grc control", "policy", "policy document"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:policy:control:ac-1"},
+		},
+		{
+			Type:        "runtime_evidence",
+			Description: "Runtime evidence object linked from a source fact, policy, control, or assurance artifact through has_evidence.",
+			Aliases:     []string{"runtime evidence", "evidence packet", "source evidence"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:runtime_evidence:evidence-1"},
+		},
+		{
+			Type:        "evidence",
+			Description: "Attached or imported evidence object linked from GRC artifacts, controls, source facts, and assurance documents through has_evidence.",
+			Aliases:     []string{"evidence", "attached evidence", "uploaded evidence"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:evidence:evidence-1"},
+		},
+		{
+			Type:        "security.questionnaire",
+			Description: "GRC security questionnaire artifacts linked to controls, accounts, documents, and evidence through projected relations.",
+			Aliases:     []string{"questionnaire", "security questionnaire"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:security_questionnaire:questionnaire-1"},
+		},
+		{
+			Type:        "assurance.document",
+			Description: "Assurance and policy document evidence used for questionnaire answers and control support.",
+			Aliases:     []string{"assurance document", "policy doc", "document"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:assurance_document:soc2-report"},
+		},
 	},
 	Relations: []OntologyRelation{
 		{
@@ -211,6 +246,27 @@ var canonicalGraphOntology = GraphOntology{
 			FromTypes:   []string{"okta.entitlement"},
 			ToTypes:     []string{"privileged.capability"},
 		},
+		{
+			Relation:    fabriccontract.RelationSupports,
+			Description: "Evidence, policy, questionnaire, and source-fact edge to the control or object it supports.",
+			Aliases:     []string{"SUPPORTS", "control support", "mapped control"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"policy"},
+		},
+		{
+			Relation:    fabriccontract.RelationHasEvidence,
+			Description: "Resource or GRC artifact edge to runtime evidence or attached evidence.",
+			Aliases:     []string{"HAS_EVIDENCE", "evidence", "source evidence"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"runtime_evidence", "evidence"},
+		},
+		{
+			Relation:    fabriccontract.RelationAssociatedWith,
+			Description: "Association edge between GRC artifacts, findings, accounts, and related source objects.",
+			Aliases:     []string{"ASSOCIATED_WITH", "associated", "related"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"*"},
+		},
 	},
 }
 
@@ -229,6 +285,7 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
 	fmt.Fprintf(&b, "- Okta access-review evidence is graph-shaped: use `okta.user` -> `okta.group` via `member_of`, user/group -> `okta.application` via `assigned_to`, user -> `okta.admin_role` via `can_admin`, and application/admin-role -> `okta.entitlement` -> `privileged.capability` before claiming app, admin, or privileged capability access.\n")
 	fmt.Fprintf(&b, "- Okta lifecycle and MFA fields such as `status`, `last_login_at`, `mfa_enrolled`, `mfa_factor_count`, `mfa_factor_types`, `mfa_phishing_resistant`, `source_event_id`, and `observed_at` live in `attributes_json`; do not treat missing factor detail as proof of weak MFA or infer contractor approval from Okta profile hints alone.\n")
+	fmt.Fprintf(&b, "- Questionnaire answers must start from bounded graph evidence: controls are `policy` nodes with `attributes_json.policy_type = 'control'`, support links use relation `supports`, evidence links use relation `has_evidence`, and policy/source freshness metadata lives in `attributes_json`.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
 		if len(entity.Examples) > 0 {

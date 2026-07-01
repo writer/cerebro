@@ -1,14 +1,61 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/api/v1/fleet/hosts",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-fleetdm-hosts-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-fleetdm-hosts-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/fleetdm/hosts/source-fleetdm-hosts-1",
+      "external_id": "source-fleetdm-hosts-1",
+      "family": "hosts",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "fleetdm",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-fleetdm-hosts-1",
+      "resource_name": "Fleetdm Hosts Fixture",
+      "resource_type": "hosts",
+      "resource_urn": "urn:cerebro:tenant:fleetdm_hosts:source-fleetdm-hosts-1",
+      "schema": "hosts",
+      "source_event_id": "source-fleetdm-hosts-1",
+      "source_provider": "fleetdm",
+      "source_system": "fleetdm",
+      "tenant_id": "tenant"
+    },
+    "id": "source-fleetdm-hosts-event-1",
+    "kind": "fleetdm.hosts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/api/v1/fleet/hosts",
+      "event_id": "source-fleetdm-hosts-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-fleetdm-hosts-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-fleetdm-hosts-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/fleetdm/hosts/source-fleetdm-hosts-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/fleetdm/hosts/source-fleetdm-hosts-1",
+      "family": "hosts",
+      "id": "source-fleetdm-hosts-1",
+      "name": "Fleetdm Hosts Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-fleetdm-hosts-1",
+      "resource_type": "hosts",
+      "resource_urn": "urn:cerebro:tenant:fleetdm_hosts:source-fleetdm-hosts-1",
+      "schema_ref": "fleetdm/hosts/v1",
+      "source_id": "fleetdm",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "fleetdm/hosts/v1",
+    "source_id": "fleetdm",
+    "tenant_id": "tenant"
+  }
+]

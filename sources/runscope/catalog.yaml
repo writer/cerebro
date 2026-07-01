@@ -10,6 +10,15 @@ emitted_kinds:
   - runscope.environment
   - runscope.metric
   - runscope.buckets_test
+runtime_families:
+  - agent
+  - bucket
+  - buckets_test
+  - environment
+  - integration
+  - metric
+  - people
+  - test
 kind_lifecycle:
   - kind: runscope.people
     status: active

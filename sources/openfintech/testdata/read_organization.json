@@ -1,14 +1,75 @@
-{
-  "items": [
-    {
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/organizations",
+      "description": "Openfintech Organization Fixture identity_group",
+      "domain": "domain-source-openfintech-organization-1",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-openfintech-organization-1",
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-openfintech-organization-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/openfintech/organization/source-openfintech-organization-1",
+      "external_id": "source-openfintech-organization-1",
+      "family": "organization",
+      "group_email": "group@openfintech.example.test",
+      "group_id": "source-openfintech-organization-1",
+      "group_name": "Openfintech Organization Fixture",
+      "id": "source-openfintech-organization-1",
+      "name": "Openfintech Organization Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "openfintech",
+      "provider_id": "provider-id-source-openfintech-organization-1",
+      "record_class": "identity_group",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-openfintech-organization-1",
+      "resource_name": "Openfintech Organization Fixture",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:openfintech_organization:source-openfintech-organization-1",
+      "schema": "organization",
+      "source_event_id": "source-openfintech-organization-1",
+      "source_provider": "openfintech",
+      "source_system": "openfintech",
+      "tenant_id": "tenant"
+    },
+    "id": "source-openfintech-organization-event-1",
+    "kind": "openfintech.organization",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/organizations",
+      "attributes": "Openfintech Organization Fixture",
+      "description": "Openfintech Organization Fixture identity_group",
+      "domain": "domain-source-openfintech-organization-1",
+      "event_id": "source-openfintech-organization-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-openfintech-organization-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-openfintech-organization-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/openfintech/organization/source-openfintech-organization-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/openfintech/organization/source-openfintech-organization-1",
+      "family": "organization",
+      "group_email": "group@openfintech.example.test",
+      "group_id": "source-openfintech-organization-1",
+      "group_name": "Openfintech Organization Fixture",
+      "id": "source-openfintech-organization-1",
+      "name": "Openfintech Organization Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "identity_group",
+      "record_selector": "$.data[*]",
+      "resource_id": "source-openfintech-organization-1",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:openfintech_organization:source-openfintech-organization-1",
+      "schema_ref": "openfintech/organization/v1",
+      "source_id": "openfintech",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "openfintech/organization/v1",
+    "source_id": "openfintech",
+    "tenant_id": "tenant"
+  }
+]

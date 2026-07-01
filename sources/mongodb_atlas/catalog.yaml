@@ -5,6 +5,10 @@ emitted_kinds:
   - mongodb_atlas.assets
   - mongodb_atlas.audit_events
   - mongodb_atlas.vulnerabilities
+runtime_families:
+  - assets
+  - audit_events
+  - vulnerabilities
 kind_lifecycle:
   - kind: mongodb_atlas.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - linksquares.records
   - linksquares.policies
   - linksquares.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: linksquares.users
     status: active

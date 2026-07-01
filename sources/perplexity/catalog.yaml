@@ -6,6 +6,11 @@ emitted_kinds:
   - perplexity.api_keys
   - perplexity.team_members
   - perplexity.usage_reports
+runtime_families:
+  - api_groups
+  - api_keys
+  - team_members
+  - usage_reports
 kind_lifecycle:
   - kind: perplexity.api_groups
     status: active

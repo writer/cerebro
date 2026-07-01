@@ -5,6 +5,10 @@ emitted_kinds:
   - sumo_logic.audit_events
   - sumo_logic.findings
   - sumo_logic.assets
+runtime_families:
+  - assets
+  - audit_events
+  - findings
 kind_lifecycle:
   - kind: sumo_logic.audit_events
     status: active

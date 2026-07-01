@@ -7,6 +7,12 @@ emitted_kinds:
   - groundcover.monitors
   - groundcover.dashboards
   - groundcover.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: groundcover.alerts
     status: active

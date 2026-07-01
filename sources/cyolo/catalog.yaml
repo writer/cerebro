@@ -7,6 +7,12 @@ emitted_kinds:
   - cyolo.roles
   - cyolo.applications
   - cyolo.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: cyolo.users
     status: active

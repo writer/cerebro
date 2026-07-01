@@ -7,6 +7,12 @@ emitted_kinds:
   - perimeter81.roles
   - perimeter81.applications
   - perimeter81.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: perimeter81.users
     status: active

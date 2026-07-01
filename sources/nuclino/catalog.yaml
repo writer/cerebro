@@ -7,6 +7,12 @@ emitted_kinds:
   - nuclino.workspaces
   - nuclino.documents
   - nuclino.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: nuclino.users
     status: active

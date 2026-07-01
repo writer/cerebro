@@ -6,6 +6,11 @@ emitted_kinds:
   - databricks.model_serving_endpoints
   - databricks.audit_events
   - databricks.vulnerabilities
+runtime_families:
+  - assets
+  - audit_events
+  - model_serving_endpoints
+  - vulnerabilities
 kind_lifecycle:
   - kind: databricks.assets
     status: active

@@ -7,6 +7,12 @@ emitted_kinds:
   - netlify.repositories
   - netlify.deployments
   - netlify.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: netlify.users
     status: active

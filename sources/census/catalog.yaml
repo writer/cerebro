@@ -7,6 +7,12 @@ emitted_kinds:
   - census.records
   - census.policies
   - census.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: census.users
     status: active

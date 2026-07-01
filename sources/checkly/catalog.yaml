@@ -7,6 +7,12 @@ emitted_kinds:
   - checkly.monitors
   - checkly.dashboards
   - checkly.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: checkly.alerts
     status: active

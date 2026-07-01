@@ -7,6 +7,12 @@ emitted_kinds:
   - aha.repositories
   - aha.deployments
   - aha.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: aha.users
     status: active

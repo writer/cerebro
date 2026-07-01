@@ -5,6 +5,10 @@ emitted_kinds:
   - vercel.projects
   - vercel.deployments
   - vercel.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
 kind_lifecycle:
   - kind: vercel.projects
     status: active

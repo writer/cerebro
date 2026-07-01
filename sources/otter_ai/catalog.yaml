@@ -7,6 +7,12 @@ emitted_kinds:
   - otter_ai.workspaces
   - otter_ai.documents
   - otter_ai.audit_events
+runtime_families:
+  - audit_events
+  - documents
+  - groups
+  - users
+  - workspaces
 kind_lifecycle:
   - kind: otter_ai.users
     status: active

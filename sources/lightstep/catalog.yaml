@@ -7,6 +7,12 @@ emitted_kinds:
   - lightstep.monitors
   - lightstep.dashboards
   - lightstep.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: lightstep.alerts
     status: active

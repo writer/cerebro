@@ -7,6 +7,12 @@ emitted_kinds:
   - abnormal_security.vulnerabilities
   - abnormal_security.policies
   - abnormal_security.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: abnormal_security.assets
     status: active

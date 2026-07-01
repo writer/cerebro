@@ -7,6 +7,12 @@ emitted_kinds:
   - stoplight.repositories
   - stoplight.deployments
   - stoplight.audit_events
+runtime_families:
+  - audit_events
+  - deployments
+  - projects
+  - repositories
+  - users
 kind_lifecycle:
   - kind: stoplight.users
     status: active

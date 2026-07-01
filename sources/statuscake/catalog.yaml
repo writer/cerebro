@@ -7,6 +7,12 @@ emitted_kinds:
   - statuscake.monitors
   - statuscake.dashboards
   - statuscake.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: statuscake.alerts
     status: active

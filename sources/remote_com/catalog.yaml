@@ -7,6 +7,12 @@ emitted_kinds:
   - remote_com.records
   - remote_com.policies
   - remote_com.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: remote_com.users
     status: active

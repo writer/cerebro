@@ -5,6 +5,10 @@ emitted_kinds:
   - hitrust_mycsf.assessments
   - hitrust_mycsf.controls
   - hitrust_mycsf.evidence
+runtime_families:
+  - assessments
+  - controls
+  - evidence
 kind_lifecycle:
   - kind: hitrust_mycsf.assessments
     status: active

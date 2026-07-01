@@ -7,6 +7,12 @@ emitted_kinds:
   - callrail.records
   - callrail.policies
   - callrail.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: callrail.users
     status: active

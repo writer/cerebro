@@ -6,6 +6,11 @@ emitted_kinds:
   - bulksms.relatedreceivedmessage
   - bulksms.message
   - bulksms.send
+runtime_families:
+  - message
+  - relatedreceivedmessage
+  - send
+  - webhook
 kind_lifecycle:
   - kind: bulksms.webhook
     status: active

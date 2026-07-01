@@ -6,6 +6,11 @@ emitted_kinds:
   - autotask.userdefinedfield
   - autotask.excludedrole
   - autotask.entityinformation_field
+runtime_families:
+  - entityinformation_field
+  - excludedrole
+  - field
+  - userdefinedfield
 kind_lifecycle:
   - kind: autotask.field
     status: active

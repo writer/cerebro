@@ -7,6 +7,12 @@ emitted_kinds:
   - smartrecruiters.records
   - smartrecruiters.policies
   - smartrecruiters.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: smartrecruiters.users
     status: active

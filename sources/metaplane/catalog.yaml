@@ -7,6 +7,12 @@ emitted_kinds:
   - metaplane.records
   - metaplane.policies
   - metaplane.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: metaplane.users
     status: active

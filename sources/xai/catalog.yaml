@@ -6,6 +6,11 @@ emitted_kinds:
   - xai.audit_logs
   - xai.usage_reports
   - xai.model_access
+runtime_families:
+  - api_keys
+  - audit_logs
+  - model_access
+  - usage_reports
 kind_lifecycle:
   - kind: xai.api_keys
     status: active

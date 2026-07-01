@@ -7,6 +7,12 @@ emitted_kinds:
   - crowdstrike_identity.vulnerabilities
   - crowdstrike_identity.policies
   - crowdstrike_identity.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - findings
+  - policies
+  - vulnerabilities
 kind_lifecycle:
   - kind: crowdstrike_identity.assets
     status: active

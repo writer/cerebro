@@ -30,6 +30,35 @@ emitted_kinds:
   - anthropic.compliance_project
   - anthropic.compliance_project_collaborator
   - anthropic.compliance_organization_setting
+runtime_families:
+  - analytics_cost
+  - api_key
+  - compliance_activity
+  - compliance_group
+  - compliance_group_member
+  - compliance_organization
+  - compliance_organization_setting
+  - compliance_organization_user
+  - compliance_project
+  - compliance_project_collaborator
+  - compliance_role
+  - compliance_role_permission
+  - cost_report
+  - external_key
+  - federation_issuer
+  - federation_rule
+  - invite
+  - organization
+  - rate_limit
+  - service_account
+  - spend_limit
+  - spend_limit_increase_request
+  - usage_report_claude_code
+  - usage_report_message
+  - user
+  - workspace
+  - workspace_member
+  - workspace_rate_limit
 coverage_contract:
   owner_domain: ai
   authority_domain: anthropic

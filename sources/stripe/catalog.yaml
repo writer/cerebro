@@ -5,6 +5,10 @@ emitted_kinds:
   - stripe.users
   - stripe.assets
   - stripe.audit_events
+runtime_families:
+  - assets
+  - audit_events
+  - users
 kind_lifecycle:
   - kind: stripe.users
     status: active

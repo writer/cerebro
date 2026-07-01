@@ -5,6 +5,10 @@ emitted_kinds:
   - doppler.secrets
   - doppler.projects
   - doppler.audit_events
+runtime_families:
+  - audit_events
+  - projects
+  - secrets
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: doppler

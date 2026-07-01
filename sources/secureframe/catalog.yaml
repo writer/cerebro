@@ -5,6 +5,10 @@ emitted_kinds:
   - secureframe.users
   - secureframe.controls
   - secureframe.findings
+runtime_families:
+  - controls
+  - findings
+  - users
 kind_lifecycle:
   - kind: secureframe.users
     status: active

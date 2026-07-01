@@ -4,6 +4,9 @@ description: "Collects model catalog and account balances from DeepSeek and proj
 emitted_kinds:
   - deepseek.model_catalog
   - deepseek.account_balances
+runtime_families:
+  - account_balances
+  - model_catalog
 kind_lifecycle:
   - kind: deepseek.model_catalog
     status: active

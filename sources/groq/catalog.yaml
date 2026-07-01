@@ -6,6 +6,11 @@ emitted_kinds:
   - groq.files
   - groq.batch_jobs
   - groq.fine_tuning_jobs
+runtime_families:
+  - batch_jobs
+  - files
+  - fine_tuning_jobs
+  - model_catalog
 kind_lifecycle:
   - kind: groq.model_catalog
     status: active

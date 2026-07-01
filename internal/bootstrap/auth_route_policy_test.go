@@ -188,6 +188,39 @@ func TestRiskScoringConfigHTTPRoutesRequireWriteScope(t *testing.T) {
 	}
 }
 
+func TestQuestionnaireRunHTTPRoutesRequireWriteScope(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/questionnaire-runs")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /grc/questionnaire-runs policy = %#v, want read scope", readPolicy)
+	}
+
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/grc/questionnaire-runs"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/process"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/assignments"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/questions"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/vendor-link"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/decisions"},
+		{method: http.MethodPost, path: "/grc/questionnaire-runs/run-1/comments"},
+	} {
+		policy := httpRoutePolicyFor(tt.method, tt.path)
+		if policy.Scope != scopeGRCInventoryWrite || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want GRC inventory write scope", tt.method, tt.path, policy)
+		}
+		readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+		if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+			t.Fatalf("read-only principal authorized for %s %s: %v", tt.method, tt.path, err)
+		}
+		writer := authPrincipal{Scopes: []string{scopeGRCInventoryWrite}}
+		if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+			t.Fatalf("GRC inventory writer rejected for %s %s: %v", tt.method, tt.path, err)
+		}
+	}
+}
+
 func TestConnectorCredentialBrokerHTTPRouteRequiresWriteScope(t *testing.T) {
 	policy := httpRoutePolicyFor(http.MethodPost, "/connectors/aws/credentials")
 	if policy.Scope != scopeConnectorCredentialsWrite || policy.AdminOnly {

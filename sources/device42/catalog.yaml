@@ -7,6 +7,12 @@ emitted_kinds:
   - device42.roles
   - device42.applications
   - device42.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: device42.users
     status: active

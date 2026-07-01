@@ -7,6 +7,12 @@ emitted_kinds:
   - anomalo.records
   - anomalo.policies
   - anomalo.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: anomalo.users
     status: active

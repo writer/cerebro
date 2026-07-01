@@ -5,6 +5,10 @@ emitted_kinds:
   - tenable_io.assets
   - tenable_io.findings
   - tenable_io.vulnerabilities
+runtime_families:
+  - assets
+  - findings
+  - vulnerabilities
 kind_lifecycle:
   - kind: tenable_io.assets
     status: active

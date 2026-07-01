@@ -7,6 +7,12 @@ emitted_kinds:
   - conga.records
   - conga.policies
   - conga.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: conga.users
     status: active

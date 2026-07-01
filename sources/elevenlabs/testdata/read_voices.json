@@ -1,0 +1,62 @@
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/v2/voices",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-elevenlabs-voices-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-elevenlabs-voices-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/elevenlabs/voices/source-elevenlabs-voices-1",
+      "external_id": "source-elevenlabs-voices-1",
+      "family": "voices",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "elevenlabs",
+      "record_class": "asset",
+      "record_selector": "$.voices[*]",
+      "resource_id": "source-elevenlabs-voices-1",
+      "resource_name": "Elevenlabs Voices Fixture",
+      "resource_type": "voices",
+      "resource_urn": "urn:cerebro:tenant:elevenlabs_voices:source-elevenlabs-voices-1",
+      "schema": "voices",
+      "source_event_id": "source-elevenlabs-voices-1",
+      "source_provider": "elevenlabs",
+      "source_system": "elevenlabs",
+      "tenant_id": "tenant"
+    },
+    "id": "source-elevenlabs-voices-event-1",
+    "kind": "elevenlabs.voices",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/v2/voices",
+      "event_id": "source-elevenlabs-voices-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-elevenlabs-voices-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-elevenlabs-voices-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/elevenlabs/voices/source-elevenlabs-voices-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/elevenlabs/voices/source-elevenlabs-voices-1",
+      "family": "voices",
+      "id": "source-elevenlabs-voices-1",
+      "name": "Elevenlabs Voices Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.voices[*]",
+      "resource_id": "source-elevenlabs-voices-1",
+      "resource_type": "voices",
+      "resource_urn": "urn:cerebro:tenant:elevenlabs_voices:source-elevenlabs-voices-1",
+      "schema_ref": "elevenlabs/voices/v1",
+      "source_id": "elevenlabs",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "voice_id": "source-elevenlabs-voices-1"
+    },
+    "schema_ref": "elevenlabs/voices/v1",
+    "source_id": "elevenlabs",
+    "tenant_id": "tenant"
+  }
+]

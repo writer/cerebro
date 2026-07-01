@@ -956,6 +956,7 @@ func RefreshVendorQueuePosture(vendor Vendor, at ...time.Time) Vendor {
 		now = at[0].UTC()
 	}
 	vendor.VendorRiskScoring = vendorRiskScoring(vendor)
+	vendor.VendorAssessmentPosture = vendorAssessmentPosture(vendor, now)
 	vendor.VendorMonitoringPosture = vendorMonitoringPosture(vendor)
 	vendor.VendorOperationalPosture = vendorOperationalPosture(vendor, now)
 	vendor.VendorQueuePosture = vendorQueuePosture(vendor)
@@ -1815,6 +1816,12 @@ func vendorQueuePosture(vendor Vendor) VendorQueuePosture {
 	}
 	if vendor.MonitoringState == "critical" || vendor.MonitoringState == "alert" {
 		addQueueItem(85, "monitoring alert", vendorAction("review_monitoring", "Review monitoring", "Monitoring alert", "monitoring", "clear", 85), vendorCloseAction("monitoring_clear", "Monitoring clear", "Resolve or accept active monitoring signals", "vendor-monitoring"))
+	}
+	if intAttribute(vendor.Attributes, "questionnaire_blocked_answers") > 0 || intAttribute(vendor.Attributes, "questionnaire_missing_evidence") > 0 {
+		addQueueItem(78, "questionnaire blocked", vendorAction("clear_questionnaire_blockers", "Clear questionnaire blockers", "Questionnaire answers need evidence or owner input", "questionnaire", "ready", 78), vendorCloseAction("questionnaire_ready", "Questionnaire ready", "Clear blocked answers and missing evidence", "vendor-questionnaire"))
+	}
+	if intAttribute(vendor.Attributes, "questionnaire_due") > 0 {
+		addQueueItem(52, "questionnaire due", vendorAction("finish_questionnaire", "Finish questionnaire", "Linked questionnaire is due", "questionnaire", FreshnessStateCurrent, 52), VendorCloseAction{})
 	}
 	switch vendor.PacketState {
 	case "blocked":

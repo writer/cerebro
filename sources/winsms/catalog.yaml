@@ -6,6 +6,11 @@ emitted_kinds:
   - winsms.incoming
   - winsms.sms_incoming
   - winsms.optout
+runtime_families:
+  - incoming
+  - optout
+  - sms_incoming
+  - subaccount
 kind_lifecycle:
   - kind: winsms.subaccount
     status: active

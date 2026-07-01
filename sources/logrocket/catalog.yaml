@@ -7,6 +7,12 @@ emitted_kinds:
   - logrocket.monitors
   - logrocket.dashboards
   - logrocket.audit_events
+runtime_families:
+  - alerts
+  - audit_events
+  - dashboards
+  - incidents
+  - monitors
 kind_lifecycle:
   - kind: logrocket.alerts
     status: active

@@ -6,6 +6,11 @@ emitted_kinds:
   - huggingface.resource_groups
   - huggingface.audit_logs
   - huggingface.repositories
+runtime_families:
+  - audit_logs
+  - organization_members
+  - repositories
+  - resource_groups
 kind_lifecycle:
   - kind: huggingface.organization_members
     status: active

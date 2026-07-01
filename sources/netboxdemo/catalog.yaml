@@ -6,6 +6,11 @@ emitted_kinds:
   - netboxdemo.secret
   - netboxdemo.connected_device
   - netboxdemo.device_role
+runtime_families:
+  - cluster_group
+  - connected_device
+  - device_role
+  - secret
 kind_lifecycle:
   - kind: netboxdemo.cluster_group
     status: active

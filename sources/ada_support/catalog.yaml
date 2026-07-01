@@ -7,6 +7,12 @@ emitted_kinds:
   - ada_support.records
   - ada_support.policies
   - ada_support.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - policies
+  - records
+  - users
 kind_lifecycle:
   - kind: ada_support.users
     status: active

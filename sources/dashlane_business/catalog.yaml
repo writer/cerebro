@@ -7,6 +7,12 @@ emitted_kinds:
   - dashlane_business.roles
   - dashlane_business.applications
   - dashlane_business.audit_events
+runtime_families:
+  - applications
+  - audit_events
+  - groups
+  - roles
+  - users
 kind_lifecycle:
   - kind: dashlane_business.users
     status: active
