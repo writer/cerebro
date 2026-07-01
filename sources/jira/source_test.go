@@ -466,3 +466,36 @@ func TestReadProjectRolesEnrichesRoleActors(t *testing.T) {
 		t.Fatalf("actors = %d, want 2", len(payload.Actors))
 	}
 }
+
+func TestReadProjectRolesRequiresRoleActorDetail(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rest/api/3/project/ENG/roledetails":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 10002, "name": "Administrators", "self": "https://example.atlassian.net/rest/api/3/project/ENG/role/10002"}})
+		case "/rest/api/3/project/ENG/role/10002":
+			http.Error(w, `{"error":"role detail unavailable"}`, http.StatusInternalServerError)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":          "tenant",
+		"base_url":           server.URL,
+		"family":             jiraapi.FamilyProjectRoles,
+		"project_id_or_keys": "ENG",
+		"username":           "alice@example.test",
+		"password":           "api-token",
+		"site_url":           "example.atlassian.net",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want required role detail error")
+	}
+}

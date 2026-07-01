@@ -105,6 +105,9 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 	for _, original := range records {
 		path, err := resolveRecordPath(s.options.SourceID, family.DetailPath, settings.request.pathParams, original.Values)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail path: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
@@ -115,16 +118,25 @@ func (s *Source) enrichRecords(ctx context.Context, family Family, settings sett
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail read: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
 		raw, err := detailRecordRaw(body, family.AllowBareDetailRecord)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail record: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}
 		next, err := mergedRecord(family, original, raw)
 		if err != nil {
+			if family.Config.RequireDetail {
+				return nil, fmt.Errorf("%s %s detail merge: %w", s.options.SourceID, settings.family, err)
+			}
 			enriched = append(enriched, original)
 			continue
 		}

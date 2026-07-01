@@ -214,7 +214,7 @@ func projectRolesFamily() jsonapi.Family {
 			"source_event_id":   "id|self",
 		},
 		StaticAttributes: map[string]string{"record_class": "identity_role_assignment", "resource_type": "project_role", "schema": FamilyProjectRoles, "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, IdentityKeys: []string{"project_id_or_key"}, ResourceURNKind: "jira_project_roles"},
+		Config:           jsonapi.FamilyConfig{EncodeURNID: true, IdentityKeys: []string{"project_id_or_key"}, RequireDetail: true, ResourceURNKind: "jira_project_roles"},
 	}
 }
 
