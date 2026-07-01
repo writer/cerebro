@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -28,14 +29,15 @@ func TestNewLoadsCatalog(t *testing.T) {
 
 func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 	for _, tt := range []struct {
-		name     string
-		family   string
-		kind     string
-		path     string
-		authV5   bool
-		response map[string]any
-		config   map[string]string
-		want     map[string]string
+		name           string
+		family         string
+		kind           string
+		path           string
+		authV5         bool
+		response       map[string]any
+		config         map[string]string
+		want           map[string]string
+		wantOccurredAt time.Time
 	}{
 		{
 			name:   "user",
@@ -154,11 +156,13 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 			config: map[string]string{"mintime": "1700000000000", "maxtime": "1700003600000"},
 			response: map[string]any{"stat": "OK", "response": map[string]any{"authlogs": []map[string]any{{
 				"txid": "auth-1", "event_type": "authentication", "factor": "duo_push", "result": "SUCCESS",
-				"user":        map[string]any{"key": "user-1", "name": "alice"},
-				"application": map[string]any{"key": "DIAPP1", "name": "GitHub Enterprise", "type": "websdk"},
-				"timestamp":   1700000000000,
+				"user":         map[string]any{"key": "user-1", "name": "alice"},
+				"application":  map[string]any{"key": "DIAPP1", "name": "GitHub Enterprise", "type": "websdk"},
+				"isotimestamp": "2023-11-14T22:13:20Z",
+				"timestamp":    1700000000000,
 			}}}},
-			want: map[string]string{"event_type": "authentication", "actor_id": "user-1", "actor_name": "alice", "resource_id": "DIAPP1", "factor": "duo_push", "result": "SUCCESS"},
+			want:           map[string]string{"event_type": "authentication", "actor_id": "user-1", "actor_name": "alice", "resource_id": "DIAPP1", "factor": "duo_push", "result": "SUCCESS"},
+			wantOccurredAt: time.Date(2023, 11, 14, 22, 13, 20, 0, time.UTC),
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -198,6 +202,11 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 			for key, value := range tt.want {
 				if got := event.Attributes[key]; got != value {
 					t.Fatalf("attribute %q = %q, want %q", key, got, value)
+				}
+			}
+			if !tt.wantOccurredAt.IsZero() {
+				if got := event.OccurredAt.AsTime(); !got.Equal(tt.wantOccurredAt) {
+					t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), tt.wantOccurredAt.Format(time.RFC3339))
 				}
 			}
 		})
