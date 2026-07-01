@@ -68,7 +68,7 @@ func New() (*Source, error) {
 				NextCursorKeys:   []string{"next_page.offset"},
 				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
+				TimestampKeys:    []string{"observed_at", "modified_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"archived": "archived", "created_at": "created_at", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "modified_at": "modified_at", "observed_at": "observed_at|modified_at|updated_at|last_seen_at", "resource_id": "resource_id|gid|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|gid|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id", "workspace_gid": "workspace.gid|workspace_gid"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "projects", "source_system": "asana"},
 				Config:           jsonapi.FamilyConfig{ConfigQuery: map[string]string{"workspace": "workspace_gid"}, ConfigAttributes: map[string]string{"workspace_gid": "workspace_gid"}, ResourceURNKind: "runtime_projects"},

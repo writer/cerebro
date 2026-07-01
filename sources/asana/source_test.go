@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -147,6 +148,58 @@ func TestRuntimeUsesAsanaAPIPathsAndOffsetPagination(t *testing.T) {
 	}
 	if got := strings.Join(requests, "\n"); !strings.Contains(got, "/users?") || !strings.Contains(got, "/projects?") || !strings.Contains(got, "/workspaces/workspace-1/audit_log_events?") {
 		t.Fatalf("requests = %s, want Asana collection paths", got)
+	}
+}
+
+func TestProjectsUseModifiedAtForOccurredAt(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/projects" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("workspace"); got != "workspace-1" {
+			t.Fatalf("workspace query = %q, want workspace-1", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"gid":           "project-1",
+				"resource_type": "project",
+				"name":          "Security Evidence",
+				"created_at":    "2026-06-01T00:00:00Z",
+				"modified_at":   "2026-06-03T00:00:00Z",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        familyProjects,
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["observed_at"]; got != "2026-06-03T00:00:00Z" {
+		t.Fatalf("observed_at = %q, want modified_at", got)
+	}
+	want := time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC)
+	if got := event.OccurredAt.AsTime(); !got.Equal(want) {
+		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
 
