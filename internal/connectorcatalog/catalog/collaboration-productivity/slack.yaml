@@ -228,6 +228,8 @@ entries:
             required_payload_fields: [channel_id, user_id]
             schema_ref: slack/channel_member/v1
             urn_kind: slack_channel_member
+          config_query:
+            channel: channel_id
           id: channel_member
           id_field: user_id
           label: Channel members
@@ -246,6 +248,8 @@ entries:
               channel_id: channel_id
               user_id: user_id
             template: group_membership
+          read:
+            path_params: [channel_id]
           record_selector: $.members[*]
         - coverage:
             - control_domains: [access_review, identity_access]
@@ -262,6 +266,8 @@ entries:
             required_payload_fields: [usergroup_id, user_id]
             schema_ref: slack/user_group_member/v1
             urn_kind: slack_user_group_member
+          config_query:
+            usergroup: usergroup_id
           id: user_group_member
           id_field: user_id
           label: User group members
@@ -280,7 +286,11 @@ entries:
               user_id: user_id
               usergroup_id: usergroup_id
             template: group_membership
+          read:
+            path_params: [usergroup_id]
           record_selector: $.users[*]
+          static_query:
+            include_disabled: "true"
         - coverage:
             - control_domains: [logging_monitoring, identity_access]
               evidence_types: [logging_configuration]

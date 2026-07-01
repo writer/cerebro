@@ -370,6 +370,33 @@ func TestBuiltinSlackAccessLogStartsAtPageOne(t *testing.T) {
 	}
 }
 
+func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {
+	entry, ok, err := BuiltinEntry("slack")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(slack) ok = false, want true")
+	}
+	channelMember := catalogFamily(t, entry.Definition.ResourceFamilies, "channel_member")
+	if channelMember.ConfigQuery["channel"] != "channel_id" {
+		t.Fatalf("channel_member config_query = %#v, want channel from channel_id", channelMember.ConfigQuery)
+	}
+	if channelMember.Read == nil || len(channelMember.Read.PathParams) != 1 || channelMember.Read.PathParams[0] != "channel_id" {
+		t.Fatalf("channel_member read = %#v, want channel_id path param", channelMember.Read)
+	}
+	userGroupMember := catalogFamily(t, entry.Definition.ResourceFamilies, "user_group_member")
+	if userGroupMember.ConfigQuery["usergroup"] != "usergroup_id" {
+		t.Fatalf("user_group_member config_query = %#v, want usergroup from usergroup_id", userGroupMember.ConfigQuery)
+	}
+	if userGroupMember.Read == nil || len(userGroupMember.Read.PathParams) != 1 || userGroupMember.Read.PathParams[0] != "usergroup_id" {
+		t.Fatalf("user_group_member read = %#v, want usergroup_id path param", userGroupMember.Read)
+	}
+	if userGroupMember.StaticQuery["include_disabled"] != "true" {
+		t.Fatalf("user_group_member static_query = %#v, want include_disabled=true", userGroupMember.StaticQuery)
+	}
+}
+
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {
