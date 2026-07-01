@@ -814,8 +814,10 @@ func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identit
 	if entitlement.Subject != "" && entitlement.Subject != strings.TrimSpace(identity.Subject) {
 		return false
 	}
-	if entitlement.Email != "" && !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
-		return false
+	if entitlement.Email != "" {
+		if !identity.EmailVerified || !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
+			return false
+		}
 	}
 	if len(entitlement.Groups) > 0 && !containsAny(identity.Groups, entitlement.Groups) {
 		return false

@@ -8,8 +8,9 @@ type OIDCProvider interface {
 }
 
 type Identity struct {
-	Subject string
-	Email   string
-	Name    string
-	Groups  []string
+	Subject       string
+	Email         string
+	EmailVerified bool
+	Name          string
+	Groups        []string
 }

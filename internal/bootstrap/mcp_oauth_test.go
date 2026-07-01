@@ -425,6 +425,62 @@ func TestMCPOAuthOIDCTokenExchangeDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestMCPOAuthOIDCEmailRequiresVerifiedClaim(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/jwks":
+			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{rsaJWK("test-kid", &key.PublicKey)}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	client := newMCPOAuthOIDCClient(config.MCPOAuthUpstreamConfig{
+		Issuer:   upstream.URL,
+		ClientID: "writer-client",
+		JWKSURI:  upstream.URL + "/jwks",
+	})
+
+	unverifiedToken := signOIDCIDToken(t, key, map[string]any{
+		"iss":                upstream.URL,
+		"aud":                "writer-client",
+		"sub":                "user-1",
+		"email":              "user@example.com",
+		"email_verified":     false,
+		"preferred_username": "alias@example.com",
+		"iat":                time.Now().Unix(),
+		"exp":                time.Now().Add(time.Hour).Unix(),
+	})
+	identity, err := client.verifyIDToken(context.Background(), unverifiedToken, "")
+	if err != nil {
+		t.Fatalf("verify unverified token: %v", err)
+	}
+	if identity.Email != "" || identity.EmailVerified {
+		t.Fatalf("identity = %#v, want no email from unverified claim", identity)
+	}
+
+	verifiedToken := signOIDCIDToken(t, key, map[string]any{
+		"iss":            upstream.URL,
+		"aud":            "writer-client",
+		"sub":            "user-1",
+		"email":          "user@example.com",
+		"email_verified": true,
+		"iat":            time.Now().Unix(),
+		"exp":            time.Now().Add(time.Hour).Unix(),
+	})
+	identity, err = client.verifyIDToken(context.Background(), verifiedToken, "")
+	if err != nil {
+		t.Fatalf("verify verified token: %v", err)
+	}
+	if identity.Email != "user@example.com" || !identity.EmailVerified {
+		t.Fatalf("identity = %#v, want verified email", identity)
+	}
+}
+
 func TestMCPOAuthCallbackRejectsMissingSecurityGroup(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

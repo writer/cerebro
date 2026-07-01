@@ -230,6 +230,59 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 	}
 }
 
+func TestEntitlementForIdentityRequiresVerifiedEmailClaim(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Email:          "user@example.com",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	_, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) || oauthErr.Code != "access_denied" {
+		t.Fatalf("unverified email entitlement error = %v, want access_denied", err)
+	}
+
+	entitlement, err := service.entitlementForIdentity(Identity{
+		Subject:       "user-1",
+		Email:         "user@example.com",
+		EmailVerified: true,
+		Groups:        []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("verified email entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
+func TestEntitlementForIdentitySubjectGrantDoesNotRequireVerifiedEmail(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Subject:        "user-1",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	entitlement, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("subject entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
 func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T) {
 	service := &Service{cfg: config.MCPOAuthConfig{
 		Entitlements: []config.MCPOAuthEntitlement{{
