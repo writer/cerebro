@@ -44,33 +44,42 @@ type CacheBumper func(context.Context, string)
 type ErrorWriter func(http.ResponseWriter, error)
 
 type Options struct {
-	Scope     ScopeResolver
-	Evidence  EvidenceResolver
-	Authorize TenantAuthorizer
-	Actor     ActorResolver
-	BumpCache CacheBumper
-	WriteErr  ErrorWriter
+	Scope           ScopeResolver
+	Evidence        EvidenceResolver
+	Authorize       TenantAuthorizer
+	Actor           ActorResolver
+	BumpCache       CacheBumper
+	WriteErr        ErrorWriter
+	ProjectionState ports.ProjectionStateStore
+	ProjectionGraph ports.ProjectionGraphStore
 }
 
 type Handler struct {
-	store     ports.QuestionnaireRunStore
-	scope     ScopeResolver
-	evidence  EvidenceResolver
-	authorize TenantAuthorizer
-	actor     ActorResolver
-	bumpCache CacheBumper
-	writeErr  ErrorWriter
+	store       ports.QuestionnaireRunStore
+	projections []questionnaireProjectionWriter
+	scope       ScopeResolver
+	evidence    EvidenceResolver
+	authorize   TenantAuthorizer
+	actor       ActorResolver
+	bumpCache   CacheBumper
+	writeErr    ErrorWriter
+}
+
+type questionnaireProjectionWriter interface {
+	UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error
+	UpsertProjectedLink(context.Context, *ports.ProjectedLink) error
 }
 
 func NewHandler(store ports.StateStore, options Options) *Handler {
 	return &Handler{
-		store:     questionnaireRunStore(store),
-		scope:     options.Scope,
-		evidence:  options.Evidence,
-		authorize: options.Authorize,
-		actor:     options.Actor,
-		bumpCache: options.BumpCache,
-		writeErr:  options.WriteErr,
+		store:       questionnaireRunStore(store),
+		projections: questionnaireProjectionWriters(store, options),
+		scope:       options.Scope,
+		evidence:    options.Evidence,
+		authorize:   options.Authorize,
+		actor:       options.Actor,
+		bumpCache:   options.BumpCache,
+		writeErr:    options.WriteErr,
 	}
 }
 
@@ -197,6 +206,8 @@ type assignmentRequest struct {
 	TenantID   string                         `json:"tenant_id,omitempty"`
 	Assignment *ports.QuestionnaireAssignment `json:"assignment,omitempty"`
 	QuestionID string                         `json:"question_id,omitempty"`
+	GapID      string                         `json:"gap_id,omitempty"`
+	SlotID     string                         `json:"slot_id,omitempty"`
 	OwnerID    string                         `json:"owner_id,omitempty"`
 	Team       string                         `json:"team,omitempty"`
 	Status     string                         `json:"status,omitempty"`
@@ -346,7 +357,7 @@ func (h *Handler) CreateRun(w http.ResponseWriter, r *http.Request) {
 		Attributes:     attributes,
 	}, now)
 	event := questionnairedomain.Event(record, ports.QuestionnaireEventCreated, h.actorID(r.Context()), "Questionnaire run created", map[string]string{"direction": record.Direction, "question_count": strconv.Itoa(len(record.Questions)), "source_format": record.SourceFormat}, now)
-	created, err := h.store.UpsertQuestionnaireRun(r.Context(), record, event)
+	created, err := h.saveQuestionnaireRun(r.Context(), record, event, nil, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -389,7 +400,7 @@ func (h *Handler) ProcessRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	updated := questionnairedomain.ProcessEvidenceAnswers(*record, answers, now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventProcessed, h.actorID(r.Context()), "Questionnaire answers refreshed from evidence", map[string]string{"answer_count": strconv.Itoa(len(updated.Answers)), "status": updated.Status}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -420,6 +431,8 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 	}
 	assignment := ports.QuestionnaireAssignment{
 		QuestionID: strings.TrimSpace(request.QuestionID),
+		GapID:      strings.TrimSpace(request.GapID),
+		SlotID:     strings.TrimSpace(request.SlotID),
 		OwnerID:    strings.TrimSpace(request.OwnerID),
 		Team:       strings.TrimSpace(request.Team),
 		Status:     firstNonEmpty(request.Status, "open"),
@@ -443,8 +456,13 @@ func (h *Handler) AssignRun(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	updated := questionnairedomain.AddAssignment(*record, assignment, h.actorID(r.Context()), now)
-	event := questionnairedomain.Event(updated, ports.QuestionnaireEventAssigned, h.actorID(r.Context()), "Questionnaire answer assigned", map[string]string{"question_id": assignment.QuestionID, "owner_id": assignment.OwnerID}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	event := questionnairedomain.Event(updated, ports.QuestionnaireEventAssigned, h.actorID(r.Context()), "Questionnaire answer assigned", map[string]string{
+		"question_id": assignment.QuestionID,
+		"gap_id":      assignment.GapID,
+		"slot_id":     assignment.SlotID,
+		"owner_id":    assignment.OwnerID,
+	}, now)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -489,7 +507,7 @@ func (h *Handler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
 		ClearOwner:     request.ClearOwner,
 	}, now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventUpdated, h.actorID(r.Context()), "Questionnaire question updated", map[string]string{"question_id": strings.TrimSpace(request.QuestionID)}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -532,7 +550,7 @@ func (h *Handler) LinkVendor(w http.ResponseWriter, r *http.Request) {
 		"reason":     strings.TrimSpace(request.Reason),
 		"unlink":     strconv.FormatBool(request.Unlink),
 	}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -573,7 +591,7 @@ func (h *Handler) DecideRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	updated := questionnairedomain.RecordDecision(*record, decision, now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventDecided, decision.ActorID, "Questionnaire decision recorded", map[string]string{"question_id": decision.QuestionID, "decision": decision.Decision}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -613,7 +631,7 @@ func (h *Handler) CommentRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	updated := questionnairedomain.AddComment(*record, comment, h.actorID(r.Context()), now)
 	event := questionnairedomain.Event(updated, ports.QuestionnaireEventCommented, comment.ActorID, "Questionnaire comment added", map[string]string{"question_id": comment.QuestionID}, now)
-	saved, err := h.store.UpsertQuestionnaireRun(r.Context(), updated, event)
+	saved, err := h.saveQuestionnaireRun(r.Context(), updated, event, record, now)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -912,6 +930,66 @@ func questionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
 		return nil
 	}
 	return runStore
+}
+
+func questionnaireProjectionWriters(store ports.StateStore, options Options) []questionnaireProjectionWriter {
+	writers := []questionnaireProjectionWriter{}
+	if options.ProjectionState != nil && !isNilInterface(options.ProjectionState) {
+		writers = append(writers, options.ProjectionState)
+	} else if projectionStore, ok := store.(ports.ProjectionStateStore); ok && !isNilInterface(projectionStore) {
+		writers = append(writers, projectionStore)
+	}
+	if options.ProjectionGraph != nil && !isNilInterface(options.ProjectionGraph) {
+		writers = append(writers, options.ProjectionGraph)
+	}
+	return writers
+}
+
+func (h *Handler) saveQuestionnaireRun(ctx context.Context, record ports.QuestionnaireRunRecord, event ports.QuestionnaireRunEventRecord, previous *ports.QuestionnaireRunRecord, at time.Time) (*ports.QuestionnaireRunRecord, error) {
+	projection, err := questionnairedomain.BuildGraphProjection(record, previous, at)
+	if err != nil {
+		return nil, err
+	}
+	if event.Payload == nil {
+		event.Payload = map[string]string{}
+	}
+	if questionnaireURN := strings.TrimSpace(projection.Record.Attributes[questionnairedomain.QuestionnaireAttributeQuestionnaireURN]); questionnaireURN != "" {
+		event.Payload[questionnairedomain.QuestionnaireAttributeQuestionnaireURN] = questionnaireURN
+	}
+	saved, err := h.store.UpsertQuestionnaireRun(ctx, projection.Record, event)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.projectQuestionnaireRun(ctx, projection); err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
+func (h *Handler) projectQuestionnaireRun(ctx context.Context, projection questionnairedomain.GraphProjection) error {
+	if len(h.projections) == 0 {
+		return nil
+	}
+	for _, writer := range h.projections {
+		for _, entity := range projection.Entities {
+			if err := writer.UpsertProjectedEntity(ctx, entity); err != nil {
+				return err
+			}
+		}
+		if deleter, ok := writer.(ports.ProjectionLinkDeleter); ok {
+			for _, link := range projection.RemovedLinks {
+				if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+					return err
+				}
+			}
+		}
+		for _, link := range projection.Links {
+			if err := writer.UpsertProjectedLink(ctx, link); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func parseOptionalTime(value string) (*time.Time, error) {

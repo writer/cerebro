@@ -289,7 +289,12 @@ func AddAssignment(record ports.QuestionnaireRunRecord, assignment ports.Questio
 		}
 	}
 	record.UpdatedAt = now
-	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventAssigned, actorID, "Questionnaire answer assigned", map[string]string{"question_id": assignment.QuestionID, "owner_id": assignment.OwnerID}, now))
+	record.Timeline = append(record.Timeline, Timeline(ports.QuestionnaireEventAssigned, actorID, "Questionnaire answer assigned", map[string]string{
+		"question_id": assignment.QuestionID,
+		"gap_id":      assignment.GapID,
+		"slot_id":     assignment.SlotID,
+		"owner_id":    assignment.OwnerID,
+	}, now))
 	return SummarizeRun(record)
 }
 
@@ -661,12 +666,13 @@ func gapsFromEvidenceAnswer(questionID string, requiredSlots []string, evidenceA
 	for _, gap := range evidenceAnswer.MissingEvidence {
 		slotID := slotForGap(gap.Code, requiredSlots)
 		gaps = append(gaps, ports.QuestionnaireEvidenceGap{
-			ID:        firstNonEmpty(gap.ID, stableID("questionnaire-gap", questionID, gap.Code, gap.PacketID)),
-			Code:      gap.Code,
-			Reason:    gap.Reason,
-			SlotID:    slotID,
-			ControlID: gap.ControlID,
-			PacketID:  gap.PacketID,
+			ID:          firstNonEmpty(gap.ID, stableID("questionnaire-gap", questionID, gap.Code, gap.PacketID)),
+			Code:        gap.Code,
+			Reason:      gap.Reason,
+			SlotID:      slotID,
+			ControlID:   gap.ControlID,
+			PacketID:    gap.PacketID,
+			ReviewState: gap.ReviewState,
 		})
 	}
 	for _, slot := range slots {
@@ -708,8 +714,10 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 			ID:               citationID,
 			Label:            firstNonEmpty(ref.EvidenceType, ref.Source, ref.SourceID, ref.RuntimeID, citationID),
 			Source:           firstNonEmpty(ref.SourceID, ref.Source, ref.RuntimeID),
+			ResourceURN:      firstCerebroURN(ref.ID, ref.EvidencePacketID),
 			EvidencePacketID: ref.EvidencePacketID,
 			EvidenceID:       ref.ID,
+			EvidenceType:     ref.EvidenceType,
 			FreshnessStatus:  ref.Freshness.Status,
 			ObservedAt:       ref.Freshness.ObservedAt,
 			ExpiresAt:        ref.Freshness.ExpiresAt,
@@ -723,6 +731,16 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 	}
 	sort.Slice(citations, func(i, j int) bool { return citations[i].ID < citations[j].ID })
 	return citations
+}
+
+func firstCerebroURN(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if strings.HasPrefix(value, "urn:cerebro:") {
+			return value
+		}
+	}
+	return ""
 }
 
 func freshnessFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) ports.QuestionnaireFreshness {

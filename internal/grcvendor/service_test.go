@@ -131,6 +131,112 @@ func TestListVendorsDerivesPostureAndAppliesFilters(t *testing.T) {
 	}
 }
 
+func TestRefreshVendorQueuePostureAddsQuestionnaireBlockers(t *testing.T) {
+	vendor := Vendor{
+		VendorIdentity: VendorIdentity{
+			URN:  "urn:cerebro:writer:vendor:core-sso",
+			Name: "Core SSO",
+		},
+		VendorLifecycle:         VendorLifecycle{LifecycleState: LifecycleStateActive},
+		VendorOwnership:         VendorOwnership{OwnerState: OwnerStateAssigned},
+		VendorReviewPosture:     VendorReviewPosture{ReviewState: ReviewStateCurrent},
+		VendorAssessmentPosture: VendorAssessmentPosture{AssessmentState: ReviewStateCurrent},
+		VendorFreshnessPosture:  VendorFreshnessPosture{EvidenceFreshnessState: FreshnessStateCurrent},
+		Attributes: map[string]string{
+			"questionnaire_blocked_answers":  "2",
+			"questionnaire_missing_evidence": "1",
+		},
+	}
+
+	refreshed := RefreshVendorQueuePosture(vendor, time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC))
+
+	if !hasVendorAction(refreshed.NextActions, "clear_questionnaire_blockers") {
+		t.Fatalf("next actions = %#v, want questionnaire blocker action", refreshed.NextActions)
+	}
+	if !hasVendorQueueReason(refreshed.QueueReasons, "questionnaire blocked") {
+		t.Fatalf("queue reasons = %#v, want questionnaire blocked", refreshed.QueueReasons)
+	}
+}
+
+func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	due := now.Add(-time.Hour)
+	vendorURN := "urn:cerebro:writer:vendor:core-sso"
+	store := &stubQuestionnaireRunStore{records: []*ports.QuestionnaireRunRecord{
+		{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{VendorURN: vendorURN},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
+				Status:             ports.QuestionnaireStatusNeedsInput,
+				ReadyAnswerCount:   2,
+				BlockedAnswerCount: 1,
+				ReviewAnswerCount:  3,
+				MissingEvidence:    4,
+				StaleEvidence:      5,
+			},
+			QuestionnaireRunContent: ports.QuestionnaireRunContent{Assignments: []ports.QuestionnaireAssignment{
+				{ID: "assignment-open", Status: "open"},
+				{ID: "assignment-empty"},
+				{ID: "assignment-closed", Status: "closed"},
+			}},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1"},
+				DueAt:      &due,
+			},
+		},
+		{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-1-copy"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{VendorURN: vendorURN},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusApproved},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-1"},
+				DueAt:      &due,
+			},
+		},
+		{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "run-2"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{VendorURN: vendorURN},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{
+				Status:           ports.QuestionnaireStatusApproved,
+				ReadyAnswerCount: 1,
+			},
+			QuestionnaireRunMetadata: ports.QuestionnaireRunMetadata{
+				Attributes: map[string]string{"questionnaire_urn": "urn:cerebro:writer:security_questionnaire:questionnaire_run:run-2"},
+				DueAt:      &due,
+			},
+		},
+		{
+			QuestionnaireRunIdentity: ports.QuestionnaireRunIdentity{TenantID: "writer", RunID: "other-vendor"},
+			QuestionnaireRunSource:   ports.QuestionnaireRunSource{VendorURN: "urn:cerebro:writer:vendor:other"},
+			QuestionnaireRunWorkflow: ports.QuestionnaireRunWorkflow{Status: ports.QuestionnaireStatusNeedsInput, BlockedAnswerCount: 9},
+		},
+	}}
+
+	rollups, err := QuestionnaireVendorRollups(context.Background(), store, "writer", []string{vendorURN, "urn:cerebro:writer:vendor:missing"}, now)
+	if err != nil {
+		t.Fatalf("QuestionnaireVendorRollups() error = %v", err)
+	}
+	rollup := rollups[vendorURN]
+	if rollup.QuestionnaireCount != 2 || rollup.DueQuestionnaires != 1 || rollup.ReadyAnswers != 3 || rollup.BlockedAnswers != 1 || rollup.ReviewAnswers != 3 || rollup.MissingEvidence != 4 || rollup.StaleEvidence != 5 || rollup.OpenAssignments != 2 {
+		t.Fatalf("rollup = %#v", rollup)
+	}
+
+	vendor := ApplyQuestionnaireVendorRollup(Vendor{
+		VendorIdentity:          VendorIdentity{URN: vendorURN, Name: "Core SSO"},
+		VendorLifecycle:         VendorLifecycle{LifecycleState: LifecycleStateActive},
+		VendorOwnership:         VendorOwnership{OwnerState: OwnerStateAssigned},
+		VendorReviewPosture:     VendorReviewPosture{ReviewState: ReviewStateCurrent},
+		VendorAssessmentPosture: VendorAssessmentPosture{AssessmentState: ReviewStateCurrent},
+		VendorFreshnessPosture:  VendorFreshnessPosture{EvidenceFreshnessState: FreshnessStateCurrent},
+	}, rollup)
+	if vendor.QuestionnaireCount != 2 || vendor.Attributes["questionnaire_blocked_answers"] != "1" || vendor.Attributes["questionnaire_due"] != "1" {
+		t.Fatalf("vendor questionnaire attrs = %#v", vendor)
+	}
+	if !hasVendorAction(vendor.NextActions, "clear_questionnaire_blockers") {
+		t.Fatalf("next actions = %#v, want questionnaire blocker action", vendor.NextActions)
+	}
+}
+
 func TestListVendorsCanDeferLimitUntilAfterEnrichment(t *testing.T) {
 	store := &stubGraphStore{
 		rows: [][]ports.CypherRow{{
@@ -218,6 +324,24 @@ func TestNormalizeVendorLifecycleStateTreatsOffboardedAsTerminal(t *testing.T) {
 	if got := normalizeVendorLifecycleState("offboarded"); got != LifecycleStateRetired {
 		t.Fatalf("normalizeVendorLifecycleState(offboarded) = %q, want %q", got, LifecycleStateRetired)
 	}
+}
+
+func hasVendorAction(actions []VendorAction, id string) bool {
+	for _, action := range actions {
+		if action.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasVendorQueueReason(reasons []string, want string) bool {
+	for _, reason := range reasons {
+		if reason == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGetVendorReturnsRelationshipsAndGraph(t *testing.T) {
@@ -363,6 +487,32 @@ func TestListDiscoveriesAppliesSourceStatusAndOverlay(t *testing.T) {
 	if summary.Linked != 1 || summary.Discovered != 0 {
 		t.Fatalf("summary = %#v", summary)
 	}
+}
+
+type stubQuestionnaireRunStore struct {
+	ports.StateStore
+	records []*ports.QuestionnaireRunRecord
+	err     error
+}
+
+func (s *stubQuestionnaireRunStore) UpsertQuestionnaireRun(context.Context, ports.QuestionnaireRunRecord, ports.QuestionnaireRunEventRecord) (*ports.QuestionnaireRunRecord, error) {
+	return nil, s.err
+}
+
+func (s *stubQuestionnaireRunStore) GetQuestionnaireRun(context.Context, ports.QuestionnaireRunFilter) (*ports.QuestionnaireRunRecord, error) {
+	return nil, s.err
+}
+
+func (s *stubQuestionnaireRunStore) ListQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) ([]*ports.QuestionnaireRunRecord, error) {
+	return s.records, s.err
+}
+
+func (s *stubQuestionnaireRunStore) SummarizeQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) (ports.QuestionnaireRunSummary, error) {
+	return ports.QuestionnaireRunSummary{}, s.err
+}
+
+func (s *stubQuestionnaireRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
+	return nil, s.err
 }
 
 func vendorRow(urn string, label string, attrs string, contracts int64, reviews int64, questionnaires int64, documents int64) ports.CypherRow {
