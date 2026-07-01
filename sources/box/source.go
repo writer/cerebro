@@ -40,12 +40,13 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "oauth_client_credentials",
-		TokenScheme:     tokenScheme,
-		OAuthTokenURL:   "https://api.box.com/oauth2/token",
+		SourceID:                    sourceID,
+		DefaultFamily:               defaultFamily,
+		RequireTenantID:             true,
+		AuthModel:                   "oauth_client_credentials",
+		TokenScheme:                 tokenScheme,
+		OAuthTokenURL:               "https://api.box.com/oauth2/token",
+		OAuthTokenRequestAuthMethod: "client_secret_post",
 		OAuthTokenParams: map[string]string{
 			"box_subject_type": "${config.box_subject_type}",
 			"box_subject_id":   "${config.box_subject_id}",
