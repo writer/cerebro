@@ -1021,6 +1021,118 @@ func TestReadUsesCursorParamAndResultInfoPages(t *testing.T) {
 	}
 }
 
+func TestReadUsesPageCursorFromOffsetTotals(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("include_totals"); got != "true" {
+			t.Fatalf("include_totals = %q, want true", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "2" {
+			t.Fatalf("per_page = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"start": 0,
+				"limit": 2,
+				"total": 3,
+				"users": []map[string]any{{"id": "item-1"}, {"id": "item-2"}},
+			})
+		case "1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"start": 2,
+				"limit": 2,
+				"total": 3,
+				"users": []map[string]any{{"id": "item-3"}},
+			})
+		default:
+			t.Fatalf("page = %q, want 0 or 1", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/users",
+		CursorParam:     "page",
+		PageFirstCursor: "0",
+		URNKind:         "user",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"users"},
+		PageSizeParams:  []string{"per_page"},
+		Config:          FamilyConfig{StaticQuery: map[string]string{"include_totals": "true"}},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "1" {
+		t.Fatalf("first NextCursor = %q, want 1", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[0].URL.Query().Get("page") != "0" || requests[1].URL.Query().Get("page") != "1" {
+		t.Fatalf("requests = %#v, want page=0 then page=1", requests)
+	}
+}
+
+func TestReadDoesNotSynthesizePageCursorAfterTotalEnd(t *testing.T) {
+	requests := make([]*http.Request, 0, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("page"); got != "0" {
+			t.Fatalf("page = %q, want 0", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"start": 0,
+			"limit": 2,
+			"total": 2,
+			"users": []map[string]any{{"id": "item-1"}, {"id": "item-2"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/users",
+		CursorParam:     "page",
+		PageFirstCursor: "0",
+		URNKind:         "user",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"users"},
+		PageSizeParams:  []string{"per_page"},
+		Config:          FamilyConfig{StaticQuery: map[string]string{"include_totals": "true"}},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil", pull.NextCursor)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("requests len = %d, want 1", len(requests))
+	}
+}
+
 func TestReadUsesFamilyCursorKeysAndHasMore(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

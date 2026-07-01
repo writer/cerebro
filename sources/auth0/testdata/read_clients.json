@@ -1,0 +1,30 @@
+[
+  {
+    "id": "auth0-client-client-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.clients",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/clients/v1",
+    "payload": {
+      "client_id": "client-1",
+      "name": "Workforce Portal",
+      "app_type": "regular_web",
+      "grant_types": ["authorization_code", "refresh_token"],
+      "is_first_party": true
+    },
+    "attributes": {
+      "app_id": "client-1",
+      "app_name": "Workforce Portal",
+      "app_type": "regular_web",
+      "client_id": "client-1",
+      "grant_types": "authorization_code,refresh_token",
+      "resource_id": "client-1",
+      "resource_name": "Workforce Portal",
+      "resource_type": "application",
+      "resource_urn": "urn:cerebro:tenant:runtime_applications:client-1",
+      "source_event_id": "client-1",
+      "tenant_id": "tenant"
+    }
+  }
+]
