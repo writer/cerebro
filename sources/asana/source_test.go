@@ -150,6 +150,59 @@ func TestRuntimeUsesAsanaAPIPathsAndOffsetPagination(t *testing.T) {
 	}
 }
 
+func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/workspaces/workspace-1/audit_log_events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":         "audit-1",
+				"event_type": "project.created",
+				"actor":      map[string]any{"id": "user-1", "email": "user@example.test", "name": "User One"},
+				"resource":   map[string]any{"id": "project-1", "type": "project", "name": "Security Evidence"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        familyAuditEvents,
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for key, want := range map[string]string{
+		"resource_id":   "project-1",
+		"resource_name": "Security Evidence",
+		"resource_type": "project",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q; attrs=%#v", key, got, want, attrs)
+		}
+	}
+	if got := attrs["resource_urn"]; got != "" {
+		t.Fatalf("resource_urn = %q, want empty unless provider sends resource_urn", got)
+	}
+}
+
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
@@ -174,7 +227,7 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}{
 		{family: familyUsers, kind: "asana.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
 		{family: familyProjects, kind: "asana.projects", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
-		{family: familyAuditEvents, kind: "asana.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
+		{family: familyAuditEvents, kind: "asana.audit_events"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)

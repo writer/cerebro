@@ -29,7 +29,6 @@
       "resource_id": "project-1",
       "resource_name": "Security Evidence",
       "resource_type": "project",
-      "resource_urn": "urn:cerebro:tenant:runtime_projects:project-1",
       "source_event_id": "audit-1",
       "tenant_id": "tenant"
     }
