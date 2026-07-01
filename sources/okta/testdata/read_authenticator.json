@@ -1,0 +1,26 @@
+[
+  {
+    "id": "okta-authenticator-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authenticator",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/authenticator/v1",
+    "payload": {
+      "id": "auth-password",
+      "domain": "writer.okta.com",
+      "name": "Password"
+    },
+    "attributes": {
+      "authenticator_id": "auth-password",
+      "domain": "writer.okta.com",
+      "family": "authenticator",
+      "key": "okta_password",
+      "name": "Password",
+      "resource_id": "auth-password",
+      "resource_type": "Authenticator",
+      "status": "ACTIVE",
+      "type": "password"
+    }
+  }
+]

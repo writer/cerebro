@@ -6,6 +6,30 @@ emitted_kinds:
   - slack.user
   - slack.channel
   - slack.user_group
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://slack.com/api
+  references:
+    - https://github.com/slackapi/slack-api-specs/blob/master/web-api/slack_web_openapi_v2.json
+    - https://docs.slack.dev/reference/methods/auth.teams.list
+    - https://docs.slack.dev/reference/methods/users.list
+    - https://docs.slack.dev/reference/methods/conversations.list
+    - https://docs.slack.dev/reference/methods/usergroups.list
+  families:
+    - id: team
+      method: POST
+      path: /auth.teams.list
+    - id: user
+      method: GET
+      path: /users.list
+    - id: channel
+      method: GET
+      path: /conversations.list
+    - id: user_group
+      method: GET
+      path: /usergroups.list
 families:
   - id: team
   - id: user
