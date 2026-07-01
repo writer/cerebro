@@ -62,6 +62,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["role"]; got != "org:admin" {
 		t.Fatalf("role = %q", got)
 	}
+	if got := event.Attributes["status"]; got != "" {
+		t.Fatalf("status = %q, want empty when provider only returns role", got)
+	}
 	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:openrouter_organization_members:user_2dHFtVWx2n56w6HkM0000000000" {
 		t.Fatalf("resource_urn = %q", got)
 	}
@@ -192,6 +195,56 @@ func TestSourceReadsProviderShapedFamilies(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUsageReportsPreserveEndpointDayRows(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireOpenRouterAuth(t, r)
+		if r.URL.Path != "/v1/activity" {
+			t.Fatalf("path = %q, want /v1/activity", r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{"data": []map[string]any{
+			{
+				"date":            "2025-08-24",
+				"endpoint_id":     "550e8400-e29b-41d4-a716-446655440000",
+				"model":           "openai/gpt-4.1",
+				"model_permaslug": "openai/gpt-4.1-2025-04-14",
+				"requests":        5,
+				"usage":           0.015,
+			},
+			{
+				"date":            "2025-08-25",
+				"endpoint_id":     "550e8400-e29b-41d4-a716-446655440000",
+				"model":           "openai/gpt-4.1",
+				"model_permaslug": "openai/gpt-4.1-2025-04-14",
+				"requests":        7,
+				"usage":           0.025,
+			},
+		}})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyUsageReports, "token": "test-token"})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2 endpoint-day rows", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs collapsed for different usage dates: %q", pull.Events[0].Id)
+	}
+	if got := pull.Events[0].Attributes["resource_urn"]; got != pull.Events[1].Attributes["resource_urn"] {
+		t.Fatalf("resource_urn changed across daily rows: %q vs %q", got, pull.Events[1].Attributes["resource_urn"])
+	}
+	if got := pull.Events[0].Attributes["date"]; got != "2025-08-24" {
+		t.Fatalf("first date = %q", got)
+	}
+	if got := pull.Events[1].Attributes["date"]; got != "2025-08-25" {
+		t.Fatalf("second date = %q", got)
 	}
 }
 

@@ -51,6 +51,7 @@ type FamilyConfig struct {
 	TotalKeys        []string
 	OffsetKeys       []string
 	LimitKeys        []string
+	IdentityKeys     []string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

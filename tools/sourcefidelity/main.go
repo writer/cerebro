@@ -324,7 +324,7 @@ func hasGenericRecordTest(path string) bool {
 		if !strings.Contains(line, "Record One") {
 			continue
 		}
-		if strings.Contains(line, "strings.Contains") || strings.Contains(line, "!strings.Contains") {
+		if strings.Contains(line, "strings.Contains") {
 			continue
 		}
 		return true

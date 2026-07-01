@@ -625,7 +625,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -1080,8 +1080,13 @@ func dedupeEventRecords(records []record) []record {
 	return out
 }
 
-func recordIdentity(id string, values map[string]any) string {
+func recordIdentity(id string, values map[string]any, identityKeys []string) string {
 	parts := []string{strings.TrimSpace(id)}
+	for _, key := range identityKeys {
+		if value := firstValueString(values, key); value != "" {
+			parts = append(parts, key+"="+value)
+		}
+	}
 	for _, key := range []string{
 		"device_id",
 		"device.id",

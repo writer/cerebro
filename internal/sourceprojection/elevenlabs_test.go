@@ -59,6 +59,24 @@ func TestElevenlabsSecretProjection(t *testing.T) {
 	}
 }
 
+func TestElevenlabsSecretProjectionNormalizesDisabledFlag(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elevenlabs", Kind: "elevenlabs.service_account_api_keys", Attributes: map[string]string{"secret_id": "secret-1", "secret_name": "DB Password", "secret_type": "api_key", "service_account_key_disabled": "false"}}
+	entities, _, err := elevenlabsServiceAccountApiKeysProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	for _, entity := range entities {
+		if entity.EntityType != "secret" {
+			continue
+		}
+		if got := entity.Attributes["secret_status"]; got != "active" {
+			t.Fatalf("secret_status = %q, want active", got)
+		}
+		return
+	}
+	t.Fatal("expected projected secret")
+}
+
 func TestElevenlabsDeploymentProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "elevenlabs", Kind: "elevenlabs.webhooks", Attributes: map[string]string{"deployment_id": "dep-1", "deployment_name": "Production", "deployment_environment": "production", "deployment_status": "ready", "evidence_id": "evidence-1"}}
 	entities, links, err := elevenlabsWebhooksProjections(event)

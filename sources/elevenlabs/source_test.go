@@ -94,11 +94,12 @@ func TestSourceReadsRuntimeFamiliesFromProviderShapedResponses(t *testing.T) {
 			fixture: "api_service_account_api_keys.json",
 			kind:    "elevenlabs.service_account_api_keys",
 			attributes: map[string]string{
-				"source_event_id": "fixture-service-account-key-1",
-				"secret_id":       "fixture-service-account-key-1",
-				"secret_name":     "prod-sync-key",
-				"resource_id":     "fixture-service-account-key-1",
-				"record_class":    "secret",
+				"source_event_id":              "fixture-service-account-key-1",
+				"secret_id":                    "fixture-service-account-key-1",
+				"secret_name":                  "prod-sync-key",
+				"service_account_key_disabled": "false",
+				"resource_id":                  "fixture-service-account-key-1",
+				"record_class":                 "secret",
 			},
 			payload: map[string]string{"key_id": "fixture-service-account-key-1"},
 		},
@@ -187,6 +188,11 @@ func TestSourceReadsRuntimeFamiliesFromProviderShapedResponses(t *testing.T) {
 			for key, want := range tc.attributes {
 				if got := event.Attributes[key]; got != want {
 					t.Fatalf("attribute %s = %q, want %q", key, got, want)
+				}
+			}
+			if tc.family == familyServiceAccountApiKeys {
+				if got := event.Attributes["secret_status"]; got == "true" || got == "false" {
+					t.Fatalf("secret_status = %q, want status text or empty value", got)
 				}
 			}
 			payload := payloadObject(t, event.Payload)

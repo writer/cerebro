@@ -19,6 +19,7 @@
       "resource_id": "550e8400-e29b-41d4-a716-446655440000",
       "resource_name": "openai/gpt-4.1",
       "resource_type": "openrouter_activity_endpoint",
+      "resource_urn": "urn:cerebro:tenant:openrouter_usage_reports:550e8400-e29b-41d4-a716-446655440000",
       "schema": "usage_reports",
       "source_event_id": "550e8400-e29b-41d4-a716-446655440000",
       "source_provider": "openrouter",
