@@ -19,18 +19,28 @@ func TestCoverageControlDomainRefsLoad(t *testing.T) {
 	if coverageControlDomainRefSet.Version == "" {
 		t.Fatal("coverage control domain refs version is empty")
 	}
-	refs := controlRefsForControlDomains([]string{"identity_access"})
-	if len(refs) == 0 {
-		t.Fatal("identity_access produced no control refs")
-	}
-	found := false
-	for _, ref := range refs {
-		if ref.FrameworkName == "SOC 2" && ref.ControlID == "CC6.1" {
-			found = true
+	for _, tc := range []struct {
+		domain    string
+		framework string
+		control   string
+	}{
+		{domain: "identity_access", framework: "SOC 2", control: "CC6.1"},
+		{domain: "authorization", framework: "NIST 800-53 r5", control: "AC-3"},
+		{domain: "change_management", framework: "SOC 2", control: "CC8.1"},
+	} {
+		refs := controlRefsForControlDomains([]string{tc.domain})
+		if len(refs) == 0 {
+			t.Fatalf("%s produced no control refs", tc.domain)
 		}
-	}
-	if !found {
-		t.Fatalf("identity_access refs missing SOC 2 CC6.1: %+v", refs)
+		found := false
+		for _, ref := range refs {
+			if ref.FrameworkName == tc.framework && ref.ControlID == tc.control {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s refs missing %s %s: %+v", tc.domain, tc.framework, tc.control, refs)
+		}
 	}
 }
 

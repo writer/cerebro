@@ -6692,6 +6692,18 @@ components:
           type: string
         runtime_id:
           type: string
+        source_event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_ids:
+          type: array
+          items:
+            type: string
         freshness:
           $ref: '#/components/schemas/GRCEvidenceFreshness'
         review_state:
@@ -11815,6 +11827,37 @@ components:
         review_state:
           type: string
           enum: [ready, needs_review, blocked, approved, rejected]
+        source_locator:
+          $ref: '#/components/schemas/GRCQuestionnaireSourceLocator'
+    GRCQuestionnaireSourceLocator:
+      type: object
+      properties:
+        source_artifact_urn:
+          type: string
+        source_format:
+          type: string
+        source_filename:
+          type: string
+        sheet_name:
+          type: string
+        cell:
+          type: string
+        column_name:
+          type: string
+        row_number:
+          type: integer
+        line_number:
+          type: integer
+        page_number:
+          type: integer
+        text:
+          type: string
+        portal_url:
+          type: string
+        portal_field_id:
+          type: string
+        portal_field_label:
+          type: string
     GRCQuestionnaireEvidenceSlot:
       type: object
       properties:
@@ -11844,9 +11887,17 @@ components:
           type: string
         source:
           type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        resource_urn:
+          type: string
         evidence_packet_id:
           type: string
         evidence_id:
+          type: string
+        evidence_type:
           type: string
         control_id:
           type: string
@@ -11856,6 +11907,18 @@ components:
           type: string
         expires_at:
           type: string
+        source_event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_ids:
+          type: array
+          items:
+            type: string
     GRCQuestionnaireRunEvidenceGap:
       type: object
       properties:
@@ -11870,6 +11933,8 @@ components:
         control_id:
           type: string
         evidence_packet_id:
+          type: string
+        review_state:
           type: string
     GRCQuestionnaireFreshness:
       type: object
@@ -11941,6 +12006,10 @@ components:
         id:
           type: string
         question_id:
+          type: string
+        gap_id:
+          type: string
+        slot_id:
           type: string
         team:
           type: string
@@ -12233,6 +12302,8 @@ components:
             type: string
         owner_id:
           type: string
+        source_locator:
+          $ref: '#/components/schemas/GRCQuestionnaireSourceLocator'
     GRCQuestionnaireProcessRunRequest:
       type: object
       properties:
@@ -12257,6 +12328,10 @@ components:
         tenant_id:
           type: string
         question_id:
+          type: string
+        gap_id:
+          type: string
+        slot_id:
           type: string
         owner_id:
           type: string

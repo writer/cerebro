@@ -41,6 +41,7 @@ func TestQuestionnaireRunRoutesDocumentUnifiedQueueContract(t *testing.T) {
 		"GRCQuestionnaireRunAnswer:",
 		"GRCQuestionnaireEvidenceSlot:",
 		"GRCQuestionnaireCitation:",
+		"GRCQuestionnaireSourceLocator:",
 		"GRCQuestionnaireRunEvidenceGap:",
 		"GRCQuestionnaireQuestionUpdateRequest:",
 		"GRCQuestionnaireVendorLinkRequest:",

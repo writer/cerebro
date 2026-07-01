@@ -123,6 +123,47 @@ func TestProcessEvidenceAnswersStateMatrix(t *testing.T) {
 	}
 }
 
+func TestProcessEvidenceAnswersCarriesCitationGraphProvenance(t *testing.T) {
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	record := NewRunRecord(NewRunRequest{
+		TenantID:  "tenant-1",
+		Direction: ports.QuestionnaireDirectionCustomerSecurityReview,
+		Questions: []ports.QuestionnaireQuestion{{
+			ID:            "q-1",
+			Question:      "Do you enforce MFA for users?",
+			RequiredSlots: []string{"identity_mfa"},
+		}},
+	}, now)
+	evidenceAnswer := baseEvidenceAnswer("Do you enforce MFA for users?", "supported", "ready", "current")
+	evidenceAnswer.SourceEvidence[0].RuntimeID = "okta-prod"
+	evidenceAnswer.SourceEvidence[0].SourceEventIDs = []string{"event-source"}
+	evidenceAnswer.SourceEvidence[0].GraphRootURNs = []string{"urn:cerebro:tenant-1:okta_application:core-sso"}
+	evidenceAnswer.SourceEvidence[0].GraphPathIDs = []string{"path-1"}
+	evidenceAnswer.SourceEvidence[0].Citations = evidencepackets.EvidenceCitations{
+		EventIDs:   []string{"event-citation"},
+		GraphRoots: []string{"urn:cerebro:tenant-1:okta_group:admins"},
+	}
+
+	record = ProcessEvidenceAnswers(record, []evidencepackets.QuestionnaireAnswer{evidenceAnswer}, now)
+
+	if len(record.Answers) != 1 || len(record.Answers[0].Citations) != 1 {
+		t.Fatalf("citations = %#v, want one answer citation", record.Answers)
+	}
+	citation := record.Answers[0].Citations[0]
+	if citation.SourceID != "okta" || citation.RuntimeID != "okta-prod" {
+		t.Fatalf("citation source = %q/%q, want okta/okta-prod", citation.SourceID, citation.RuntimeID)
+	}
+	if !containsString(citation.SourceEventIDs, "event-source") || !containsString(citation.SourceEventIDs, "event-citation") {
+		t.Fatalf("source event IDs = %#v, want ref and citation events", citation.SourceEventIDs)
+	}
+	if !containsString(citation.GraphRootURNs, "urn:cerebro:tenant-1:okta_application:core-sso") || !containsString(citation.GraphRootURNs, "urn:cerebro:tenant-1:okta_group:admins") {
+		t.Fatalf("graph roots = %#v, want ref and citation graph roots", citation.GraphRootURNs)
+	}
+	if !containsString(citation.GraphPathIDs, "path-1") {
+		t.Fatalf("graph paths = %#v, want path-1", citation.GraphPathIDs)
+	}
+}
+
 func TestVendorReviewAddsVendorEvidenceSlot(t *testing.T) {
 	record := NewRunRecord(NewRunRequest{
 		TenantID:  "tenant-1",
@@ -606,4 +647,13 @@ func slotState(slots []ports.QuestionnaireEvidenceSlot, id string) string {
 		}
 	}
 	return ""
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

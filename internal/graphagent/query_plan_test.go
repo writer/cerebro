@@ -97,6 +97,30 @@ func TestOntologyEntityPropertiesStayWithinProjectedContract(t *testing.T) {
 	}
 }
 
+func TestOntologyEntityTypesAreUnique(t *testing.T) {
+	seen := map[string]struct{}{}
+	for _, entity := range canonicalGraphOntology.Entities {
+		if _, ok := seen[entity.Type]; ok {
+			t.Fatalf("ontology entity type %q is documented more than once", entity.Type)
+		}
+		seen[entity.Type] = struct{}{}
+	}
+}
+
+func TestOntologyRelationEndpointTypesAreDocumented(t *testing.T) {
+	entityTypes := map[string]struct{}{"*": {}}
+	for _, entity := range canonicalGraphOntology.Entities {
+		entityTypes[entity.Type] = struct{}{}
+	}
+	for _, relation := range canonicalGraphOntology.Relations {
+		for _, entityType := range append(relation.FromTypes, relation.ToTypes...) {
+			if _, ok := entityTypes[entityType]; !ok {
+				t.Fatalf("relation %q references undocumented entity type %q", relation.Relation, entityType)
+			}
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -110,6 +134,22 @@ func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	}
 	if strings.Contains(hint, "Entity `connector`:") || strings.Contains(hint, "Useful properties: source_id, runtime_id, status, last_sync_minutes") {
 		t.Fatalf("PromptHint() still advertises connector node shape:\n%s", hint)
+	}
+}
+
+func TestOntologyPromptDocumentsOktaAccessReviewGraphShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"Entity `okta.user`",
+		"Entity `okta.role`",
+		"Okta access-review evidence is graph-shaped",
+		"`okta.user` -> `okta.group` via `member_of`",
+		"`mfa_phishing_resistant`",
+		"do not treat missing factor detail as proof of weak MFA",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
 	}
 }
 
@@ -141,6 +181,29 @@ func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
 	}
 }
 
+func TestInferIntentRecognizesOktaAccessReviewQuestions(t *testing.T) {
+	cases := []struct {
+		question string
+		want     string
+	}{
+		{question: "Which privileged Okta users lack strong MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which privileged Okta users lack MFA?", want: IntentOktaPrivilegedWeakMFA},
+		{question: "Which dormant Okta users still have app or admin access?", want: IntentOktaDormantAccess},
+		{question: "Which Okta group memberships create compliance risk?", want: IntentOktaGroupAccessRisk},
+	}
+	for _, tc := range cases {
+		if got := inferIntent(tc.question, ""); got != tc.want {
+			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
+		}
+	}
+	if got := inferIntent("Which privileged Okta users have Slack app access?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(Slack access) = %q, want non-MFA intent", got)
+	}
+	if got := inferIntent("Which privileged Okta users lack app assignments?", ""); got == IntentOktaPrivilegedWeakMFA {
+		t.Fatalf("inferIntent(lack app assignments) = %q, want non-MFA intent", got)
+	}
+}
+
 func TestInferIntentDetectsFailingControls(t *testing.T) {
 	for _, question := range []string{
 		"Which controls are failing?",
@@ -150,6 +213,101 @@ func TestInferIntentDetectsFailingControls(t *testing.T) {
 	} {
 		if got := inferIntent(question, ""); got != IntentFailingControls {
 			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentFailingControls)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaPrivilegedWeakMFATemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaPrivilegedWeakMFA, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentOktaPrivilegedWeakMFA || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta privileged weak MFA template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.user'",
+		"relation: 'can_admin'",
+		"entity_type: 'okta.admin_role'",
+		"user.mfa_disabled = true OR toLower(mfa_phishing_resistant) = 'false'",
+		"mfa_factor_types",
+		"overclaim_guard",
+		"LIMIT 25",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryClearsNoisyOktaFilters(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which privileged Okta users lack strong MFA?"}, &DraftResponse{
+		Plan: &AskQueryPlan{
+			Intent:  IntentOktaPrivilegedWeakMFA,
+			Limit:   25,
+			Filters: map[string]string{"entity_type": "okta.user"},
+		},
+	})
+
+	if result.Plan.Intent != IntentOktaPrivilegedWeakMFA || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta privileged weak MFA template", result)
+	}
+	if len(result.Plan.Filters) != 0 {
+		t.Fatalf("filters = %#v, want cleared Okta deterministic filters", result.Plan.Filters)
+	}
+	if !strings.Contains(result.Cypher, "relation: 'can_admin'") {
+		t.Fatalf("converted cypher missing Okta template:\n%s", result.Cypher)
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaDormantAccessTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which dormant Okta users still have app or admin access?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaDormantAccess, Limit: 30},
+	})
+
+	if result.Plan.Intent != IntentOktaDormantAccess || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta dormant access template", result)
+	}
+	for _, want := range []string{
+		"last_login_at",
+		"duration('P90D')",
+		"direct_app_assignment",
+		"group_app_assignment",
+		"admin_role_assignment",
+		"membership_event_id",
+		"overclaim_guard",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+}
+
+func TestConvertDraftToQueryRendersOktaGroupAccessRiskTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "Which Okta group memberships create compliance risk?"}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentOktaGroupAccessRisk, Limit: 10},
+	})
+
+	if result.Plan.Intent != IntentOktaGroupAccessRisk || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic Okta group access risk template", result)
+	}
+	for _, want := range []string{
+		"entity_type: 'okta.group'",
+		"entity_type: 'okta.application'",
+		"relation: 'member_of'",
+		"direct_member_count",
+		"grants_entitlement",
+		"confers_capability",
+		"privileged_group_app_access",
+		"enumerate members from member_of edges or okta.group_membership events",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{"direct_members", "direct_members_count"} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("converted cypher should not expose Okta group attribute %q:\n%s", forbidden, result.Cypher)
 		}
 	}
 }

@@ -3395,9 +3395,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"jfrog_xray.users":        jfrogXrayUsersProjections,
 
 	// jira generated projectors (sourcegen promotion)
-	"jira.audit_events": jiraAuditEventsProjections,
-	"jira.projects":     jiraProjectsProjections,
-	"jira.users":        jiraUsersProjections,
+	"jira.audit_events":       jiraAuditEventsProjections,
+	"jira.group_members":      jiraGroupMembersProjections,
+	"jira.groups":             jiraGroupsProjections,
+	"jira.permission_schemes": jiraPermissionSchemesProjections,
+	"jira.project_roles":      jiraProjectRolesProjections,
+	"jira.projects":           jiraProjectsProjections,
+	"jira.users":              jiraUsersProjections,
 
 	// journy_io generated projectors (sourcegen promotion)
 	"journy_io.account":          journyIoAccountProjections,

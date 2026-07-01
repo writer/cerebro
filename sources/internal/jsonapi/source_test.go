@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -33,6 +35,29 @@ func TestStableIDPreservesLegacySHA256Digest(t *testing.T) {
 	wantEventID := "jsonapi-tenant-a-b587ade5b643-device-dev-1"
 	if got := eventID("jsonapi", "tenant-a", "https://api.example.test", "/api/v1/devices", "device", "dev-1"); got != wantEventID {
 		t.Fatalf("eventID() = %q, want %q", got, wantEventID)
+	}
+}
+
+func TestRecordIdentityIncludesFanoutScope(t *testing.T) {
+	values := map[string]any{"group_id": "group-a"}
+	if got := recordIdentity("user-1", values, nil); got != "user-1" {
+		t.Fatalf("recordIdentity() = %q, want unscoped legacy id", got)
+	}
+	first := recordIdentity("user-1", values, []string{"group_id"})
+	second := recordIdentity("user-1", map[string]any{"group_id": "group-b"}, []string{"group_id"})
+	if first == second {
+		t.Fatalf("recordIdentity() collapsed fanout scopes: %q", first)
+	}
+	if !strings.HasPrefix(first, "user-1-") || !strings.HasPrefix(second, "user-1-") {
+		t.Fatalf("record identities = %q, %q; want stable id prefix", first, second)
+	}
+}
+
+func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
+	first := recordIdentity("install-1", map[string]any{"device_id": "device-a"}, nil)
+	second := recordIdentity("install-1", map[string]any{"device_id": "device-b"}, nil)
+	if first == second {
+		t.Fatalf("recordIdentity() collapsed device scopes: %q", first)
 	}
 }
 
@@ -223,6 +248,42 @@ func TestReadPathParamValuesPreservesValueAndProviderCursor(t *testing.T) {
 	}
 }
 
+func TestReadPathParamValuesWithCheckpointAppliesIncrementalWatermark(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/accounts/acct-a/devices" {
+			t.Fatalf("request path = %q, want fan-out path", r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "device-a-1", "updated_at": "2026-05-01T00:00:00Z"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:                 "device",
+		Path:                 "/accounts/{account_id}/devices",
+		PathParams:           []string{"account_id"},
+		URNKind:              "test_device",
+		IDKeys:               []string{"id"},
+		TimestampKeys:        []string{"updated_at"},
+		IncrementalWatermark: true,
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "device",
+		"token":     "token-1",
+	})
+	checkpoint := &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC))}
+	pull, err := source.ReadPathParamValuesWithCheckpoint(context.Background(), cfg, nil, checkpoint, "account_id", []string{"acct-a"})
+	if err != nil {
+		t.Fatalf("ReadPathParamValuesWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("events = %d, want checkpoint-filtered empty pull", len(pull.Events))
+	}
+}
+
 func TestReadSynthesizesPageCursorForFullPages(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +395,72 @@ func TestReadSynthesizesStartOffsetCursorForFullPages(t *testing.T) {
 	}
 	if got := requests[1].URL.Query().Get("start"); got != "2" {
 		t.Fatalf("second start query = %q, want 2", got)
+	}
+}
+
+func TestReadSynthesizesStartAtOffsetCursorForFullPages(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("maxResults"); got != "2" {
+			t.Fatalf("maxResults query = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("startAt") {
+		case "0":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-1"}, {"id": "user-2"}})
+		case "2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-3"}})
+		default:
+			t.Fatalf("unexpected startAt %q", r.URL.Query().Get("startAt"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/users/search",
+		CursorParam:     "startAt",
+		PageSizeParams:  []string{"maxResults"},
+		PageFirstCursor: "0",
+		URNKind:         "test_user",
+		IDKeys:          []string{"id"},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if got := requests[0].URL.Query().Get("startAt"); got != "0" {
+		t.Fatalf("first startAt query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("startAt"); got != "2" {
+		t.Fatalf("second startAt query = %q, want 2", got)
+	}
+}
+
+func TestParseTimeSupportsJiraAuditOffsetTimestamp(t *testing.T) {
+	got, ok := parseTime("2026-05-01T12:34:56.789+0000")
+	if !ok {
+		t.Fatal("parseTime() ok = false")
+	}
+	want := time.Date(2026, 5, 1, 12, 34, 56, 789_000_000, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTime() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
 
@@ -1221,6 +1348,76 @@ func TestReadUsesNextURLCursor(t *testing.T) {
 	}
 	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" || requests[1].URL.Query().Has("limit") {
 		t.Fatalf("requests = %#v, want second request to follow nextLink without page-size query", requests)
+	}
+}
+
+func TestReadUsesAbsoluteNextPageWithOffsetCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if r.URL.Path != "/jira/groups" {
+			t.Fatalf("path = %q, want /jira/groups", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("maxResults"); got != "2" {
+			t.Fatalf("maxResults = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("startAt") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":   []map[string]any{{"id": "group-1"}},
+				"nextPage": "http://" + r.Host + "/jira/groups?startAt=2&maxResults=2",
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": "group-2"}},
+			})
+		default:
+			t.Fatalf("startAt = %q, want 0 or 2", r.URL.Query().Get("startAt"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "group",
+		Path:            "/jira/groups",
+		CursorParam:     "startAt",
+		NextCursorKeys:  []string{"nextPage"},
+		PageFirstCursor: "0",
+		PageSizeParams:  []string{"maxResults"},
+		URNKind:         "group",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"values"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if want := "http://" + requests[0].Host + "/jira/groups?startAt=2&maxResults=2"; first.NextCursor.GetOpaque() != want {
+		t.Fatalf("first NextCursor = %q, want %q", first.NextCursor.GetOpaque(), want)
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Attributes["external_id"] != "group-2" {
+		t.Fatalf("second Events = %#v, want group-2", second.Events)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(requests))
+	}
+	if got := requests[1].URL.Query().Get("startAt"); got != "2" {
+		t.Fatalf("second startAt = %q, want 2", got)
+	}
+	if strings.Contains(requests[1].URL.RawQuery, "http") {
+		t.Fatalf("second query = %q, want followed nextPage URL rather than startAt=<url>", requests[1].URL.RawQuery)
 	}
 }
 

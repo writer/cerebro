@@ -142,10 +142,78 @@ coverage_contract:
           control_id: A.8.2
       known_unsupported_fields:
         - full custom admin permission expansion
+    - id: admin_membership
+      type: relationship
+      title: Privileged admin membership
+      families: [admin_role, privileged_role, role_assignment]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.2
+      known_unsupported_fields:
+        - full custom admin permission expansion
     - id: app_assignments
       type: app_entitlement
       title: App assignments and entitlements
       families: [app_assignment]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - app-specific fine-grained entitlement payloads
+    - id: app_access
+      type: app_entitlement
+      title: Application access context
+      families: [app_access, app_assignment, application]
       support: partial
       high_value: true
       evidence_types: [identity_configuration]
@@ -268,6 +336,35 @@ coverage_contract:
           control_id: A.5.17
         - framework_name: "ISO 27001:2022"
           control_id: A.8.5
+    - id: mfa_posture
+      type: app_entitlement
+      title: MFA posture and factor coverage
+      families: [enrolled_factor, factor, mfa, mfa_exempt, no_mfa, weak_factor]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.3"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.4"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.5
+      known_unsupported_fields:
+        - full per-user effective MFA policy evaluation across every app sign-on path
     - id: brands
       type: entity_family
       title: Brands
@@ -616,6 +713,116 @@ coverage_contract:
           control_id: CC6.2
         - framework_name: "ISO 27001:2022"
           control_id: A.8.9
+    - id: user_lifecycle
+      type: lifecycle_state
+      title: User lifecycle posture
+      families: [active_account, deprovisioned, dormant_user, employee_record, external_user, last_login, never_logged_in, stale_login, suspended, terminated_account, user]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+        - framework_name: "NIST 800-53 r5"
+          control_id: PS-4
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "7.2"
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.1.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.11
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.16
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - workforce status, termination approval, and exception state outside Okta
+    - id: dormant_users
+      type: lifecycle_state
+      title: Dormant user access
+      families: [dormant_user, last_login, never_logged_in, stale_login, user]
+      support: supported
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "PCI DSS v4.0.1"
+          control_id: "8.1.3"
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+    - id: deprovisioning
+      type: lifecycle_state
+      title: Deprovisioning state
+      families: [deprovisioned, suspended, terminated_account, user_lifecycle]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration, remediation_state]
+      control_domains: [identity_access, remediation]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: PS-4
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - authoritative HR termination state and offboarding approval outside Okta
+    - id: external_accounts
+      type: entity_family
+      title: External and third-party accounts
+      families: [external_user, personal_email, third_party_access, user]
+      support: partial
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: SOC 2
+          control_id: CC6.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
+      known_unsupported_fields:
+        - sponsor approval and vendor contract state outside Okta
     - id: users
       type: entity_family
       title: Users

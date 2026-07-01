@@ -18,6 +18,9 @@ const (
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
+	IntentOktaPrivilegedWeakMFA     = "okta_privileged_weak_mfa"
+	IntentOktaDormantAccess         = "okta_dormant_access"
+	IntentOktaGroupAccessRisk       = "okta_group_access_risk"
 	IntentQuestionnaireEvidence     = "questionnaire_evidence_answer"
 
 	postProcessingCandidateRowLimit        = ports.MaxCypherQueryRows
@@ -211,9 +214,7 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 	switch intent {
 	case IntentTopRiskFindings:
 		plan.Filters = fastPathTopRiskFilters(question)
-	case IntentFailingControls:
-		plan.Filters = map[string]string{}
-	case IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge:
+	case IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
 		plan.Filters = map[string]string{}
 	case IntentQuestionnaireEvidence:
 		plan.Filters = fastPathQuestionnaireEvidenceFilters(question)
@@ -411,6 +412,17 @@ func containsWord(haystack string, needle string) bool {
 	return pattern.MatchString(strings.ToLower(haystack))
 }
 
+func mentionsOktaMFAPosture(haystack string) bool {
+	return strings.Contains(haystack, "mfa") || strings.Contains(haystack, "factor") || strings.Contains(haystack, "phishing resistant")
+}
+
+func lacksOktaMFAPosture(haystack string) bool {
+	if !mentionsOktaMFAPosture(haystack) {
+		return false
+	}
+	return containsWord(haystack, "lack") || containsWord(haystack, "lacks") || containsWord(haystack, "lacking") || containsWord(haystack, "missing") || strings.Contains(haystack, "without mfa")
+}
+
 func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaultMaxRows int) AskQueryPlan {
 	var out AskQueryPlan
 	if plan != nil {
@@ -437,6 +449,10 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 		out.Filters = map[string]string{}
 		return out
 	}
+	if isOktaDeterministicIntent(out.Intent) {
+		out.Filters = map[string]string{}
+		return out
+	}
 	for key, value := range out.Filters {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -456,6 +472,15 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, defaul
 		out.Filters[key] = trimmed
 	}
 	return out
+}
+
+func isOktaDeterministicIntent(intent string) bool {
+	switch intent {
+	case IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, defaultMaxRows int) AskQueryPlan {
@@ -491,6 +516,12 @@ func canonicalIntent(value string) string {
 		return IntentIdentityBridge
 	case "connector_health", "source_health", "runtime_health":
 		return IntentConnectorHealth
+	case "okta_privileged_weak_mfa", "okta_privileged_without_strong_mfa", "okta_admin_weak_mfa":
+		return IntentOktaPrivilegedWeakMFA
+	case "okta_dormant_access", "okta_dormant_users_with_access":
+		return IntentOktaDormantAccess
+	case "okta_group_access_risk", "okta_risky_group_memberships":
+		return IntentOktaGroupAccessRisk
 	case "questionnaire_evidence_answer", "questionnaire_answer", "compliance_answer", "control_coverage":
 		return IntentQuestionnaireEvidence
 	default:
@@ -513,6 +544,12 @@ func inferIntent(question string, cypher string) string {
 		return IntentAggregateFindingsBySource
 	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
 		return IntentIdentityBridge
+	case strings.Contains(haystack, "okta") && containsWord(haystack, "privileged") && (strings.Contains(haystack, "strong mfa") || strings.Contains(haystack, "weak mfa") || strings.Contains(haystack, "phishing resistant") || lacksOktaMFAPosture(haystack)):
+		return IntentOktaPrivilegedWeakMFA
+	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "dormant") && (strings.Contains(haystack, "access") || strings.Contains(haystack, "admin") || strings.Contains(haystack, "app")):
+		return IntentOktaDormantAccess
+	case strings.Contains(haystack, "okta") && strings.Contains(haystack, "group") && (strings.Contains(haystack, "risk") || strings.Contains(haystack, "membership") || strings.Contains(haystack, "access")):
+		return IntentOktaGroupAccessRisk
 	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
 		return IntentExplainFinding
 	case looksLikeQuestionnaireEvidenceQuestion(haystack):
@@ -663,6 +700,115 @@ RETURN source.urn AS source_urn,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
+	case IntentOktaPrivilegedWeakMFA:
+		return fmt.Sprintf(`MATCH (user:Entity {tenant_id: $tenant_id, entity_type: 'okta.user'})-[admin:RELATION {relation: 'can_admin'}]->(role:Entity {tenant_id: $tenant_id, entity_type: 'okta.admin_role'})
+WHERE admin.tenant_id = $tenant_id
+WITH user, admin, role,
+     coalesce(%s, '') AS status,
+     coalesce(%s, '') AS mfa_enrolled,
+     coalesce(%s, '') AS mfa_factor_count,
+     coalesce(%s, '') AS mfa_factor_types,
+     coalesce(%s, '') AS mfa_phishing_resistant,
+     coalesce(%s, '') AS user_source_event_id,
+     coalesce(%s, '') AS observed_at,
+     coalesce(%s, '') AS admin_event_id,
+     coalesce(%s, '') AS admin_at
+WHERE user.mfa_disabled = true OR toLower(mfa_phishing_resistant) = 'false'
+RETURN user.urn AS user_urn,
+       coalesce(user.label, user.urn) AS user_label,
+       status,
+       mfa_enrolled,
+       mfa_factor_count,
+       mfa_factor_types,
+       mfa_phishing_resistant,
+       role.urn AS admin_role_urn,
+       coalesce(role.label, role.urn) AS admin_role_label,
+       admin_event_id,
+       admin_at,
+       user_source_event_id,
+       observed_at,
+       'Okta factor summary only; missing factor detail is not treated as weak MFA.' AS overclaim_guard
+ORDER BY user_label, admin_role_label
+LIMIT %d`, cypherJSONStringAttributes("user.attributes_json", "status"), cypherJSONStringAttributes("user.attributes_json", "mfa_enrolled"), cypherJSONStringAttributes("user.attributes_json", "mfa_factor_count"), cypherJSONStringAttributes("user.attributes_json", "mfa_factor_types"), cypherJSONStringAttributes("user.attributes_json", "mfa_phishing_resistant"), cypherJSONStringAttributes("user.attributes_json", "source_event_id"), cypherJSONStringAttributes("user.attributes_json", "observed_at"), cypherJSONStringAttributes("admin.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("admin.attributes_json", "at", "observed_at"), limit), true
+	case IntentOktaDormantAccess:
+		return fmt.Sprintf(`MATCH (user:Entity {tenant_id: $tenant_id, entity_type: 'okta.user'})
+WITH user,
+     coalesce(%s, '') AS status,
+     coalesce(%s, '') AS last_login_at,
+     coalesce(%s, '') AS user_source_event_id,
+     coalesce(%s, '') AS observed_at
+WHERE toUpper(status) IN ['ACTIVE','PROVISIONED','STAGED','PASSWORD_EXPIRED','RECOVERY']
+  AND (
+    last_login_at = ''
+    OR (last_login_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*' AND datetime(last_login_at) < datetime() - duration('P90D'))
+  )
+CALL {
+  WITH user
+  MATCH (user)-[access:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
+  WHERE access.tenant_id = $tenant_id AND target.entity_type = 'okta.application'
+  RETURN target, null AS mediator, access, 'direct_app_assignment' AS assignment_kind, '' AS membership_event_id
+  UNION
+  WITH user
+  MATCH (user)-[membership:RELATION {relation: 'member_of'}]->(mediator:Entity {tenant_id: $tenant_id})-[access:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
+  WHERE membership.tenant_id = $tenant_id AND access.tenant_id = $tenant_id AND target.entity_type = 'okta.application'
+  WITH target, mediator, access, coalesce(%s, '') AS membership_event_id
+  RETURN target, mediator, access, 'group_app_assignment' AS assignment_kind, membership_event_id
+  UNION
+  WITH user
+  MATCH (user)-[access:RELATION {relation: 'can_admin'}]->(target:Entity {tenant_id: $tenant_id})
+  WHERE access.tenant_id = $tenant_id AND target.entity_type = 'okta.admin_role'
+  RETURN target, null AS mediator, access, 'admin_role_assignment' AS assignment_kind, '' AS membership_event_id
+}
+WITH user, status, last_login_at, user_source_event_id, observed_at, target, mediator, access, assignment_kind, membership_event_id,
+     coalesce(%s, '') AS access_event_id,
+     coalesce(%s, '') AS access_at
+RETURN user.urn AS user_urn,
+       coalesce(user.label, user.urn) AS user_label,
+       status,
+       last_login_at,
+       assignment_kind,
+       coalesce(mediator.urn, '') AS mediator_urn,
+       coalesce(mediator.label, '') AS mediator_label,
+       target.urn AS access_target_urn,
+       coalesce(target.label, target.urn) AS access_target_label,
+       target.entity_type AS access_target_type,
+       membership_event_id,
+       access_event_id,
+       access_at,
+       user_source_event_id,
+       observed_at,
+       'Dormant means active Okta user with last_login_at older than 90 days or no last_login_at in the projected Okta user record.' AS overclaim_guard
+ORDER BY user_label, assignment_kind, access_target_label
+LIMIT %d`, cypherJSONStringAttributes("user.attributes_json", "status"), cypherJSONStringAttributes("user.attributes_json", "last_login_at"), cypherJSONStringAttributes("user.attributes_json", "source_event_id"), cypherJSONStringAttributes("user.attributes_json", "observed_at"), cypherJSONStringAttributes("membership.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("access.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("access.attributes_json", "at", "observed_at"), limit), true
+	case IntentOktaGroupAccessRisk:
+		return fmt.Sprintf(`MATCH (group:Entity {tenant_id: $tenant_id, entity_type: 'okta.group'})-[assignment:RELATION {relation: 'assigned_to'}]->(app:Entity {tenant_id: $tenant_id, entity_type: 'okta.application'})
+WHERE assignment.tenant_id = $tenant_id
+OPTIONAL MATCH (app)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+WHERE grant.tenant_id = $tenant_id AND confers.tenant_id = $tenant_id
+OPTIONAL MATCH (member:Entity {tenant_id: $tenant_id, entity_type: 'okta.user'})-[membership:RELATION {relation: 'member_of'}]->(group)
+WHERE membership.tenant_id = $tenant_id
+WITH group, assignment, app, entitlement, capability,
+     count(DISTINCT member.urn) AS direct_member_count,
+     coalesce(%s, '') AS assignment_event_id,
+     coalesce(%s, '') AS assignment_at
+RETURN group.urn AS group_urn,
+       coalesce(group.label, group.urn) AS group_label,
+       direct_member_count,
+       app.urn AS app_urn,
+       coalesce(app.label, app.urn) AS app_label,
+       coalesce(entitlement.urn, '') AS entitlement_urn,
+       coalesce(entitlement.label, '') AS entitlement_label,
+       coalesce(capability.urn, '') AS capability_urn,
+       coalesce(capability.label, '') AS capability_label,
+       assignment_event_id,
+       assignment_at,
+       CASE
+         WHEN coalesce(capability.urn, '') ENDS WITH ':cloud_admin' OR coalesce(capability.urn, '') ENDS WITH ':identity_admin' THEN 'privileged_group_app_access'
+         ELSE 'group_app_access'
+       END AS risk_signal,
+       'Group risk is derived from Okta group-to-application assignments and projected entitlement capability edges; enumerate members from member_of edges or okta.group_membership events, not group attributes.' AS overclaim_guard
+ORDER BY risk_signal DESC, group_label, app_label
+LIMIT %d`, cypherJSONStringAttributes("assignment.attributes_json", "event_id", "source_event_id"), cypherJSONStringAttributes("assignment.attributes_json", "at", "observed_at"), limit), true
 	case IntentQuestionnaireEvidence:
 		topicPredicate := questionnaireEvidenceTopicPredicate(plan.Filters)
 		if topicPredicate == "" {
