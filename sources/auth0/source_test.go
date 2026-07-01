@@ -236,8 +236,20 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"client_id": "client-1", "name": "Workforce Portal", "app_type": "regular_web", "callbacks": []string{"https://app.example.test/callback"}, "grant_types": []string{"authorization_code"}}})
 		case "/connections":
+			if got := r.URL.Query().Get("include_fields"); got != "false" {
+				t.Fatalf("connections include_fields = %q, want false", got)
+			}
+			if got := r.URL.Query().Get("fields"); got != "options" {
+				t.Fatalf("connections fields = %q, want options", got)
+			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "conn-1", "name": "google-oauth2", "strategy": "google-oauth2", "enabled_clients": []string{"client-1"}}})
 		case "/resource-servers":
+			if got := r.URL.Query().Get("include_fields"); got != "false" {
+				t.Fatalf("resource servers include_fields = %q, want false", got)
+			}
+			if got := r.URL.Query().Get("fields"); got != "signing_secret" {
+				t.Fatalf("resource servers fields = %q, want signing_secret", got)
+			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "api-1", "identifier": "https://api.example.test", "name": "Example API", "scopes": []map[string]string{{"value": "read:reports", "description": "Read reports"}}}})
 		case "/client-grants":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "grant-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": []string{"read:reports"}}})

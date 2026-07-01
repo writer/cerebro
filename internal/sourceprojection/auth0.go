@@ -320,25 +320,36 @@ func auth0ScopeValues(raw string) []string {
 	if raw == "" {
 		return nil
 	}
-	var objectScopes []struct {
-		Value string `json:"value"`
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-	}
+	var objectScopes []auth0ScopeObject
 	if err := json.Unmarshal([]byte(raw), &objectScopes); err == nil && len(objectScopes) > 0 {
-		out := make([]string, 0, len(objectScopes))
-		for _, scope := range objectScopes {
-			if value := firstNonEmpty(scope.Value, scope.ID, scope.Name); value != "" {
-				out = append(out, value)
-			}
+		return auth0ScopeObjectValues(objectScopes)
+	}
+	if strings.HasPrefix(raw, "{") {
+		if err := json.Unmarshal([]byte("["+raw+"]"), &objectScopes); err == nil && len(objectScopes) > 0 {
+			return auth0ScopeObjectValues(objectScopes)
 		}
-		return out
 	}
 	var stringScopes []string
 	if err := json.Unmarshal([]byte(raw), &stringScopes); err == nil {
 		return compactProjectionStrings(stringScopes)
 	}
 	return splitCSV(raw)
+}
+
+type auth0ScopeObject struct {
+	Value string `json:"value"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+}
+
+func auth0ScopeObjectValues(scopes []auth0ScopeObject) []string {
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if value := firstNonEmpty(scope.Value, scope.ID, scope.Name); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func compactProjectionStrings(values []string) []string {

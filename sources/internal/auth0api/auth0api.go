@@ -282,7 +282,11 @@ func connectionsFamily() jsonapi.Family {
 			"strategy_version": "strategy_version",
 		}),
 		StaticAttributes: map[string]string{"record_class": "identity_connection", "resource_type": "connection", "schema": "connections", "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_connections"},
+		Config: jsonapi.FamilyConfig{
+			StaticQuery:     map[string]string{"fields": "options", "include_fields": "false"},
+			EncodeURNID:     true,
+			ResourceURNKind: "runtime_connections",
+		},
 	}
 }
 
@@ -298,7 +302,11 @@ func resourceServersFamily() jsonapi.Family {
 		TimestampKeys:    []string{"updated_at", "created_at", "observed_at"},
 		Attributes:       resourceServerAttributes(),
 		StaticAttributes: map[string]string{"record_class": "identity_api", "resource_type": "api", "schema": "resource_servers", "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_resource_servers"},
+		Config: jsonapi.FamilyConfig{
+			StaticQuery:     map[string]string{"fields": "signing_secret", "include_fields": "false"},
+			EncodeURNID:     true,
+			ResourceURNKind: "runtime_resource_servers",
+		},
 	}
 }
 

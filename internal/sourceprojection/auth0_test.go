@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -69,6 +70,18 @@ func TestAuth0ResourceServerProjection(t *testing.T) {
 	}
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want API scope projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0ScopeValuesParseRuntimeObjectStream(t *testing.T) {
+	got := auth0ScopeValues(`{"value":"read:reports","description":"Read, reports"},{"value":"write:reports","description":"Write reports"}`)
+	if joined := strings.Join(got, ","); joined != "read:reports,write:reports" {
+		t.Fatalf("auth0ScopeValues() = %#v, want read/write scopes", got)
+	}
+	for _, scope := range got {
+		if strings.Contains(scope, "description") {
+			t.Fatalf("auth0ScopeValues() included object fragment %q", scope)
+		}
 	}
 }
 
