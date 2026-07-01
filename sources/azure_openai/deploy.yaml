@@ -17,5 +17,52 @@ runtimes:
       health_path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/deployments?api-version=2024-10-01
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      per_page: "100"
+      token: env:AZURE_OPENAI_TOKEN
+  - localId: model-catalog
+    config:
+      account_name: env:AZURE_OPENAI_ACCOUNT_NAME
+      location: env:AZURE_OPENAI_LOCATION
+      resource_group: env:AZURE_OPENAI_RESOURCE_GROUP
+      subscription_id: env:AZURE_OPENAI_SUBSCRIPTION_ID
+      family: model_catalog
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /subscriptions/${config.subscription_id}/providers/Microsoft.CognitiveServices/locations/${config.location}/models?api-version=2024-10-01
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      token: env:AZURE_OPENAI_TOKEN
+  - localId: rai-policies
+    config:
+      account_name: env:AZURE_OPENAI_ACCOUNT_NAME
+      location: env:AZURE_OPENAI_LOCATION
+      resource_group: env:AZURE_OPENAI_RESOURCE_GROUP
+      subscription_id: env:AZURE_OPENAI_SUBSCRIPTION_ID
+      family: rai_policies
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/raiPolicies?api-version=2024-10-01
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      token: env:AZURE_OPENAI_TOKEN
+  - localId: rai-blocklists
+    config:
+      account_name: env:AZURE_OPENAI_ACCOUNT_NAME
+      location: env:AZURE_OPENAI_LOCATION
+      resource_group: env:AZURE_OPENAI_RESOURCE_GROUP
+      subscription_id: env:AZURE_OPENAI_SUBSCRIPTION_ID
+      family: rai_blocklists
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/raiBlocklists?api-version=2024-10-01
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      token: env:AZURE_OPENAI_TOKEN
+  - localId: private-endpoint-connections
+    config:
+      account_name: env:AZURE_OPENAI_ACCOUNT_NAME
+      location: env:AZURE_OPENAI_LOCATION
+      resource_group: env:AZURE_OPENAI_RESOURCE_GROUP
+      subscription_id: env:AZURE_OPENAI_SUBSCRIPTION_ID
+      family: private_endpoint_connections
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /subscriptions/${config.subscription_id}/resourceGroups/${config.resource_group}/providers/Microsoft.CognitiveServices/accounts/${config.account_name}/privateEndpointConnections?api-version=2024-10-01
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
       token: env:AZURE_OPENAI_TOKEN

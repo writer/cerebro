@@ -1,6 +1,6 @@
 # OpenRouter
 
-Generated Source Runtime SDK scaffold for `openrouter`.
+Source Runtime SDK implementation for `openrouter`.
 
 ## Runtime input
 
@@ -19,11 +19,10 @@ Generated Source Runtime SDK scaffold for `openrouter`.
 ## Families
 
 - `organization_members`, emits `openrouter.organization_members`, reads `/v1/organization/members`
-- `api_keys`, emits `openrouter.api_keys`, reads `/v1/auth/keys`
-- `provider_keys`, emits `openrouter.provider_keys`, reads `/v1/provider-keys`
-- `usage_reports`, emits `openrouter.usage_reports`, reads `/v1/usage`
+- `api_keys`, emits `openrouter.api_keys`, reads `/v1/keys`
+- `provider_keys`, emits `openrouter.provider_keys`, reads `/v1/byok`
+- `usage_reports`, emits `openrouter.usage_reports`, reads `/v1/activity`
 
 ## Tests
 
-- `go test ./sources/openrouter ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/openrouter -count=1`

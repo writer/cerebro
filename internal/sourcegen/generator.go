@@ -1002,32 +1002,34 @@ func renderDeploy(request normalizedRequest) string {
 		fmt.Fprintf(&b, "  - %s\n", key)
 	}
 	fmt.Fprintf(&b, "runtimes:\n")
-	fmt.Fprintf(&b, "  - localId: %s\n", strings.ReplaceAll(request.DefaultFamily, "_", "-"))
-	fmt.Fprintf(&b, "    config:\n")
-	if len(request.ConfigKeys) == 0 && strings.TrimSpace(request.BaseURLTemplate) == "" {
-		fmt.Fprintf(&b, "      base_url: env:%s_BASE_URL\n", request.EnvPrefix)
-	}
-	writtenConfigKeys := map[string]struct{}{}
-	for _, key := range request.ConfigKeys {
-		writtenConfigKeys[key] = struct{}{}
-		fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
-	}
-	fmt.Fprintf(&b, "      family: %s\n", request.DefaultFamily)
-	fmt.Fprintf(&b, "      failure_modes: %s\n", strings.Join(request.FailureModes, ","))
-	fmt.Fprintf(&b, "      health_path: %s\n", request.HealthPath)
-	fmt.Fprintf(&b, "      expected_cadence_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
-	fmt.Fprintf(&b, "      stale_after_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
-	fmt.Fprintf(&b, "      per_page: %q\n", "100")
-	for _, key := range authConfigKeys {
-		if _, ok := writtenConfigKeys[key]; ok {
-			continue
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "  - localId: %s\n", strings.ReplaceAll(family.Name, "_", "-"))
+		fmt.Fprintf(&b, "    config:\n")
+		if len(request.ConfigKeys) == 0 && strings.TrimSpace(request.BaseURLTemplate) == "" {
+			fmt.Fprintf(&b, "      base_url: env:%s_BASE_URL\n", request.EnvPrefix)
 		}
-		writtenConfigKeys[key] = struct{}{}
-		envName := envNameForConfigKey(request, key)
-		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
-			envName = tokenEnv
+		writtenConfigKeys := map[string]struct{}{}
+		for _, key := range request.ConfigKeys {
+			writtenConfigKeys[key] = struct{}{}
+			fmt.Fprintf(&b, "      %s: env:%s\n", key, envNameForConfigKey(request, key))
 		}
-		fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
+		fmt.Fprintf(&b, "      family: %s\n", family.Name)
+		fmt.Fprintf(&b, "      failure_modes: %s\n", strings.Join(request.FailureModes, ","))
+		fmt.Fprintf(&b, "      health_path: %s\n", request.HealthPath)
+		fmt.Fprintf(&b, "      expected_cadence_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
+		fmt.Fprintf(&b, "      stale_after_seconds: %q\n", strconv.FormatInt(int64(request.FreshnessDuration.Seconds()), 10))
+		fmt.Fprintf(&b, "      per_page: %q\n", "100")
+		for _, key := range authConfigKeys {
+			if _, ok := writtenConfigKeys[key]; ok {
+				continue
+			}
+			writtenConfigKeys[key] = struct{}{}
+			envName := envNameForConfigKey(request, key)
+			if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
+				envName = tokenEnv
+			}
+			fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
+		}
 	}
 	return b.String()
 }
@@ -1449,20 +1451,30 @@ func renderSourceTestGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
 	fmt.Fprintf(&b, "func TestSourceCheckAndRead(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
+	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n\t\tresponseBody json.RawMessage\n\t}{\n")
+	for _, family := range request.Families {
+		fmt.Fprintf(&b, "\t\t{\n")
+		fmt.Fprintf(&b, "\t\t\tname: %s,\n", family.ConstName)
+		fmt.Fprintf(&b, "\t\t\tpath: %s,\n", strconv.Quote(renderTestPath(family.Path)))
+		fmt.Fprintf(&b, "\t\t\tkind: %s,\n", strconv.Quote(family.EventKind))
+		fmt.Fprintf(&b, "\t\t\texpectedAttributes: map[string]string{%s},\n", renderedAttributeMap(sourceTestExpectedAttributes(request, family)))
+		fmt.Fprintf(&b, "\t\t\tresponseBody: json.RawMessage(`%s`),\n", sourceTestResponseBody(request, family))
+		fmt.Fprintf(&b, "\t\t},\n")
+	}
+	fmt.Fprintf(&b, "\t}\n")
 	if request.OAuth != nil {
 		fmt.Fprintf(&b, "\ttokenRequests := 0\n")
 	}
 	fmt.Fprintf(&b, "\tserver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n")
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\tt.Fatalf(\"token method = %%s\", r.Method)\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\tt.Fatalf(\"ParseForm() error = %%v\", err)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\tt.Fatalf(\"grant_type = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\tt.Fatalf(\"client_id = %%q\", got)\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\tt.Fatalf(\"client_secret = %%q\", got)\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
+		fmt.Fprintf(&b, "\t\tif r.URL.Path == \"/oauth/token\" {\n\t\t\ttokenRequests++\n\t\t\tif r.Method != http.MethodPost {\n\t\t\t\thttp.Error(w, \"token method must be POST\", http.StatusMethodNotAllowed)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tr.Body = http.MaxBytesReader(w, r.Body, 1<<20)\n\t\t\tif err := r.ParseForm(); err != nil {\n\t\t\t\thttp.Error(w, \"invalid token form\", http.StatusBadRequest)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"grant_type\"); got != \"client_credentials\" {\n\t\t\t\thttp.Error(w, \"grant_type must be client_credentials\", http.StatusBadRequest)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_id\"); got != \"client-id\" {\n\t\t\t\thttp.Error(w, \"client_id mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tif got := r.Form.Get(\"client_secret\"); got != \"client-secret\" {\n\t\t\t\thttp.Error(w, \"client_secret mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"access_token\": \"test-token\", \"expires_in\": 600})\n\t\t\treturn\n\t\t}\n")
 	}
 	fmt.Fprint(&b, generatedTestAuthAssertion(request))
 	if request.HealthPath != request.DefaultPath {
 		fmt.Fprintf(&b, "\t\tif r.URL.RequestURI() == %s {\n\t\t\tw.WriteHeader(http.StatusNoContent)\n\t\t\treturn\n\t\t}\n", strconv.Quote(renderTestPath(request.HealthPath)))
 	}
-	fmt.Fprintf(&b, "\t\tif r.URL.Path != %s {\n\t\t\tt.Fatalf(\"path = %%q\", r.URL.Path)\n\t\t}\n", strconv.Quote(renderTestPath(request.DefaultPath)))
-	fmt.Fprintf(&b, "\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
-	fmt.Fprintf(&b, "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"items\": []map[string]string{{\"id\": \"record-1\", \"resource_urn\": \"urn:cerebro:tenant:runtime_asset:record-1\", \"resource_type\": \"asset\", \"resource_id\": \"record-1\", \"name\": \"Record One\", \"updated_at\": \"2026-06-01T00:00:00Z\"}}})\n")
+	fmt.Fprintf(&b, "\t\tfor _, tc := range familyCases {\n\t\t\tif r.URL.Path != tc.path {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\t\t_, _ = w.Write(tc.responseBody)\n\t\t\treturn\n\t\t}\n")
+	fmt.Fprintf(&b, "\t\thttp.NotFound(w, r)\n")
 	fmt.Fprintf(&b, "\t}))\n\tdefer server.Close()\n")
 	// cfgValues must satisfy every config/credential key referenced by the
 	// source's templates (base URL, health path, and family paths) so Check and
@@ -1503,11 +1515,11 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, "}\n\tcfg := sourcecdk.NewConfig(cfgValues)\n")
 	fmt.Fprintf(&b, "\tif err := source.Check(context.Background(), cfg); err != nil {\n\t\tt.Fatalf(\"Check() error = %%v\", err)\n\t}\n")
-	fmt.Fprintf(&b, "\tpull, err := source.Read(context.Background(), cfg, nil)\n\tif err != nil {\n\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t}\n\tif len(pull.Events) != 1 {\n\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t}\n\tevent := pull.Events[0]\n")
+	fmt.Fprintf(&b, "\tfor _, tc := range familyCases {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\treadCfgValues := map[string]string{}\n\t\t\tfor key, value := range cfgValues {\n\t\t\t\treadCfgValues[key] = value\n\t\t\t}\n\t\t\treadCfgValues[\"family\"] = tc.name\n\t\t\tpull, err := source.Read(context.Background(), sourcecdk.NewConfig(readCfgValues), nil)\n\t\t\tif err != nil {\n\t\t\t\tt.Fatalf(\"Read() error = %%v\", err)\n\t\t\t}\n\t\t\tif len(pull.Events) != 1 {\n\t\t\t\tt.Fatalf(\"events = %%d, want 1\", len(pull.Events))\n\t\t\t}\n\t\t\tevent := pull.Events[0]\n\t\t\tif event.Kind != tc.kind {\n\t\t\t\tt.Fatalf(\"kind = %%q, want %%q\", event.Kind, tc.kind)\n\t\t\t}\n\t\t\tif strings.TrimSpace(event.Id) == \"\" {\n\t\t\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t\t\t}\n\t\t\tfor attr, want := range tc.expectedAttributes {\n\t\t\t\tif got := event.Attributes[attr]; got != want {\n\t\t\t\t\tt.Fatalf(\"attribute %%s = %%q, want %%q\", attr, got, want)\n\t\t\t\t}\n\t\t\t}\n\t\t})\n\t}\n")
 	if request.OAuth != nil {
-		fmt.Fprintf(&b, "\tif tokenRequests != 1 {\n\t\tt.Fatalf(\"token requests = %%d, want 1 cached token\", tokenRequests)\n\t}\n")
+		fmt.Fprintf(&b, "\tif tokenRequests < 1 || tokenRequests > len(familyCases) {\n\t\tt.Fatalf(\"token requests = %%d, want between 1 and %%d\", tokenRequests, len(familyCases))\n\t}\n")
 	}
-	fmt.Fprintf(&b, "\tif event.Kind != %s {\n\t\tt.Fatalf(\"kind = %%q\", event.Kind)\n\t}\n\tif strings.TrimSpace(event.Id) == \"\" {\n\t\tt.Fatalf(\"event id is empty: %%#v\", event)\n\t}\n}\n", strconv.Quote(request.Families[0].EventKind))
+	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "\nfunc TestNewFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := NewFixture()\n\tif err != nil {\n\t\tt.Fatalf(\"NewFixture() error = %%v\", err)\n\t}\n")
 	fmt.Fprintf(&b, "\tfamilyConfigs := map[string]sourcecdk.Config{}\n")
@@ -1515,6 +1527,94 @@ func renderSourceTestGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\t\tfamilyConfigs[family] = sourcecdk.NewConfig(map[string]string{\n\t\t\t\"family\": family,\n\t\t\t\"tenant_id\": \"tenant\",\n\t\t})\n\t}\n")
 	fmt.Fprintf(&b, "\tsourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{\n\t\tSource: source,\n\t\tFamilyConfigs: familyConfigs,\n\t\tRequireDiscover: true,\n\t})\n}\n")
 	return b.String()
+}
+
+func sourceTestResponseBody(request normalizedRequest, family familyData) string {
+	record := sourceTestRecord(request, family)
+	var response any
+	switch {
+	case family.Singleton:
+		response = record
+	case sourceTestUsesBareArray(family):
+		response = []map[string]any{record}
+	default:
+		response = map[string]any{sourceTestListKey(family): []map[string]any{record}}
+	}
+	payload, _ := json.Marshal(response)
+	return string(payload)
+}
+
+func sourceTestRecord(request normalizedRequest, family familyData) map[string]any {
+	payload := map[string]any{
+		"id":         fixtureRecordID(request, family),
+		"updated_at": "2026-06-01T00:00:00Z",
+	}
+	for _, field := range family.RequiredPayloadFields {
+		setFixturePayloadField(payload, field, fixturePayloadValue(request, field, family))
+	}
+	for _, key := range idKeysForFamily(family) {
+		setFixturePayloadMappedField(payload, key, fixturePayloadValue(request, key, family))
+	}
+	paths := attributePathsForFamily(family)
+	for _, attr := range family.RequiredAttributes {
+		if path := strings.TrimSpace(paths[attr]); path != "" {
+			value := fixtureAttributeValueForMapping(request, attr, path, family)
+			if strings.TrimSpace(value) != "" {
+				setFixturePayloadMappedField(payload, path, value)
+			}
+		}
+	}
+	if family.Projection != nil {
+		for attr := range family.Projection.Fields {
+			if path := strings.TrimSpace(paths[attr]); path != "" {
+				value := fixtureAttributeValueForMapping(request, attr, path, family)
+				if strings.TrimSpace(value) != "" {
+					setFixturePayloadMappedField(payload, path, value)
+				}
+			}
+		}
+	}
+	return payload
+}
+
+func sourceTestUsesBareArray(family familyData) bool {
+	return strings.TrimSpace(family.RecordSelector) == "$[*]"
+}
+
+func sourceTestListKey(family familyData) string {
+	if len(family.ListKeys) != 0 {
+		return strings.TrimSpace(family.ListKeys[0])
+	}
+	selector := strings.TrimSpace(family.RecordSelector)
+	if strings.HasPrefix(selector, "$.") && strings.HasSuffix(selector, "[*]") {
+		key := strings.TrimSuffix(strings.TrimPrefix(selector, "$."), "[*]")
+		key = strings.Trim(strings.TrimSpace(key), ".")
+		if key != "" {
+			return key
+		}
+	}
+	return "items"
+}
+
+func sourceTestExpectedAttributes(request normalizedRequest, family familyData) map[string]string {
+	attributes := map[string]string{
+		"external_id": fixturePayloadValue(request, firstNonEmptyString(familyPrimaryIDField(family), "id"), family),
+	}
+	paths := attributePathsForFamily(family)
+	for _, attr := range family.RequiredAttributes {
+		attr = strings.TrimSpace(attr)
+		if attr == "" {
+			continue
+		}
+		value := fixtureAttributeValue(request, attr, family)
+		if path := strings.TrimSpace(paths[attr]); path != "" {
+			value = fixtureAttributeValueForMapping(request, attr, path, family)
+		}
+		if strings.TrimSpace(value) != "" {
+			attributes[attr] = value
+		}
+	}
+	return attributes
 }
 
 func testConfigValue(key string) string {
@@ -1547,9 +1647,9 @@ func generatedTestAuthHeader(request normalizedRequest) (string, string) {
 func generatedTestAuthAssertion(request normalizedRequest) string {
 	header, value := generatedTestAuthHeader(request)
 	if request.AuthModel != AuthModelAWSSigV4 {
-		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\tt.Fatalf(%s+\" = %%q\", r.Header.Get(%s))\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header), strconv.Quote(header))
+		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\thttp.Error(w, %s+\" mismatch\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header))
 	}
-	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\tt.Fatalf(%s+\" = %%q\", auth)\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\tt.Fatalf(%s+\" missing credential scope: %%q\", auth)\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
+	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing SigV4 prefix\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing credential scope\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
 }
 
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}

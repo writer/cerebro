@@ -1,0 +1,24 @@
+[
+  {
+    "model_id": "eleven_multilingual_v2",
+    "name": "Eleven Multilingual v2",
+    "can_be_finetuned": true,
+    "can_do_text_to_speech": true,
+    "can_do_voice_conversion": false,
+    "can_use_style": true,
+    "can_use_speaker_boost": true,
+    "serves_pro_voices": true,
+    "token_cost_factor": 1,
+    "description": "Multilingual voice generation model.",
+    "requires_alpha_access": false,
+    "max_characters_request_free_user": 2500,
+    "max_characters_request_subscribed_user": 5000,
+    "languages": [
+      {
+        "language_id": "en",
+        "name": "English"
+      }
+    ],
+    "resource_type": "tts"
+  }
+]
