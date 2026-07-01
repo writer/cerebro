@@ -224,8 +224,8 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 			"data": []map[string]any{{
 				"id":         "audit-1",
 				"event_type": "project.created",
-				"actor":      map[string]any{"id": "user-1", "email": "user@example.test", "name": "User One"},
-				"resource":   map[string]any{"id": "project-1", "type": "project", "name": "Security Evidence"},
+				"actor":      map[string]any{"gid": "user-1", "email": "user@example.test", "name": "User One"},
+				"resource":   map[string]any{"gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
 			}},
 		})
 	}))
