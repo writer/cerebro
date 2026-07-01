@@ -11,15 +11,19 @@
       "gid": "audit-1",
       "event_type": "project.created",
       "actor": {
-        "id": "user-1",
+        "id": "legacy-user-1",
+        "gid": "user-1",
         "email": "user@example.test",
         "name": "User One"
       },
       "resource": {
-        "id": "project-1",
-        "type": "project",
+        "id": "legacy-project-1",
+        "gid": "project-1",
+        "type": "legacy_project",
+        "resource_type": "project",
         "name": "Security Evidence"
-      }
+      },
+      "target_name": "Target Fallback"
     },
     "attributes": {
       "actor_email": "user@example.test",

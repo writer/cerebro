@@ -38,6 +38,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 				"gid":           "1200123456789012",
 				"resource_type": "user",
 				"name":          "Alice Example",
+				"display_name":  "Display Fallback",
 				"email":         "alice@example.test",
 				"created_at":    "2026-06-01T00:00:00Z",
 			}},
@@ -65,6 +66,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if got := event.Attributes["workspace_gid"]; got != "workspace-1" {
 		t.Fatalf("workspace_gid = %q, want workspace-1", got)
+	}
+	if got := event.Attributes["display_name"]; got != "Alice Example" {
+		t.Fatalf("display_name = %q, want Asana name", got)
 	}
 }
 
@@ -222,10 +226,11 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
-				"id":         "audit-1",
-				"event_type": "project.created",
-				"actor":      map[string]any{"gid": "user-1", "email": "user@example.test", "name": "User One"},
-				"resource":   map[string]any{"gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
+				"id":          "audit-1",
+				"event_type":  "project.created",
+				"actor":       map[string]any{"id": "legacy-user-1", "gid": "user-1", "email": "user@example.test", "name": "User One"},
+				"resource":    map[string]any{"id": "legacy-project-1", "gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
+				"target_name": "Target Fallback",
 			}},
 		})
 	}))
@@ -246,6 +251,7 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 	}
 	attrs := pull.Events[0].Attributes
 	for key, want := range map[string]string{
+		"actor_id":      "user-1",
 		"resource_id":   "project-1",
 		"resource_name": "Security Evidence",
 		"resource_type": "project",
