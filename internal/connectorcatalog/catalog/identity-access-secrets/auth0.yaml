@@ -60,7 +60,6 @@ entries:
           method: GET
           path: /users
           record_selector: $[*]
-          list_key: users
           id_field: user_id
           name_field: name
           pagination:
@@ -96,7 +95,6 @@ entries:
           method: GET
           path: /roles
           record_selector: $[*]
-          list_key: roles
           id_field: id
           name_field: name
           pagination:
@@ -164,16 +162,15 @@ entries:
           label: Organizations
           method: GET
           path: /organizations
-          record_selector: $.organizations[*]
-          list_key: organizations
+          record_selector: $[*]
           id_field: id
           name_field: display_name
           pagination:
-            type: cursor
-            cursor_param: from
-            next_cursor_keys: [next]
-            page_size_param: take
+            type: page
+            page_param: page
+            page_size_param: per_page
             page_size: 100
+            start_page: 0
           event:
             kind: auth0.organizations
             schema_ref: auth0/organizations/v1
@@ -199,8 +196,7 @@ entries:
           label: Organization members
           method: GET
           path: /organizations/{organization_id}/members
-          record_selector: $.members[*]
-          list_key: members
+          record_selector: $[*]
           id_field: user_id
           name_field: name
           read:
@@ -212,11 +208,11 @@ entries:
             config_query:
               fields: organization_member_fields
           pagination:
-            type: cursor
-            cursor_param: from
-            next_cursor_keys: [next]
-            page_size_param: take
+            type: page
+            page_param: page
+            page_size_param: per_page
             page_size: 100
+            start_page: 0
           event:
             kind: auth0.organization_members
             schema_ref: auth0/organization_members/v1
@@ -243,8 +239,7 @@ entries:
           label: Applications
           method: GET
           path: /clients
-          record_selector: $.clients[*]
-          list_key: clients
+          record_selector: $[*]
           id_field: client_id
           name_field: name
           sensitive_payload_paths:
@@ -284,16 +279,15 @@ entries:
           label: Connections
           method: GET
           path: /connections
-          record_selector: $.connections[*]
-          list_key: connections
+          record_selector: $[*]
           id_field: id
           name_field: name
           pagination:
-            type: cursor
-            cursor_param: from
-            next_cursor_keys: [next]
-            page_size_param: take
+            type: page
+            page_param: page
+            page_size_param: per_page
             page_size: 100
+            start_page: 0
           event:
             kind: auth0.connections
             schema_ref: auth0/connections/v1
@@ -319,8 +313,7 @@ entries:
           label: Resource servers
           method: GET
           path: /resource-servers
-          record_selector: $.resource_servers[*]
-          list_key: resource_servers
+          record_selector: $[*]
           id_field: id
           name_field: name
           pagination:
@@ -354,16 +347,15 @@ entries:
           label: Client grants
           method: GET
           path: /client-grants
-          record_selector: $.client_grants[*]
-          list_key: client_grants
+          record_selector: $[*]
           id_field: id
           name_field: audience
           pagination:
-            type: cursor
-            cursor_param: from
-            next_cursor_keys: [next]
-            page_size_param: take
+            type: page
+            page_param: page
+            page_size_param: per_page
             page_size: 100
+            start_page: 0
           event:
             kind: auth0.client_grants
             schema_ref: auth0/client_grants/v1
@@ -390,8 +382,7 @@ entries:
           label: User grants
           method: GET
           path: /grants
-          record_selector: $.grants[*]
-          list_key: grants
+          record_selector: $[*]
           id_field: id
           name_field: audience
           config_query:
@@ -431,8 +422,7 @@ entries:
           label: User roles
           method: GET
           path: /users/{user_id}/roles
-          record_selector: $.roles[*]
-          list_key: roles
+          record_selector: $[*]
           id_field: id
           name_field: name
           read:
@@ -472,8 +462,7 @@ entries:
           label: User authentication methods
           method: GET
           path: /users/{user_id}/authentication-methods
-          record_selector: $.authenticators[*]
-          list_key: authenticators
+          record_selector: $[*]
           id_field: id
           name_field: type
           read:

@@ -358,6 +358,25 @@ func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	assertCatalogFamilyPath(t, definition.ResourceFamilies, "organizations", "/organizations", "id")
 	assertCatalogFamilyPath(t, definition.ResourceFamilies, "clients", "/clients", "client_id")
 	assertCatalogFamilyPath(t, definition.ResourceFamilies, "resource_servers", "/resource-servers", "id")
+	familiesByID := map[string]connectordefinitions.ResourceFamily{}
+	for _, family := range definition.ResourceFamilies {
+		familiesByID[family.ID] = family
+	}
+	for _, familyID := range []string{"users", "roles", "organizations", "organization_members", "clients", "connections", "resource_servers", "client_grants", "grants", "user_roles", "user_authentication_methods", "audit_events", "guardian_factors"} {
+		family, ok := familiesByID[familyID]
+		if !ok {
+			t.Fatalf("auth0 family %s not found", familyID)
+		}
+		if family.RecordSelector != "$[*]" || family.ListKey != "" {
+			t.Fatalf("auth0 %s selector/list_key = %q/%q, want bare array selector without list key", familyID, family.RecordSelector, family.ListKey)
+		}
+	}
+	for _, familyID := range []string{"organizations", "organization_members", "connections", "client_grants"} {
+		family := familiesByID[familyID]
+		if family.Pagination == nil || family.Pagination.Type != "page" || family.Pagination.PageParam != "page" || family.Pagination.PageSizeParam != "per_page" || family.Pagination.StartPage != 0 {
+			t.Fatalf("auth0 %s pagination = %#v, want page/per_page starting at 0", familyID, family.Pagination)
+		}
+	}
 }
 
 func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
