@@ -1,3 +1,1 @@
-[
-  "urn:cerebro:tenant:cloudflare_zone_ruleset:source-cloudflare-zone_ruleset-1"
-]
+["urn:cerebro:writer:cloudflare_zone_ruleset:zone-1%7Cruleset-1"]

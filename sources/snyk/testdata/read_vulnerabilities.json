@@ -1,71 +1,33 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/vulnerabilities",
-      "description": "Snyk Vulnerabilities Fixture finding",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-snyk-vulnerabilities-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-snyk-vulnerabilities-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/snyk/vulnerabilities/source-snyk-vulnerabilities-1",
-      "external_id": "source-snyk-vulnerabilities-1",
-      "family": "vulnerabilities",
-      "finding_id": "source-snyk-vulnerabilities-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "provider": "snyk",
-      "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-snyk-vulnerabilities-1",
-      "resource_name": "Snyk Vulnerabilities Fixture",
-      "resource_type": "vulnerabilities",
-      "resource_urn": "urn:cerebro:tenant:snyk_vulnerabilities:source-snyk-vulnerabilities-1",
-      "schema": "vulnerabilities",
-      "severity": "high",
-      "source_event_id": "source-snyk-vulnerabilities-1",
-      "source_provider": "snyk",
-      "source_system": "snyk",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Snyk Vulnerabilities Fixture"
-    },
-    "id": "source-snyk-vulnerabilities-event-1",
+    "id": "snyk-vulnerability-vuln-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
     "kind": "snyk.vulnerabilities",
     "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/vulnerabilities",
-      "description": "Snyk Vulnerabilities Fixture finding",
-      "event_id": "source-snyk-vulnerabilities-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-snyk-vulnerabilities-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-snyk-vulnerabilities-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/snyk/vulnerabilities/source-snyk-vulnerabilities-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/snyk/vulnerabilities/source-snyk-vulnerabilities-1",
-      "family": "vulnerabilities",
-      "finding_id": "source-snyk-vulnerabilities-1",
-      "id": "source-snyk-vulnerabilities-1",
-      "name": "Snyk Vulnerabilities Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-snyk-vulnerabilities-1",
-      "resource_type": "vulnerabilities",
-      "resource_urn": "urn:cerebro:tenant:snyk_vulnerabilities:source-snyk-vulnerabilities-1",
-      "schema_ref": "snyk/vulnerabilities/v1",
-      "severity": "high",
-      "source_id": "snyk",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Snyk Vulnerabilities Fixture",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
     "schema_ref": "snyk/vulnerabilities/v1",
-    "source_id": "snyk",
-    "tenant_id": "tenant"
+    "payload": {
+      "id": "vuln-1",
+      "type": "issue",
+      "attributes": {
+        "title": "CVE-2026-0001",
+        "effective_severity_level": "high",
+        "status": "open",
+        "type": "package_vulnerability"
+      }
+    },
+    "attributes": {
+      "external_id": "vuln-1",
+      "family": "vulnerabilities",
+      "org_id": "org-1",
+      "finding_id": "vuln-1",
+      "issue_type": "package_vulnerability",
+      "title": "CVE-2026-0001",
+      "severity": "high",
+      "status": "open",
+      "resource_urn": "urn:cerebro:tenant:snyk_assets:asset-1",
+      "source_event_id": "vuln-1",
+      "source_provider": "snyk"
+    }
   }
 ]

@@ -1,3 +1,1 @@
-[
-  "urn:cerebro:tenant:cloudflare_dns_record:source-cloudflare-dns_record-1"
-]
+["urn:cerebro:writer:cloudflare_dns_record:dns-1"]
