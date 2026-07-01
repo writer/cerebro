@@ -168,6 +168,26 @@ func TestJiraProjectRoleProjectionDoesNotInferCustomAdminName(t *testing.T) {
 	assertJiraMissingLink(t, links, userURN, relationCanAdmin, adminRoleURN)
 }
 
+func TestJiraProjectRoleProjectionSkipsSelfRepresentsLinkWithoutProjectScope(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "jira",
+		Kind:     "jira.project_roles",
+		Attributes: map[string]string{
+			"role_id":   "10003",
+			"role_name": "Developers",
+		},
+	}
+	entities, links, err := jiraProjectRolesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	roleURN := projectionURN("tenant", "jira_role", "10003")
+	assertJiraEntity(t, entities, roleURN, "jira.role")
+	assertJiraMissingLink(t, links, roleURN, relationRepresents, roleURN)
+}
+
 func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{
 		Id:       "event-1",

@@ -118,7 +118,9 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
 		},
 	})
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, globalRoleURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "jira_project_role_definition"}))
+	if roleURN != globalRoleURN {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, globalRoleURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "jira_project_role_definition"}))
+	}
 	if projectID != "" {
 		projectURN := projectionURN(tenantID, "jira_project", projectID)
 		addEntity(entities, &ports.ProjectedEntity{URN: projectURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "jira.project", Label: firstNonEmpty(attributes["project_key"], projectID), Attributes: map[string]string{"project_id": projectID, "project_key": strings.TrimSpace(attributes["project_key"])}})
