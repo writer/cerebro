@@ -8,7 +8,6 @@ runtimes:
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "3600"
       stale_after_seconds: "7200"
-      per_page: "100"
       api_key: env:NEW_RELIC_API_KEY
       entity_query: env:NEW_RELIC_ENTITY_QUERY
   - localId: findings
@@ -17,7 +16,6 @@ runtimes:
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "900"
       stale_after_seconds: "1800"
-      per_page: "100"
       api_key: env:NEW_RELIC_API_KEY
       account_id: env:NEW_RELIC_ACCOUNT_ID
   - localId: audit-events

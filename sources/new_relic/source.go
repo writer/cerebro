@@ -47,7 +47,6 @@ type runtimeConfig struct {
 	baseURL     string
 	apiKey      string
 	accountID   int
-	perPage     int
 	entityQuery string
 	auditNRQL   string
 }
@@ -206,6 +205,7 @@ func (s *Source) readFindings(ctx context.Context, settings runtimeConfig, curso
           issues {
             issueId
             title
+            description
             priority
             state
             createdAt
@@ -312,7 +312,6 @@ func (s *Source) runtimeConfig(cfg sourcecdk.Config) (runtimeConfig, error) {
 		apiKey:      firstNonEmpty(sourcecdk.ConfigValue(resolved, "api_key"), sourcecdk.ConfigValue(resolved, "api_token"), sourcecdk.ConfigValue(resolved, "token")),
 		entityQuery: firstNonEmpty(sourcecdk.ConfigValue(resolved, "entity_query"), defaultEntityQuery),
 		auditNRQL:   firstNonEmpty(sourcecdk.ConfigValue(resolved, "audit_nrql"), defaultAuditNRQL),
-		perPage:     100,
 	}
 	if settings.tenantID == "" {
 		return runtimeConfig{}, fmt.Errorf("%w: new_relic tenant_id is required", sourcecdk.ErrInvalidConfig)
@@ -326,13 +325,6 @@ func (s *Source) runtimeConfig(cfg sourcecdk.Config) (runtimeConfig, error) {
 			return runtimeConfig{}, fmt.Errorf("%w: new_relic account_id must be a positive integer", sourcecdk.ErrInvalidConfig)
 		}
 		settings.accountID = accountID
-	}
-	if rawPerPage := sourcecdk.ConfigValue(resolved, "per_page"); rawPerPage != "" {
-		perPage, err := strconv.Atoi(rawPerPage)
-		if err != nil || perPage <= 0 {
-			return runtimeConfig{}, fmt.Errorf("%w: new_relic per_page must be a positive integer", sourcecdk.ErrInvalidConfig)
-		}
-		settings.perPage = perPage
 	}
 	switch settings.family {
 	case familyAssets:
@@ -400,6 +392,7 @@ func newFindingEvent(settings runtimeConfig, issue map[string]any) *primitives.E
 
 func newAuditEvent(settings runtimeConfig, row map[string]any) *primitives.Event {
 	eventID := firstNonEmpty(stringValue(row, "eventId"), stringValue(row, "id"), stringValue(row, "uuid"), stableHash(row))
+	resourceURN := projectionURN(settings.tenantID, "new_relic_audit_events", eventID)
 	attrs := map[string]string{
 		"actor_email":     firstNonEmpty(stringValue(row, "actorEmail"), stringValue(row, "userEmail"), stringValue(row, "email")),
 		"actor_id":        firstNonEmpty(stringValue(row, "actorId"), stringValue(row, "userId"), stringValue(row, "user")),
@@ -413,6 +406,7 @@ func newAuditEvent(settings runtimeConfig, row map[string]any) *primitives.Event
 		"resource_id":     firstNonEmpty(stringValue(row, "targetId"), stringValue(row, "entityGuid"), stringValue(row, "entityId"), eventID),
 		"resource_name":   firstNonEmpty(stringValue(row, "targetName"), stringValue(row, "entityName")),
 		"resource_type":   firstNonEmpty(stringValue(row, "targetType"), stringValue(row, "entityType")),
+		"resource_urn":    resourceURN,
 		"schema":          familyAuditEvents,
 		"source_event_id": eventID,
 		"source_provider": sourceID,
@@ -560,8 +554,8 @@ func sanitizeEventID(value string) string {
 	if value == "" {
 		return sourceID + "-event"
 	}
-	replacer := strings.NewReplacer(":", "-", "/", "-", " ", "-", "|", "-", "_", "-")
-	return strings.ToLower(replacer.Replace(value))
+	replacer := strings.NewReplacer(":", "-", "/", "-", " ", "-")
+	return strings.Trim(replacer.Replace(value), "-")
 }
 
 func trimEmptyAttributes(attrs map[string]string) {

@@ -29,6 +29,7 @@
       "resource_id": "NR-ENTITY-1",
       "resource_name": "Checkout service",
       "resource_type": "entity",
+      "resource_urn": "urn:cerebro:tenant:new_relic_audit_events:AUDIT-1",
       "schema": "audit_events",
       "source_event_id": "AUDIT-1",
       "source_provider": "new_relic",

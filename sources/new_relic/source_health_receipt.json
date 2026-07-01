@@ -2,7 +2,7 @@
   "adapter_health_path": "/graphql",
   "auth_model": "api_key",
   "evidence_cas_reference_kind": "new_relic.evidence_cas_reference",
-  "expected_cadence_seconds": 86400,
+  "expected_cadence_seconds": 900,
   "failure_modes": [
     "api_error",
     "auth_error",
@@ -13,5 +13,5 @@
   "receipt_kind": "source_health.receipt",
   "source_id": "new_relic",
   "source_type": "graphql",
-  "stale_after_seconds": 86400
+  "stale_after_seconds": 1800
 }

@@ -58,11 +58,15 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 			if got := req.Variables["accountId"]; got != float64(42) {
 				t.Fatalf("issues accountId = %#v", got)
 			}
+			if !strings.Contains(req.Query, "description") {
+				t.Fatalf("issues query does not request description: %s", req.Query)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"account": map[string]any{"aiIssues": map[string]any{"issues": map[string]any{
 				"nextCursor": "issue-cursor-2",
 				"issues": []map[string]any{{
 					"issueId":     "ISSUE-1",
 					"title":       "Latency breach",
+					"description": "Latency threshold exceeded",
 					"priority":    "CRITICAL",
 					"state":       "ACTIVATED",
 					"createdAt":   "2026-06-01T00:00:00Z",
@@ -105,16 +109,32 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 		t.Fatalf("Check() error = %v", err)
 	}
 	for _, tt := range []struct {
-		family          string
-		wantKind        string
-		wantNextCursor  string
-		wantAttribute   string
-		wantAttrValue   string
-		wantDiscoverURN bool
+		family         string
+		wantKind       string
+		wantNextCursor string
+		wantAttributes map[string]string
+		wantURN        string
 	}{
-		{family: familyAssets, wantKind: "new_relic.assets", wantNextCursor: "asset-cursor-2", wantAttribute: "resource_id", wantAttrValue: "NR-ENTITY-1", wantDiscoverURN: true},
-		{family: familyFindings, wantKind: "new_relic.findings", wantNextCursor: "issue-cursor-2", wantAttribute: "finding_id", wantAttrValue: "ISSUE-1", wantDiscoverURN: true},
-		{family: familyAuditEvents, wantKind: "new_relic.audit_events", wantAttribute: "event_type", wantAttrValue: "user.create", wantDiscoverURN: true},
+		{
+			family:         familyAssets,
+			wantKind:       "new_relic.assets",
+			wantNextCursor: "asset-cursor-2",
+			wantAttributes: map[string]string{"resource_id": "NR-ENTITY-1"},
+			wantURN:        "urn:cerebro:tenant:runtime_new_relic_entity:NR-ENTITY-1",
+		},
+		{
+			family:         familyFindings,
+			wantKind:       "new_relic.findings",
+			wantNextCursor: "issue-cursor-2",
+			wantAttributes: map[string]string{"finding_id": "ISSUE-1", "description": "Latency threshold exceeded"},
+			wantURN:        "urn:cerebro:tenant:finding:ISSUE-1",
+		},
+		{
+			family:         familyAuditEvents,
+			wantKind:       "new_relic.audit_events",
+			wantAttributes: map[string]string{"event_type": "user.create", "resource_urn": "urn:cerebro:tenant:new_relic_audit_events:AUDIT-1"},
+			wantURN:        "urn:cerebro:tenant:new_relic_audit_events:AUDIT-1",
+		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			cfgValues["family"] = tt.family
@@ -129,15 +149,17 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 			if event.Kind != tt.wantKind {
 				t.Fatalf("kind = %q, want %q", event.Kind, tt.wantKind)
 			}
-			if got := event.Attributes[tt.wantAttribute]; got != tt.wantAttrValue {
-				t.Fatalf("%s = %q, want %q", tt.wantAttribute, got, tt.wantAttrValue)
+			for attr, want := range tt.wantAttributes {
+				if got := event.Attributes[attr]; got != want {
+					t.Fatalf("%s = %q, want %q", attr, got, want)
+				}
 			}
 			if tt.wantNextCursor != "" {
 				if pull.NextCursor == nil || sourcecdk.CursorToken(pull.NextCursor) != tt.wantNextCursor {
 					t.Fatalf("next cursor = %#v, want %q", pull.NextCursor, tt.wantNextCursor)
 				}
 			}
-			if tt.wantDiscoverURN {
+			if tt.wantURN != "" {
 				urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(cfgValues))
 				if err != nil {
 					t.Fatalf("Discover(%s) error = %v", tt.family, err)
@@ -145,11 +167,39 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 				if len(urns) != 1 {
 					t.Fatalf("discover urns = %d, want 1", len(urns))
 				}
+				if got := urns[0].String(); got != tt.wantURN {
+					t.Fatalf("discover urn = %q, want %q", got, tt.wantURN)
+				}
 			}
 		})
 	}
 	if len(requests) < 4 {
 		t.Fatalf("requests = %d, want health plus family reads", len(requests))
+	}
+}
+
+func TestSanitizeEventIDPreservesProviderIdentifiers(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "case preserved", input: "new_relic-tenant-findings-ISSUE-1", want: "new_relic-tenant-findings-ISSUE-1"},
+		{name: "underscore preserved", input: "new_relic-tenant-assets-NR_ENTITY_1", want: "new_relic-tenant-assets-NR_ENTITY_1"},
+		{name: "delimiters normalized", input: " new_relic/tenant:findings ISSUE-1 ", want: "new_relic-tenant-findings-ISSUE-1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeEventID(tt.input); got != tt.want {
+				t.Fatalf("sanitizeEventID(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+	if sanitizeEventID("ID") == sanitizeEventID("id") {
+		t.Fatalf("sanitizeEventID collapsed case-distinct IDs")
+	}
+	if sanitizeEventID("A_B") == sanitizeEventID("A-B") {
+		t.Fatalf("sanitizeEventID collapsed underscore-distinct IDs")
 	}
 }
 

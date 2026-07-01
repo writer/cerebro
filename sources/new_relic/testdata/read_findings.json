@@ -9,6 +9,7 @@
     "payload": {
       "issueId": "ISSUE-1",
       "title": "Latency breach",
+      "description": "Latency threshold exceeded",
       "priority": "CRITICAL",
       "state": "ACTIVATED",
       "createdAt": "2026-06-01T00:00:00Z",
@@ -19,6 +20,7 @@
     },
     "attributes": {
       "external_id": "ISSUE-1",
+      "description": "Latency threshold exceeded",
       "family": "findings",
       "finding_id": "ISSUE-1",
       "finding_urn": "urn:cerebro:tenant:finding:ISSUE-1",
