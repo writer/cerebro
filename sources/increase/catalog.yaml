@@ -257,7 +257,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_status
     required_payload_fields:
       - id
   - kind: increase.oauth_connection

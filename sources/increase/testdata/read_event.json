@@ -28,7 +28,6 @@
       "resource_type": "account",
       "resource_id": "account_in71c4amph0vgo2qllky",
       "resource_name": "account_in71c4amph0vgo2qllky",
-      "resource_urn": "urn:cerebro:tenant:increase_account:account_in71c4amph0vgo2qllky",
       "event_type": "account.created",
       "provider_id": "event_001dzz0r20rzr4zrhrr1364hy80"
     }

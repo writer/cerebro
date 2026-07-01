@@ -93,6 +93,22 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if got := event.Attributes[tc.wantAttr]; strings.TrimSpace(got) == "" {
 				t.Fatalf("%s is empty: %#v", tc.wantAttr, event.Attributes)
 			}
+			if tc.family == familyAchPrenotification {
+				if got := event.Attributes["alert_name"]; got != "Account Funding" {
+					t.Fatalf("alert_name = %q, want Account Funding", got)
+				}
+				if got := event.Attributes["resource_name"]; got != "Account Funding" {
+					t.Fatalf("resource_name = %q, want Account Funding", got)
+				}
+				if got := event.Attributes["alert_severity"]; got != "" {
+					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+				}
+			}
+			if tc.family == familyEvent {
+				if got := event.Attributes["resource_urn"]; got != "" {
+					t.Fatalf("resource_urn = %q, want empty for event family without provider resource_urn", got)
+				}
+			}
 			var gotPayload map[string]any
 			if err := json.Unmarshal(event.Payload, &gotPayload); err != nil {
 				t.Fatalf("unmarshal event payload: %v", err)
