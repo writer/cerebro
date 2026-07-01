@@ -112,6 +112,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"project_key":       strings.TrimSpace(attributes["project_key"]),
 			"role_id":           roleID,
 			"role_name":         firstNonEmpty(attributes["role_name"], attributes["resource_name"]),
+			"scoped_role_id":    scopedRoleID,
 			"role_type":         firstNonEmpty(attributes["role_type"], "project_role"),
 			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
 		},
@@ -149,6 +150,13 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			return nil, nil, err
 		}
 		for _, entity := range roleEntities {
+			if entity.URN == roleURN {
+				if entity.Attributes == nil {
+					entity.Attributes = map[string]string{}
+				}
+				entity.Attributes["role_id"] = roleID
+				entity.Attributes["scoped_role_id"] = scopedRoleID
+			}
 			addEntity(entities, entity)
 		}
 		for _, link := range roleLinks {

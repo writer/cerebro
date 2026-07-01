@@ -78,6 +78,13 @@ func TestJiraProjectRoleProjectionLinksRoleActors(t *testing.T) {
 	groupURN := projectionURN("tenant", "jira_group", "group-1")
 	assertJiraEntity(t, entities, roleURN, "jira.admin_role")
 	assertJiraEntity(t, entities, globalRoleURN, "jira.role")
+	roleEntity := jiraEntityByURN(entities, roleURN)
+	if roleEntity.Attributes["role_id"] != "10002" {
+		t.Fatalf("role_id = %q, want raw Jira role id", roleEntity.Attributes["role_id"])
+	}
+	if roleEntity.Attributes["scoped_role_id"] != "10001:10002" {
+		t.Fatalf("scoped_role_id = %q, want scoped role id", roleEntity.Attributes["scoped_role_id"])
+	}
 	assertJiraLink(t, links, roleURN, relationRepresents, globalRoleURN)
 	assertJiraLink(t, links, roleURN, relationBelongsTo, projectURN)
 	assertJiraLink(t, links, userURN, relationCanAdmin, roleURN)
@@ -172,12 +179,20 @@ func TestJiraAuditProjection(t *testing.T) {
 
 func assertJiraEntity(t *testing.T, entities []*ports.ProjectedEntity, urn string, entityType string) {
 	t.Helper()
-	for _, entity := range entities {
-		if entity.URN == urn && entity.EntityType == entityType {
-			return
-		}
+	entity := jiraEntityByURN(entities, urn)
+	if entity != nil && entity.EntityType == entityType {
+		return
 	}
 	t.Fatalf("missing entity %s type %s in %#v", urn, entityType, entities)
+}
+
+func jiraEntityByURN(entities []*ports.ProjectedEntity, urn string) *ports.ProjectedEntity {
+	for _, entity := range entities {
+		if entity.URN == urn {
+			return entity
+		}
+	}
+	return nil
 }
 
 func assertJiraLink(t *testing.T, links []*ports.ProjectedLink, from string, relation string, to string) {
