@@ -92,6 +92,7 @@ func TestActionNotificationExportResultUsesMessageFields(t *testing.T) {
 				"request_url":    "https://hooks.example.test/files",
 				"status":         200,
 				"success":        true,
+				"type":           "provider_webhook_delivery",
 			},
 		})
 	}))
@@ -114,6 +115,7 @@ func TestActionNotificationExportResultUsesMessageFields(t *testing.T) {
 		"alert_name":    "Delivered",
 		"alert_source":  "https://hooks.example.test/files",
 		"alert_status":  "200",
+		"alert_type":    "action_notification_export_result",
 		"name":          "Delivered",
 		"resource_name": "/Finance/q2.csv",
 		"resource_type": "action_notification_export_result",
