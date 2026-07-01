@@ -1108,9 +1108,15 @@ func parseTime(raw string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds > 0 {
+		if seconds > 1_000_000_000_000 {
+			return time.UnixMilli(seconds).UTC(), true
+		}
 		return time.Unix(seconds, 0).UTC(), true
 	}
 	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		if seconds > 1_000_000_000_000 {
+			return time.UnixMilli(int64(seconds)).UTC(), true
+		}
 		whole, fraction := math.Modf(seconds)
 		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
 	}

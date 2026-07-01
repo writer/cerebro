@@ -260,6 +260,15 @@ func TestReadDefinitionFixtureSeedsRequiredConfigFields(t *testing.T) {
 	}
 }
 
+func TestSelectorListKeySupportsNestedSelectors(t *testing.T) {
+	if got := selectorListKey("$.response.items[*]"); got != "response.items" {
+		t.Fatalf("selectorListKey() = %q, want response.items", got)
+	}
+	if got := selectorListKey("$.response.authlogs[*]"); got != "response.authlogs" {
+		t.Fatalf("selectorListKey() = %q, want response.authlogs", got)
+	}
+}
+
 func TestSourceDefinitionUsesFamilyBaseURLOverride(t *testing.T) {
 	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("default server received family override request at %q", r.URL.Path)
