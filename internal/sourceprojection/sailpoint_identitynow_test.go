@@ -6,63 +6,273 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestSailpointIdentitynowAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.applications", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := sailpointIdentitynowApplicationsProjections(event)
+var sailpointIdentitynowProjectorCoverageEvents = []*cerebrov1.EventEnvelope{
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identities"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.accounts"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.account_entitlements"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.sources"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_schemas"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_health"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_provisioning_policies"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_schedules"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_profiles"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_profile_entitlements"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.roles"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_assigned_identities"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_entitlements"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_dimensions"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.entitlements"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_entitlements"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_role_assignments"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_profiles"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.lifecycle_states"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.workgroups"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.workgroup_members"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.campaigns"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.certifications"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.certification_access_review_items"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_request_status"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.account_activities"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.personal_access_tokens"},
+	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.segments"},
+}
+
+func TestSailpointIdentitynowProjectsEveryRuntimeKind(t *testing.T) {
+	tests := []struct {
+		name    string
+		event   *cerebrov1.EventEnvelope
+		project ProjectFunc
+	}{
+		{name: "identities", event: sailpointIdentitynowEvent("sailpoint_identitynow.identities", sailpointProjectionAttrs()), project: sailpointIdentitynowIdentitiesProjections},
+		{name: "accounts", event: sailpointIdentitynowEvent("sailpoint_identitynow.accounts", sailpointProjectionAttrs()), project: sailpointIdentitynowAccountsProjections},
+		{name: "account_entitlements", event: sailpointIdentitynowEvent("sailpoint_identitynow.account_entitlements", sailpointProjectionAttrs()), project: sailpointIdentitynowAccountEntitlementsProjections},
+		{name: "sources", event: sailpointIdentitynowEvent("sailpoint_identitynow.sources", sailpointProjectionAttrs()), project: sailpointIdentitynowSourcesProjections},
+		{name: "source_schemas", event: sailpointIdentitynowEvent("sailpoint_identitynow.source_schemas", sailpointProjectionAttrs()), project: sailpointIdentitynowSourceSchemasProjections},
+		{name: "source_health", event: sailpointIdentitynowEvent("sailpoint_identitynow.source_health", sailpointProjectionAttrs()), project: sailpointIdentitynowSourceHealthProjections},
+		{name: "source_provisioning_policies", event: sailpointIdentitynowEvent("sailpoint_identitynow.source_provisioning_policies", sailpointProjectionAttrs()), project: sailpointIdentitynowSourceProvisioningPoliciesProjections},
+		{name: "source_schedules", event: sailpointIdentitynowEvent("sailpoint_identitynow.source_schedules", sailpointProjectionAttrs()), project: sailpointIdentitynowSourceSchedulesProjections},
+		{name: "access_profiles", event: sailpointIdentitynowEvent("sailpoint_identitynow.access_profiles", sailpointProjectionAttrs()), project: sailpointIdentitynowAccessProfilesProjections},
+		{name: "access_profile_entitlements", event: sailpointIdentitynowEvent("sailpoint_identitynow.access_profile_entitlements", sailpointProjectionAttrs()), project: sailpointIdentitynowAccessProfileEntitlementsProjections},
+		{name: "roles", event: sailpointIdentitynowEvent("sailpoint_identitynow.roles", sailpointProjectionAttrs()), project: sailpointIdentitynowRolesProjections},
+		{name: "role_assigned_identities", event: sailpointIdentitynowEvent("sailpoint_identitynow.role_assigned_identities", sailpointProjectionAttrs()), project: sailpointIdentitynowRoleAssignedIdentitiesProjections},
+		{name: "role_entitlements", event: sailpointIdentitynowEvent("sailpoint_identitynow.role_entitlements", sailpointProjectionAttrs()), project: sailpointIdentitynowRoleEntitlementsProjections},
+		{name: "role_dimensions", event: sailpointIdentitynowEvent("sailpoint_identitynow.role_dimensions", sailpointProjectionAttrs()), project: sailpointIdentitynowRoleDimensionsProjections},
+		{name: "entitlements", event: sailpointIdentitynowEvent("sailpoint_identitynow.entitlements", sailpointProjectionAttrs()), project: sailpointIdentitynowEntitlementsProjections},
+		{name: "identity_entitlements", event: sailpointIdentitynowEvent("sailpoint_identitynow.identity_entitlements", sailpointProjectionAttrs()), project: sailpointIdentitynowIdentityEntitlementsProjections},
+		{name: "identity_role_assignments", event: sailpointIdentitynowEvent("sailpoint_identitynow.identity_role_assignments", sailpointProjectionAttrs()), project: sailpointIdentitynowIdentityRoleAssignmentsProjections},
+		{name: "identity_profiles", event: sailpointIdentitynowEvent("sailpoint_identitynow.identity_profiles", sailpointProjectionAttrs()), project: sailpointIdentitynowIdentityProfilesProjections},
+		{name: "lifecycle_states", event: sailpointIdentitynowEvent("sailpoint_identitynow.lifecycle_states", sailpointProjectionAttrs()), project: sailpointIdentitynowLifecycleStatesProjections},
+		{name: "workgroups", event: sailpointIdentitynowEvent("sailpoint_identitynow.workgroups", sailpointProjectionAttrs()), project: sailpointIdentitynowWorkgroupsProjections},
+		{name: "workgroup_members", event: sailpointIdentitynowEvent("sailpoint_identitynow.workgroup_members", sailpointProjectionAttrs()), project: sailpointIdentitynowWorkgroupMembersProjections},
+		{name: "campaigns", event: sailpointIdentitynowEvent("sailpoint_identitynow.campaigns", sailpointProjectionAttrs()), project: sailpointIdentitynowCampaignsProjections},
+		{name: "certifications", event: sailpointIdentitynowEvent("sailpoint_identitynow.certifications", sailpointProjectionAttrs()), project: sailpointIdentitynowCertificationsProjections},
+		{name: "certification_access_review_items", event: sailpointIdentitynowEvent("sailpoint_identitynow.certification_access_review_items", sailpointProjectionAttrs()), project: sailpointIdentitynowCertificationAccessReviewItemsProjections},
+		{name: "access_request_status", event: sailpointIdentitynowEvent("sailpoint_identitynow.access_request_status", sailpointProjectionAttrs()), project: sailpointIdentitynowAccessRequestStatusProjections},
+		{name: "account_activities", event: sailpointIdentitynowEvent("sailpoint_identitynow.account_activities", sailpointProjectionAttrs()), project: sailpointIdentitynowAccountActivitiesProjections},
+		{name: "personal_access_tokens", event: sailpointIdentitynowEvent("sailpoint_identitynow.personal_access_tokens", sailpointProjectionAttrs()), project: sailpointIdentitynowPersonalAccessTokensProjections},
+		{name: "segments", event: sailpointIdentitynowEvent("sailpoint_identitynow.segments", sailpointProjectionAttrs()), project: sailpointIdentitynowSegmentsProjections},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entities, _, err := test.project(test.event)
+			if err != nil {
+				t.Fatalf("projection error = %v", err)
+			}
+			if len(entities) == 0 {
+				t.Fatal("expected projected entities")
+			}
+		})
+	}
+}
+
+func TestSailpointIdentitynowIdentityProjection(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.identities", map[string]string{
+		"user_id":      "2c91808568c529c60168cca6f90c1313",
+		"display_name": "Jane Access",
+		"email":        "jane.access@example.test",
+		"status":       "ACTIVE",
+	})
+	entities, links, err := sailpointIdentitynowIdentitiesProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
+		t.Fatal("expected identity entity")
 	}
 	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+		t.Fatal("expected identity links")
 	}
 }
 
-func TestSailpointIdentitynowPolicyProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.roles", Attributes: map[string]string{"policy_id": "policy-1", "policy_name": "Require MFA", "policy_type": "access", "policy_status": "enabled", "evidence_id": "evidence-1"}}
-	entities, links, err := sailpointIdentitynowRolesProjections(event)
+func TestSailpointIdentitynowAccountProjectionLinksIdentityAndSource(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.accounts", map[string]string{
+		"account_id":      "acct-1",
+		"native_identity": "jane.access",
+		"source_id":       "source-1",
+		"source_name":     "Workday",
+		"identity_id":     "identity-1",
+		"identity_name":   "Jane Access",
+	})
+	entities, links, err := sailpointIdentitynowAccountsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected policy")
+	if len(entities) < 3 {
+		t.Fatalf("entities = %d, want account, identity, and source", len(entities))
+	}
+	if len(links) < 2 {
+		t.Fatalf("links = %d, want identity/account/source links", len(links))
+	}
+}
+
+func TestSailpointIdentitynowEntitlementProjectionLinksAccessModel(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.role_entitlements", map[string]string{
+		"entitlement_id":    "entitlement-1",
+		"entitlement_name":  "Payroll Admin",
+		"entitlement_value": "payroll-admin",
+		"source_id":         "source-1",
+		"source_name":       "Payroll",
+		"role_id":           "role-1",
+		"role_name":         "Payroll Reviewer",
+	})
+	entities, links, err := sailpointIdentitynowRoleEntitlementsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) < 3 {
+		t.Fatalf("entities = %d, want entitlement, role, and source", len(entities))
+	}
+	if len(links) < 2 {
+		t.Fatalf("links = %d, want entitlement links", len(links))
+	}
+}
+
+func TestSailpointIdentitynowRoleAssignmentProjection(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.role_assigned_identities", map[string]string{
+		"role_id":       "role-1",
+		"role_name":     "Payroll Reviewer",
+		"subject_id":    "identity-1",
+		"subject_name":  "Jane Access",
+		"subject_email": "jane.access@example.test",
+		"subject_type":  "user",
+	})
+	entities, links, err := sailpointIdentitynowRoleAssignedIdentitiesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) < 2 {
+		t.Fatalf("entities = %d, want role and identity", len(entities))
 	}
 	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+		t.Fatal("expected assignment link")
 	}
 }
 
-func TestSailpointIdentitynowIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := sailpointIdentitynowUsersProjections(event)
+func TestSailpointIdentitynowCertificationReviewProjectionLinksAccess(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.certification_access_review_items", map[string]string{
+		"review_item_id":   "review-item-1",
+		"certification_id": "certification-1",
+		"identity_id":      "identity-1",
+		"identity_name":    "Jane Access",
+		"access_id":        "entitlement-1",
+		"access_name":      "Payroll Admin",
+		"access_type":      "ENTITLEMENT",
+		"decision":         "APPROVED",
+	})
+	entities, links, err := sailpointIdentitynowCertificationAccessReviewItemsProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected identity user")
+	if len(entities) < 4 {
+		t.Fatalf("entities = %d, want review item, certification, identity, and entitlement", len(entities))
+	}
+	if len(links) < 3 {
+		t.Fatalf("links = %d, want review context links", len(links))
 	}
 }
 
-func TestSailpointIdentitynowIdentityGroupProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.groups", Attributes: map[string]string{"group_id": "group-1", "group_email": "group@example.test", "group_name": "Group One"}}
-	entities, _, err := sailpointIdentitynowGroupsProjections(event)
+func TestSailpointIdentitynowPersonalAccessTokenProjection(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.personal_access_tokens", map[string]string{
+		"credential_id":   "pat-1",
+		"credential_name": "automation token",
+		"credential_type": "personal_access_token",
+		"subject_id":      "identity-1",
+		"subject_name":    "Jane Access",
+		"subject_type":    "user",
+		"status":          "ACTIVE",
+	})
+	entities, links, err := sailpointIdentitynowPersonalAccessTokensProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected identity group")
+	if len(entities) < 2 {
+		t.Fatalf("entities = %d, want identity and credential", len(entities))
+	}
+	if len(links) == 0 {
+		t.Fatal("expected credential assignment link")
 	}
 }
 
-func TestSailpointIdentitynowAuditProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := sailpointIdentitynowAuditEventsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
+func sailpointIdentitynowEvent(kind string, attrs map[string]string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         "event-1",
+		TenantId:   "tenant",
+		SourceId:   "sailpoint_identitynow",
+		Kind:       kind,
+		Attributes: attrs,
 	}
-	if len(entities) == 0 || len(links) == 0 {
-		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
+}
+
+func sailpointProjectionAttrs() map[string]string {
+	return map[string]string{
+		"access_id":           "entitlement-1",
+		"access_name":         "Payroll Admin",
+		"access_profile_id":   "access-profile-1",
+		"access_type":         "ENTITLEMENT",
+		"account_id":          "account-1",
+		"actor_id":            "identity-1",
+		"actor_name":          "Jane Access",
+		"campaign_id":         "campaign-1",
+		"certification_id":    "certification-1",
+		"credential_id":       "pat-1",
+		"credential_name":     "Automation token",
+		"credential_type":     "personal_access_token",
+		"decision":            "APPROVED",
+		"display_name":        "Jane Access",
+		"email":               "jane.access@example.test",
+		"entitlement_id":      "entitlement-1",
+		"entitlement_name":    "Payroll Admin",
+		"entitlement_value":   "payroll-admin",
+		"event_type":          "ACCESS_REQUEST_COMPLETED",
+		"group_id":            "workgroup-1",
+		"group_name":          "Access Reviewers",
+		"identity_id":         "identity-1",
+		"identity_name":       "Jane Access",
+		"identity_profile_id": "identity-profile-1",
+		"lifecycle_state_id":  "lifecycle-state-1",
+		"member_id":           "identity-1",
+		"member_name":         "Jane Access",
+		"native_identity":     "jane.access",
+		"owner_id":            "owner-1",
+		"owner_name":          "Control Owner",
+		"policy_id":           "policy-1",
+		"policy_name":         "Payroll Access",
+		"policy_type":         "role",
+		"resource_id":         "request-1",
+		"resource_name":       "Payroll Access",
+		"resource_type":       "access_request",
+		"review_item_id":      "review-item-1",
+		"role_id":             "role-1",
+		"role_name":           "Payroll Reviewer",
+		"schema_id":           "schema-1",
+		"schema_name":         "Account",
+		"segment_id":          "segment-1",
+		"source_id":           "source-1",
+		"source_name":         "Payroll",
+		"subject_email":       "jane.access@example.test",
+		"subject_id":          "identity-1",
+		"subject_name":        "Jane Access",
+		"subject_type":        "user",
+		"user_id":             "identity-1",
 	}
 }

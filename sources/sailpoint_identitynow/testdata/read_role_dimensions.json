@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sailpoint-role-dimensions-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.role_dimensions",
+    "schema_ref": "sailpoint_identitynow/role_dimensions/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c918086749d78830174a1a40e9999999",
+      "name": "US finance approvers",
+      "description": "US finance assignment dimension",
+      "parentId": "2c918086749d78830174a1a40e121518",
+      "created": "2026-05-04T09:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "owner": {
+        "type": "IDENTITY",
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      }
+    },
+    "attributes": {
+      "family": "role_dimensions",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "role_dimensions",
+      "record_class": "role_dimension",
+      "tenant_id": "tenant",
+      "role_id": "2c918086749d78830174a1a40e121518",
+      "dimension_id": "2c918086749d78830174a1a40e9999999",
+      "dimension_name": "US finance approvers",
+      "policy_id": "2c918086749d78830174a1a40e9999999",
+      "policy_name": "US finance approvers",
+      "policy_type": "role_dimension",
+      "parent_id": "2c918086749d78830174a1a40e121518",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c918086749d78830174a1a40e9999999",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_role_dimensions:2c918086749d78830174a1a40e9999999"
+    }
+  }
+]

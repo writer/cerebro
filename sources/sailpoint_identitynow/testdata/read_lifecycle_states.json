@@ -1,0 +1,45 @@
+[
+  {
+    "id": "sailpoint-lifecycle-states-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.lifecycle_states",
+    "schema_ref": "sailpoint_identitynow/lifecycle_states/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c918084660f45d6016617daa9210584",
+      "name": "Active employee",
+      "technicalName": "active",
+      "enabled": true,
+      "identityCount": 420,
+      "identityState": "ACTIVE",
+      "created": "2026-04-20T12:10:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "accessProfileIds": [
+        "2c91808a7190d06e01719938fcd20792"
+      ]
+    },
+    "attributes": {
+      "family": "lifecycle_states",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "lifecycle_states",
+      "record_class": "lifecycle_state",
+      "tenant_id": "tenant",
+      "identity_profile_id": "2c9180835d191a86015d28455b4b232a",
+      "lifecycle_state_id": "2c918084660f45d6016617daa9210584",
+      "lifecycle_state": "active",
+      "policy_id": "2c918084660f45d6016617daa9210584",
+      "policy_name": "Active employee",
+      "policy_type": "lifecycle_state",
+      "enabled": "true",
+      "identity_count": "420",
+      "identity_state": "ACTIVE",
+      "access_profile_ids": "2c91808a7190d06e01719938fcd20792",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c918084660f45d6016617daa9210584",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_lifecycle_states:2c918084660f45d6016617daa9210584"
+    }
+  }
+]

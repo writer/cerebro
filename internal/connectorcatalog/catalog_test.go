@@ -452,6 +452,64 @@ func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	}
 }
 
+func TestBuiltinCatalogSailPointIdentitySecurityCloudUsesV2025API(t *testing.T) {
+	entry, ok, err := BuiltinEntry("sailpoint_identitynow")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(sailpoint_identitynow) ok = false, want true")
+	}
+	definition := entry.Definition
+	if definition.DisplayName != "SailPoint Identity Security Cloud" {
+		t.Fatalf("display name = %q, want SailPoint Identity Security Cloud", definition.DisplayName)
+	}
+	if definition.Auth.Model != "oauth_client_credentials" || definition.Auth.TokenURL != "https://${config.tenant}.api.identitynow.com/oauth/token" {
+		t.Fatalf("auth = %#v, want tenant-scoped OAuth client credentials", definition.Auth)
+	}
+	if !hasString(definition.Auth.Scopes, "sp:scopes:all") {
+		t.Fatalf("scopes = %#v, want sp:scopes:all", definition.Auth.Scopes)
+	}
+	if definition.Transport == nil || definition.Transport.BaseURL != "https://${config.tenant}.api.identitynow.com/v2025" {
+		t.Fatalf("transport = %#v, want ISC v2025 base URL", definition.Transport)
+	}
+	if definition.Transport.Verification == nil || definition.Transport.Verification.Path != "/identities" {
+		t.Fatalf("verification = %#v, want /identities", definition.Transport.Verification)
+	}
+	if len(definition.ResourceFamilies) != 12 {
+		t.Fatalf("resource families = %d, want 12", len(definition.ResourceFamilies))
+	}
+	for _, test := range []struct {
+		familyID   string
+		path       string
+		projection string
+	}{
+		{"identities", "/identities", "identity_user"},
+		{"accounts", "/accounts", "asset"},
+		{"sources", "/sources", "asset"},
+		{"access_profiles", "/access-profiles", "policy"},
+		{"roles", "/roles", "policy"},
+		{"entitlements", "/entitlements", "policy"},
+		{"identity_profiles", "/identity-profiles", "policy"},
+		{"workgroups", "/workgroups", "identity_group"},
+		{"certifications", "/certifications", "policy"},
+		{"access_request_status", "/access-request-status", "audit_event"},
+		{"account_activities", "/account-activities", "audit_event"},
+		{"personal_access_tokens", "/personal-access-tokens", "secret"},
+	} {
+		family := catalogFamily(t, definition.ResourceFamilies, test.familyID)
+		if family.Path != test.path || family.RecordSelector != "$[*]" || family.IDField != "id" {
+			t.Fatalf("%s family = %#v, want path=%s selector=$[*] id_field=id", test.familyID, family, test.path)
+		}
+		if family.Pagination == nil || family.Pagination.Type != "offset" || family.Pagination.LimitParam != "limit" || family.Pagination.OffsetParam != "offset" {
+			t.Fatalf("%s pagination = %#v, want offset pagination", test.familyID, family.Pagination)
+		}
+		if family.Projection == nil || family.Projection.Template != test.projection {
+			t.Fatalf("%s projection = %#v, want %s", test.familyID, family.Projection, test.projection)
+		}
+	}
+}
+
 func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
 	entry, ok, err := BuiltinEntry("knowbe4")
 	if err != nil {

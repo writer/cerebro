@@ -9,46 +9,215 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/sailpointapi"
 )
 
-func TestSourceCheckAndRead(t *testing.T) {
+func TestSourceCheckAndReadUsesOAuthAndOffsetPaging(t *testing.T) {
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.allowLoopbackForTest()
+
+	var tokenRequests int
+	var offsets []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
+		if r.URL.Path == "/oauth/token" {
+			tokenRequests++
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if got := r.Form.Get("grant_type"); got != "client_credentials" {
+				t.Fatalf("grant_type = %q", got)
+			}
+			if got := r.Form.Get("client_id"); got != "client-1" {
+				t.Fatalf("client_id = %q", got)
+			}
+			if got := r.Form.Get("client_secret"); got != "secret-1" {
+				t.Fatalf("client_secret = %q", got)
+			}
+			if got := r.Form.Get("scope"); got != "sp:scopes:all" {
+				t.Fatalf("scope = %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":3600}`))
 			return
 		}
-		if r.URL.Path != "/v1/users" {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if r.URL.Path != "/v2025/identities" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
+		offsets = append(offsets, r.URL.Query().Get("offset"))
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		if r.URL.Query().Get("offset") == "1" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id":             "2c91808568c529c60168cca6f90c1001",
+			"name":           "Morgan Alvarez",
+			"emailAddress":   "morgan.alvarez@example.com",
+			"identityStatus": "ACTIVE",
+			"created":        "2026-05-01T10:00:00Z",
+			"modified":       "2026-06-15T16:20:00Z",
+			"attributes": map[string]any{
+				"department": "Engineering",
+				"title":      "Platform Engineer",
+			},
+		}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
-	cfg := sourcecdk.NewConfig(cfgValues)
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"tenant":        "acme",
+		"base_url":      server.URL + "/v2025",
+		"token_url":     server.URL + "/oauth/token",
+		"client_id":     "client-1",
+		"client_secret": "secret-1",
+		"family":        sailpointapi.FamilyIdentities,
+		"per_page":      "1",
+	})
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
-	pull, err := source.Read(context.Background(), cfg, nil)
+	first, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	if len(first.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(first.Events))
 	}
-	event := pull.Events[0]
-	if event.Kind != "sailpoint_identitynow.users" {
-		t.Fatalf("kind = %q", event.Kind)
+	if first.Events[0].Kind != "sailpoint_identitynow.identities" {
+		t.Fatalf("kind = %q", first.Events[0].Kind)
 	}
-	if strings.TrimSpace(event.Id) == "" {
-		t.Fatalf("event id is empty: %#v", event)
+	if got := first.Events[0].Attributes["email"]; got != "morgan.alvarez@example.com" {
+		t.Fatalf("email attribute = %q", got)
 	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "1" {
+		t.Fatalf("NextCursor = %#v, want offset 1", first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 0 || second.NextCursor != nil {
+		t.Fatalf("second page events/cursor = %d/%#v, want empty terminal page", len(second.Events), second.NextCursor)
+	}
+	if tokenRequests != 1 {
+		t.Fatalf("token requests = %d, want cached single exchange", tokenRequests)
+	}
+	if !containsString(offsets, "1") {
+		t.Fatalf("offsets = %v, want offset 1 request", offsets)
+	}
+}
+
+func TestSourceFanoutReadsRoleAssignedIdentities(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":3600}`))
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		switch r.URL.Path {
+		case "/v2025/roles/role-a/assigned-identities":
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "identity-a", "name": "Morgan Alvarez", "email": "morgan.alvarez@example.com"}})
+		case "/v2025/roles/role-b/assigned-identities":
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "identity-b", "name": "Riley Chen", "email": "riley.chen@example.com"}})
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"tenant":        "acme",
+		"base_url":      server.URL + "/v2025",
+		"token_url":     server.URL + "/oauth/token",
+		"client_id":     "client-1",
+		"client_secret": "secret-1",
+		"family":        sailpointapi.FamilyRoleAssignedIdentities,
+		"role_ids":      "role-a,role-b",
+		"per_page":      "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(first.Events))
+	}
+	if got := first.Events[0].Attributes["role_id"]; got != "role-a" {
+		t.Fatalf("role_id = %q, want role-a", got)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("expected fanout cursor for second role")
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("second events = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["role_id"]; got != "role-b" {
+		t.Fatalf("second role_id = %q, want role-b", got)
+	}
+}
+
+func TestSourceProviderUnavailableForMissingFanoutIDs(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  "https://acme.api.identitynow.com/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyRoleAssignedIdentities,
+	})
+	if _, err := source.Read(context.Background(), cfg, nil); err == nil || !strings.Contains(err.Error(), "role_id values are required") {
+		t.Fatalf("Read() error = %v, want missing role_id values error", err)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	fixture, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range sailpointapi.FamilyNames() {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"tenant_id": "tenant",
+			"family":    family,
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          fixture,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+		MaxPages:        2,
+	})
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

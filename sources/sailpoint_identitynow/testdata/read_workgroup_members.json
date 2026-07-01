@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sailpoint-workgroup-members-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.workgroup_members",
+    "schema_ref": "sailpoint_identitynow/workgroup_members/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808568c529c60168cca6f90c1001",
+      "type": "IDENTITY",
+      "name": "Morgan Alvarez",
+      "email": "morgan.alvarez@example.com"
+    },
+    "attributes": {
+      "family": "workgroup_members",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "workgroup_members",
+      "record_class": "governance_group_member",
+      "tenant_id": "tenant",
+      "group_id": "2c91808568c529c60168cca6f90c1313",
+      "member_id": "2c91808568c529c60168cca6f90c1001",
+      "member_name": "Morgan Alvarez",
+      "member_email": "morgan.alvarez@example.com",
+      "member_type": "IDENTITY",
+      "user_id": "2c91808568c529c60168cca6f90c1001",
+      "email": "morgan.alvarez@example.com",
+      "subject_id": "2c91808568c529c60168cca6f90c1001",
+      "subject_email": "morgan.alvarez@example.com",
+      "subject_type": "user",
+      "external_id": "2c91808568c529c60168cca6f90c1001",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_workgroup_members:2c91808568c529c60168cca6f90c1001",
+      "workgroup_id": "2c91808568c529c60168cca6f90c1313"
+    }
+  }
+]

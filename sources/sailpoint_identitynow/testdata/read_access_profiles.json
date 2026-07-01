@@ -1,0 +1,51 @@
+[
+  {
+    "id": "sailpoint-access-profiles-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.access_profiles",
+    "schema_ref": "sailpoint_identitynow/access_profiles/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808a7190d06e01719938fcd20792",
+      "name": "Payroll database read write",
+      "description": "Payroll database read and write access",
+      "enabled": true,
+      "requestable": true,
+      "created": "2026-05-03T10:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "source": {
+        "type": "SOURCE",
+        "id": "2c91808568c529c60168cca6f90c1324",
+        "name": "Corporate Active Directory"
+      },
+      "owner": {
+        "type": "IDENTITY",
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      }
+    },
+    "attributes": {
+      "family": "access_profiles",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "access_profiles",
+      "record_class": "access_profile",
+      "tenant_id": "tenant",
+      "access_profile_id": "2c91808a7190d06e01719938fcd20792",
+      "access_profile_name": "Payroll database read write",
+      "policy_id": "2c91808a7190d06e01719938fcd20792",
+      "policy_name": "Payroll database read write",
+      "policy_type": "access_profile",
+      "policy_status": "true",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "owner_id": "2c91808568c529c60168cca6f90c1002",
+      "enabled": "true",
+      "requestable": "true",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c91808a7190d06e01719938fcd20792",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_access_profiles:2c91808a7190d06e01719938fcd20792"
+    }
+  }
+]

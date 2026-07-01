@@ -1,15 +1,147 @@
 sourceId: sailpoint_identitynow
 secretKeys:
-  - SAILPOINT_IDENTITYNOW_BASE_URL
-  - SAILPOINT_IDENTITYNOW_TOKEN
+  - SAILPOINT_IDENTITYNOW_TENANT
+  - SAILPOINT_IDENTITYNOW_CLIENT_ID
+  - SAILPOINT_IDENTITYNOW_CLIENT_SECRET
+  - SAILPOINT_IDENTITYNOW_ACCOUNT_IDS
+  - SAILPOINT_IDENTITYNOW_SOURCE_IDS
+  - SAILPOINT_IDENTITYNOW_ACCESS_PROFILE_IDS
+  - SAILPOINT_IDENTITYNOW_ROLE_IDS
+  - SAILPOINT_IDENTITYNOW_IDENTITY_IDS
+  - SAILPOINT_IDENTITYNOW_IDENTITY_PROFILE_IDS
+  - SAILPOINT_IDENTITYNOW_WORKGROUP_IDS
+  - SAILPOINT_IDENTITYNOW_CERTIFICATION_IDS
 runtimes:
-  - localId: users
-    config:
-      base_url: env:SAILPOINT_IDENTITYNOW_BASE_URL
-      family: users
+  - localId: identities
+    config: &base
+      tenant: env:SAILPOINT_IDENTITYNOW_TENANT
+      client_id: env:SAILPOINT_IDENTITYNOW_CLIENT_ID
+      client_secret: env:SAILPOINT_IDENTITYNOW_CLIENT_SECRET
+      family: identities
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /identities
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
-      per_page: "100"
-      token: env:SAILPOINT_IDENTITYNOW_TOKEN
+      per_page: "50"
+  - localId: accounts
+    config:
+      <<: *base
+      family: accounts
+  - localId: account-entitlements
+    config:
+      <<: *base
+      family: account_entitlements
+      account_ids: env:SAILPOINT_IDENTITYNOW_ACCOUNT_IDS
+  - localId: sources
+    config:
+      <<: *base
+      family: sources
+  - localId: source-schemas
+    config:
+      <<: *base
+      family: source_schemas
+      source_ids: env:SAILPOINT_IDENTITYNOW_SOURCE_IDS
+  - localId: source-health
+    config:
+      <<: *base
+      family: source_health
+      source_ids: env:SAILPOINT_IDENTITYNOW_SOURCE_IDS
+  - localId: source-provisioning-policies
+    config:
+      <<: *base
+      family: source_provisioning_policies
+      source_ids: env:SAILPOINT_IDENTITYNOW_SOURCE_IDS
+  - localId: source-schedules
+    config:
+      <<: *base
+      family: source_schedules
+      source_ids: env:SAILPOINT_IDENTITYNOW_SOURCE_IDS
+  - localId: access-profiles
+    config:
+      <<: *base
+      family: access_profiles
+  - localId: access-profile-entitlements
+    config:
+      <<: *base
+      family: access_profile_entitlements
+      access_profile_ids: env:SAILPOINT_IDENTITYNOW_ACCESS_PROFILE_IDS
+  - localId: roles
+    config:
+      <<: *base
+      family: roles
+  - localId: role-assigned-identities
+    config:
+      <<: *base
+      family: role_assigned_identities
+      role_ids: env:SAILPOINT_IDENTITYNOW_ROLE_IDS
+  - localId: role-entitlements
+    config:
+      <<: *base
+      family: role_entitlements
+      role_ids: env:SAILPOINT_IDENTITYNOW_ROLE_IDS
+  - localId: role-dimensions
+    config:
+      <<: *base
+      family: role_dimensions
+      role_ids: env:SAILPOINT_IDENTITYNOW_ROLE_IDS
+  - localId: entitlements
+    config:
+      <<: *base
+      family: entitlements
+  - localId: identity-entitlements
+    config:
+      <<: *base
+      family: identity_entitlements
+      identity_ids: env:SAILPOINT_IDENTITYNOW_IDENTITY_IDS
+  - localId: identity-role-assignments
+    config:
+      <<: *base
+      family: identity_role_assignments
+      identity_ids: env:SAILPOINT_IDENTITYNOW_IDENTITY_IDS
+  - localId: identity-profiles
+    config:
+      <<: *base
+      family: identity_profiles
+  - localId: lifecycle-states
+    config:
+      <<: *base
+      family: lifecycle_states
+      identity_profile_ids: env:SAILPOINT_IDENTITYNOW_IDENTITY_PROFILE_IDS
+  - localId: workgroups
+    config:
+      <<: *base
+      family: workgroups
+  - localId: workgroup-members
+    config:
+      <<: *base
+      family: workgroup_members
+      workgroup_ids: env:SAILPOINT_IDENTITYNOW_WORKGROUP_IDS
+  - localId: campaigns
+    config:
+      <<: *base
+      family: campaigns
+  - localId: certifications
+    config:
+      <<: *base
+      family: certifications
+  - localId: certification-access-review-items
+    config:
+      <<: *base
+      family: certification_access_review_items
+      certification_ids: env:SAILPOINT_IDENTITYNOW_CERTIFICATION_IDS
+  - localId: access-request-status
+    config:
+      <<: *base
+      family: access_request_status
+  - localId: account-activities
+    config:
+      <<: *base
+      family: account_activities
+  - localId: personal-access-tokens
+    config:
+      <<: *base
+      family: personal_access_tokens
+  - localId: segments
+    config:
+      <<: *base
+      family: segments

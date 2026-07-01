@@ -1,0 +1,48 @@
+[
+  {
+    "id": "sailpoint-identity-profiles-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.identity_profiles",
+    "schema_ref": "sailpoint_identitynow/identity_profiles/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c9180835d191a86015d28455b4b232a",
+      "name": "Employee profile",
+      "description": "Identity profile for employees",
+      "priority": 10,
+      "identityCount": 438,
+      "created": "2026-04-20T12:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "owner": {
+        "type": "IDENTITY",
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      },
+      "authoritativeSource": {
+        "type": "SOURCE",
+        "id": "2c91808568c529c60168cca6f90c1324",
+        "name": "Corporate Active Directory"
+      }
+    },
+    "attributes": {
+      "family": "identity_profiles",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "identity_profiles",
+      "record_class": "identity_profile",
+      "tenant_id": "tenant",
+      "identity_profile_id": "2c9180835d191a86015d28455b4b232a",
+      "identity_profile_name": "Employee profile",
+      "policy_id": "2c9180835d191a86015d28455b4b232a",
+      "policy_name": "Employee profile",
+      "policy_type": "identity_profile",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "identity_count": "438",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c9180835d191a86015d28455b4b232a",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_identity_profiles:2c9180835d191a86015d28455b4b232a"
+    }
+  }
+]

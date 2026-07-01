@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sailpoint-role-entitlements-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.role_entitlements",
+    "schema_ref": "sailpoint_identitynow/role_entitlements/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808874ff91550175097daaec161c",
+      "name": "PayrollControls",
+      "attribute": "memberOf",
+      "value": "CN=PayrollControls,OU=Groups,DC=example,DC=com",
+      "privileged": true,
+      "created": "2026-05-02T10:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "source": {
+        "type": "SOURCE",
+        "id": "2c91808568c529c60168cca6f90c1324",
+        "name": "Corporate Active Directory"
+      }
+    },
+    "attributes": {
+      "family": "role_entitlements",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "role_entitlements",
+      "record_class": "role_entitlement",
+      "tenant_id": "tenant",
+      "role_id": "2c918086749d78830174a1a40e121518",
+      "role_name": "Finance approver",
+      "entitlement_id": "2c91808874ff91550175097daaec161c",
+      "entitlement_name": "PayrollControls",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "privileged": "true",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c91808874ff91550175097daaec161c",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_role_entitlements:2c91808874ff91550175097daaec161c"
+    }
+  }
+]

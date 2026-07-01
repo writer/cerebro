@@ -1,0 +1,43 @@
+[
+  {
+    "id": "sailpoint-access-profile-entitlements-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.access_profile_entitlements",
+    "schema_ref": "sailpoint_identitynow/access_profile_entitlements/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808874ff91550175097daaec161c",
+      "name": "PayrollControls",
+      "attribute": "memberOf",
+      "value": "CN=PayrollControls,OU=Groups,DC=example,DC=com",
+      "privileged": true,
+      "requestable": false,
+      "created": "2026-05-02T10:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "source": {
+        "type": "SOURCE",
+        "id": "2c91808568c529c60168cca6f90c1324",
+        "name": "Corporate Active Directory"
+      }
+    },
+    "attributes": {
+      "family": "access_profile_entitlements",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "access_profile_entitlements",
+      "record_class": "access_profile_entitlement",
+      "tenant_id": "tenant",
+      "access_profile_id": "2c91808a7190d06e01719938fcd20792",
+      "entitlement_id": "2c91808874ff91550175097daaec161c",
+      "entitlement_name": "PayrollControls",
+      "entitlement_value": "CN=PayrollControls,OU=Groups,DC=example,DC=com",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "privileged": "true",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c91808874ff91550175097daaec161c",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_access_profile_entitlements:2c91808874ff91550175097daaec161c"
+    }
+  }
+]

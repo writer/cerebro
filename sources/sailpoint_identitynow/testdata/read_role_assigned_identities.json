@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sailpoint-role-assigned-identities-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.role_assigned_identities",
+    "schema_ref": "sailpoint_identitynow/role_assigned_identities/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808568c529c60168cca6f90c1001",
+      "name": "Morgan Alvarez",
+      "aliasName": "malvarez",
+      "email": "morgan.alvarez@example.com",
+      "roleAssignmentSource": "DIRECT"
+    },
+    "attributes": {
+      "family": "role_assigned_identities",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "role_assigned_identities",
+      "record_class": "role_assignment",
+      "tenant_id": "tenant",
+      "role_id": "2c918086749d78830174a1a40e121518",
+      "role_name": "Finance approver",
+      "subject_id": "2c91808568c529c60168cca6f90c1001",
+      "subject_name": "Morgan Alvarez",
+      "subject_email": "morgan.alvarez@example.com",
+      "subject_type": "user",
+      "user_id": "2c91808568c529c60168cca6f90c1001",
+      "email": "morgan.alvarez@example.com",
+      "assignment_source": "DIRECT",
+      "external_id": "2c91808568c529c60168cca6f90c1001",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_role_assigned_identities:2c91808568c529c60168cca6f90c1001"
+    }
+  }
+]

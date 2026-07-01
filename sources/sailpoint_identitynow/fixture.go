@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/sailpointapi"
 )
 
 //go:embed testdata/*.json
@@ -25,7 +26,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{"applications", "audit_events", "groups", "roles", "users"} {
+	for _, family := range sailpointapi.FamilyNames() {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err

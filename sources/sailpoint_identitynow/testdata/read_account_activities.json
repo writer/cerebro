@@ -1,0 +1,51 @@
+[
+  {
+    "id": "sailpoint-account-activities-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.account_activities",
+    "schema_ref": "sailpoint_identitynow/account_activities/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c9180835d2e5168015d32f890ca2999",
+      "name": "Provision PayrollControls",
+      "type": "appRequest",
+      "created": "2026-06-12T12:35:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "completed": "2026-06-12T12:40:00Z",
+      "completionStatus": "SUCCESS",
+      "executionStatus": "COMPLETE",
+      "requesterIdentitySummary": {
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      },
+      "targetIdentitySummary": {
+        "id": "2c91808568c529c60168cca6f90c1001",
+        "name": "Morgan Alvarez"
+      }
+    },
+    "attributes": {
+      "family": "account_activities",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "account_activities",
+      "record_class": "account_activity",
+      "tenant_id": "tenant",
+      "activity_id": "2c9180835d2e5168015d32f890ca2999",
+      "activity_name": "Provision PayrollControls",
+      "activity_type": "appRequest",
+      "status": "COMPLETE",
+      "completed": "2026-06-12T12:40:00Z",
+      "actor_id": "2c91808568c529c60168cca6f90c1002",
+      "actor_name": "Riley Chen",
+      "resource_id": "2c91808568c529c60168cca6f90c1001",
+      "resource_name": "Morgan Alvarez",
+      "resource_type": "identity",
+      "event_type": "appRequest",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c9180835d2e5168015d32f890ca2999",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_account_activities:2c9180835d2e5168015d32f890ca2999"
+    }
+  }
+]

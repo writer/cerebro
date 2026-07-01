@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sailpoint-campaigns-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.campaigns",
+    "schema_ref": "sailpoint_identitynow/campaigns/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c9079b270a266a60170a2779fcb0007",
+      "name": "Q2 privileged access review",
+      "description": "Quarterly review of privileged access",
+      "type": "MANAGER",
+      "status": "ACTIVE",
+      "deadline": "2026-07-15T00:00:00Z",
+      "created": "2026-06-01T14:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "totalCertifications": 18,
+      "completedCertifications": 4
+    },
+    "attributes": {
+      "family": "campaigns",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "campaigns",
+      "record_class": "certification_campaign",
+      "tenant_id": "tenant",
+      "campaign_id": "2c9079b270a266a60170a2779fcb0007",
+      "campaign_name": "Q2 privileged access review",
+      "policy_id": "2c9079b270a266a60170a2779fcb0007",
+      "policy_name": "Q2 privileged access review",
+      "policy_type": "certification_campaign",
+      "campaign_type": "MANAGER",
+      "status": "ACTIVE",
+      "deadline": "2026-07-15T00:00:00Z",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c9079b270a266a60170a2779fcb0007",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_campaigns:2c9079b270a266a60170a2779fcb0007"
+    }
+  }
+]
