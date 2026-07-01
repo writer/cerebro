@@ -93,6 +93,16 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if got := event.Attributes[tc.wantAttr]; strings.TrimSpace(got) == "" {
 				t.Fatalf("%s is empty: %#v", tc.wantAttr, event.Attributes)
 			}
+			wantResourceTypes := map[string]string{
+				familyAchTransfer:     "ach_transfer",
+				familyCard:            "card",
+				familyOauthConnection: "oauth_connection",
+			}
+			if want := wantResourceTypes[tc.family]; want != "" {
+				if got := event.Attributes["resource_type"]; got != want {
+					t.Fatalf("resource_type = %q, want %q", got, want)
+				}
+			}
 			if tc.family == familyAchPrenotification {
 				if got := event.Attributes["alert_name"]; got != "Account Funding" {
 					t.Fatalf("alert_name = %q, want Account Funding", got)
