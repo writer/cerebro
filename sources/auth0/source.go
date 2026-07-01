@@ -4,38 +4,16 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/sources/internal/auth0api"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
-
-const (
-	sourceID                   = "auth0"
-	defaultFamily              = familyUsers
-	defaultHealthPath          = "/users"
-	defaultBaseURLTemplate     = "https://${config.domain}/api/v2"
-	tokenScheme                = "Bearer"
-	oauthTokenURLTemplate      = "https://${config.domain}/oauth/token" // #nosec G101 -- token endpoint URL template, not credential material.
-	oauthScopeSeparator        = " "
-	oauthTokenExpirationBuffer = 60 * time.Second
-	familyUsers                = "users"
-	familyRoles                = "roles"
-	familyAuditEvents          = "audit_events"
-)
-
-var templateKeys = []string{"domain", "client_id", "client_secret"}
-
-var oauthScopes = []string{"read:logs", "read:roles", "read:users"}
-
-var oauthTokenParams = map[string]string{"audience": "https://${config.domain}/api/v2/"}
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -49,49 +27,11 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
+		SourceID:        auth0api.SourceID,
+		DefaultFamily:   auth0api.DefaultFamily,
 		RequireTenantID: true,
-		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
-			{
-				Name:                 familyUsers,
-				Path:                 "/users",
-				URNKind:              "runtime_users",
-				IDKeys:               []string{"user_id", "name", "id", "email", "primary_email", "login"},
-				PageSizeParams:       []string{"per_page"},
-				TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|user_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|user_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes:     map[string]string{"record_class": "identity_user", "resource_type": "identity_user", "schema": "users", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_users"},
-				IncrementalWatermark: true,
-			},
-			{
-				Name:                 familyRoles,
-				Path:                 "/roles",
-				URNKind:              "runtime_roles",
-				IDKeys:               []string{"id", "name", "group_id", "group_email", "email"},
-				PageSizeParams:       []string{"per_page"},
-				TimestampKeys:        []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes:     map[string]string{"record_class": "identity_group", "resource_type": "role", "schema": "roles", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_roles"},
-				IncrementalWatermark: true,
-			},
-			{
-				Name:                 familyAuditEvents,
-				Path:                 "/logs",
-				URNKind:              "runtime_audit_events",
-				IDKeys:               []string{"log_id", "event_id", "id", "uuid", "request_id"},
-				CursorParam:          "from",
-				PageSizeParams:       []string{"take"},
-				TimestampKeys:        []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:           map[string]string{"actor_email": "actor_email|actor.email|email|user.email|user_name", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name|user_name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at|date", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id|client_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name|client_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|log_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes:     map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": "auth0"},
-				Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
-				IncrementalWatermark: true,
-			},
-		},
+		TokenScheme:     auth0api.TokenScheme,
+		Families:        auth0api.Families(),
 	})
 	if err != nil {
 		return nil, err
@@ -111,6 +51,14 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		if len(values) > 0 {
+			if err := s.checkHealth(ctx, auth0ConfigWithValue(runtimeCfg, param, values[0])); err != nil {
+				return err
+			}
+		}
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
 	}
@@ -122,6 +70,9 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
+	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	return s.inner.Discover(ctx, runtimeCfg)
 }
 
@@ -129,6 +80,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
 		return sourcecdk.Pull{}, err
+	}
+	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.ReadPathParamValues(ctx, runtimeCfg, cursor, param, values)
 	}
 	return s.inner.Read(ctx, runtimeCfg, cursor)
 }
@@ -138,95 +92,35 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
+	if param, values := auth0api.PathParamValues(runtimeCfg, sourcecdk.ConfigValue(runtimeCfg, "family")); param != "" {
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
+	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
 
 func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	values := cfg.Values()
-	if err := validateAuth0Domain(sourcecdk.ConfigValue(cfg, "domain")); err != nil {
-		return sourcecdk.Config{}, err
-	}
-	if strings.TrimSpace(values["base_url"]) == "" && strings.TrimSpace(defaultBaseURLTemplate) != "" {
-		baseURL, err := sourcecdk.RenderConfigTemplate(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
-		if err != nil {
-			return sourcecdk.Config{}, err
-		}
-		values["base_url"] = baseURL
-	}
 	if s == nil {
-		return sourcecdk.Config{}, fmt.Errorf("%s source is required", sourceID)
+		return sourcecdk.Config{}, fmt.Errorf("%s source is required", auth0api.SourceID)
 	}
-	token, err := s.tokenCache.Token(ctx, cfg, sourcehttp.ClientCredentialsOptions{
-		SourceID:         sourceID,
-		TokenURLTemplate: oauthTokenURLTemplate,
-		TemplateKeys:     templateKeys,
-		Scopes:           oauthScopes,
-		ScopeSeparator:   oauthScopeSeparator,
-		TokenParams:      oauthTokenParams,
-		ExpirationBuffer: oauthTokenExpirationBuffer,
-		AllowLoopback:    s.allowLoopback,
-	})
-	if err != nil {
-		return sourcecdk.Config{}, err
-	}
-	values["token"] = token
-	return sourcecdk.NewConfig(values), nil
-}
-
-func validateAuth0Domain(value string) error {
-	domain := strings.ToLower(strings.TrimSpace(value))
-	if domain == "" {
-		return fmt.Errorf("%w: %s domain is required", sourcecdk.ErrInvalidConfig, sourceID)
-	}
-	if strings.Contains(domain, "://") || strings.ContainsAny(domain, "/?#@") || strings.Contains(domain, ":") {
-		return fmt.Errorf("%w: %s domain must be a bare Auth0 hostname", sourcecdk.ErrInvalidConfig, sourceID)
-	}
-	if !strings.HasSuffix(domain, ".auth0.com") {
-		return fmt.Errorf("%w: %s domain must be an Auth0 hostname", sourcecdk.ErrInvalidConfig, sourceID)
-	}
-	return nil
+	return auth0api.RuntimeConfig(ctx, cfg, &s.tokenCache, s.allowLoopback)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	baseURL, _, err := sourcehttp.NormalizeBaseURL(sourceID, sourcecdk.ConfigValue(cfg, "base_url"), s != nil && s.allowLoopback)
-	if err != nil {
-		return err
+	path := sourcecdk.ConfigValue(cfg, "health_path")
+	if path == "" {
+		path = auth0api.DefaultHealthPath
 	}
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	path, err = sourcehttp.NormalizeRequestPath(sourceID, path)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
-	if err != nil {
-		return fmt.Errorf("build %s health request: %w", sourceID, err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if token := strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "token"), sourcecdk.ConfigValue(cfg, "api_token"))); token != "" {
-		req.Header.Set("Authorization", tokenScheme+" "+token)
-	}
-	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: sourceID, AllowLoopback: s != nil && s.allowLoopback, Timeout: 10 * time.Second})
-	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("%s health endpoint %s returned HTTP %d", sourceID, path, resp.StatusCode)
-	}
-	return nil
+	return s.inner.CheckPath(ctx, cfg, path, nil)
+}
+
+func auth0ConfigWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.Config {
+	values := cfg.Values()
+	values[key] = value
+	return sourcecdk.NewConfig(values)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func (s *Source) allowLoopbackForTest() {

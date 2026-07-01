@@ -69,6 +69,7 @@ const (
 	connectorReadinessStageCatalogReady        = "catalog_ready"
 	connectorReadinessStageAuthExtensionNeeded = "auth_extension_required"
 	connectorReadinessStageRuntimeNeeded       = "runtime_required"
+	connectorReadinessStageRuntimeBacked       = "runtime_backed"
 	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
 )
 
@@ -1743,7 +1744,7 @@ func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
 		return schema, true
 	}
 	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
-	if err != nil || !ok || !entry.Generateable || entry.Status != connectorcatalog.StatusGenerateable {
+	if err != nil || !ok || !sourceregistry.EntryRuntimeExecutable(entry) {
 		return connectorSchema{}, false
 	}
 	return connectorSchemaFromDefinition(entry.Definition), true
@@ -1852,7 +1853,7 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	entry.CatalogStatus = catalogEntry.Status
 	entry.ClassifierOutput = catalogEntry.ClassifierOutput
 	entry.AuthModel = catalogEntry.Definition.Auth.Model
-	entry.RuntimeExecutable = catalogEntry.Generateable
+	entry.RuntimeExecutable = sourceregistry.EntryRuntimeExecutable(catalogEntry)
 	entry.ValidationGrade = string(connectorvalidation.BuiltinValidationForSource(catalogEntry.Definition.SourceID).Grade)
 	entry.Cataloged = true
 	entry.CatalogSchemaVersion = catalogEntry.Definition.SchemaVersion
@@ -2007,6 +2008,8 @@ func connectorReadinessStage(entry connectorCatalogEntry) string {
 		return connectorReadinessStageSetupEnabled
 	case entry.AccessStatus == connectorAccessRestricted:
 		return connectorReadinessStageAPIRestricted
+	case entry.RuntimeExecutable && entry.CatalogStatus == connectorcatalog.StatusNeedsBespokeRuntime:
+		return connectorReadinessStageRuntimeBacked
 	case entry.CatalogStatus == connectorcatalog.StatusGenerateable:
 		return connectorReadinessStageSourcegenReady
 	case entry.CatalogStatus == connectorcatalog.StatusNeedsAuthExtension:

@@ -10,6 +10,7 @@ import (
 )
 
 const wantBuiltinCatalogEntries = 794
+const wantBuiltinCatalogBespokeRuntimeEntries = 1
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
@@ -112,7 +113,7 @@ entries:
 	}
 	for _, want := range []string{
 		"verification endpoint is required",
-		"definition must include 2-12 high-value resource families",
+		"definition must include at least 2 resource families and at most 12 high-value resource families",
 		`resource family "users" must declare coverage dimensions`,
 		"at least one high-value coverage dimension is required",
 	} {
@@ -135,6 +136,24 @@ func TestAnalyzeDirRequiresExplicitHighValueCoverageMetadata(t *testing.T) {
 	}
 	if !issuesContain(analysis.Issues, `high-value coverage dimension "users_entity_family" must declare control domains`) {
 		t.Fatalf("issues = %#v, want missing control domains issue", analysis.Issues)
+	}
+}
+
+func TestAnalyzeDirCountsHighValueFamiliesOnce(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, strings.ReplaceAll(minimalDefinitionYAML(),
+		"- {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}",
+		"- {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}\n            - {type: permission_state, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [access_control]}"))
+
+	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if len(analysis.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", analysis.Issues)
+	}
+	if got := analysis.Entries[0].Status; got != StatusGenerateable {
+		t.Fatalf("status = %q, want %q", got, StatusGenerateable)
 	}
 }
 
@@ -173,14 +192,14 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 	if len(analysis.Entries) != wantBuiltinCatalogEntries {
 		t.Fatalf("entries len = %d, want %d", len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.Generateable != wantBuiltinCatalogEntries {
-		t.Fatalf("summary = %#v, want all entries generateable", analysis.Summary)
+	if analysis.Summary.Generateable != wantBuiltinCatalogEntries-wantBuiltinCatalogBespokeRuntimeEntries {
+		t.Fatalf("summary = %#v, want non-bespoke entries generateable", analysis.Summary)
 	}
 	if analysis.Summary.NeedsAuthExtension != 0 {
 		t.Fatalf("summary = %#v, want no auth-extension entries", analysis.Summary)
 	}
-	if analysis.Summary.NeedsBespokeRuntime != 0 {
-		t.Fatalf("summary = %#v, want no bespoke-runtime entries", analysis.Summary)
+	if analysis.Summary.NeedsBespokeRuntime != wantBuiltinCatalogBespokeRuntimeEntries {
+		t.Fatalf("summary = %#v, want one bespoke-runtime entry", analysis.Summary)
 	}
 	counted := analysis.Summary.CatalogReady + analysis.Summary.Generateable + analysis.Summary.NeedsAuthExtension + analysis.Summary.NeedsBespokeRuntime
 	if counted != analysis.Summary.Total {
@@ -270,12 +289,16 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	if analysis.Summary.Total != wantBuiltinCatalogEntries || len(analysis.Entries) != wantBuiltinCatalogEntries {
 		t.Fatalf("runtime catalog size = total %d entries %d, want %d", analysis.Summary.Total, len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
-	if analysis.Summary.CatalogReady != wantBuiltinCatalogEntries || analysis.Summary.Generateable != 0 {
-		t.Fatalf("runtime summary = %#v, want catalog-ready entries without sourcegen dry-run", analysis.Summary)
+	if analysis.Summary.CatalogReady != wantBuiltinCatalogEntries-wantBuiltinCatalogBespokeRuntimeEntries || analysis.Summary.Generateable != 0 || analysis.Summary.NeedsBespokeRuntime != wantBuiltinCatalogBespokeRuntimeEntries {
+		t.Fatalf("runtime summary = %#v, want catalog-ready supported entries and one bespoke runtime entry", analysis.Summary)
 	}
 	for _, entry := range analysis.Entries {
-		if entry.SourcegenDryRun || entry.Generateable || entry.Status != StatusCatalogReady {
-			t.Fatalf("entry %s status=%q sourcegen=%v generateable=%v, want runtime catalog-ready only", entry.Definition.SourceID, entry.Status, entry.SourcegenDryRun, entry.Generateable)
+		wantStatus := StatusCatalogReady
+		if entry.Definition.SourceID == "auth0" {
+			wantStatus = StatusNeedsBespokeRuntime
+		}
+		if entry.SourcegenDryRun || entry.Generateable || entry.Status != wantStatus {
+			t.Fatalf("entry %s status=%q sourcegen=%v generateable=%v, want %s without dry-run", entry.Definition.SourceID, entry.Status, entry.SourcegenDryRun, entry.Generateable, wantStatus)
 		}
 	}
 }
@@ -311,12 +334,49 @@ func TestBuiltinCatalogAuth0UsesManagementAPIShape(t *testing.T) {
 	if got := definition.Auth.TokenParams["audience"]; got != "https://${config.domain}/api/v2/" {
 		t.Fatalf("auth0 audience token param = %q", got)
 	}
-	if len(definition.ConfigFields) != 1 || definition.ConfigFields[0].Key != "domain" || !definition.ConfigFields[0].Required {
+	if entry.Status != StatusNeedsBespokeRuntime {
+		t.Fatalf("auth0 status = %q, want %q", entry.Status, StatusNeedsBespokeRuntime)
+	}
+	configFields := map[string]connectordefinitions.Field{}
+	for _, field := range definition.ConfigFields {
+		configFields[field.Key] = field
+	}
+	if !configFields["domain"].Required {
 		t.Fatalf("auth0 config fields = %#v, want required domain", definition.ConfigFields)
+	}
+	for _, key := range []string{"organization_ids", "user_ids"} {
+		if _, ok := configFields[key]; !ok {
+			t.Fatalf("auth0 config fields = %#v, want %s fanout config", definition.ConfigFields, key)
+		}
+	}
+	if len(definition.ResourceFamilies) != 13 {
+		t.Fatalf("auth0 resource families = %d, want 13", len(definition.ResourceFamilies))
 	}
 	assertCatalogFamily(t, definition.ResourceFamilies, "users", "/users", "user_id")
 	assertCatalogFamily(t, definition.ResourceFamilies, "roles", "/roles", "id")
 	assertCatalogFamily(t, definition.ResourceFamilies, "audit_events", "/logs", "log_id")
+	assertCatalogFamilyPath(t, definition.ResourceFamilies, "organizations", "/organizations", "id")
+	assertCatalogFamilyPath(t, definition.ResourceFamilies, "clients", "/clients", "client_id")
+	assertCatalogFamilyPath(t, definition.ResourceFamilies, "resource_servers", "/resource-servers", "id")
+	familiesByID := map[string]connectordefinitions.ResourceFamily{}
+	for _, family := range definition.ResourceFamilies {
+		familiesByID[family.ID] = family
+	}
+	for _, familyID := range []string{"users", "roles", "organizations", "organization_members", "clients", "connections", "resource_servers", "client_grants", "grants", "user_roles", "user_authentication_methods", "audit_events", "guardian_factors"} {
+		family, ok := familiesByID[familyID]
+		if !ok {
+			t.Fatalf("auth0 family %s not found", familyID)
+		}
+		if family.RecordSelector != "$[*]" || family.ListKey != "" {
+			t.Fatalf("auth0 %s selector/list_key = %q/%q, want bare array selector without list key", familyID, family.RecordSelector, family.ListKey)
+		}
+	}
+	for _, familyID := range []string{"organizations", "organization_members", "connections", "client_grants"} {
+		family := familiesByID[familyID]
+		if family.Pagination == nil || family.Pagination.Type != "page" || family.Pagination.PageParam != "page" || family.Pagination.PageSizeParam != "per_page" || family.Pagination.StartPage != 0 {
+			t.Fatalf("auth0 %s pagination = %#v, want page/per_page starting at 0", familyID, family.Pagination)
+		}
+	}
 }
 
 func TestBuiltinCatalogKnowBe4SecurityAwarenessShape(t *testing.T) {
@@ -408,6 +468,20 @@ func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceF
 		}
 		if family.Path != path || family.RecordSelector != "$[*]" || family.IDField != idField {
 			t.Fatalf("family %s = %#v, want path=%s selector=$[*] id_field=%s", id, family, path, idField)
+		}
+		return
+	}
+	t.Fatalf("family %s not found in %#v", id, families)
+}
+
+func assertCatalogFamilyPath(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
+	t.Helper()
+	for _, family := range families {
+		if family.ID != id {
+			continue
+		}
+		if family.Path != path || family.IDField != idField {
+			t.Fatalf("family %s = %#v, want path=%s id_field=%s", id, family, path, idField)
 		}
 		return
 	}

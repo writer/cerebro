@@ -32,6 +32,8 @@ type record struct {
 	Identity string
 }
 
+const responseCursorDone = "__jsonapi_response_cursor_done__"
+
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
 	query := url.Values{}
 	for key, value := range family.Config.StaticQuery {
@@ -72,11 +74,18 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if err != nil {
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 	}
-	if next == "" {
+	responseDone := next == responseCursorDone
+	if responseDone {
+		next = ""
+	}
+	if next == "" && !responseDone {
+		next = cursorFromLastItem(family, items, pageSize)
+	}
+	if next == "" && !responseDone {
 		next = linkHeaderCursor(family, headers)
 		responseCursorKnown = responseCursorKnown || next != ""
 	}
-	if !responseCursorKnown || !family.Config.OffsetCursor {
+	if !responseDone && (!responseCursorKnown || !family.Config.OffsetCursor) {
 		next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	}
 	records := make([]record, 0, len(items))
@@ -470,6 +479,9 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 }
 
 func responseCursor(family Family, object map[string]json.RawMessage) (string, bool) {
+	if value := pageResponseCursor(family, object); value != "" {
+		return value, true
+	}
 	if value, ok := offsetResponseCursor(family, object); ok {
 		return value, true
 	}
@@ -496,6 +508,40 @@ func responseCursor(family Family, object map[string]json.RawMessage) (string, b
 		}
 	}
 	return "", false
+}
+
+func pageResponseCursor(family Family, object map[string]json.RawMessage) string {
+	if cursorParam(family) != "page" {
+		return ""
+	}
+	total, totalOK := intValueAtResponsePath(object, responseIntPaths(family.Config.TotalKeys, "totalCount", "total_count", "total", "metadata.page.total_count", "metadata.page.totalCount", "metadata.page.total", "meta.page.total_count", "meta.page.totalCount", "meta.page.total")...)
+	start, startOK := intValueAtResponsePath(object, responseIntPaths(family.Config.OffsetKeys, "start", "offset", "pagination.start", "pagination.offset", "metadata.page.start", "metadata.page.offset", "meta.page.start", "meta.page.offset")...)
+	limit, limitOK := intValueAtResponsePath(object, responseIntPaths(family.Config.LimitKeys, "limit", "per_page", "pagination.limit", "metadata.page.limit", "meta.page.limit")...)
+	if !startOK || !limitOK || limit <= 0 {
+		return ""
+	}
+	nextStart := start + limit
+	if totalOK && total >= 0 {
+		if nextStart >= total {
+			return responseCursorDone
+		}
+		return responsePageCursor(family, nextStart, limit)
+	}
+	if strings.TrimSpace(family.HasMoreKey) == "" {
+		return ""
+	}
+	if !responseHasMore(family, object) {
+		return responseCursorDone
+	}
+	return responsePageCursor(family, nextStart, limit)
+}
+
+func responsePageCursor(family Family, nextStart int, limit int) string {
+	page := nextStart / limit
+	if firstPage, err := strconv.Atoi(strings.TrimSpace(family.PageFirstCursor)); err == nil {
+		page += firstPage
+	}
+	return strconv.Itoa(page)
 }
 
 func responseCursorValue(family Family, value string) string {
@@ -646,6 +692,22 @@ func responseCursorKeys(family Family) []string {
 	}
 	keys = append(keys, "nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token", "next_page")
 	return keys
+}
+
+func cursorFromLastItem(family Family, items []json.RawMessage, pageSize int) string {
+	if len(family.Config.LastItemCursorKeys) == 0 || pageSize < 1 || len(items) < pageSize {
+		return ""
+	}
+	var last map[string]json.RawMessage
+	if err := json.Unmarshal(items[len(items)-1], &last); err != nil {
+		return ""
+	}
+	for _, key := range family.Config.LastItemCursorKeys {
+		if value := rawStringAtPath(last, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func nextPageCursor(values map[string]any) string {

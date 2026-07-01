@@ -1,0 +1,28 @@
+[
+  {
+    "id": "auth0-authentication-method-auth-method-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.user_authentication_methods",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/user_authentication_methods/v1",
+    "payload": {
+      "id": "auth-method-1",
+      "type": "webauthn-roaming",
+      "confirmed": true
+    },
+    "attributes": {
+      "credential_id": "auth-method-1",
+      "credential_type": "webauthn-roaming",
+      "owner_user_id": "auth0|user-1",
+      "resource_id": "auth-method-1",
+      "resource_name": "webauthn-roaming",
+      "resource_type": "authentication_method",
+      "resource_urn": "urn:cerebro:tenant:runtime_authentication_methods:auth-method-1",
+      "source_event_id": "auth-method-1",
+      "status": "true",
+      "tenant_id": "tenant",
+      "user_id": "auth0|user-1"
+    }
+  }
+]

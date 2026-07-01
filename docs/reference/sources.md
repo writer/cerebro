@@ -66,7 +66,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `attackiq` | Attackiq source | attackiq.assets, attackiq.audit_events, attackiq.findings, attackiq.policies, attackiq.vulnerabilities |
 | `auditboard` | Auditboard source | auditboard.controls, auditboard.findings, auditboard.users |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
-| `auth0` | Auth0 Management API source | users, roles, audit events |
+| `auth0` | Auth0 Management API source | users, roles, audit events, organizations, organization members, clients, connections, resource servers, client grants, grants, user roles, user authentication methods, Guardian factors |
 | `authentik_cloud` | Authentik Cloud source | authentik_cloud.applications, authentik_cloud.audit_events, authentik_cloud.groups, authentik_cloud.roles, authentik_cloud.users |
 | `autotask` | Autotask source | autotask.entityinformation_field, autotask.excludedrole, autotask.field, autotask.userdefinedfield |
 | `avature` | Avature source | avature.accounts, avature.audit_events, avature.policies, avature.records, avature.users |
