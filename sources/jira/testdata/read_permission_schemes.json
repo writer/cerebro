@@ -30,7 +30,7 @@
       "id": 1001,
       "name": "Default Permission Scheme",
       "permissions": [
-        {"id": 10, "permission": "BROWSE_PROJECTS", "holder": {"type": "group", "parameter": "group-1", "value": "jira-administrators"}}
+        {"id": 10, "permission": "BROWSE_PROJECTS", "holder": {"type": "group", "parameter": "jira-administrators", "value": "group-1"}}
       ]
     }
   }

@@ -219,8 +219,8 @@ func jiraPermissionSchemesProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "jira." + strings.ReplaceAll(holderType, "_", "."),
-			Label:      firstNonEmpty(jiraAnyString(holder["value"]), jiraAnyString(holder["parameter"]), holderID),
-			Attributes: map[string]string{"holder_id": holderID, "holder_type": holderType},
+			Label:      jiraPermissionHolderLabel(holder, holderID),
+			Attributes: map[string]string{"holder_id": holderID, "holder_name": jiraAnyString(holder["parameter"]), "holder_type": holderType},
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), holderURN, grantURN, relationCanPerform, map[string]string{"event_id": event.GetId(), "permission": permission, "policy_id": policyID}))
 	}
@@ -290,9 +290,15 @@ func jiraPermissionGrantID(grant map[string]any) string {
 
 func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, string, string) {
 	holderType := normalizeIdentifier(jiraAnyString(holder["type"]))
-	holderID := firstNonEmpty(jiraAnyString(holder["parameter"]), jiraAnyString(holder["value"]), holderType)
+	holderParameter := jiraAnyString(holder["parameter"])
+	holderValue := jiraAnyString(holder["value"])
+	holderID := firstNonEmpty(holderParameter, holderValue, holderType)
 	switch holderType {
 	case "group":
+		holderID = firstNonEmpty(holderValue, holderParameter)
+		if holderID == "" {
+			return "", "", ""
+		}
 		return identityGroupURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "group", holderID
 	case "user":
 		return identityUserURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "user", holderID
@@ -310,6 +316,16 @@ func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, st
 		}
 		return projectionURN(tenantID, "jira_principal", holderType, holderID), firstNonEmpty(holderType, "principal"), holderID
 	}
+}
+
+func jiraPermissionHolderLabel(holder map[string]any, holderID string) string {
+	holderType := normalizeIdentifier(jiraAnyString(holder["type"]))
+	holderParameter := jiraAnyString(holder["parameter"])
+	holderValue := jiraAnyString(holder["value"])
+	if holderType == "group" {
+		return firstNonEmpty(holderParameter, holderValue, holderID)
+	}
+	return firstNonEmpty(holderValue, holderParameter, holderID)
 }
 
 func jiraScopedRoleID(projectID string, roleID string) string {

@@ -179,7 +179,7 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 			"policy_name": "Default Permission Scheme",
 			"policy_type": "permission_scheme",
 		},
-		Payload: []byte(`{"id":1001,"name":"Default Permission Scheme","permissions":[{"id":10,"permission":"BROWSE_PROJECTS","holder":{"type":"group","parameter":"group-1","value":"jira-administrators"}},{"id":11,"permission":"ADMINISTER_PROJECTS","holder":{"type":"projectRole","parameter":"10002","value":"Administrators"}}]}`),
+		Payload: []byte(`{"id":1001,"name":"Default Permission Scheme","permissions":[{"id":10,"permission":"BROWSE_PROJECTS","holder":{"type":"group","parameter":"jira-administrators","value":"group-1"}},{"id":11,"permission":"ADMINISTER_PROJECTS","holder":{"type":"projectRole","parameter":"10002","value":"Administrators"}}]}`),
 	}
 	entities, links, err := jiraPermissionSchemesProjections(event)
 	if err != nil {
@@ -192,6 +192,13 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	roleGrantURN := projectionURN("tenant", "jira_permission_grant", "1001", "11")
 	assertJiraEntity(t, entities, policyURN, "jira.permission_scheme")
 	assertJiraEntity(t, entities, grantURN, "jira.permission_grant")
+	groupEntity := jiraEntityByURN(entities, groupURN)
+	if groupEntity == nil {
+		t.Fatalf("missing group entity %s", groupURN)
+	}
+	if groupEntity.Label != "jira-administrators" || groupEntity.Attributes["holder_id"] != "group-1" {
+		t.Fatalf("group holder label/id = %q/%q, want jira-administrators/group-1", groupEntity.Label, groupEntity.Attributes["holder_id"])
+	}
 	assertJiraEntity(t, entities, roleURN, "jira.role")
 	assertJiraLink(t, links, policyURN, relationGrantsEntitlement, grantURN)
 	assertJiraLink(t, links, groupURN, relationCanPerform, grantURN)

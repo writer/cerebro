@@ -165,7 +165,7 @@ func TestReadMapsJiraManagementFamilies(t *testing.T) {
 					"id":          1001,
 					"name":        "Default Permission Scheme",
 					"description": "Default project access",
-					"permissions": []map[string]any{{"id": 10, "permission": "BROWSE_PROJECTS"}},
+					"permissions": []map[string]any{{"id": 10, "permission": "BROWSE_PROJECTS", "holder": map[string]any{"type": "group", "parameter": "jira-administrators", "value": "group-1"}}},
 				}},
 			})
 		case "/rest/api/3/auditing/record":
