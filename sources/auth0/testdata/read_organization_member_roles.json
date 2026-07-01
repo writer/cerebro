@@ -1,0 +1,33 @@
+[
+  {
+    "id": "auth0-organization-member-role-org_1-user-1-role-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.organization_member_roles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/organization_member_roles/v1",
+    "payload": {
+      "organization_id": "org_1",
+      "user_id": "user-1",
+      "id": "role-1",
+      "name": "Member Administrator",
+      "description": "Manage organization members"
+    },
+    "attributes": {
+      "description": "Manage organization members",
+      "organization_id": "org_1",
+      "resource_id": "role-1",
+      "resource_name": "Member Administrator",
+      "resource_type": "organization_role_assignment",
+      "resource_urn": "urn:cerebro:tenant:runtime_roles:role-1",
+      "role": "role-1",
+      "role_id": "role-1",
+      "role_name": "Member Administrator",
+      "source_event_id": "role-1",
+      "subject_id": "user-1",
+      "subject_type": "user",
+      "tenant_id": "tenant",
+      "user_id": "user-1"
+    }
+  }
+]

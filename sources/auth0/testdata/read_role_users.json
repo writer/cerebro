@@ -1,0 +1,32 @@
+[
+  {
+    "id": "auth0-role-user-role-1-user-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.role_users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/role_users/v1",
+    "payload": {
+      "role_id": "role-1",
+      "user_id": "user-1",
+      "email": "user@example.test",
+      "name": "User One"
+    },
+    "attributes": {
+      "email": "user@example.test",
+      "resource_id": "user-1",
+      "resource_name": "User One",
+      "resource_type": "role_assignment",
+      "resource_urn": "urn:cerebro:tenant:auth0_users:user-1",
+      "role": "role-1",
+      "role_id": "role-1",
+      "source_event_id": "user-1",
+      "subject_email": "user@example.test",
+      "subject_id": "user-1",
+      "subject_name": "User One",
+      "subject_type": "user",
+      "tenant_id": "tenant",
+      "user_id": "user-1"
+    }
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "auth0-organization-org_1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.organizations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/organizations/v1",
+    "payload": {
+      "id": "org_1",
+      "name": "acme",
+      "display_name": "Acme"
+    },
+    "attributes": {
+      "display_name": "Acme",
+      "organization_id": "org_1",
+      "organization_name": "acme",
+      "resource_id": "org_1",
+      "resource_name": "Acme",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:auth0_organizations:org_1",
+      "source_event_id": "org_1",
+      "tenant_id": "tenant"
+    }
+  }
+]
