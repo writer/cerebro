@@ -16,7 +16,7 @@
       "device": {
         "device_type": "mobile_phone",
         "identifier": "04393EADF4149002225811273840459271E36516DA4875FF",
-        "ip_address": "1.2.3.4",
+        "ip_address": "192.0.2.4",
         "name": "My Work Phone"
       },
       "dynamic_primary_account_number": null,

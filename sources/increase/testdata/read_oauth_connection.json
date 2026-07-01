@@ -11,7 +11,7 @@
       "deleted_at": null,
       "group_id": "group_1g4mhziu6kvrs3vz35um",
       "id": "connection_dauknoksyr4wilz4e6my",
-      "oauth_application_id": "application_gj9ufmpgh5i56k4vyriy",
+      "oauth_application_id": "oauth_application_fixture_1",
       "status": "active",
       "type": "oauth_connection"
     },

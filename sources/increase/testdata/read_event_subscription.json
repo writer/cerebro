@@ -14,7 +14,7 @@
       "selected_event_categories": null,
       "status": "active",
       "type": "event_subscription",
-      "url": "https://website.com/webhooks"
+      "url": "https://example.test/webhooks"
     },
     "attributes": {
       "external_id": "event_subscription_001dzz0r20rcdxgb013zqb8m04g",
@@ -30,7 +30,7 @@
       "status": "active",
       "resource_type": "event_subscription",
       "resource_id": "event_subscription_001dzz0r20rcdxgb013zqb8m04g",
-      "resource_name": "https://website.com/webhooks",
+      "resource_name": "https://example.test/webhooks",
       "resource_urn": "urn:cerebro:tenant:increase_event_subscription:event_subscription_001dzz0r20rcdxgb013zqb8m04g",
       "event_type": "event_subscription",
       "provider_id": "event_subscription_001dzz0r20rcdxgb013zqb8m04g"
