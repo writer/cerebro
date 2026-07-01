@@ -70,10 +70,13 @@ func TestJiraProjectRoleProjectionLinksRoleActors(t *testing.T) {
 		t.Fatalf("projection error = %v", err)
 	}
 	roleURN := projectionURN("tenant", "jira_admin_role", "ENG:10002")
+	globalRoleURN := projectionURN("tenant", "jira_role", "10002")
 	projectURN := projectionURN("tenant", "jira_project", "ENG")
 	userURN := projectionURN("tenant", "jira_user", "acct-1")
 	groupURN := projectionURN("tenant", "jira_group", "group-1")
 	assertJiraEntity(t, entities, roleURN, "jira.admin_role")
+	assertJiraEntity(t, entities, globalRoleURN, "jira.role")
+	assertJiraLink(t, links, roleURN, relationRepresents, globalRoleURN)
 	assertJiraLink(t, links, roleURN, relationBelongsTo, projectURN)
 	assertJiraLink(t, links, userURN, relationCanAdmin, roleURN)
 	assertJiraLink(t, links, groupURN, relationCanAdmin, roleURN)
@@ -99,10 +102,14 @@ func TestJiraPermissionSchemeProjectionLinksGrantsAndHolders(t *testing.T) {
 	policyURN := projectionURN("tenant", "jira_permission_scheme", "1001")
 	groupURN := projectionURN("tenant", "jira_group", "jira-administrators")
 	grantURN := projectionURN("tenant", "jira_permission_grant", "1001", "10")
+	roleURN := projectionURN("tenant", "jira_role", "10002")
+	roleGrantURN := projectionURN("tenant", "jira_permission_grant", "1001", "11")
 	assertJiraEntity(t, entities, policyURN, "jira.permission_scheme")
 	assertJiraEntity(t, entities, grantURN, "jira.permission_grant")
+	assertJiraEntity(t, entities, roleURN, "jira.role")
 	assertJiraLink(t, links, policyURN, relationGrantsEntitlement, grantURN)
 	assertJiraLink(t, links, groupURN, relationCanPerform, grantURN)
+	assertJiraLink(t, links, roleURN, relationCanPerform, roleGrantURN)
 }
 
 func TestJiraAuditProjection(t *testing.T) {

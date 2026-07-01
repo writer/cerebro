@@ -625,7 +625,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.IdentityKeys)}, nil
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -1074,23 +1074,9 @@ func dedupeEventRecords(records []record) []record {
 	return out
 }
 
-func recordIdentity(id string, values map[string]any) string {
+func recordIdentity(id string, values map[string]any, identityKeys []string) string {
 	parts := []string{strings.TrimSpace(id)}
-	for _, key := range []string{
-		"group_id",
-		"organization_id",
-		"project_id",
-		"project_id_or_key",
-		"user_id",
-		"device_id",
-		"device.id",
-		"serial_number",
-		"agent_id",
-		"agent.uuid",
-		"device_uuid",
-		"installed_version",
-		"version",
-	} {
+	for _, key := range recordIdentityKeys(identityKeys) {
 		if value := firstValueString(values, key); value != "" {
 			parts = append(parts, key+"="+value)
 		}
@@ -1103,6 +1089,32 @@ func recordIdentity(id string, values map[string]any) string {
 		return parts[0]
 	}
 	return parts[0] + "-" + stableID(strings.Join(parts, "\x00"))
+}
+
+func recordIdentityKeys(identityKeys []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(identityKeys)+8)
+	for _, key := range append(append([]string{}, identityKeys...), []string{
+		"device_id",
+		"device.id",
+		"serial_number",
+		"agent_id",
+		"agent.uuid",
+		"device_uuid",
+		"installed_version",
+		"version",
+	}...) {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
 }
 
 func nonEmpty(values []string) []string {

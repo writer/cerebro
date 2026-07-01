@@ -26,6 +26,7 @@ type Family struct {
 	PageFirstCursor       string
 	URNKind               string
 	IDKeys                []string
+	IdentityKeys          []string
 	TimestampKeys         []string
 	Attributes            map[string]string
 	StaticAttributes      map[string]string

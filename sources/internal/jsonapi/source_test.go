@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -37,13 +39,25 @@ func TestStableIDPreservesLegacySHA256Digest(t *testing.T) {
 }
 
 func TestRecordIdentityIncludesFanoutScope(t *testing.T) {
-	first := recordIdentity("user-1", map[string]any{"group_id": "group-a"})
-	second := recordIdentity("user-1", map[string]any{"group_id": "group-b"})
+	values := map[string]any{"group_id": "group-a"}
+	if got := recordIdentity("user-1", values, nil); got != "user-1" {
+		t.Fatalf("recordIdentity() = %q, want unscoped legacy id", got)
+	}
+	first := recordIdentity("user-1", values, []string{"group_id"})
+	second := recordIdentity("user-1", map[string]any{"group_id": "group-b"}, []string{"group_id"})
 	if first == second {
 		t.Fatalf("recordIdentity() collapsed fanout scopes: %q", first)
 	}
 	if !strings.HasPrefix(first, "user-1-") || !strings.HasPrefix(second, "user-1-") {
 		t.Fatalf("record identities = %q, %q; want stable id prefix", first, second)
+	}
+}
+
+func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
+	first := recordIdentity("install-1", map[string]any{"device_id": "device-a"}, nil)
+	second := recordIdentity("install-1", map[string]any{"device_id": "device-b"}, nil)
+	if first == second {
+		t.Fatalf("recordIdentity() collapsed device scopes: %q", first)
 	}
 }
 
@@ -231,6 +245,42 @@ func TestReadPathParamValuesPreservesValueAndProviderCursor(t *testing.T) {
 	}
 	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
 		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
+func TestReadPathParamValuesWithCheckpointAppliesIncrementalWatermark(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/accounts/acct-a/devices" {
+			t.Fatalf("request path = %q, want fan-out path", r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "device-a-1", "updated_at": "2026-05-01T00:00:00Z"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:                 "device",
+		Path:                 "/accounts/{account_id}/devices",
+		PathParams:           []string{"account_id"},
+		URNKind:              "test_device",
+		IDKeys:               []string{"id"},
+		TimestampKeys:        []string{"updated_at"},
+		IncrementalWatermark: true,
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "device",
+		"token":     "token-1",
+	})
+	checkpoint := &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC))}
+	pull, err := source.ReadPathParamValuesWithCheckpoint(context.Background(), cfg, nil, checkpoint, "account_id", []string{"acct-a"})
+	if err != nil {
+		t.Fatalf("ReadPathParamValuesWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("events = %d, want checkpoint-filtered empty pull", len(pull.Events))
 	}
 }
 

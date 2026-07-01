@@ -273,6 +273,12 @@ func TestReadGroupMembersFansOutConfiguredGroupIDs(t *testing.T) {
 	if got := first.Events[0].Attributes["group_id"]; got != "group-a" {
 		t.Fatalf("first group_id = %q, want group-a", got)
 	}
+	if got := first.Events[0].Attributes["member_type"]; got != "user" {
+		t.Fatalf("first member_type = %q, want user", got)
+	}
+	if got := first.Events[0].Attributes["account_type"]; got != "atlassian" {
+		t.Fatalf("first account_type = %q, want atlassian", got)
+	}
 	if first.NextCursor == nil {
 		t.Fatal("first NextCursor = nil, want fanout cursor")
 	}
@@ -339,9 +345,11 @@ func TestReadProjectRolesEnrichesRoleActors(t *testing.T) {
 	event := pull.Events[0]
 	for key, want := range map[string]string{
 		"project_id_or_key": "ENG",
+		"resource_id":       "10002",
 		"role_id":           "10002",
 		"role_name":         "Administrators",
 		"resource_type":     "project_role",
+		"source_event_id":   "10002",
 	} {
 		if got := event.Attributes[key]; got != want {
 			t.Fatalf("attribute %s = %q, want %q", key, got, want)

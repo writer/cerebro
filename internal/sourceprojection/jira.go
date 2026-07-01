@@ -83,9 +83,23 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	if projectionBool(attributes["admin"]) {
 		roleKind = "admin_role"
 	}
+	globalRoleURN := projectionURN(tenantID, "jira_role", roleID)
 	roleURN := projectionURN(tenantID, "jira_"+roleKind, scopedRoleID)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        globalRoleURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "jira.role",
+		Label:      firstNonEmpty(attributes["role_name"], attributes["resource_name"], roleID),
+		Attributes: map[string]string{
+			"role_id":           roleID,
+			"role_name":         firstNonEmpty(attributes["role_name"], attributes["resource_name"]),
+			"role_type":         firstNonEmpty(attributes["role_type"], "project_role"),
+			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+		},
+	})
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        roleURN,
 		TenantID:   tenantID,
@@ -101,6 +115,7 @@ func jiraProjectRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
 		},
 	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, globalRoleURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "jira_project_role_definition"}))
 	if projectID != "" {
 		projectURN := projectionURN(tenantID, "jira_project", projectID)
 		addEntity(entities, &ports.ProjectedEntity{URN: projectURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "jira.project", Label: projectID, Attributes: map[string]string{"project_id": projectID}})
@@ -251,7 +266,11 @@ func jiraPermissionHolderURN(tenantID string, holder map[string]any) (string, st
 	case "user":
 		return identityUserURN(tenantID, jiraIdentityProfile.Provider, holderID, ""), "user", holderID
 	case "project_role", "projectrole":
-		return projectionURN(tenantID, "jira_role", holderID), "role", holderID
+		roleID := firstNonEmpty(jiraAnyString(holder["parameter"]), jiraAnyString(holder["value"]))
+		if roleID == "" {
+			return "", "", ""
+		}
+		return projectionURN(tenantID, "jira_role", roleID), "role", roleID
 	case "application_role", "applicationrole":
 		return projectionURN(tenantID, "jira_application_role", holderID), "application_role", holderID
 	default:
