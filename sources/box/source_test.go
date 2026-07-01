@@ -173,21 +173,19 @@ func TestRuntimeUsesBoxAPIPathsAndCursors(t *testing.T) {
 }
 
 func TestGroupMembershipsRequireConfiguredGroupIDs(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+	param, values := boxPathParamValues(sourcecdk.NewConfig(map[string]string{
+		"family": familyGroupMemberships,
+	}))
+	if param != "" || len(values) != 0 {
+		t.Fatalf("boxPathParamValues() = %q, %v; want no path params without group_ids", param, values)
 	}
-	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"base_url":  "https://api.box.com/2.0",
-		"tenant_id": "tenant",
-		"token":     "test-token",
+
+	param, values = boxPathParamValues(sourcecdk.NewConfig(map[string]string{
 		"family":    familyGroupMemberships,
-	}), nil)
-	if err == nil {
-		t.Fatal("Read() error = nil, want missing group_id error")
-	}
-	if !strings.Contains(err.Error(), "group_id") {
-		t.Fatalf("Read() error = %v, want group_id error", err)
+		"group_ids": "group-1, group-2",
+	}))
+	if param != "group_id" || strings.Join(values, ",") != "group-1,group-2" {
+		t.Fatalf("boxPathParamValues() = %q, %v; want configured group_ids", param, values)
 	}
 }
 
