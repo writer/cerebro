@@ -582,14 +582,14 @@ func responseCursorKeys(family Family) []string {
 }
 
 func cursorFromLastItem(family Family, items []json.RawMessage, pageSize int) string {
-	if len(family.CursorFromLastItemKeys) == 0 || pageSize < 1 || len(items) < pageSize {
+	if len(family.Config.LastItemCursorKeys) == 0 || pageSize < 1 || len(items) < pageSize {
 		return ""
 	}
 	var last map[string]json.RawMessage
 	if err := json.Unmarshal(items[len(items)-1], &last); err != nil {
 		return ""
 	}
-	for _, key := range family.CursorFromLastItemKeys {
+	for _, key := range family.Config.LastItemCursorKeys {
 		if value := rawStringAtPath(last, key); value != "" {
 			return value
 		}

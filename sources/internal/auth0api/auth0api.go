@@ -187,18 +187,17 @@ func rolesFamily() jsonapi.Family {
 
 func auditEventsFamily() jsonapi.Family {
 	return jsonapi.Family{
-		Name:                   FamilyAuditEvents,
-		Path:                   "/logs",
-		URNKind:                "runtime_audit_events",
-		IDKeys:                 []string{"log_id", "event_id", "id", "uuid", "request_id"},
-		CursorParam:            "from",
-		CursorFromLastItemKeys: []string{"log_id"},
-		PageSizeParams:         []string{"take"},
-		TimestampKeys:          []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
-		Attributes:             auditEventAttributes(),
-		StaticAttributes:       map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": SourceID},
-		Config:                 jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
-		IncrementalWatermark:   true,
+		Name:                 FamilyAuditEvents,
+		Path:                 "/logs",
+		URNKind:              "runtime_audit_events",
+		IDKeys:               []string{"log_id", "event_id", "id", "uuid", "request_id"},
+		CursorParam:          "from",
+		PageSizeParams:       []string{"take"},
+		TimestampKeys:        []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
+		Attributes:           auditEventAttributes(),
+		StaticAttributes:     map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": SourceID},
+		Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications", LastItemCursorKeys: []string{"log_id"}},
+		IncrementalWatermark: true,
 	}
 }
 

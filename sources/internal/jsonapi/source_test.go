@@ -1103,13 +1103,13 @@ func TestReadUsesLastItemCursorForBareArray(t *testing.T) {
 	defer server.Close()
 
 	source := newCustomTestSource(t, server.URL, Family{
-		Name:                   "log",
-		Path:                   "/logs",
-		CursorParam:            "from",
-		CursorFromLastItemKeys: []string{"log_id"},
-		URNKind:                "log",
-		IDKeys:                 []string{"log_id"},
-		PageSizeParams:         []string{"take"},
+		Name:           "log",
+		Path:           "/logs",
+		CursorParam:    "from",
+		Config:         FamilyConfig{LastItemCursorKeys: []string{"log_id"}},
+		URNKind:        "log",
+		IDKeys:         []string{"log_id"},
+		PageSizeParams: []string{"take"},
 	})
 	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
