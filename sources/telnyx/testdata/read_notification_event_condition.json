@@ -3,6 +3,7 @@
     "attributes": {
       "actor_id": "00000000-0000-4000-8000-000000000006",
       "event_type": "from phone number",
+      "external_id": "00000000-0000-4000-8000-000000000007",
       "family": "notification_event_condition",
       "id": "00000000-0000-4000-8000-000000000007",
       "name": "from phone number",

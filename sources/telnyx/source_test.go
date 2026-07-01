@@ -96,25 +96,26 @@ func TestCallEventsDoNotDedupeSameCallLeg(t *testing.T) {
 
 func TestSourceCheckAndReadFamilies(t *testing.T) {
 	tests := []struct {
-		family string
-		path   string
-		body   map[string]any
-		kind   string
-		attr   string
-		want   string
+		family     string
+		path       string
+		body       map[string]any
+		kind       string
+		attr       string
+		want       string
+		externalID string
 	}{
-		{family: familyBillingGroup, path: "/billing_groups", body: listBody(billingGroupRecord()), kind: "telnyx.billing_group", attr: "group_id", want: "00000000-0000-4000-8000-000000000001"},
-		{family: familyCallControlApplication, path: "/call_control_applications", body: listBody(callControlApplicationRecord()), kind: "telnyx.call_control_application", attr: "policy_name", want: "Emergency routing"},
-		{family: familyCallEvent, path: "/call_events", body: listBody(callEventRecord()), kind: "telnyx.call_event", attr: "event_type", want: "call.hangup"},
-		{family: familyCredentialConnection, path: "/credential_connections", body: listBody(credentialConnectionRecord()), kind: "telnyx.credential_connection", attr: "secret_name", want: "sip-edge-primary"},
-		{family: familyDetailRecordsReport, path: "/wireless/detail_records_reports", body: listBody(detailRecordsReportRecord()), kind: "telnyx.detail_records_report", attr: "resource_type", want: "detail_records_report"},
-		{family: familyManagedAccount, path: "/managed_accounts", body: listBody(managedAccountRecord()), kind: "telnyx.managed_account", attr: "email", want: "managed-account@example.com"},
-		{family: familyNotificationChannel, path: "/notification_channels", body: listBody(notificationChannelRecord()), kind: "telnyx.notification_channel", attr: "alert_type", want: "webhook"},
-		{family: familyNotificationEvent, path: "/notification_events", body: listBody(notificationEventRecord()), kind: "telnyx.notification_event", attr: "event_type", want: "Emergency Number Dialed"},
-		{family: familyNotificationEventCondition, path: "/notification_event_conditions", body: listBody(notificationEventConditionRecord()), kind: "telnyx.notification_event_condition", attr: "event_type", want: "from phone number"},
-		{family: familySimCardGroup, path: "/sim_card_groups", body: listBody(simCardGroupRecord()), kind: "telnyx.sim_card_group", attr: "group_id", want: testSIMCardGroupID},
-		{family: familySimCardGroupAction, path: "/sim_card_group_actions", body: listBody(simCardGroupActionRecord()), kind: "telnyx.sim_card_group_action", attr: "group_id", want: testSIMCardGroupID},
-		{family: familyWirelessConnectivityLog, path: "/sim_cards/" + testSIMCardID + "/wireless_connectivity_logs", body: listBody(wirelessConnectivityLogRecord()), kind: "telnyx.wireless_connectivity_log", attr: "event_type", want: "registration"},
+		{family: familyBillingGroup, path: "/billing_groups", body: listBody(billingGroupRecord()), kind: "telnyx.billing_group", attr: "group_id", want: "00000000-0000-4000-8000-000000000001", externalID: "00000000-0000-4000-8000-000000000001"},
+		{family: familyCallControlApplication, path: "/call_control_applications", body: listBody(callControlApplicationRecord()), kind: "telnyx.call_control_application", attr: "policy_name", want: "Emergency routing", externalID: "1293384261075731499"},
+		{family: familyCallEvent, path: "/call_events", body: listBody(callEventRecord()), kind: "telnyx.call_event", attr: "event_type", want: "call.hangup", externalID: "2019-03-29T11:10:19.127783Z"},
+		{family: familyCredentialConnection, path: "/credential_connections", body: listBody(credentialConnectionRecord()), kind: "telnyx.credential_connection", attr: "secret_name", want: "sip-edge-primary", externalID: "1293384261075731500"},
+		{family: familyDetailRecordsReport, path: "/wireless/detail_records_reports", body: listBody(detailRecordsReportRecord()), kind: "telnyx.detail_records_report", attr: "resource_type", want: "detail_records_report", externalID: "00000000-0000-4000-8000-000000000003"},
+		{family: familyManagedAccount, path: "/managed_accounts", body: listBody(managedAccountRecord()), kind: "telnyx.managed_account", attr: "email", want: "managed-account@example.com", externalID: "00000000-0000-4000-8000-000000000004"},
+		{family: familyNotificationChannel, path: "/notification_channels", body: listBody(notificationChannelRecord()), kind: "telnyx.notification_channel", attr: "alert_type", want: "webhook", externalID: "00000000-0000-4000-8000-000000000005"},
+		{family: familyNotificationEvent, path: "/notification_events", body: listBody(notificationEventRecord()), kind: "telnyx.notification_event", attr: "event_type", want: "Emergency Number Dialed", externalID: "00000000-0000-4000-8000-000000000006"},
+		{family: familyNotificationEventCondition, path: "/notification_event_conditions", body: listBody(notificationEventConditionRecord()), kind: "telnyx.notification_event_condition", attr: "event_type", want: "from phone number", externalID: "00000000-0000-4000-8000-000000000007"},
+		{family: familySimCardGroup, path: "/sim_card_groups", body: listBody(simCardGroupRecord()), kind: "telnyx.sim_card_group", attr: "group_id", want: testSIMCardGroupID, externalID: testSIMCardGroupID},
+		{family: familySimCardGroupAction, path: "/sim_card_group_actions", body: listBody(simCardGroupActionRecord()), kind: "telnyx.sim_card_group_action", attr: "group_id", want: testSIMCardGroupID, externalID: "00000000-0000-4000-8000-000000000008"},
+		{family: familyWirelessConnectivityLog, path: "/sim_cards/" + testSIMCardID + "/wireless_connectivity_logs", body: listBody(wirelessConnectivityLogRecord()), kind: "telnyx.wireless_connectivity_log", attr: "event_type", want: "registration", externalID: "137509451"},
 	}
 
 	for _, tt := range tests {
@@ -146,7 +147,18 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if got := event.Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
+			if got := event.Attributes["external_id"]; got != tt.externalID {
+				t.Fatalf("external_id = %q, want %q", got, tt.externalID)
+			}
 			switch tt.family {
+			case familyCallControlApplication:
+				if got := event.Attributes["policy_status"]; got != "active" {
+					t.Fatalf("policy_status = %q, want active", got)
+				}
+			case familyCredentialConnection:
+				if got := event.Attributes["secret_status"]; got != "active" {
+					t.Fatalf("secret_status = %q, want active", got)
+				}
 			case familyBillingGroup:
 				if got := event.Attributes["resource_type"]; got != "billing_group" {
 					t.Fatalf("resource_type = %q, want billing_group", got)

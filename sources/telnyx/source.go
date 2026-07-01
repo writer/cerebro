@@ -82,8 +82,8 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "connection_name", "user_name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"id": "id", "name": "connection_name|user_name|id", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "connection_name|user_name|id", "resource_type": "record_type", "secret_created_at": "created_at", "secret_id": "id", "secret_name": "connection_name|user_name|id", "secret_status": "active", "secret_type": "record_type", "source_event_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "secret", "schema": "credential_connection", "source_system": "telnyx"},
+				Attributes:       map[string]string{"id": "id", "name": "connection_name|user_name|id", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "connection_name|user_name|id", "resource_type": "record_type", "secret_created_at": "created_at", "secret_id": "id", "secret_name": "connection_name|user_name|id", "secret_type": "record_type", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "secret", "schema": "credential_connection", "secret_status": "active", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyManagedAccount,
@@ -102,8 +102,8 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "application_name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"id": "id", "name": "application_name|id", "observed_at": "updated_at|created_at", "policy_created_at": "created_at", "policy_description": "webhook_event_url", "policy_id": "id", "policy_name": "application_name|id", "policy_status": "active", "policy_type": "record_type", "resource_id": "id", "resource_name": "application_name|id", "resource_type": "record_type", "source_event_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "call_control_application", "source_system": "telnyx"},
+				Attributes:       map[string]string{"id": "id", "name": "application_name|id", "observed_at": "updated_at|created_at", "policy_created_at": "created_at", "policy_description": "webhook_event_url", "policy_id": "id", "policy_name": "application_name|id", "policy_type": "record_type", "resource_id": "id", "resource_name": "application_name|id", "resource_type": "record_type", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"policy_status": "active", "record_class": "policy", "schema": "call_control_application", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyNotificationChannel,

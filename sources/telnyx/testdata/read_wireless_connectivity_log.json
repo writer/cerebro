@@ -3,6 +3,7 @@
     "attributes": {
       "actor_id": "00000000-0000-4000-8000-000000000010",
       "event_type": "registration",
+      "external_id": "137509451",
       "family": "wireless_connectivity_log",
       "id": "137509451",
       "name": "data00.telnyx",

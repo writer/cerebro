@@ -1,6 +1,7 @@
 [
   {
     "attributes": {
+      "external_id": "00000000-0000-4000-8000-000000000008",
       "family": "sim_card_group_action",
       "group_id": "00000000-0000-4000-8000-000000000011",
       "group_name": "set_private_wireless_gateway",

@@ -1,6 +1,7 @@
 [
   {
     "attributes": {
+      "external_id": "1293384261075731499",
       "family": "call_control_application",
       "id": "1293384261075731499",
       "name": "Emergency routing",
@@ -9,7 +10,7 @@
       "policy_description": "https://example.com/telnyx/events",
       "policy_id": "1293384261075731499",
       "policy_name": "Emergency routing",
-      "policy_status": "true",
+      "policy_status": "active",
       "policy_type": "call_control_application",
       "provider": "telnyx",
       "record_class": "policy",

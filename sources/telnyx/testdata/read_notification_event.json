@@ -3,6 +3,7 @@
     "attributes": {
       "actor_id": "00000000-0000-4000-8000-000000000006",
       "event_type": "Emergency Number Dialed",
+      "external_id": "00000000-0000-4000-8000-000000000006",
       "family": "notification_event",
       "id": "00000000-0000-4000-8000-000000000006",
       "name": "Emergency Number Dialed",

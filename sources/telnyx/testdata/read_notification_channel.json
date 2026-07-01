@@ -6,6 +6,7 @@
       "alert_name": "https://example.com/telnyx/notifications",
       "alert_source": "00000000-0000-4000-8000-000000000105",
       "alert_type": "webhook",
+      "external_id": "00000000-0000-4000-8000-000000000005",
       "family": "notification_channel",
       "id": "00000000-0000-4000-8000-000000000005",
       "name": "https://example.com/telnyx/notifications",

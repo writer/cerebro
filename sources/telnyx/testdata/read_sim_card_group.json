@@ -1,6 +1,7 @@
 [
   {
     "attributes": {
+      "external_id": "00000000-0000-4000-8000-000000000011",
       "family": "sim_card_group",
       "group_id": "00000000-0000-4000-8000-000000000011",
       "group_name": "IoT field devices",
