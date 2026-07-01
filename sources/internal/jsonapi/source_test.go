@@ -36,6 +36,17 @@ func TestStableIDPreservesLegacySHA256Digest(t *testing.T) {
 	}
 }
 
+func TestRecordIdentityIncludesFanoutScope(t *testing.T) {
+	first := recordIdentity("user-1", map[string]any{"group_id": "group-a"})
+	second := recordIdentity("user-1", map[string]any{"group_id": "group-b"})
+	if first == second {
+		t.Fatalf("recordIdentity() collapsed fanout scopes: %q", first)
+	}
+	if !strings.HasPrefix(first, "user-1-") || !strings.HasPrefix(second, "user-1-") {
+		t.Fatalf("record identities = %q, %q; want stable id prefix", first, second)
+	}
+}
+
 func TestReadPagesJSONAPIRecords(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +345,72 @@ func TestReadSynthesizesStartOffsetCursorForFullPages(t *testing.T) {
 	}
 	if got := requests[1].URL.Query().Get("start"); got != "2" {
 		t.Fatalf("second start query = %q, want 2", got)
+	}
+}
+
+func TestReadSynthesizesStartAtOffsetCursorForFullPages(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("maxResults"); got != "2" {
+			t.Fatalf("maxResults query = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("startAt") {
+		case "0":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-1"}, {"id": "user-2"}})
+		case "2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-3"}})
+		default:
+			t.Fatalf("unexpected startAt %q", r.URL.Query().Get("startAt"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/users/search",
+		CursorParam:     "startAt",
+		PageSizeParams:  []string{"maxResults"},
+		PageFirstCursor: "0",
+		URNKind:         "test_user",
+		IDKeys:          []string{"id"},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if got := requests[0].URL.Query().Get("startAt"); got != "0" {
+		t.Fatalf("first startAt query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("startAt"); got != "2" {
+		t.Fatalf("second startAt query = %q, want 2", got)
+	}
+}
+
+func TestParseTimeSupportsJiraAuditOffsetTimestamp(t *testing.T) {
+	got, ok := parseTime("2026-05-01T12:34:56.789+0000")
+	if !ok {
+		t.Fatal("parseTime() ok = false")
+	}
+	want := time.Date(2026, 5, 1, 12, 34, 56, 789_000_000, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTime() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
 

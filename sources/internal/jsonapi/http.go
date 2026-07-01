@@ -181,7 +181,7 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 
 func synthesizedPageCursorStep(family Family, pageSize int) int {
 	switch cursorParam(family) {
-	case "offset", "start":
+	case "offset", "start", "startAt":
 		return pageSize
 	default:
 		return 1
@@ -833,7 +833,7 @@ func parseTime(raw string) (time.Time, bool) {
 		whole, fraction := math.Modf(seconds)
 		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
 			return parsed.UTC(), true
@@ -1077,6 +1077,11 @@ func dedupeEventRecords(records []record) []record {
 func recordIdentity(id string, values map[string]any) string {
 	parts := []string{strings.TrimSpace(id)}
 	for _, key := range []string{
+		"group_id",
+		"organization_id",
+		"project_id",
+		"project_id_or_key",
+		"user_id",
 		"device_id",
 		"device.id",
 		"serial_number",
