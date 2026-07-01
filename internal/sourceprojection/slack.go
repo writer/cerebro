@@ -68,7 +68,6 @@ func slackMembershipProjections(event *cerebrov1.EventEnvelope, containerAttr st
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
 		EntityType: "slack.user",
-		Label:      firstNonEmpty(attrs["username"], userID),
 		Attributes: map[string]string{"user_id": userID},
 	})
 	addEntity(entities, &ports.ProjectedEntity{
@@ -76,7 +75,6 @@ func slackMembershipProjections(event *cerebrov1.EventEnvelope, containerAttr st
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
 		EntityType: containerEntityType,
-		Label:      firstNonEmpty(attrs["name"], containerID),
 		Attributes: map[string]string{containerAttr: containerID},
 	})
 	linkAttrs := map[string]string{
@@ -140,7 +138,6 @@ func slackWithTeamContext(event *cerebrov1.EventEnvelope, enrich func([]*ports.P
 			TenantID:   tenant,
 			SourceID:   event.GetSourceId(),
 			EntityType: "slack.team",
-			Label:      teamID,
 			Attributes: map[string]string{"team_id": teamID},
 		})
 		addLink(links, projectedLink(tenant, event.GetSourceId(), primary.URN, teamURN, relationBelongsTo, linkAttrs))
@@ -161,7 +158,6 @@ func addSlackChannelCreatorLink(entities map[string]*ports.ProjectedEntity, link
 		TenantID:   tenant,
 		SourceID:   event.GetSourceId(),
 		EntityType: "slack.user",
-		Label:      creatorID,
 		Attributes: map[string]string{"user_id": creatorID},
 	})
 	addLink(links, projectedLink(tenant, event.GetSourceId(), creatorURN, channelURN, relationAuthored, map[string]string{

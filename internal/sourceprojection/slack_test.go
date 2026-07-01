@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func slackEvent(kind string, attrs map[string]string) *cerebrov1.EventEnvelope {
@@ -15,6 +16,17 @@ func slackEvent(kind string, attrs map[string]string) *cerebrov1.EventEnvelope {
 		Kind:       kind,
 		Attributes: attrs,
 	}
+}
+
+func projectedEntitiesByURN(entities []*ports.ProjectedEntity) map[string]*ports.ProjectedEntity {
+	byURN := make(map[string]*ports.ProjectedEntity, len(entities))
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		byURN[entity.URN] = entity
+	}
+	return byURN
 }
 
 func TestProjectSlackUserPostureAndTeamContext(t *testing.T) {
@@ -104,6 +116,60 @@ func TestProjectSlackChannelAndUserGroupTeamContext(t *testing.T) {
 	assertProjectedLink(t, state, creatorURN, relationAuthored, channelURN)
 	assertProjectedLink(t, state, groupURN, relationBelongsTo, teamURN)
 	assertProjectedLink(t, state, teamURN, relationContains, groupURN)
+}
+
+func TestProjectSlackRelationshipStubsDoNotOverwriteLabels(t *testing.T) {
+	channel := slackEvent("slack.channel", map[string]string{
+		"channel_id": "C1",
+		"team_id":    "T1",
+		"creator":    "U1",
+		"name":       "general",
+	})
+	member := slackEvent("slack.channel_member", map[string]string{
+		"channel_id": "C1",
+		"user_id":    "U1",
+		"username":   "alice",
+		"name":       "general",
+	})
+	channelEntities, _, err := BuiltinRegistry().Project(channel)
+	if err != nil {
+		t.Fatalf("Project(%q) error = %v", channel.GetKind(), err)
+	}
+	memberEntities, _, err := BuiltinRegistry().Project(member)
+	if err != nil {
+		t.Fatalf("Project(%q) error = %v", member.GetKind(), err)
+	}
+
+	channelByURN := projectedEntitiesByURN(channelEntities)
+	for urn, entityType := range map[string]string{
+		"urn:cerebro:writer:slack_user:U1": "slack.user",
+		"urn:cerebro:writer:slack_team:T1": "slack.team",
+	} {
+		entity := channelByURN[urn]
+		if entity == nil || entity.EntityType != entityType {
+			t.Fatalf("stub entity %q missing or wrong: %#v", urn, entity)
+		}
+		if entity.Label != "" {
+			t.Fatalf("stub entity %q label = %q, want empty label", urn, entity.Label)
+		}
+	}
+	if channelEntity := channelByURN["urn:cerebro:writer:slack_channel:C1"]; channelEntity == nil || channelEntity.Label != "general" {
+		t.Fatalf("primary channel label = %#v, want general", channelEntity)
+	}
+
+	memberByURN := projectedEntitiesByURN(memberEntities)
+	for urn, entityType := range map[string]string{
+		"urn:cerebro:writer:slack_user:U1":    "slack.user",
+		"urn:cerebro:writer:slack_channel:C1": "slack.channel",
+	} {
+		entity := memberByURN[urn]
+		if entity == nil || entity.EntityType != entityType {
+			t.Fatalf("membership stub entity %q missing or wrong: %#v", urn, entity)
+		}
+		if entity.Label != "" {
+			t.Fatalf("membership stub entity %q label = %q, want empty label", urn, entity.Label)
+		}
+	}
 }
 
 func TestProjectSlackSharedChannelLinksEachRealTeam(t *testing.T) {
