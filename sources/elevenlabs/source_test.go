@@ -68,6 +68,7 @@ func TestSourceReadsRuntimeFamiliesFromProviderShapedResponses(t *testing.T) {
 				"source_event_id": "EXAVITQu4vr4xnSDxMaL",
 				"resource_id":     "EXAVITQu4vr4xnSDxMaL",
 				"resource_name":   "Bella",
+				"resource_type":   "voice",
 				"record_class":    "asset",
 			},
 			payload: map[string]string{"voice_id": "EXAVITQu4vr4xnSDxMaL"},
