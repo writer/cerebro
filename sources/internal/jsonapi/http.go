@@ -82,6 +82,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		next = cursorFromLastItem(family, items, pageSize)
 	}
 	if next == "" && !responseDone {
+		next = headerCursor(family, headers)
+		responseCursorKnown = responseCursorKnown || next != ""
+	}
+	if next == "" && !responseDone {
 		next = linkHeaderCursor(family, headers)
 		responseCursorKnown = responseCursorKnown || next != ""
 	}
@@ -615,6 +619,19 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 		}
 		if value := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); value != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func headerCursor(family Family, headers http.Header) string {
+	for _, headerName := range family.NextCursorHeaders {
+		headerName = strings.TrimSpace(headerName)
+		if headerName == "" {
+			continue
+		}
+		if value := strings.TrimSpace(headers.Get(headerName)); value != "" {
+			return responseCursorValue(family, value)
 		}
 	}
 	return ""

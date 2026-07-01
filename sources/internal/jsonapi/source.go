@@ -21,6 +21,7 @@ type Family struct {
 	PathParams            []string
 	CursorParam           string
 	NextCursorKeys        []string
+	NextCursorHeaders     []string
 	HasMoreKey            string
 	LinkHeader            string
 	PageFirstCursor       string

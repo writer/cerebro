@@ -519,7 +519,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
 | `omada_identity` | Omada Identity source | omada_identity.applications, omada_identity.audit_events, omada_identity.groups, omada_identity.roles, omada_identity.users |
 | `omni_analytics` | Omni Analytics source | omni_analytics.accounts, omni_analytics.audit_events, omni_analytics.policies, omni_analytics.records, omni_analytics.users |
-| `onelogin` | Onelogin source | onelogin.audit_events, onelogin.groups, onelogin.users |
+| `onelogin` | OneLogin identity, app, privilege, MFA, assignment, policy, and audit source | users, groups, roles, apps, privileges, mappings, app rules, MFA devices, user/role/app/privilege assignments, audit events |
 | `onepassword_business` | Onepassword Business source | onepassword_business.audit_events, onepassword_business.secrets, onepassword_business.users |
 | `onetrust` | Onetrust source | onetrust.controls, onetrust.findings, onetrust.users |
 | `opal_security` | Opal Security source | opal_security.applications, opal_security.audit_events, opal_security.groups, opal_security.roles, opal_security.users |

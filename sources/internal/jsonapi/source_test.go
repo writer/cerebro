@@ -164,6 +164,59 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 }
 
+func TestReadUsesResponseHeaderCursor(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			w.Header().Set("After-Cursor", "page-2")
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-1"}})
+		case "page-2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "user-2"}})
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:              "users",
+		Path:              "/users",
+		CursorParam:       "cursor",
+		NextCursorHeaders: []string{"After-Cursor"},
+		PageSizeParams:    []string{"limit"},
+		URNKind:           "test_user",
+		IDKeys:            []string{"id"},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("first NextCursor = %q, want page-2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests len = %d, want 2", len(requests))
+	}
+	if got := requests[1].URL.Query().Get("cursor"); got != "page-2" {
+		t.Fatalf("second cursor query = %q, want page-2", got)
+	}
+}
+
 func TestReadPathParamValuesPreservesValueAndProviderCursor(t *testing.T) {
 	requests := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
