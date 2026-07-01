@@ -169,6 +169,56 @@ func TestGroupUsesNotesDescription(t *testing.T) {
 	}
 }
 
+func TestIdentityFamiliesUseStaticResourceType(t *testing.T) {
+	tests := []struct {
+		family       string
+		path         string
+		payload      map[string]any
+		resourceType string
+	}{
+		{family: familyGroup, path: "/groups", resourceType: "group", payload: map[string]any{"id": 3001, "name": "Operations"}},
+		{family: familyGroupUser, path: "/group_users", resourceType: "group_user", payload: map[string]any{"group_id": 3001, "id": 7001, "user_id": 501, "username": "ada"}},
+		{family: familyUserGroup, path: "/user/groups", resourceType: "group", payload: map[string]any{"id": 3002, "name": "Finance"}},
+		{family: familyUser, path: "/users", resourceType: "user", payload: map[string]any{"email": "ada@example.test", "id": 501, "name": "Ada"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.family, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Token test-token" {
+					t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+				}
+				if r.URL.Path != tt.path {
+					t.Fatalf("path = %q, want %q", r.URL.Path, tt.path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode([]map[string]any{tt.payload})
+			}))
+			defer server.Close()
+
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "tenant",
+				"base_url":  server.URL,
+				"family":    tt.family,
+				"api_token": "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Attributes["resource_type"]; got != tt.resourceType {
+				t.Fatalf("resource_type = %q, want %q; attrs=%#v", got, tt.resourceType, pull.Events[0].Attributes)
+			}
+		})
+	}
+}
+
 func TestAPIKeyFamiliesUsePermissionSetMetadata(t *testing.T) {
 	for _, tt := range []struct {
 		family string
@@ -271,16 +321,16 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}{
 		{family: familyExternalEvent, kind: "files_com.external_event", want: map[string]string{"source_event_id": "1001", "event_type": "webhook.delivery"}},
 		{family: familyApiKey, kind: "files_com.api_key", want: map[string]string{"secret_id": "2001", "secret_name": "prod automation key"}},
-		{family: familyGroup, kind: "files_com.group", want: map[string]string{"group_id": "3001", "group_name": "Operations"}},
-		{family: familyGroupUser, kind: "files_com.group_user", want: map[string]string{"user_id": "501", "group_id": "3001"}},
+		{family: familyGroup, kind: "files_com.group", want: map[string]string{"group_id": "3001", "group_name": "Operations", "resource_type": "group"}},
+		{family: familyGroupUser, kind: "files_com.group_user", want: map[string]string{"user_id": "501", "group_id": "3001", "resource_type": "group_user"}},
 		{family: familyActionNotificationExportResult, kind: "files_com.action_notification_export_result", want: map[string]string{"alert_id": "4001", "alert_status": "200"}},
 		{family: familyPermission, kind: "files_com.permission", want: map[string]string{"resource_id": "5001", "resource_type": "permission"}},
 		{family: familyLogin, kind: "files_com.login", want: map[string]string{"actor_id": "501", "source_ip": "203.0.113.10"}},
 		{family: familySiteApiKey, kind: "files_com.site_api_key", want: map[string]string{"secret_id": "2002", "secret_name": "site ingest key"}},
 		{family: familyUserApiKey, kind: "files_com.user_api_key", want: map[string]string{"secret_id": "2003", "secret_name": "ada cli key"}},
 		{family: familyExavaultReserved, kind: "files_com.exavault_reserved", want: map[string]string{"resource_id": "exavault-sftp-us-east", "resource_type": "ip_address_range"}},
-		{family: familyUserGroup, kind: "files_com.user_group", want: map[string]string{"group_id": "3002", "group_name": "Finance"}},
-		{family: familyUser, kind: "files_com.user", want: map[string]string{"user_id": "501", "login": "ada"}},
+		{family: familyUserGroup, kind: "files_com.user_group", want: map[string]string{"group_id": "3002", "group_name": "Finance", "resource_type": "group"}},
+		{family: familyUser, kind: "files_com.user", want: map[string]string{"user_id": "501", "login": "ada", "resource_type": "user"}},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
