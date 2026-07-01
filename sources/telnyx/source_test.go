@@ -113,6 +113,32 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if got := event.Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
+			switch tt.family {
+			case familyBillingGroup:
+				if got := event.Attributes["resource_type"]; got != "billing_group" {
+					t.Fatalf("resource_type = %q, want billing_group", got)
+				}
+				if got := event.Attributes["resource_id"]; got != "00000000-0000-4000-8000-000000000001" {
+					t.Fatalf("resource_id = %q, want billing group id", got)
+				}
+			case familyNotificationChannel:
+				if got := event.Attributes["alert_status"]; got != "" {
+					t.Fatalf("alert_status = %q, want empty without provider status", got)
+				}
+				if got := event.Attributes["alert_severity"]; got != "" {
+					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+				}
+				if got := event.Attributes["resource_type"]; got != "notification_channel" {
+					t.Fatalf("resource_type = %q, want notification_channel", got)
+				}
+			case familySimCardGroup:
+				if got := event.Attributes["resource_type"]; got != "sim_card_group" {
+					t.Fatalf("resource_type = %q, want sim_card_group", got)
+				}
+				if got := event.Attributes["resource_id"]; got != testSIMCardGroupID {
+					t.Fatalf("resource_id = %q, want SIM card group id", got)
+				}
+			}
 			if got := event.Attributes["tenant_id"]; got != "tenant" {
 				t.Fatalf("tenant_id = %q, want tenant", got)
 			}
