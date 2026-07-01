@@ -7,29 +7,24 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
-	"github.com/writer/cerebro/sources/internal/jsonapi"
+	"github.com/writer/cerebro/sources/internal/newrelicapi"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const (
-	sourceID               = "new_relic"
-	defaultFamily          = familyAssets
-	defaultHealthPath      = "/graphql"
-	defaultBaseURLTemplate = "https://api.newrelic.com"
-	tokenHeader            = ""
-	tokenScheme            = "Token"
-	familyAssets           = "assets"
-	familyFindings         = "findings"
-	familyAuditEvents      = "audit_events"
+	sourceID          = newrelicapi.SourceID
+	defaultFamily     = familyAssets
+	familyAssets      = newrelicapi.FamilyAssets
+	familyFindings    = newrelicapi.FamilyFindings
+	familyAuditEvents = newrelicapi.FamilyAuditEvents
 )
 
-var templateKeys = []string{"api_key"}
-
 type Source struct {
-	inner         *jsonapi.Source
+	spec          *cerebrov1.SourceSpec
 	allowLoopback bool
 }
 
@@ -38,102 +33,204 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "api_key",
-		TokenHeader:     tokenHeader,
-		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
-			{
-				Name:             familyAssets,
-				Path:             "/v1/entities",
-				URNKind:          "new_relic_assets",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "assets", "source_system": "new_relic"},
-			},
-			{
-				Name:             familyFindings,
-				Path:             "/v1/alerts",
-				URNKind:          "new_relic_findings",
-				IDKeys:           []string{"id", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "findings", "source_system": "new_relic"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit/events",
-				URNKind:          "new_relic_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "new_relic"},
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &Source{inner: inner}, nil
+	return &Source{spec: spec}, nil
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {
-	if s == nil || s.inner == nil {
+	if s == nil {
 		return nil
 	}
-	return s.inner.Spec()
+	return s.spec
 }
 
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
+	settings, err := newrelicapi.ResolveConfig(cfg)
 	if err != nil {
 		return err
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
-		return err
+	var out struct {
+		Actor struct {
+			User struct {
+				Name string `json:"name"`
+			} `json:"user"`
+		} `json:"actor"`
 	}
-	return s.inner.Check(ctx, runtimeCfg)
+	return s.client().GraphQL(ctx, settings, newrelicapi.Request{Query: `query NewRelicSourceHealth { actor { user { name } } }`}, &out)
 }
 
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
+	pull, err := s.Read(ctx, cfg, nil)
 	if err != nil {
 		return nil, err
 	}
-	return s.inner.Discover(ctx, runtimeCfg)
+	urns := make([]sourcecdk.URN, 0, len(pull.Events))
+	for _, event := range pull.Events {
+		rawURN := ""
+		if event.GetKind() == sourceID+"."+familyFindings {
+			rawURN = strings.TrimSpace(event.GetAttributes()["finding_urn"])
+		}
+		if rawURN == "" {
+			rawURN = strings.TrimSpace(event.GetAttributes()["resource_urn"])
+		}
+		if rawURN == "" {
+			rawURN = fmt.Sprintf("urn:cerebro:%s:%s:%s", event.GetTenantId(), event.GetKind(), event.GetId())
+		}
+		urn, err := sourcecdk.ParseURN(rawURN)
+		if err != nil {
+			return nil, err
+		}
+		urns = append(urns, urn)
+	}
+	return urns, nil
 }
 
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
+	settings, err := newrelicapi.ResolveConfig(cfg)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	return s.inner.Read(ctx, runtimeCfg, cursor)
+	switch settings.Family {
+	case familyAssets:
+		return s.readAssets(ctx, settings, sourcecdk.CursorToken(cursor))
+	case familyFindings:
+		return s.readFindings(ctx, settings, sourcecdk.CursorToken(cursor))
+	case familyAuditEvents:
+		return s.readAuditEvents(ctx, settings)
+	default:
+		return sourcecdk.Pull{}, fmt.Errorf("%w: new_relic family must be one of %s, %s, %s", sourcecdk.ErrInvalidConfig, familyAssets, familyFindings, familyAuditEvents)
+	}
 }
 
-func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+func (s *Source) readAssets(ctx context.Context, settings newrelicapi.Settings, cursor string) (sourcecdk.Pull, error) {
+	var out struct {
+		Actor struct {
+			EntitySearch struct {
+				Results struct {
+					NextCursor string               `json:"nextCursor"`
+					Entities   []newrelicapi.Record `json:"entities"`
+				} `json:"results"`
+			} `json:"entitySearch"`
+		} `json:"actor"`
+	}
+	req := newrelicapi.Request{
+		Query: `query NewRelicEntitySearch($query: String!, $cursor: String) {
+  actor {
+    entitySearch(query: $query) {
+      results(cursor: $cursor) {
+        nextCursor
+        entities {
+          guid
+          name
+          type
+          entityType
+          domain
+          permalink
+          reporting
+          account { id name }
+        }
+      }
+    }
+  }
+}`,
+		Variables: map[string]any{"query": settings.EntityQuery, "cursor": newrelicapi.NullableString(cursor)},
+	}
+	if err := s.client().GraphQL(ctx, settings, req, &out); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(out.Actor.EntitySearch.Results.Entities))
+	for _, entity := range out.Actor.EntitySearch.Results.Entities {
+		events = append(events, newrelicapi.NewAssetEvent(settings, entity))
+	}
+	return newrelicapi.PullWithCursor(events, out.Actor.EntitySearch.Results.NextCursor), nil
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
+func (s *Source) readFindings(ctx context.Context, settings newrelicapi.Settings, cursor string) (sourcecdk.Pull, error) {
+	if settings.AccountID == 0 {
+		return sourcecdk.Pull{}, fmt.Errorf("%w: account_id is required for new_relic findings", sourcecdk.ErrInvalidConfig)
+	}
+	var out struct {
+		Actor struct {
+			Account struct {
+				AIIssues struct {
+					Issues struct {
+						NextCursor string               `json:"nextCursor"`
+						Issues     []newrelicapi.Record `json:"issues"`
+					} `json:"issues"`
+				} `json:"aiIssues"`
+			} `json:"account"`
+		} `json:"actor"`
+	}
+	req := newrelicapi.Request{
+		Query: `query NewRelicIssues($accountId: Int!, $cursor: String) {
+  actor {
+    account(id: $accountId) {
+      aiIssues {
+        issues(cursor: $cursor) {
+          nextCursor
+          issues {
+            issueId
+            title
+            description
+            priority
+            state
+            createdAt
+            updatedAt
+            entityGuids
+          }
+        }
+      }
+    }
+  }
+}`,
+		Variables: map[string]any{"accountId": settings.AccountID, "cursor": newrelicapi.NullableString(cursor)},
+	}
+	if err := s.client().GraphQL(ctx, settings, req, &out); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(out.Actor.Account.AIIssues.Issues.Issues))
+	for _, issue := range out.Actor.Account.AIIssues.Issues.Issues {
+		events = append(events, newrelicapi.NewFindingEvent(settings, issue))
+	}
+	return newrelicapi.PullWithCursor(events, out.Actor.Account.AIIssues.Issues.NextCursor), nil
+}
+
+func (s *Source) readAuditEvents(ctx context.Context, settings newrelicapi.Settings) (sourcecdk.Pull, error) {
+	if settings.AccountID == 0 {
+		return sourcecdk.Pull{}, fmt.Errorf("%w: account_id is required for new_relic audit_events", sourcecdk.ErrInvalidConfig)
+	}
+	var out struct {
+		Actor struct {
+			Account struct {
+				NRQL struct {
+					Results []newrelicapi.Record `json:"results"`
+				} `json:"nrql"`
+			} `json:"account"`
+		} `json:"actor"`
+	}
+	req := newrelicapi.Request{
+		Query: `query NewRelicAuditEvents($accountId: Int!, $nrql: Nrql!) {
+  actor {
+    account(id: $accountId) {
+      nrql(query: $nrql) {
+        results
+      }
+    }
+  }
+}`,
+		Variables: map[string]any{"accountId": settings.AccountID, "nrql": settings.AuditNRQL},
+	}
+	if err := s.client().GraphQL(ctx, settings, req, &out); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	events := make([]*primitives.Event, 0, len(out.Actor.Account.NRQL.Results))
+	for _, row := range out.Actor.Account.NRQL.Results {
+		events = append(events, newrelicapi.NewAuditEvent(settings, row))
+	}
+	return sourcecdk.Pull{Events: events}, nil
+}
+
+func (s *Source) client() newrelicapi.Client {
+	return newrelicapi.Client{AllowLoopback: s != nil && s.allowLoopback}
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -148,18 +245,8 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
 func (s *Source) allowLoopbackForTest() {
-	if s != nil && s.inner != nil {
-		s.inner.AllowLoopbackBaseURL = true
+	if s != nil {
 		s.allowLoopback = true
 	}
 }

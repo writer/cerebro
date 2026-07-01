@@ -1,16 +1,17 @@
 ## Summary
 
-- Adds the `new_relic` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Replaces the New Relic generated REST-shaped runtime with a NerdGraph runtime.
+- Reads monitored entities through entity search, AI issues through account-scoped issue APIs, and audit rows through NrAuditEvent NRQL.
+- Updates catalog provider API metadata, coverage contracts, deploy config, fixtures, and runtime docs.
 
-## Generated runtime contract
+## Runtime Contract
 
-- Source type: `json_api`
+- Source type: `graphql`
 - Auth model: `api_key`
-- Health endpoint: `/source-runtimes/health?source_id=new_relic`
-- Freshness: `24h0m0s`
+- Endpoint: `/graphql`
+- Required config: `api_key`; `account_id` for findings and audit events
 
 ## Tests
 
 - `go test ./sources/new_relic ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go run ./tools/catalogcheck`
