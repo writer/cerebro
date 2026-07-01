@@ -33,7 +33,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 				"status":     "success",
 				"body":       `{"action":"file.uploaded","path":"/Finance/q2.csv"}`,
 				"created_at": "2026-06-01T00:00:00Z",
-				"body_url":   "https://example.files.com/external_events/1001/body",
+				"body_url":   "https://example.test/external_events/1001/body",
 			},
 		})
 	}))
@@ -62,6 +62,111 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if got := event.Attributes["outcome_result"]; got != "success" {
 		t.Fatalf("outcome_result = %q, want success", got)
+	}
+	if got := event.Attributes["name"]; got != "webhook.delivery" {
+		t.Fatalf("name = %q, want webhook.delivery", got)
+	}
+}
+
+func TestActionNotificationExportResultUsesMessageFields(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Token test-token" {
+			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/action_notification_export_results" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"created_at":     1780272000,
+				"id":             4001,
+				"message":        "Delivered",
+				"path":           "/Finance/q2.csv",
+				"request_method": "POST",
+				"request_url":    "https://hooks.example.test/files",
+				"status":         200,
+				"success":        true,
+			},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    familyActionNotificationExportResult,
+		"api_token": "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for key, want := range map[string]string{
+		"alert_name":    "Delivered",
+		"alert_source":  "https://hooks.example.test/files",
+		"alert_status":  "200",
+		"name":          "Delivered",
+		"resource_name": "/Finance/q2.csv",
+		"resource_type": "action_notification_export_result",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q; attrs=%#v", key, got, want, attrs)
+		}
+	}
+	if got := attrs["alert_severity"]; got != "" {
+		t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+	}
+}
+
+func TestAPIKeyDoesNotUseLastUseAsRotation(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Token test-token" {
+			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/api_keys" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"created_at":     "2026-05-20T12:00:00Z",
+				"id":             2001,
+				"last_use_at":    "2026-06-01T00:00:00Z",
+				"name":           "prod automation key",
+				"permission_set": "files_only",
+			},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL,
+		"family":    familyApiKey,
+		"api_token": "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["secret_last_rotated_at"]; got != "" {
+		t.Fatalf("secret_last_rotated_at = %q, want empty without provider rotation field", got)
 	}
 }
 

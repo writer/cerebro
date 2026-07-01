@@ -129,6 +129,8 @@ coverage_contract:
           control_id: CC7.2
         - framework_name: SOC 2
           control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
         - Captures Files.com action notification export delivery result, HTTP status, target URL, and message.
     - id: permission
