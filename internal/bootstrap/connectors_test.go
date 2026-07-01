@@ -1555,6 +1555,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if auth0.ReadinessStage != connectorReadinessStageRuntimeBacked {
 		t.Fatalf("auth0 readiness = %q, want %q", auth0.ReadinessStage, connectorReadinessStageRuntimeBacked)
 	}
+	if !auth0.Cataloged || auth0.Callable {
+		t.Fatalf("auth0 cataloged=%v callable=%v, want runtime-backed catalog entry not directly callable", auth0.Cataloged, auth0.Callable)
+	}
 	jenkins := bySourceID["jenkins"]
 	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
 		t.Fatalf("jenkins status = %q executable=%v, want generateable executable", jenkins.CatalogStatus, jenkins.RuntimeExecutable)

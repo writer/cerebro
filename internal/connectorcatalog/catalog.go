@@ -414,10 +414,11 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q must declare coverage dimensions", family.ID)})
 			continue
 		}
+		familyHighValue := false
 		for _, dimension := range family.Coverage {
 			dimensionID := proofGateDimensionID(family.ID, dimension)
 			if dimension.HighValue {
-				highValueFamilies++
+				familyHighValue = true
 			}
 			if !dimension.HighValue {
 				continue
@@ -431,6 +432,9 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 					issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q high-value coverage dimension %q must declare control domains", family.ID, dimensionID)})
 				}
 			}
+		}
+		if familyHighValue {
+			highValueFamilies++
 		}
 	}
 	if len(definition.ResourceFamilies) < 2 || highValueFamilies > 12 {

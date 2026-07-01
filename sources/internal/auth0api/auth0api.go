@@ -462,6 +462,7 @@ func identityGroupAttributes() map[string]string {
 
 func auditEventAttributes() map[string]string {
 	return mergeAttributes(commonRuntimeAttributes(), map[string]string{
+		"observed_at":     "observed_at|updated_at|last_seen_at|date",
 		"actor_email":     "actor_email|actor.email|email|user.email|user_name",
 		"actor_id":        "actor_id|actor.id|actorId|user_id|user.id",
 		"actor_name":      "actor_name|actor.name|user.name|user_name",

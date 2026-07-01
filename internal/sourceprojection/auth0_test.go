@@ -81,6 +81,18 @@ func TestAuth0GrantProjection(t *testing.T) {
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want grant projection", len(entities), len(links))
 	}
+	entityURNs := map[string]struct{}{}
+	for _, entity := range entities {
+		entityURNs[entity.URN] = struct{}{}
+	}
+	for _, link := range links {
+		if _, ok := entityURNs[link.FromURN]; !ok {
+			t.Fatalf("link source %q has no projected entity; link=%#v entities=%#v", link.FromURN, link, entities)
+		}
+		if _, ok := entityURNs[link.ToURN]; !ok {
+			t.Fatalf("link target %q has no projected entity; link=%#v entities=%#v", link.ToURN, link, entities)
+		}
+	}
 }
 
 func TestAuth0AuthenticationMethodProjection(t *testing.T) {

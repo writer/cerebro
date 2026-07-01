@@ -139,6 +139,24 @@ func TestAnalyzeDirRequiresExplicitHighValueCoverageMetadata(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDirCountsHighValueFamiliesOnce(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, strings.ReplaceAll(minimalDefinitionYAML(),
+		"- {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}",
+		"- {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}\n            - {type: permission_state, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [access_control]}"))
+
+	analysis, err := AnalyzeDir(root, Options{DryRunSourcegen: true})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if len(analysis.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", analysis.Issues)
+	}
+	if got := analysis.Entries[0].Status; got != StatusGenerateable {
+		t.Fatalf("status = %q, want %q", got, StatusGenerateable)
+	}
+}
+
 func TestAnalyzeDirMarksOAuthClientCredentialsDefinitionAsGenerateable(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogFile(t, root, strings.ReplaceAll(strings.ReplaceAll(minimalDefinitionYAML(),

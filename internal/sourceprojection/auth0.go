@@ -259,7 +259,7 @@ func auth0GrantProjections(event *cerebrov1.EventEnvelope, defaultSubjectType st
 		if clientURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), clientURN, entitlementURN, relationGrantsEntitlement, identityEventLinkAttributes(event)))
 		}
-		if subjectURN != "" && subjectURN != clientURN {
+		if subjectURN != "" && subjectURN != clientURN && subjectType != "application" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, entitlementURN, relationAssignedTo, map[string]string{"event_id": event.GetId(), "match_type": "auth0_user_grant_scope"}))
 		}
 		capabilityURN := addIdentityCapability(entities, tenantID, event.GetSourceId(), "app_access", "Application access", map[string]string{"source": "auth0"})
