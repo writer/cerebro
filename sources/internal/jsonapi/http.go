@@ -73,6 +73,9 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 	}
 	if next == "" {
+		next = cursorFromLastItem(family, items, pageSize)
+	}
+	if next == "" {
 		next = linkHeaderCursor(family, headers)
 	}
 	next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
@@ -576,6 +579,22 @@ func responseCursorKeys(family Family) []string {
 	}
 	keys = append(keys, "nextCursor", "next_cursor", "cursor", "next", "nextPageToken", "next_page_token", "next_page")
 	return keys
+}
+
+func cursorFromLastItem(family Family, items []json.RawMessage, pageSize int) string {
+	if len(family.CursorFromLastItemKeys) == 0 || pageSize < 1 || len(items) < pageSize {
+		return ""
+	}
+	var last map[string]json.RawMessage
+	if err := json.Unmarshal(items[len(items)-1], &last); err != nil {
+		return ""
+	}
+	for _, key := range family.CursorFromLastItemKeys {
+		if value := rawStringAtPath(last, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func nextPageCursor(values map[string]any) string {

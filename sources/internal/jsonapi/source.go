@@ -14,30 +14,31 @@ import (
 
 // Family describes one JSON API collection exposed by a first-class source.
 type Family struct {
-	Name                  string
-	Path                  string
-	DetailPath            string
-	AllowBareDetailRecord bool
-	PathParams            []string
-	CursorParam           string
-	NextCursorKeys        []string
-	HasMoreKey            string
-	LinkHeader            string
-	PageFirstCursor       string
-	URNKind               string
-	IDKeys                []string
-	TimestampKeys         []string
-	Attributes            map[string]string
-	StaticAttributes      map[string]string
-	Config                FamilyConfig
-	PageSizeParams        []string
-	DisablePageSize       bool
-	ListKeys              []string
-	MapRecords            map[string]string
-	Singleton             bool
-	RequireID             bool
-	IncrementalWatermark  bool
-	Method                string
+	Name                   string
+	Path                   string
+	DetailPath             string
+	AllowBareDetailRecord  bool
+	PathParams             []string
+	CursorParam            string
+	NextCursorKeys         []string
+	CursorFromLastItemKeys []string
+	HasMoreKey             string
+	LinkHeader             string
+	PageFirstCursor        string
+	URNKind                string
+	IDKeys                 []string
+	TimestampKeys          []string
+	Attributes             map[string]string
+	StaticAttributes       map[string]string
+	Config                 FamilyConfig
+	PageSizeParams         []string
+	DisablePageSize        bool
+	ListKeys               []string
+	MapRecords             map[string]string
+	Singleton              bool
+	RequireID              bool
+	IncrementalWatermark   bool
+	Method                 string
 }
 
 // FamilyConfig groups request and event bindings that are derived from family

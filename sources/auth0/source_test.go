@@ -225,6 +225,15 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"user_id": "auth0|user-1", "email": "user@example.test", "name": "User One", "roles": []string{"role-1"}}})
 		case "/clients":
+			if got := r.URL.Query().Get("include_fields"); got != "false" {
+				t.Fatalf("clients include_fields = %q, want false", got)
+			}
+			fields := r.URL.Query().Get("fields")
+			for _, field := range []string{"client_secret", "signing_key", "encryption_key", "client_authentication_methods"} {
+				if !strings.Contains(fields, field) {
+					t.Fatalf("clients fields = %q, want excluded %s", fields, field)
+				}
+			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"client_id": "client-1", "name": "Workforce Portal", "app_type": "regular_web", "callbacks": []string{"https://app.example.test/callback"}, "grant_types": []string{"authorization_code"}}})
 		case "/connections":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "conn-1", "name": "google-oauth2", "strategy": "google-oauth2", "enabled_clients": []string{"client-1"}}})
@@ -349,7 +358,83 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 					t.Fatalf("attribute %s = %q, want %q", key, got, want)
 				}
 			}
+			if tt.family == auth0api.FamilyClients && strings.Contains(string(event.Payload), "client_secret") {
+				t.Fatalf("clients payload contains client_secret: %s", string(event.Payload))
+			}
 		})
+	}
+}
+
+func TestReadPaginatesAuth0AuditEventsByLastLogID(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/logs" {
+			t.Fatalf("path = %q, want /logs", r.URL.Path)
+		}
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("take"); got != "2" {
+			t.Fatalf("take = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("from") {
+		case "":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"log_id": "log-1", "date": "2026-06-01T00:00:00Z", "type": "s"},
+				{"log_id": "log-2", "date": "2026-06-01T00:00:01Z", "type": "s"},
+			})
+		case "log-2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"log_id": "log-3", "date": "2026-06-01T00:00:02Z", "type": "s"}})
+		default:
+			t.Fatalf("from = %q, want empty or log-2", r.URL.Query().Get("from"))
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        auth0api.FamilyAuditEvents,
+		"token_url":     server.URL + "/oauth/token",
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+		"domain":        "tenant.auth0.com",
+		"per_page":      "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() first error = %v", err)
+	}
+	if len(first.Events) != 2 {
+		t.Fatalf("first events = %d, want 2", len(first.Events))
+	}
+	if got := sourcecdk.CursorToken(first.NextCursor); got != "log-2" {
+		t.Fatalf("first NextCursor token = %q, want log-2", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read() second error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("second events = %d, want 1", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("from") != "log-2" {
+		t.Fatalf("requests = %#v, want second request with from=log-2", requests)
 	}
 }
 

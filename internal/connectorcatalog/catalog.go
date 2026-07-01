@@ -438,7 +438,7 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 		}
 	}
 	if len(definition.ResourceFamilies) < 2 || highValueFamilies > 12 {
-		issues = append(issues, Issue{Path: path, Message: "definition must include 2-12 high-value resource families"})
+		issues = append(issues, Issue{Path: path, Message: "definition must include at least 2 resource families and at most 12 high-value resource families"})
 	}
 	if highValueFamilies == 0 {
 		issues = append(issues, Issue{Path: path, Message: "at least one high-value coverage dimension is required"})

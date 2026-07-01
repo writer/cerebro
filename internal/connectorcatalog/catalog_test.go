@@ -113,7 +113,7 @@ entries:
 	}
 	for _, want := range []string{
 		"verification endpoint is required",
-		"definition must include 2-12 high-value resource families",
+		"definition must include at least 2 resource families and at most 12 high-value resource families",
 		`resource family "users" must declare coverage dimensions`,
 		"at least one high-value coverage dimension is required",
 	} {

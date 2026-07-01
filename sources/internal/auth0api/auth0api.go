@@ -20,6 +20,7 @@ const (
 	oauthTokenURLTemplate      = "https://${config.domain}/oauth/token" // #nosec G101 -- token endpoint URL template, not credential material.
 	oauthScopeSeparator        = " "
 	oauthTokenExpirationBuffer = 60 * time.Second
+	clientSecretFields         = "client_secret,signing_key,encryption_key,client_authentication_methods"
 
 	FamilyUsers                     = "users"
 	FamilyRoles                     = "roles"
@@ -186,17 +187,18 @@ func rolesFamily() jsonapi.Family {
 
 func auditEventsFamily() jsonapi.Family {
 	return jsonapi.Family{
-		Name:                 FamilyAuditEvents,
-		Path:                 "/logs",
-		URNKind:              "runtime_audit_events",
-		IDKeys:               []string{"log_id", "event_id", "id", "uuid", "request_id"},
-		CursorParam:          "from",
-		PageSizeParams:       []string{"take"},
-		TimestampKeys:        []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
-		Attributes:           auditEventAttributes(),
-		StaticAttributes:     map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": SourceID},
-		Config:               jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
-		IncrementalWatermark: true,
+		Name:                   FamilyAuditEvents,
+		Path:                   "/logs",
+		URNKind:                "runtime_audit_events",
+		IDKeys:                 []string{"log_id", "event_id", "id", "uuid", "request_id"},
+		CursorParam:            "from",
+		CursorFromLastItemKeys: []string{"log_id"},
+		PageSizeParams:         []string{"take"},
+		TimestampKeys:          []string{"date", "observed_at", "updated_at", "last_seen_at", "created_at"},
+		Attributes:             auditEventAttributes(),
+		StaticAttributes:       map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": SourceID},
+		Config:                 jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
+		IncrementalWatermark:   true,
 	}
 }
 
@@ -250,7 +252,11 @@ func clientsFamily() jsonapi.Family {
 		TimestampKeys:    []string{"updated_at", "created_at", "observed_at"},
 		Attributes:       applicationAttributes(),
 		StaticAttributes: map[string]string{"record_class": "identity_application", "resource_type": "application", "schema": "clients", "source_system": SourceID},
-		Config:           jsonapi.FamilyConfig{EncodeURNID: true, ResourceURNKind: "runtime_applications"},
+		Config: jsonapi.FamilyConfig{
+			StaticQuery:     map[string]string{"fields": clientSecretFields, "include_fields": "false"},
+			EncodeURNID:     true,
+			ResourceURNKind: "runtime_applications",
+		},
 	}
 }
 
