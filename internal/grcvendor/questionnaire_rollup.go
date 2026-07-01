@@ -3,6 +3,7 @@ package grcvendor
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -38,42 +39,54 @@ func QuestionnaireVendorRollups(ctx context.Context, store ports.QuestionnaireRu
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	records, err := store.ListQuestionnaireRuns(ctx, ports.QuestionnaireRunFilter{
-		TenantID: strings.TrimSpace(tenantID),
-		Limit:    500,
-	})
-	if err != nil {
-		return nil, err
-	}
 	seen := map[string]struct{}{}
-	for _, record := range records {
-		if record == nil {
-			continue
+	vendorList := make([]string, 0, len(vendorSet))
+	for vendorURN := range vendorSet {
+		vendorList = append(vendorList, vendorURN)
+	}
+	sort.Strings(vendorList)
+	for _, requestedVendorURN := range vendorList {
+		records, err := store.ListQuestionnaireRuns(ctx, ports.QuestionnaireRunFilter{
+			TenantID:  strings.TrimSpace(tenantID),
+			VendorURN: requestedVendorURN,
+			Limit:     500,
+		})
+		if err != nil {
+			return nil, err
 		}
-		vendorURN := strings.TrimSpace(record.VendorURN)
-		if _, ok := vendorSet[vendorURN]; !ok {
-			continue
-		}
-		key := vendorURN + "\x00" + firstNonEmpty(record.Attributes[questionnairedomain.QuestionnaireAttributeQuestionnaireURN], record.RunID)
-		rollup := result[vendorURN]
-		if _, ok := seen[key]; !ok {
-			rollup.QuestionnaireCount++
-			seen[key] = struct{}{}
-		}
-		if !questionnaireTerminal(record.Status) && record.DueAt != nil && !record.DueAt.After(now) {
-			rollup.DueQuestionnaires++
-		}
-		rollup.ReadyAnswers += record.ReadyAnswerCount
-		rollup.BlockedAnswers += record.BlockedAnswerCount
-		rollup.ReviewAnswers += record.ReviewAnswerCount
-		rollup.MissingEvidence += record.MissingEvidence
-		rollup.StaleEvidence += record.StaleEvidence
-		for _, assignment := range record.Assignments {
-			if strings.TrimSpace(assignment.Status) == "" || assignment.Status == "open" {
-				rollup.OpenAssignments++
+		for _, record := range records {
+			if record == nil {
+				continue
 			}
+			vendorURN := strings.TrimSpace(record.VendorURN)
+			if vendorURN != requestedVendorURN {
+				continue
+			}
+			key := vendorURN + "\x00" + firstNonEmpty(record.Attributes[questionnairedomain.QuestionnaireAttributeQuestionnaireURN], record.RunID)
+			rollup := result[vendorURN]
+			if _, ok := seen[key]; !ok {
+				rollup.QuestionnaireCount++
+				seen[key] = struct{}{}
+			}
+			if questionnaireTerminal(record.Status) {
+				result[vendorURN] = rollup
+				continue
+			}
+			if record.DueAt != nil && !record.DueAt.After(now) {
+				rollup.DueQuestionnaires++
+			}
+			rollup.ReadyAnswers += record.ReadyAnswerCount
+			rollup.BlockedAnswers += record.BlockedAnswerCount
+			rollup.ReviewAnswers += record.ReviewAnswerCount
+			rollup.MissingEvidence += record.MissingEvidence
+			rollup.StaleEvidence += record.StaleEvidence
+			for _, assignment := range record.Assignments {
+				if strings.TrimSpace(assignment.Status) == "" || assignment.Status == "open" {
+					rollup.OpenAssignments++
+				}
+			}
+			result[vendorURN] = rollup
 		}
-		result[vendorURN] = rollup
 	}
 	return result, nil
 }

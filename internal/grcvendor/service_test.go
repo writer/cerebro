@@ -3,6 +3,7 @@ package grcvendor
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -217,8 +218,11 @@ func TestQuestionnaireVendorRollupsCountsOperationalWork(t *testing.T) {
 		t.Fatalf("QuestionnaireVendorRollups() error = %v", err)
 	}
 	rollup := rollups[vendorURN]
-	if rollup.QuestionnaireCount != 2 || rollup.DueQuestionnaires != 1 || rollup.ReadyAnswers != 3 || rollup.BlockedAnswers != 1 || rollup.ReviewAnswers != 3 || rollup.MissingEvidence != 4 || rollup.StaleEvidence != 5 || rollup.OpenAssignments != 2 {
+	if rollup.QuestionnaireCount != 2 || rollup.DueQuestionnaires != 1 || rollup.ReadyAnswers != 2 || rollup.BlockedAnswers != 1 || rollup.ReviewAnswers != 3 || rollup.MissingEvidence != 4 || rollup.StaleEvidence != 5 || rollup.OpenAssignments != 2 {
 		t.Fatalf("rollup = %#v", rollup)
+	}
+	if len(store.filters) != 2 || !hasQuestionnaireVendorFilter(store.filters, vendorURN) || !hasQuestionnaireVendorFilter(store.filters, "urn:cerebro:writer:vendor:missing") {
+		t.Fatalf("filters = %#v, want one query per vendor", store.filters)
 	}
 
 	vendor := ApplyQuestionnaireVendorRollup(Vendor{
@@ -492,6 +496,7 @@ func TestListDiscoveriesAppliesSourceStatusAndOverlay(t *testing.T) {
 type stubQuestionnaireRunStore struct {
 	ports.StateStore
 	records []*ports.QuestionnaireRunRecord
+	filters []ports.QuestionnaireRunFilter
 	err     error
 }
 
@@ -503,8 +508,18 @@ func (s *stubQuestionnaireRunStore) GetQuestionnaireRun(context.Context, ports.Q
 	return nil, s.err
 }
 
-func (s *stubQuestionnaireRunStore) ListQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) ([]*ports.QuestionnaireRunRecord, error) {
-	return s.records, s.err
+func (s *stubQuestionnaireRunStore) ListQuestionnaireRuns(_ context.Context, filter ports.QuestionnaireRunFilter) ([]*ports.QuestionnaireRunRecord, error) {
+	s.filters = append(s.filters, filter)
+	if strings.TrimSpace(filter.VendorURN) == "" {
+		return s.records, s.err
+	}
+	filtered := []*ports.QuestionnaireRunRecord{}
+	for _, record := range s.records {
+		if record != nil && record.VendorURN == filter.VendorURN {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered, s.err
 }
 
 func (s *stubQuestionnaireRunStore) SummarizeQuestionnaireRuns(context.Context, ports.QuestionnaireRunFilter) (ports.QuestionnaireRunSummary, error) {
@@ -513,6 +528,15 @@ func (s *stubQuestionnaireRunStore) SummarizeQuestionnaireRuns(context.Context, 
 
 func (s *stubQuestionnaireRunStore) ListQuestionnaireRunEvents(context.Context, ports.QuestionnaireRunEventFilter) ([]*ports.QuestionnaireRunEventRecord, error) {
 	return nil, s.err
+}
+
+func hasQuestionnaireVendorFilter(filters []ports.QuestionnaireRunFilter, vendorURN string) bool {
+	for _, filter := range filters {
+		if filter.VendorURN == vendorURN {
+			return true
+		}
+	}
+	return false
 }
 
 func vendorRow(urn string, label string, attrs string, contracts int64, reviews int64, questionnaires int64, documents int64) ports.CypherRow {
