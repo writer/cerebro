@@ -233,6 +233,57 @@ func TestSourceDiscoversGroupMembersAsScopedMemberships(t *testing.T) {
 	}
 }
 
+func TestSourceDiscoversGroupMembersAcrossFanoutPages(t *testing.T) {
+	source := newTestSource(t)
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireJumpCloudHeaders(t, r)
+		requests = append(requests, r.URL.Path+"?skip="+r.URL.Query().Get("skip"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path + "?skip=" + r.URL.Query().Get("skip") {
+		case "/v2/usergroups/group-1/members?skip=0":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"to": map[string]any{"id": "user-1", "type": "user"}},
+				{"to": map[string]any{"id": "user-2", "type": "user"}},
+			})
+		case "/v2/usergroups/group-1/members?skip=2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"to": map[string]any{"id": "user-3", "type": "user"}}})
+		case "/v2/usergroups/group-2/members?skip=0":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"to": map[string]any{"id": "user-4", "type": "user"}}})
+		default:
+			t.Fatalf("unexpected request %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer server.Close()
+
+	urns, err := source.Discover(context.Background(), jumpCloudConfig(server.URL, map[string]string{
+		"family":    familyGroupMembers,
+		"per_page":  "2",
+		"group_ids": "group-1, group-2",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 4 {
+		t.Fatalf("urns = %v, want four group membership URNs", urns)
+	}
+	seen := map[string]struct{}{}
+	for _, urn := range urns {
+		seen[urn.String()] = struct{}{}
+	}
+	if len(seen) != 4 {
+		t.Fatalf("urns = %v, want unique group membership URNs", urns)
+	}
+	wantRequests := []string{
+		"/v2/usergroups/group-1/members?skip=0",
+		"/v2/usergroups/group-1/members?skip=2",
+		"/v2/usergroups/group-2/members?skip=0",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
 func TestSourceReadsDirectoryInsightsAuditEvents(t *testing.T) {
 	source := newTestSource(t)
 	requests := []map[string]any{}

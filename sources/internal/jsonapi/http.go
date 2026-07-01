@@ -76,7 +76,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		next = linkHeaderCursor(family, headers)
 		responseCursorKnown = responseCursorKnown || next != ""
 	}
-	if !responseCursorKnown {
+	if !responseCursorKnown || !family.Config.OffsetCursor {
 		next = synthesizePageCursor(family, pageCursor, pageSize, len(items), next)
 	}
 	records := make([]record, 0, len(items))
@@ -199,15 +199,19 @@ func synthesizePageCursor(family Family, cursor string, pageSize int, itemCount 
 }
 
 func synthesizedPageCursorStep(family Family, pageSize int) int {
-	if isOffsetCursorParam(cursorParam(family)) {
+	if isOffsetCursorFamily(family) {
 		return pageSize
 	}
 	return 1
 }
 
+func isOffsetCursorFamily(family Family) bool {
+	return family.Config.OffsetCursor || isOffsetCursorParam(cursorParam(family))
+}
+
 func isOffsetCursorParam(param string) bool {
 	switch strings.TrimSpace(param) {
-	case "offset", "skip", "start", "startAt":
+	case "offset", "start", "startAt":
 		return true
 	default:
 		return false
@@ -572,7 +576,7 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 
 func offsetResponseCursor(family Family, object map[string]json.RawMessage) (string, bool) {
 	cursorKey := cursorParam(family)
-	if !isOffsetCursorParam(cursorKey) {
+	if !isOffsetCursorFamily(family) {
 		return "", false
 	}
 	total, totalOK := intValueAtResponsePath(object, responseIntPaths(family.Config.TotalKeys, "totalCount", "total_count", "total", "metadata.page.total_count", "metadata.page.totalCount", "metadata.page.total", "meta.page.total_count", "meta.page.totalCount", "meta.page.total")...)

@@ -186,6 +186,7 @@ func jumpCloudPagedFamily(family jsonapi.Family) jsonapi.Family {
 	if family.CursorParam == "" {
 		family.CursorParam = "skip"
 	}
+	family.Config.OffsetCursor = true
 	if family.PageFirstCursor == "" {
 		family.PageFirstCursor = "0"
 	}

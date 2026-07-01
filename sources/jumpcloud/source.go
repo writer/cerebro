@@ -3,12 +3,15 @@ package jumpcloud
 import (
 	"context"
 	"embed"
+	"fmt"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 	"github.com/writer/cerebro/sources/internal/jumpcloudapi"
 )
+
+const groupMemberDiscoveryPageLimit = 1000
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
@@ -129,30 +132,37 @@ func jumpCloudPathParamValues(cfg sourcecdk.Config) (string, []string) {
 }
 
 func (s *Source) discoverGroupMembers(ctx context.Context, cfg sourcecdk.Config, param string, values []string) ([]sourcecdk.URN, error) {
-	pull, err := s.inner.ReadPathParamValuesWithCheckpoint(ctx, cfg, nil, nil, param, values)
-	if err != nil {
-		return nil, err
-	}
 	seen := map[sourcecdk.URN]struct{}{}
 	urns := []sourcecdk.URN{}
-	for _, event := range pull.Events {
-		attrs := event.GetAttributes()
-		groupID := jumpcloudapi.FirstNonEmpty(attrs["group_id"], sourcecdk.ConfigValue(cfg, "group_id"))
-		memberID := jumpcloudapi.FirstNonEmpty(attrs["member_user_id"], attrs["member_id"], attrs["resource_id"], attrs["source_event_id"])
-		if groupID == "" && memberID == "" {
-			memberID = event.GetId()
-		}
-		urn, err := sourcecdk.URNForEscaped(event.GetTenantId(), "jumpcloud_group_members", groupID, memberID)
+	var cursor *cerebrov1.SourceCursor
+	for pages := 0; pages < groupMemberDiscoveryPageLimit; pages++ {
+		pull, err := s.inner.ReadPathParamValuesWithCheckpoint(ctx, cfg, cursor, nil, param, values)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := seen[urn]; ok {
-			continue
+		for _, event := range pull.Events {
+			attrs := event.GetAttributes()
+			groupID := jumpcloudapi.FirstNonEmpty(attrs["group_id"], sourcecdk.ConfigValue(cfg, "group_id"))
+			memberID := jumpcloudapi.FirstNonEmpty(attrs["member_user_id"], attrs["member_id"], attrs["resource_id"], attrs["source_event_id"])
+			if groupID == "" && memberID == "" {
+				memberID = event.GetId()
+			}
+			urn, err := sourcecdk.URNForEscaped(event.GetTenantId(), "jumpcloud_group_members", groupID, memberID)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := seen[urn]; ok {
+				continue
+			}
+			seen[urn] = struct{}{}
+			urns = append(urns, urn)
 		}
-		seen[urn] = struct{}{}
-		urns = append(urns, urn)
+		cursor = pull.NextCursor
+		if cursor == nil {
+			return urns, nil
+		}
 	}
-	return urns, nil
+	return nil, fmt.Errorf("jumpcloud group member discovery exceeded %d pages", groupMemberDiscoveryPageLimit)
 }
 
 func (s *Source) allowLoopbackForTest() {
