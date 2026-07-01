@@ -1051,6 +1051,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				IDField:        "id",
 				StaticQuery:    map[string]string{"full": "true"},
 				ConfigQuery:    map[string]string{"author": "organization"},
+				Config:         &connectordefinitions.FamilyConfigSpec{IdentityKeys: []string{"id"}},
 				Event: connectordefinitions.EventMappingSpec{
 					Kind:      "huggingface.repositories",
 					SchemaRef: "huggingface/repositories/v1",
@@ -1118,8 +1119,9 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
-		`StaticQuery: map[string]string{"full": "true"}`,
-		`ConfigQuery: map[string]string{"author": "organization"}`,
+		`StaticQuery:  map[string]string{"full": "true"}`,
+		`ConfigQuery:  map[string]string{"author": "organization"}`,
+		`IdentityKeys: []string{"id"}`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)

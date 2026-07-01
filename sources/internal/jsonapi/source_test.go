@@ -861,6 +861,57 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
+func TestReadWrapsScalarListItemsWithIDKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("channel"); got != "C1" {
+			t.Fatalf("channel query = %q, want C1", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"members": []string{"U1"},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:     "channel_member",
+		Path:     "/conversations.members",
+		URNKind:  "test_channel_member",
+		IDKeys:   []string{"user_id"},
+		ListKeys: []string{"members"},
+		Config: FamilyConfig{
+			ConfigQuery: map[string]string{"channel": "channel_id"},
+		},
+		PathParams: []string{"channel_id"},
+		Attributes: map[string]string{
+			"channel_id": "channel_id",
+			"user_id":    "user_id",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"family":     "channel_member",
+		"token":      "token-1",
+		"channel_id": "C1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["user_id"] != "U1" || attrs["channel_id"] != "C1" {
+		t.Fatalf("attributes = %#v, want scalar member with channel context", attrs)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["user_id"] != "U1" || payload["channel_id"] != "C1" {
+		t.Fatalf("payload = %#v, want scalar member with channel context", payload)
+	}
+}
+
 func TestReadSplitsBracketConfigQueryValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()["tags[]"]
@@ -1958,7 +2009,7 @@ func TestReadAppliesConfigHeaders(t *testing.T) {
 
 func TestReadRejectsMalformedRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"data":["not-an-object"]}`))
+		_, _ = w.Write([]byte(`{"data":[[]]}`))
 	}))
 	defer server.Close()
 

@@ -236,9 +236,11 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		ConfigQuery: cloneStringMap(resource.ConfigQuery),
 	}
 	if resource.Config != nil {
+		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
+		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	}
 	return out
 }

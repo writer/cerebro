@@ -89,6 +89,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	records := make([]record, 0, len(items))
 	for _, item := range items {
+		item, err = rawRecordWithIDKey(family, item)
+		if err != nil {
+			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
+		}
 		item, err = rawWithPathParams(item, settings.request.pathParams)
 		if err != nil {
 			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
@@ -374,6 +378,38 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		}
 	}
 	return nil, "", fmt.Errorf("response did not contain a record list")
+}
+
+func rawRecordWithIDKey(family Family, raw json.RawMessage) (json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err == nil {
+		return raw, nil
+	}
+	value := rawString(raw)
+	if value == "" {
+		return raw, nil
+	}
+	key := scalarRecordIDKey(family)
+	if key == "" {
+		return raw, nil
+	}
+	record := map[string]string{key: value}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+func scalarRecordIDKey(family Family) string {
+	for _, key := range family.IDKeys {
+		key = strings.TrimSpace(key)
+		if key == "" || strings.ContainsAny(key, ".|") {
+			continue
+		}
+		return key
+	}
+	return ""
 }
 
 func responseListKeys(family Family) []string {
