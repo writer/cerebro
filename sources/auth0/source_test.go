@@ -353,6 +353,118 @@ func TestReadMapsAuth0ManagementAPIFamiliesToRuntimeAttributes(t *testing.T) {
 	}
 }
 
+func TestReadPaginatesBareArrayManagementFamilies(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	type pageResponse struct {
+		first  []map[string]any
+		second []map[string]any
+	}
+	responses := map[string]pageResponse{
+		"/organizations": {
+			first:  []map[string]any{{"id": "org-1", "name": "writer"}, {"id": "org-2", "name": "field"}},
+			second: []map[string]any{{"id": "org-3", "name": "support"}},
+		},
+		"/organizations/org-1/members": {
+			first:  []map[string]any{{"user_id": "auth0|user-1", "email": "user-1@example.test"}, {"user_id": "auth0|user-2", "email": "user-2@example.test"}},
+			second: []map[string]any{{"user_id": "auth0|user-3", "email": "user-3@example.test"}},
+		},
+		"/connections": {
+			first:  []map[string]any{{"id": "conn-1", "name": "google-oauth2"}, {"id": "conn-2", "name": "samlp"}},
+			second: []map[string]any{{"id": "conn-3", "name": "waad"}},
+		},
+		"/client-grants": {
+			first:  []map[string]any{{"id": "grant-1", "client_id": "client-1", "audience": "https://api.example.test"}, {"id": "grant-2", "client_id": "client-2", "audience": "https://api.example.test"}},
+			second: []map[string]any{{"id": "grant-3", "client_id": "client-3", "audience": "https://api.example.test"}},
+		},
+	}
+	seenPages := map[string][]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		path := r.URL.EscapedPath()
+		pages, ok := responses[path]
+		if !ok {
+			t.Fatalf("path = %q", path)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "2" {
+			t.Fatalf("%s per_page = %q, want 2", path, got)
+		}
+		page := r.URL.Query().Get("page")
+		seenPages[path] = append(seenPages[path], page)
+		w.Header().Set("Content-Type", "application/json")
+		switch page {
+		case "0":
+			_ = json.NewEncoder(w).Encode(pages.first)
+		case "1":
+			_ = json.NewEncoder(w).Encode(pages.second)
+		default:
+			t.Fatalf("%s page = %q, want 0 or 1", path, page)
+		}
+	}))
+	defer server.Close()
+
+	for _, tt := range []struct {
+		family string
+		path   string
+		config map[string]string
+	}{
+		{family: auth0api.FamilyOrganizations, path: "/organizations"},
+		{family: auth0api.FamilyOrganizationMembers, path: "/organizations/org-1/members", config: map[string]string{"organization_ids": "org-1"}},
+		{family: auth0api.FamilyConnections, path: "/connections"},
+		{family: auth0api.FamilyClientGrants, path: "/client-grants"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			cfgValues := map[string]string{
+				"tenant_id":     "tenant",
+				"base_url":      server.URL,
+				"family":        tt.family,
+				"token_url":     server.URL + "/oauth/token",
+				"client_id":     "client-id",
+				"client_secret": "client-secret",
+				"domain":        "tenant.auth0.com",
+				"per_page":      "2",
+			}
+			for key, value := range tt.config {
+				cfgValues[key] = value
+			}
+			first, err := source.Read(context.Background(), sourcecdk.NewConfig(cfgValues), nil)
+			if err != nil {
+				t.Fatalf("Read() first error = %v", err)
+			}
+			if len(first.Events) != 2 {
+				t.Fatalf("first events = %d, want 2", len(first.Events))
+			}
+			if first.NextCursor == nil {
+				t.Fatalf("first NextCursor is nil, want page cursor")
+			}
+			second, err := source.Read(context.Background(), sourcecdk.NewConfig(cfgValues), first.NextCursor)
+			if err != nil {
+				t.Fatalf("Read() second error = %v", err)
+			}
+			if len(second.Events) != 1 {
+				t.Fatalf("second events = %d, want 1", len(second.Events))
+			}
+			if second.NextCursor != nil {
+				t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+			}
+			pages := seenPages[tt.path]
+			if len(pages) != 2 || pages[0] != "0" || pages[1] != "1" {
+				t.Fatalf("%s pages = %#v, want [0 1]", tt.path, pages)
+			}
+		})
+	}
+}
+
 func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
 	source, err := New()
 	if err != nil {

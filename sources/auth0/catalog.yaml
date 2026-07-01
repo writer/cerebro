@@ -152,7 +152,7 @@ coverage_contract:
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
       notes:
-        - "GET /organizations with Auth0 checkpoint pagination."
+        - "GET /organizations with Auth0 page/per_page pagination."
     - id: organization_members
       type: relationship
       title: "Organization members"
@@ -182,7 +182,7 @@ coverage_contract:
       evidence_types: [identity_configuration]
       control_domains: [identity_access]
       notes:
-        - "GET /connections with Auth0 checkpoint pagination."
+        - "GET /connections with Auth0 page/per_page pagination."
     - id: apis
       type: app_entitlement
       title: "Resource servers and API scopes"
