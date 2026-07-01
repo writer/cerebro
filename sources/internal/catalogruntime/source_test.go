@@ -85,6 +85,53 @@ func TestSourceCheckAndReadDefinition(t *testing.T) {
 	}
 }
 
+func TestReadDefinitionFixtureSeedsRequiredConfigFields(t *testing.T) {
+	result, err := ReadDefinitionFixture(context.Background(), connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "oauth_client_credentials",
+			CredentialFields: []connectordefinitions.Field{
+				{Key: "client_id", Required: true, ReferenceOnly: true},
+				{Key: "client_secret", Required: true, Secret: true, ReferenceOnly: true},
+			},
+			TokenParams: map[string]string{"subject": "${config.enterprise_id}"},
+			TokenURL:    "https://example.test/oauth/token",
+		},
+		ConfigFields: []connectordefinitions.Field{{Key: "enterprise_id", Required: true}},
+		Transport:    &connectordefinitions.TransportSpec{BaseURL: "https://example.test"},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "users",
+			Path:           "/users",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.users",
+				SchemaRef: "example/users/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Template: "identity_user",
+				Fields:   map[string]string{"user_id": "id", "email": "email"},
+			},
+			Pagination: &connectordefinitions.PaginationSpec{
+				Type:          "cursor",
+				CursorParam:   "cursor",
+				PageSizeParam: "limit",
+				PageSize:      100,
+			},
+			Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	}, "users", []byte(`{"data":[{"id":"user-1","email":"user@example.test"}]}`))
+	if err != nil {
+		t.Fatalf("ReadDefinitionFixture() error = %v", err)
+	}
+	if result.EventCount != 1 {
+		t.Fatalf("EventCount = %d, want 1", result.EventCount)
+	}
+}
+
 func TestSourceDefinitionUsesFamilyBaseURLOverride(t *testing.T) {
 	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("default server received family override request at %q", r.URL.Path)

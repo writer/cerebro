@@ -1,6 +1,9 @@
 sourceId: box
 secretKeys:
-  - BOX_TOKEN
+  - BOX_CLIENT_ID
+  - BOX_CLIENT_SECRET
+  - BOX_ENTERPRISE_ID
+  - BOX_GROUP_IDS
 runtimes:
   - localId: users
     config:
@@ -10,7 +13,31 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:BOX_TOKEN
+      client_id: env:BOX_CLIENT_ID
+      client_secret: env:BOX_CLIENT_SECRET
+      enterprise_id: env:BOX_ENTERPRISE_ID
+  - localId: groups
+    config:
+      family: groups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users/me
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:BOX_CLIENT_ID
+      client_secret: env:BOX_CLIENT_SECRET
+      enterprise_id: env:BOX_ENTERPRISE_ID
+  - localId: group-memberships
+    config:
+      family: group_memberships
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      group_ids: env:BOX_GROUP_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:BOX_CLIENT_ID
+      client_secret: env:BOX_CLIENT_SECRET
+      enterprise_id: env:BOX_ENTERPRISE_ID
   - localId: content-assets
     config:
       family: content_assets
@@ -19,7 +46,9 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:BOX_TOKEN
+      client_id: env:BOX_CLIENT_ID
+      client_secret: env:BOX_CLIENT_SECRET
+      enterprise_id: env:BOX_ENTERPRISE_ID
   - localId: audit-events
     config:
       family: audit_events
@@ -28,4 +57,6 @@ runtimes:
       expected_cadence_seconds: "3600"
       stale_after_seconds: "7200"
       per_page: "100"
-      token: env:BOX_TOKEN
+      client_id: env:BOX_CLIENT_ID
+      client_secret: env:BOX_CLIENT_SECRET
+      enterprise_id: env:BOX_ENTERPRISE_ID

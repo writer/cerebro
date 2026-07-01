@@ -1,1 +1,1 @@
-{"data":[{"id":"box-user-1","name":"Box Fixture User","email":"box.fixture@example.test","status":"active"}]}
+{"entries":[{"id":"box-user-1","name":"Box Fixture User","login":"box.fixture@example.test","email":"box.fixture@example.test","status":"active"}]}
