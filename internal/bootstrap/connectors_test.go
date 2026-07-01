@@ -1468,6 +1468,11 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 	type catalogResourceFamily struct {
 		ID                 string `json:"id"`
+		Method             string `json:"method"`
+		AuthModel          string `json:"auth_model"`
+		RecordSelector     string `json:"record_selector"`
+		IDField            string `json:"id_field"`
+		NameField          string `json:"name_field"`
 		ProjectionTemplate string `json:"projection_template"`
 		HighValue          bool   `json:"high_value"`
 	}
@@ -1515,6 +1520,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	for _, connector := range payload.Connectors {
 		bySourceID[connector.SourceID] = connector
 	}
+	if _, ok := bySourceID["duo_security"]; ok {
+		t.Fatal("duo_security connector must not be exposed once canonical duo is cataloged")
+	}
 	jumpcloud := bySourceID["jumpcloud"]
 	if jumpcloud.CatalogStatus != connectorcatalog.StatusGenerateable || !jumpcloud.RuntimeExecutable {
 		t.Fatalf("jumpcloud status = %q executable=%v, want generateable executable", jumpcloud.CatalogStatus, jumpcloud.RuntimeExecutable)
@@ -1557,6 +1565,31 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 	if !auth0.Cataloged || auth0.Callable {
 		t.Fatalf("auth0 cataloged=%v callable=%v, want runtime-backed catalog entry not directly callable", auth0.Cataloged, auth0.Callable)
+	}
+	duo := bySourceID["duo"]
+	if duo.CatalogStatus != connectorcatalog.StatusGenerateable || !duo.RuntimeExecutable || !duo.Callable {
+		t.Fatalf("duo status = %q executable=%v callable=%v, want canonical callable catalog source", duo.CatalogStatus, duo.RuntimeExecutable, duo.Callable)
+	}
+	duoFamilies := map[string]catalogResourceFamily{}
+	for _, family := range duo.ResourceFamilies {
+		duoFamilies[family.ID] = family
+	}
+	if len(duoFamilies) != 11 {
+		t.Fatalf("duo resource families = %d (%#v), want 11 canonical Admin API families", len(duoFamilies), duoFamilies)
+	}
+	for _, familyID := range []string{"administrator", "application", "audit_event", "authentication_log", "endpoint", "group", "phone", "role", "token", "user", "web_authn_credential"} {
+		if _, ok := duoFamilies[familyID]; !ok {
+			t.Fatalf("duo family %q missing from /connectors resource family metadata: %#v", familyID, duoFamilies)
+		}
+	}
+	if got := duoFamilies["application"].AuthModel; got != "duo_hmac_v5" {
+		t.Fatalf("duo application auth_model = %q, want duo_hmac_v5", got)
+	}
+	if got := duoFamilies["audit_event"].RecordSelector; got != "$.response.items[*]" {
+		t.Fatalf("duo audit_event record_selector = %q, want $.response.items[*]", got)
+	}
+	if got := duoFamilies["authentication_log"].IDField; got != "txid" {
+		t.Fatalf("duo authentication_log id_field = %q, want txid", got)
 	}
 	jenkins := bySourceID["jenkins"]
 	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
@@ -1911,6 +1944,35 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	}
 	if got := strings.Join(jenkinsSchema.RequiredCredentials, ","); got != "password,username" {
 		t.Fatalf("jenkins required credentials = %q, want password,username", got)
+	}
+	duoSchema, ok := connectorSchemaForSource("duo")
+	if !ok {
+		t.Fatal("connectorSchemaForSource(duo) = false, want catalog-derived schema")
+	}
+	for _, key := range []string{"base_url", "family", "health_path", "limit", "maxtime", "mintime", "next_offset", "sort"} {
+		if _, ok := duoSchema.ConfigKeys[key]; !ok {
+			t.Fatalf("duo config keys missing %q: %#v", key, sortedSetKeys(duoSchema.ConfigKeys))
+		}
+	}
+	for _, key := range []string{"client_id", "client_secret"} {
+		if _, ok := duoSchema.CredentialKeys[key]; !ok {
+			t.Fatalf("duo credential keys missing %q: %#v", key, sortedSetKeys(duoSchema.CredentialKeys))
+		}
+	}
+	err = validateConnectorConfigFields("duo", connectorAuthMethodExternalReference, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"base_url":      "https://api-XXXXXXXX.duosecurity.com",
+		"family":        "audit_event",
+		"maxtime":       "1700003600000",
+		"mintime":       "1700000000000",
+		"sort":          "ts:asc",
+		"client_id":     "env:DUO_CLIENT_ID",
+		"client_secret": "env:DUO_CLIENT_SECRET",
+	}, map[string]string{ // #nosec G101 -- Test-only credential reference placeholders, not live secrets.
+		"client_id":     "env:DUO_CLIENT_ID",
+		"client_secret": "env:DUO_CLIENT_SECRET",
+	})
+	if err != nil {
+		t.Fatalf("validateConnectorConfigFields(duo log config) error = %v", err)
 	}
 	openAISchema, ok := connectorSchemaForSource("openai")
 	if !ok {

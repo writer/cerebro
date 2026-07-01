@@ -23,7 +23,7 @@ entries:
           key: base_url
           label: API host
           required: true
-      description: Collects users, groups, administrators, endpoints, phones, and hardware tokens from Duo and projects them into the Cerebro graph as assets, audit events, groups, policies, and users for inventory, access review, audit, risk, and operational context.
+      description: Collects Duo users, groups, administrators, endpoints, phones, hardware tokens, WebAuthn credentials, administrator roles, protected applications, activity logs, and authentication logs from the Duo Admin API and projects them into the Cerebro graph for inventory, access review, MFA posture, application ownership, audit review, and operational context.
       display_name: Duo
       id: builtin-duo
       ingest:
@@ -405,6 +405,10 @@ entries:
           label: Activity logs
           method: GET
           name_field: action
+          config_query:
+            maxtime: maxtime
+            mintime: mintime
+            sort: sort
           pagination:
             cursor_json_path: $.response.metadata.next_offset
             cursor_param: next_offset
@@ -446,6 +450,10 @@ entries:
           label: Authentication logs
           method: GET
           name_field: event_type
+          config_query:
+            maxtime: maxtime
+            mintime: mintime
+            sort: sort
           pagination:
             cursor_json_path: $.response.metadata.next_offset
             cursor_param: next_offset
