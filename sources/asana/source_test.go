@@ -197,6 +197,9 @@ func TestProjectsUseModifiedAtForOccurredAt(t *testing.T) {
 	if got := event.Attributes["observed_at"]; got != "2026-06-03T00:00:00Z" {
 		t.Fatalf("observed_at = %q, want modified_at", got)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:runtime_projects:project-1" {
+		t.Fatalf("resource_urn = %q, want synthesized project URN", got)
+	}
 	want := time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC)
 	if got := event.OccurredAt.AsTime(); !got.Equal(want) {
 		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
