@@ -151,6 +151,51 @@ func TestSourceReadsSharedDrives(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysGoogleDriveFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{familyChanges, familyFiles, familySharedDrives} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		want   string
+	}{
+		{family: familyChanges, kind: "google_drive.changes", want: "source-google_drive-changes-1"},
+		{family: familyFiles, kind: "google_drive.files", want: "source-google_drive-files-1"},
+		{family: familySharedDrives, kind: "google_drive.shared_drives", want: "source-google_drive-shared_drives-1"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			event := pull.Events[0]
+			if got := event.Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := event.Attributes["source_event_id"]; got != tt.want {
+				t.Fatalf("source_event_id = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func assertStringSet(t *testing.T, got []string, want []string) {
 	t.Helper()
 	if len(got) != len(want) {

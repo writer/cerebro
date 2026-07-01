@@ -1,13 +1,3 @@
-{
-  "files": [
-    {
-      "id": "file-1",
-      "name": "Access review notes",
-      "mimeType": "application/vnd.google-apps.document",
-      "resource_id": "file-1",
-      "resource_type": "document",
-      "resource_urn": "urn:cerebro:tenant:runtime_document:file-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  "urn:cerebro:tenant:google_drive_files:source-google_drive-files-1"
+]

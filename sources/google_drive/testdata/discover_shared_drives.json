@@ -1,12 +1,3 @@
-{
-  "drives": [
-    {
-      "id": "drive-1",
-      "name": "Security",
-      "resource_id": "drive-1",
-      "resource_type": "shared_drive",
-      "resource_urn": "urn:cerebro:tenant:runtime_shared_drive:drive-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+[
+  "urn:cerebro:tenant:google_drive_shared_drives:source-google_drive-shared_drives-1"
+]

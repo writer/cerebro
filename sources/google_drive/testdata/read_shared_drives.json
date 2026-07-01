@@ -1,12 +1,61 @@
-{
-  "drives": [
-    {
-      "id": "drive-1",
-      "name": "Security",
-      "resource_id": "drive-1",
-      "resource_type": "shared_drive",
-      "resource_urn": "urn:cerebro:tenant:runtime_shared_drive:drive-1",
+[
+  {
+    "attributes": {
+      "api_method": "GET",
+      "api_path": "/drives",
+      "evidence_cas_commit_id": "evidence-cas-commit-id-source-google_drive-shared_drives-1",
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-google_drive-shared_drives-1",
+      "evidence_cas_ref_type": "source_fixture",
+      "evidence_cas_uri": "cas://cases/google_drive/shared_drives/source-google_drive-shared_drives-1",
+      "external_id": "source-google_drive-shared_drives-1",
+      "family": "shared_drives",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "google_drive",
+      "record_class": "asset",
+      "record_selector": "$.drives[*]",
+      "resource_id": "source-google_drive-shared_drives-1",
+      "resource_name": "Google Drive Shared Drives Fixture",
+      "resource_type": "shared_drives",
+      "resource_urn": "urn:cerebro:tenant:google_drive_shared_drives:source-google_drive-shared_drives-1",
+      "schema": "shared_drives",
+      "source_event_id": "source-google_drive-shared_drives-1",
+      "source_provider": "google_drive",
+      "source_system": "google_drive",
+      "tenant_id": "tenant"
+    },
+    "id": "source-google_drive-shared_drives-event-1",
+    "kind": "google_drive.shared_drives",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "api_method": "GET",
+      "api_path": "/drives",
+      "event_id": "source-google_drive-shared_drives-1",
+      "evidence_cas": {
+        "commit_id": "evidence-cas-commit-id-source-google_drive-shared_drives-1",
+        "digest": "sha256:test",
+        "merkle_root": "evidence-cas-merkle-root-source-google_drive-shared_drives-1",
+        "ref_type": "source_fixture",
+        "uri": "cas://cases/google_drive/shared_drives/source-google_drive-shared_drives-1"
+      },
+      "evidence_cas_digest": "sha256:test",
+      "evidence_cas_uri": "cas://cases/google_drive/shared_drives/source-google_drive-shared_drives-1",
+      "family": "shared_drives",
+      "id": "source-google_drive-shared_drives-1",
+      "name": "Google Drive Shared Drives Fixture",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "record_class": "asset",
+      "record_selector": "$.drives[*]",
+      "resource_id": "source-google_drive-shared_drives-1",
+      "resource_type": "shared_drives",
+      "resource_urn": "urn:cerebro:tenant:google_drive_shared_drives:source-google_drive-shared_drives-1",
+      "schema_ref": "google_drive/shared_drives/v1",
+      "source_id": "google_drive",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+    },
+    "schema_ref": "google_drive/shared_drives/v1",
+    "source_id": "google_drive",
+    "tenant_id": "tenant"
+  }
+]
