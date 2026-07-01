@@ -483,6 +483,9 @@ type QuestionnaireEvidenceRef struct {
 	Freshness        EvidenceFreshness `json:"freshness"`
 	ReviewState      string            `json:"review_state,omitempty"`
 	Citations        EvidenceCitations `json:"citations"`
+	SourceEventIDs   []string          `json:"source_event_ids,omitempty"`
+	GraphRootURNs    []string          `json:"graph_root_urns,omitempty"`
+	GraphPathIDs     []string          `json:"graph_path_ids,omitempty"`
 }
 
 type QuestionnaireEvidenceGap struct {
@@ -1450,6 +1453,9 @@ func answerEvidenceRefs(packets []EvidencePacket, itemsByEvidenceID map[string]E
 				Freshness:        packet.Freshness,
 				ReviewState:      packet.Review.Status,
 				Citations:        packet.Citations,
+				SourceEventIDs:   uniqueSortedStrings(append(append([]string(nil), packet.Citations.EventIDs...), item.EventIDs...)),
+				GraphRootURNs:    uniqueSortedStrings(append(append([]string(nil), packet.Citations.GraphRoots...), item.GraphRoots...)),
+				GraphPathIDs:     uniqueSortedStrings(item.GraphPaths),
 			})
 		}
 	}

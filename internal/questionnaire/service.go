@@ -720,6 +720,8 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 			ID:               citationID,
 			Label:            firstNonEmpty(ref.EvidenceType, ref.Source, ref.SourceID, ref.RuntimeID, citationID),
 			Source:           firstNonEmpty(ref.SourceID, ref.Source, ref.RuntimeID),
+			SourceID:         ref.SourceID,
+			RuntimeID:        ref.RuntimeID,
 			ResourceURN:      firstCerebroURN(ref.ID, ref.EvidencePacketID),
 			EvidencePacketID: ref.EvidencePacketID,
 			EvidenceID:       ref.ID,
@@ -727,6 +729,9 @@ func citationsFromEvidenceAnswer(answer evidencepackets.QuestionnaireAnswer) []p
 			FreshnessStatus:  ref.Freshness.Status,
 			ObservedAt:       ref.Freshness.ObservedAt,
 			ExpiresAt:        ref.Freshness.ExpiresAt,
+			SourceEventIDs:   uniqueSorted(append(append([]string(nil), ref.SourceEventIDs...), ref.Citations.EventIDs...)),
+			GraphRootURNs:    uniqueSorted(append(append([]string(nil), ref.GraphRootURNs...), ref.Citations.GraphRoots...)),
+			GraphPathIDs:     uniqueSorted(ref.GraphPathIDs),
 		})
 	}
 	for _, packetID := range answer.EvidencePackets {
@@ -1041,6 +1046,7 @@ func cloneQuestions(values []ports.QuestionnaireQuestion) []ports.QuestionnaireQ
 	for index, value := range values {
 		value.MappedControls = cloneStringSlice(value.MappedControls)
 		value.RequiredSlots = cloneStringSlice(value.RequiredSlots)
+		value.SourceLocator = cloneSourceLocator(value.SourceLocator)
 		out[index] = value
 	}
 	return out
@@ -1054,10 +1060,32 @@ func cloneAnswers(values []ports.QuestionnaireRunAnswer) []ports.QuestionnaireRu
 	for index, value := range values {
 		value.Controls = cloneStringSlice(value.Controls)
 		value.EvidenceSlots = cloneEvidenceSlots(value.EvidenceSlots)
-		value.Citations = append([]ports.QuestionnaireCitation(nil), value.Citations...)
+		value.Citations = cloneCitations(value.Citations)
 		value.MissingEvidence = append([]ports.QuestionnaireEvidenceGap(nil), value.MissingEvidence...)
 		value.Conflicts = append([]ports.QuestionnaireEvidenceGap(nil), value.Conflicts...)
 		value.Attributes = cloneStringMap(value.Attributes)
+		out[index] = value
+	}
+	return out
+}
+
+func cloneSourceLocator(value *ports.QuestionnaireSourceLocator) *ports.QuestionnaireSourceLocator {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneCitations(values []ports.QuestionnaireCitation) []ports.QuestionnaireCitation {
+	if values == nil {
+		return nil
+	}
+	out := make([]ports.QuestionnaireCitation, len(values))
+	for index, value := range values {
+		value.SourceEventIDs = cloneStringSlice(value.SourceEventIDs)
+		value.GraphRootURNs = cloneStringSlice(value.GraphRootURNs)
+		value.GraphPathIDs = cloneStringSlice(value.GraphPathIDs)
 		out[index] = value
 	}
 	return out

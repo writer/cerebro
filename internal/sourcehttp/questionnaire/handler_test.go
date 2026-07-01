@@ -48,6 +48,10 @@ func TestCreateRunParsesCSVIntakeText(t *testing.T) {
 	if store.saved.Questions[0].Question == "" || store.saved.Questions[0].OwnerID != "security@example.com" {
 		t.Fatalf("first question not mapped from CSV: %#v", store.saved.Questions[0])
 	}
+	locator := store.saved.Questions[0].SourceLocator
+	if locator == nil || locator.SourceFormat != "csv" || locator.RowNumber != 2 || locator.ColumnName != "question" {
+		t.Fatalf("CSV source locator = %#v, want row 2 question column", locator)
+	}
 }
 
 func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
@@ -85,6 +89,10 @@ func TestCreateRunParsesXLSXIntakeFile(t *testing.T) {
 	}
 	if got := store.saved.Questions[0].RequiredSlots; len(got) != 1 || got[0] != "identity_mfa" {
 		t.Fatalf("required slots = %#v, want identity_mfa", got)
+	}
+	locator := store.saved.Questions[0].SourceLocator
+	if locator == nil || locator.SourceFormat != "xlsx" || locator.SourceFilename != "security-questionnaire.xlsx" || locator.SheetName != "sheet1" || locator.RowNumber != 2 || locator.Cell != "B2" {
+		t.Fatalf("XLSX source locator = %#v, want sheet1 row 2 cell B2", locator)
 	}
 	if store.saved.Attributes["intake_file_attached"] != "true" || store.saved.Attributes["intake_format"] != "xlsx" {
 		t.Fatalf("attributes = %#v, want xlsx attachment metadata", store.saved.Attributes)
@@ -226,6 +234,10 @@ func TestCreateRunInfersXLSXFromFilenameWhenMimeTypeIsGeneric(t *testing.T) {
 	if store.saved.Attributes["intake_format"] != "xlsx" {
 		t.Fatalf("intake format attribute = %q, want xlsx", store.saved.Attributes["intake_format"])
 	}
+	locator := store.saved.Questions[0].SourceLocator
+	if locator == nil || locator.SourceFormat != "xlsx" || locator.Cell != "B2" {
+		t.Fatalf("inferred XLSX source locator = %#v, want workbook cell context", locator)
+	}
 }
 
 func TestCreateRunParsesPDFIntakeFile(t *testing.T) {
@@ -259,6 +271,10 @@ func TestCreateRunParsesPDFIntakeFile(t *testing.T) {
 	}
 	if store.saved.Questions[0].Question != "Do you enforce MFA?" || store.saved.Questions[1].Question != "Attach SOC 2 report." {
 		t.Fatalf("questions = %#v, want extracted PDF prompts", store.saved.Questions)
+	}
+	locator := store.saved.Questions[0].SourceLocator
+	if locator == nil || locator.SourceFormat != "pdf" || locator.SourceFilename != "security-questionnaire.pdf" || locator.LineNumber == 0 {
+		t.Fatalf("PDF source locator = %#v, want file and line context", locator)
 	}
 }
 
@@ -298,6 +314,10 @@ func TestCreateRunStoresPortalMetadataAndParsesPortalText(t *testing.T) {
 		store.saved.Attributes["portal_status"] != "questions_captured" ||
 		store.saved.Attributes["portal_instructions"] != "Use SSO and route missing access to sales ops." {
 		t.Fatalf("attributes = %#v, want portal metadata", store.saved.Attributes)
+	}
+	locator := store.saved.Questions[0].SourceLocator
+	if locator == nil || locator.SourceFormat != "portal" || locator.PortalURL != "https://portal.example.test/review/123" || locator.LineNumber == 0 {
+		t.Fatalf("portal source locator = %#v, want portal URL and line context", locator)
 	}
 }
 
