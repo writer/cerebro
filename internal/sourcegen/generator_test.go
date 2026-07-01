@@ -1365,7 +1365,7 @@ func TestGenerateDefinitionSupportsDuoHMACAuth(t *testing.T) {
 		}
 	}
 	sourceTest := readGeneratedFile(t, outputDir, "sources/duo/source_test.go")
-	for _, want := range []string{`encoding/base64`, `username != "DIXXXXXXXXXXXXXXXXXX"`, `len(signature) != 40`, `"client_secret": "deadbeefsecret"`} {
+	for _, want := range []string{`encoding/base64`, `username != "DIXXXXXXXXXXXXXXXXXX"`, `duoSignatureLength: 40`, `duoSignatureLength: 128`, `len(signature) != wantSignatureLength`, `"client_secret": "deadbeefsecret"`} {
 		if !strings.Contains(sourceTest, want) {
 			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
 		}

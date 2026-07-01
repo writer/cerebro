@@ -2041,6 +2041,31 @@ func TestConnectorSchemaForGenerateableCatalogDefinition(t *testing.T) {
 	}
 }
 
+func TestConnectorSchemaFromDefinitionUsesConfigQueryValues(t *testing.T) {
+	schema := connectorSchemaFromDefinition(connectordefinitions.Definition{
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:          "records",
+			Path:        "/records",
+			IDField:     "id",
+			ConfigQuery: map[string]string{"provider_param": "runtime_config_key"},
+			Config: &connectordefinitions.FamilyConfigSpec{
+				ConfigQuery:      map[string]string{"nested_provider_param": "nested_runtime_config_key"},
+				ConfigAttributes: map[string]string{"tenant_attr": "tenant_config_key"},
+			},
+		}},
+	})
+	for _, key := range []string{"runtime_config_key", "nested_runtime_config_key", "tenant_config_key"} {
+		if _, ok := schema.ConfigKeys[key]; !ok {
+			t.Fatalf("config keys missing %q: %#v", key, sortedSetKeys(schema.ConfigKeys))
+		}
+	}
+	for _, key := range []string{"provider_param", "nested_provider_param"} {
+		if _, ok := schema.ConfigKeys[key]; ok {
+			t.Fatalf("config keys include HTTP query parameter %q: %#v", key, sortedSetKeys(schema.ConfigKeys))
+		}
+	}
+}
+
 func TestOpenAIProviderPreflightChecksCredentialRequirements(t *testing.T) {
 	tests := []struct {
 		name   string

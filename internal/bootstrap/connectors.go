@@ -1983,12 +1983,12 @@ func connectorSchemaFromDefinition(definition connectordefinitions.Definition) c
 		schema.RequiredCredentials = append(schema.RequiredCredentials, key)
 	}
 	for _, family := range definition.ResourceFamilies {
-		for queryKey := range family.ConfigQuery {
-			addConnectorSchemaConfigKey(schema.ConfigKeys, queryKey)
+		for _, configKey := range family.ConfigQuery {
+			addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
 		}
 		if family.Config != nil {
-			for queryKey := range family.Config.ConfigQuery {
-				addConnectorSchemaConfigKey(schema.ConfigKeys, queryKey)
+			for _, configKey := range family.Config.ConfigQuery {
+				addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
 			}
 			for _, configKey := range family.Config.ConfigAttributes {
 				addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
