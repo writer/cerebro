@@ -18,6 +18,9 @@
     "attributes": {
       "external_id": "connection_dauknoksyr4wilz4e6my",
       "family": "oauth_connection",
+      "group_id": "group_1g4mhziu6kvrs3vz35um",
+      "name": "oauth_application_fixture_1",
+      "oauth_application_id": "oauth_application_fixture_1",
       "provider": "increase",
       "record_class": "asset",
       "schema": "oauth_connection",
@@ -29,7 +32,7 @@
       "status": "active",
       "resource_type": "oauth_connection",
       "resource_id": "connection_dauknoksyr4wilz4e6my",
-      "resource_name": "2020-01-31T23:59:59Z",
+      "resource_name": "oauth_application_fixture_1",
       "resource_urn": "urn:cerebro:tenant:increase_oauth_connection:connection_dauknoksyr4wilz4e6my"
     }
   }

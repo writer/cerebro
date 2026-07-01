@@ -104,6 +104,17 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
 				}
 			}
+			if tc.family == familyOauthConnection {
+				if got := event.Attributes["name"]; got != "oauth_application_fixture_1" {
+					t.Fatalf("name = %q, want oauth_application_fixture_1", got)
+				}
+				if got := event.Attributes["resource_name"]; got != "oauth_application_fixture_1" {
+					t.Fatalf("resource_name = %q, want oauth_application_fixture_1", got)
+				}
+				if got := event.Attributes["created_at"]; got != "2020-01-31T23:59:59Z" {
+					t.Fatalf("created_at = %q, want provider creation timestamp", got)
+				}
+			}
 			if tc.family == familyEvent {
 				if got := event.Attributes["resource_urn"]; got != "" {
 					t.Fatalf("resource_urn = %q, want empty for event family without provider resource_urn", got)
