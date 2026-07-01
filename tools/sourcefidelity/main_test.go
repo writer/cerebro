@@ -152,6 +152,34 @@ func TestSyntheticFixtureDetectsGeneratedMarkers(t *testing.T) {
 	}
 }
 
+func TestScoreSourceNormalizesInapplicableCriteria(t *testing.T) {
+	source := sourceReport{
+		SourceID:                 "single_family",
+		RuntimeFamilies:          1,
+		ReadFixtures:             1,
+		DiscoverFixtures:         1,
+		ProviderLikeReadFixtures: 1,
+		HasEveryFamilyTest:       true,
+		CoverageDimensions:       1,
+		CoverageWithControlRefs:  1,
+		HasHTTPTest:              true,
+	}
+
+	scoreSource(&source)
+
+	if source.Score != 100 || source.PossibleScore != 100 {
+		t.Fatalf("score = %d/%d, want 100/100", source.Score, source.PossibleScore)
+	}
+	if level := fidelityLevel(source.Score); level != "reference" {
+		t.Fatalf("level = %q, want reference", level)
+	}
+	for _, missing := range source.Missing {
+		if strings.Contains(missing, "incremental") || strings.Contains(missing, "provider-unavailable") {
+			t.Fatalf("missing includes inapplicable criterion %q: %#v", missing, source.Missing)
+		}
+	}
+}
+
 func TestHasCheckpointEvidenceDetectsCursorAssertions(t *testing.T) {
 	root := t.TempDir()
 	sourceRoot := filepath.Join(root, "sources", "provider")

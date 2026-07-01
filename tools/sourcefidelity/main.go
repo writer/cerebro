@@ -99,6 +99,18 @@ type deployManifest struct {
 	} `yaml:"runtimes"`
 }
 
+const (
+	maxSourceFidelityScore             = 100
+	fixturePairScore                   = 10
+	providerLikeFixtureScore           = 20
+	everyFamilyTestScore               = 15
+	deployFamilyCoverageScore          = 15
+	coverageSpecificityScore           = 15
+	httpProviderBehaviorScore          = 10
+	incrementalCheckpointCoverageScore = 10
+	providerUnavailableScore           = 5
+)
+
 func main() {
 	root := flag.String("root", ".", "repository root")
 	jsonOut := flag.String("json-out", "", "write JSON report to this path")
@@ -421,10 +433,15 @@ func deploySignals(path string) (int, int) {
 }
 
 func scoreSource(source *sourceReport) {
-	add := func(points int, ok bool, finding string) {
-		source.PossibleScore += points
+	earned := 0
+	possible := 0
+	add := func(points int, applicable bool, ok bool, finding string) {
+		if !applicable {
+			return
+		}
+		possible += points
 		if ok {
-			source.Score += points
+			earned += points
 			return
 		}
 		if finding != "" {
@@ -435,16 +452,16 @@ func scoreSource(source *sourceReport) {
 	if runtimeFamilies == 0 {
 		runtimeFamilies = 1
 	}
-	add(10, source.ReadFixtures >= runtimeFamilies && source.DiscoverFixtures >= runtimeFamilies, "fixture pairs do not cover every runtime family")
-	add(20, source.ReadFixtures > 0 && source.ProviderLikeReadFixtures >= source.ReadFixtures-source.ReadFixtures/5, "read fixtures are still mostly generated or generic")
-	add(15, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
-	add(15, source.DeployRuntimeFamilies >= runtimeFamilies || source.RuntimeFamilies <= 1, "deploy manifest does not configure every runtime family")
-	add(15, source.CoverageDimensions > 0 && source.GenericCoverageDimensions == 0 && source.CoverageWithControlRefs > 0, "coverage contract lacks provider-specific control mapping")
-	add(10, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
-	if source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0 {
-		add(10, source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
-	}
-	add(5, source.HasProviderUnavailable || source.RuntimeFamilies <= 1, "provider-unavailable behavior is not covered")
+	add(fixturePairScore, true, source.ReadFixtures >= runtimeFamilies && source.DiscoverFixtures >= runtimeFamilies, "fixture pairs do not cover every runtime family")
+	add(providerLikeFixtureScore, true, source.ReadFixtures > 0 && source.ProviderLikeReadFixtures >= source.ReadFixtures-source.ReadFixtures/5, "read fixtures are still mostly generated or generic")
+	add(everyFamilyTestScore, true, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
+	add(deployFamilyCoverageScore, true, source.DeployRuntimeFamilies >= runtimeFamilies || source.RuntimeFamilies <= 1, "deploy manifest does not configure every runtime family")
+	add(coverageSpecificityScore, true, source.CoverageDimensions > 0 && source.GenericCoverageDimensions == 0 && source.CoverageWithControlRefs > 0, "coverage contract lacks provider-specific control mapping")
+	add(httpProviderBehaviorScore, true, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
+	add(incrementalCheckpointCoverageScore, source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0, source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
+	add(providerUnavailableScore, source.RuntimeFamilies > 1, source.HasProviderUnavailable, "provider-unavailable behavior is not covered")
+	source.Score = normalizeScore(earned, possible)
+	source.PossibleScore = maxSourceFidelityScore
 	source.Advisory = append(source.Advisory, source.Missing...)
 	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		source.BlockingCandidate = append(source.BlockingCandidate, "source tests must replay every runtime family before promotion")
@@ -455,6 +472,13 @@ func scoreSource(source *sourceReport) {
 	if source.ReadFixtures > 0 && source.SyntheticReadFixtures == source.ReadFixtures {
 		source.BlockingCandidate = append(source.BlockingCandidate, "provider-shaped fixtures are required before reference status")
 	}
+}
+
+func normalizeScore(earned int, possible int) int {
+	if possible <= 0 {
+		return 0
+	}
+	return (earned*maxSourceFidelityScore + possible/2) / possible
 }
 
 func normalizeSourceReportSlices(source *sourceReport) {
