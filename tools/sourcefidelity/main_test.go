@@ -152,6 +152,35 @@ func TestSyntheticFixtureDetectsGeneratedMarkers(t *testing.T) {
 	}
 }
 
+func TestHasCheckpointEvidenceDetectsCursorAssertions(t *testing.T) {
+	root := t.TempDir()
+	sourceRoot := filepath.Join(root, "sources", "provider")
+	if err := os.MkdirAll(sourceRoot, 0o750); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	sourcePath := filepath.Join(sourceRoot, "source.go")
+	testPath := filepath.Join(sourceRoot, "source_test.go")
+	writeFileForTest(t, sourcePath, `package provider
+
+func Read() {}
+`)
+	writeFileForTest(t, testPath, `package provider
+
+func TestReadPaginatesWithDurableState() {
+	_ = "NextCursor"
+	_ = "Checkpoint"
+	_ = "CursorOpaque"
+}
+`)
+
+	if !hasCheckpointEvidence(testPath, sourcePath) {
+		t.Fatalf("hasCheckpointEvidence() = false, want true for cursor/checkpoint assertions")
+	}
+	if fileContains(testPath, "ReadWithCheckpoint") {
+		t.Fatalf("test fixture unexpectedly uses ReadWithCheckpoint")
+	}
+}
+
 type sourceFiles struct {
 	Catalog          string
 	Deploy           string

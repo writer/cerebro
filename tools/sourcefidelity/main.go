@@ -207,7 +207,7 @@ func analyzeSource(sourceRoot string) (sourceReport, error) {
 	source.HasHTTPTest = fileContains(testPath, "httptest.NewServer")
 	source.HasGenericRecordTest = hasGenericRecordTest(testPath)
 	source.HasEveryFamilyTest = hasEveryFamilyTest(testPath, runtimeFamilyNames(catalog))
-	source.HasCheckpointTest = fileContains(testPath, "ReadWithCheckpoint") || fileContains(filepath.Join(sourceRoot, "source.go"), "ReadWithCheckpoint")
+	source.HasCheckpointTest = hasCheckpointEvidence(testPath, filepath.Join(sourceRoot, "source.go"))
 	source.HasProviderUnavailable = fileContains(testPath, "ProviderUnavailable") || fileContains(filepath.Join(sourceRoot, "source.go"), "ProviderUnavailable")
 	source.IsGeneratedScaffold = generatedScaffold(sourceRoot)
 	source.EvidenceFiles = evidenceFiles(sourceRoot)
@@ -359,6 +359,29 @@ func hasEveryFamilyTest(path string, familyNames []string) bool {
 		}
 	}
 	return true
+}
+
+func hasCheckpointEvidence(testPath string, sourcePath string) bool {
+	if fileContainsAny(testPath, []string{
+		"ReadWithCheckpoint",
+		"WithCheckpoint",
+		"IncrementalCheckpointForCursor",
+		"Checkpoint:",
+		".Checkpoint",
+		"GetCheckpoint",
+		"CursorOpaque",
+		"NextCursor",
+	}) {
+		return true
+	}
+	return fileContainsAny(sourcePath, []string{
+		"ReadWithCheckpoint",
+		"WithCheckpoint",
+		"IncrementalCheckpointForCursor",
+		"CheckpointStart",
+		"SourceCheckpoint",
+		"CursorOpaque",
+	})
 }
 
 func camelFamilyConst(family string) string {
@@ -566,6 +589,20 @@ func fileContains(path string, needle string) bool {
 		return false
 	}
 	return strings.Contains(string(payload), needle)
+}
+
+func fileContainsAny(path string, needles []string) bool {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	text := string(payload)
+	for _, needle := range needles {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmpty(values ...string) string {
