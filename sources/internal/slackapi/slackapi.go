@@ -216,7 +216,7 @@ func readAuditLogs(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.
 		query.Set("cursor", cursorToken)
 	}
 	var response map[string]any
-	if err := getJSON(ctx, cfg, options, DefaultAuditBaseURL, "audit_base_url", "/logs", query, &response); err != nil {
+	if err := getJSON(ctx, cfg, options, DefaultAuditBaseURL, "audit_log_base_url", "/logs", query, &response); err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	items, _ := response["entries"].([]any)

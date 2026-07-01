@@ -400,14 +400,14 @@ func TestReadSlackAuditLogsUsesAuditBaseURL(t *testing.T) {
 	}
 	source.inner.AllowLoopbackBaseURL = true
 	config := sourcecdk.NewConfig(map[string]string{
-		"action":         "user_login",
-		"audit_base_url": server.URL,
-		"family":         familyAuditLog,
-		"latest":         "1780273000",
-		"oldest":         "1780270000",
-		"per_page":       "3",
-		"tenant_id":      "writer",
-		"token":          "slack-token",
+		"action":             "user_login",
+		"audit_log_base_url": server.URL,
+		"family":             familyAuditLog,
+		"latest":             "1780273000",
+		"oldest":             "1780270000",
+		"per_page":           "3",
+		"tenant_id":          "writer",
+		"token":              "slack-token",
 	})
 	pull, err := source.Read(context.Background(), config, &cerebrov1.SourceCursor{Opaque: "cursor-1"})
 	if err != nil {
@@ -568,11 +568,11 @@ func TestNewFixtureReplaysSlackFamilies(t *testing.T) {
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{familyTeam, familyUser, familyChannel, familyUserGroup, familyAccessLog, familyChannelMember, familyUserGroupMember, familyAuditLog} {
 		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
-			"audit_base_url": "https://audit.example.test",
-			"channel_id":     "C1",
-			"family":         family,
-			"tenant_id":      "tenant",
-			"usergroup_id":   "S1",
+			"audit_log_base_url": "https://audit.example.test",
+			"channel_id":         "C1",
+			"family":             family,
+			"tenant_id":          "tenant",
+			"usergroup_id":       "S1",
 		})
 	}
 	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
