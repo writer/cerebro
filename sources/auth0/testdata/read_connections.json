@@ -1,0 +1,30 @@
+[
+  {
+    "id": "auth0-connection-conn-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/connections/v1",
+    "payload": {
+      "id": "conn-1",
+      "name": "google-oauth2",
+      "strategy": "google-oauth2",
+      "enabled_clients": ["client-1"]
+    },
+    "attributes": {
+      "app_id": "conn-1",
+      "app_name": "google-oauth2",
+      "connection_id": "conn-1",
+      "connection_name": "google-oauth2",
+      "enabled_clients": "client-1",
+      "resource_id": "conn-1",
+      "resource_name": "google-oauth2",
+      "resource_type": "connection",
+      "resource_urn": "urn:cerebro:tenant:runtime_connections:conn-1",
+      "source_event_id": "conn-1",
+      "strategy": "google-oauth2",
+      "tenant_id": "tenant"
+    }
+  }
+]

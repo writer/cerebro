@@ -1,0 +1,34 @@
+[
+  {
+    "id": "auth0-user-grant-user-grant-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.grants",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/grants/v1",
+    "payload": {
+      "id": "user-grant-1",
+      "user_id": "auth0|user-1",
+      "client_id": "client-1",
+      "audience": "https://api.example.test",
+      "scope": ["read:reports"]
+    },
+    "attributes": {
+      "app_id": "client-1",
+      "audience": "https://api.example.test",
+      "entitlement": "read:reports",
+      "entitlement_id": "user-grant-1",
+      "grant_id": "user-grant-1",
+      "resource_id": "user-grant-1",
+      "resource_name": "https://api.example.test",
+      "resource_type": "grant",
+      "resource_urn": "urn:cerebro:tenant:runtime_grants:user-grant-1",
+      "scope": "read:reports",
+      "source_event_id": "user-grant-1",
+      "subject_id": "auth0|user-1",
+      "subject_type": "user",
+      "tenant_id": "tenant",
+      "user_id": "auth0|user-1"
+    }
+  }
+]

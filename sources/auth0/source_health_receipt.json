@@ -11,6 +11,21 @@
   ],
   "health_endpoint": "/source-runtimes/health?source_id=auth0",
   "receipt_kind": "source_health.receipt",
+  "runtime_families": [
+    "users",
+    "roles",
+    "audit_events",
+    "organizations",
+    "organization_members",
+    "clients",
+    "connections",
+    "resource_servers",
+    "client_grants",
+    "grants",
+    "user_roles",
+    "user_authentication_methods",
+    "guardian_factors"
+  ],
   "source_id": "auth0",
   "source_type": "json_api",
   "stale_after_seconds": 86400

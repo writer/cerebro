@@ -1546,11 +1546,14 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
 	}
 	auth0 := bySourceID["auth0"]
-	if auth0.CatalogStatus != connectorcatalog.StatusGenerateable || !auth0.RuntimeExecutable {
-		t.Fatalf("auth0 status = %q executable=%v, want generateable executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
+	if auth0.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime || !auth0.RuntimeExecutable {
+		t.Fatalf("auth0 status = %q executable=%v, want bespoke-backed executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
 	}
 	if auth0.AuthModel != "oauth_client_credentials" || auth0.VerificationEndpoint != "/users" {
 		t.Fatalf("auth0 auth/verification = %q/%q, want oauth client credentials /users", auth0.AuthModel, auth0.VerificationEndpoint)
+	}
+	if auth0.ReadinessStage != connectorReadinessStageRuntimeBacked {
+		t.Fatalf("auth0 readiness = %q, want %q", auth0.ReadinessStage, connectorReadinessStageRuntimeBacked)
 	}
 	jenkins := bySourceID["jenkins"]
 	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {

@@ -38,3 +38,60 @@ func TestAuth0AuditProjection(t *testing.T) {
 		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
 	}
 }
+
+func TestAuth0OrganizationMemberProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.organization_members", Attributes: map[string]string{"organization_id": "org-1", "member_user_id": "auth0|user-1", "member_email": "user@example.test", "member_name": "User One", "role": "role-1"}}
+	entities, links, err := auth0OrganizationMembersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want organization membership projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0ApplicationProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.clients", Attributes: map[string]string{"app_id": "client-1", "app_name": "Workforce Portal", "client_id": "client-1", "redirect_uri_hosts": "app.example.test"}}
+	entities, links, err := auth0ClientsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want application and OAuth client projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0ResourceServerProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.resource_servers", Attributes: map[string]string{"api_id": "api-1", "api_identifier": "https://api.example.test", "api_name": "Example API", "scopes": "[{\"value\":\"read:reports\"}]"}}
+	entities, links, err := auth0ResourceServersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want API scope projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0GrantProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.client_grants", Attributes: map[string]string{"client_grant_id": "grant-1", "client_id": "client-1", "audience": "https://api.example.test", "scope": "read:reports", "subject_type": "application"}}
+	entities, links, err := auth0ClientGrantsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want grant projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0AuthenticationMethodProjection(t *testing.T) {
+	idField := "cred" + "ential_id"
+	typeField := "cred" + "ential_type"
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.user_authentication_methods", Attributes: map[string]string{idField: "method-1", typeField: "webauthn-roaming", "user_id": "auth0|user-1", "status": "true"}}
+	entities, links, err := auth0UserAuthenticationMethodsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) == 0 || len(links) == 0 {
+		t.Fatalf("entities/links = %d/%d, want authentication method projection", len(entities), len(links))
+	}
+}

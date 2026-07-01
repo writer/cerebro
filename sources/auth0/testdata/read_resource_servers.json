@@ -1,0 +1,30 @@
+[
+  {
+    "id": "auth0-resource-server-api-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.resource_servers",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/resource_servers/v1",
+    "payload": {
+      "id": "api-1",
+      "identifier": "https://api.example.test",
+      "name": "Example API",
+      "scopes": [{"value": "read:reports", "description": "Read reports"}]
+    },
+    "attributes": {
+      "api_id": "api-1",
+      "api_identifier": "https://api.example.test",
+      "api_name": "Example API",
+      "app_id": "https://api.example.test",
+      "app_name": "Example API",
+      "resource_id": "api-1",
+      "resource_name": "Example API",
+      "resource_type": "api",
+      "resource_urn": "urn:cerebro:tenant:runtime_resource_servers:api-1",
+      "scopes": "[{\"value\":\"read:reports\",\"description\":\"Read reports\"}]",
+      "source_event_id": "api-1",
+      "tenant_id": "tenant"
+    }
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "auth0-organization-org-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.organizations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/organizations/v1",
+    "payload": {
+      "id": "org-1",
+      "name": "writer",
+      "display_name": "Writer"
+    },
+    "attributes": {
+      "display_name": "Writer",
+      "organization_id": "org-1",
+      "organization_name": "writer",
+      "resource_id": "org-1",
+      "resource_name": "Writer",
+      "resource_type": "organization",
+      "resource_urn": "urn:cerebro:tenant:runtime_organizations:org-1",
+      "source_event_id": "org-1",
+      "tenant_id": "tenant"
+    }
+  }
+]

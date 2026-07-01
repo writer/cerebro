@@ -191,7 +191,7 @@ func TestBuiltinRegistersEveryGenerateableCatalogSource(t *testing.T) {
 	}
 	for _, entry := range catalog.Entries {
 		if entry.Status != connectorcatalog.StatusGenerateable {
-			t.Fatalf("%s status = %q, want generateable", entry.Definition.SourceID, entry.Status)
+			continue
 		}
 		if _, ok := registry.Get(entry.Definition.SourceID); !ok {
 			t.Fatalf("registry missing generateable catalog source %s", entry.Definition.SourceID)

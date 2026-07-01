@@ -1,10 +1,34 @@
 id: auth0
 name: "Auth0"
-description: "Auth0 connector definition catalog entry for high-value security and operations resources."
+description: "Auth0 Management API source for tenant users, roles, organizations, applications, connections, APIs, grants, MFA methods, factors, and logs."
 emitted_kinds:
   - auth0.users
   - auth0.roles
   - auth0.audit_events
+  - auth0.organizations
+  - auth0.organization_members
+  - auth0.clients
+  - auth0.connections
+  - auth0.resource_servers
+  - auth0.client_grants
+  - auth0.grants
+  - auth0.user_roles
+  - auth0.user_authentication_methods
+  - auth0.guardian_factors
+runtime_families:
+  - users
+  - roles
+  - audit_events
+  - organizations
+  - organization_members
+  - clients
+  - connections
+  - resource_servers
+  - client_grants
+  - grants
+  - user_roles
+  - user_authentication_methods
+  - guardian_factors
 provider_api:
   status: verified
   transport: rest
@@ -15,6 +39,16 @@ provider_api:
     - https://auth0.com/docs/api/management/v2/users/get-users
     - https://auth0.com/docs/api/management/v2/roles/get-roles
     - https://auth0.com/docs/api/management/v2/logs/get-logs
+    - https://auth0.com/docs/api/management/v2/organizations/get-organizations
+    - https://auth0.com/docs/api/management/v2/organizations/get-organization-members
+    - https://auth0.com/docs/api/management/v2/clients/get-clients
+    - https://auth0.com/docs/api/management/v2/connections/get-connections
+    - https://auth0.com/docs/api/management/v2/resource-servers/get-resource-servers
+    - https://auth0.com/docs/api/management/v2/client-grants/get-client-grants
+    - https://auth0.com/docs/api/management/v2/grants/get-grants
+    - https://auth0.com/docs/api/management/v2/users/get-user-roles
+    - https://auth0.com/docs/api/management/v2/users/get-authentication-methods
+    - https://auth0.com/docs/api/management/v2/guardian/get-factors
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/users/get-users.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/roles/get-roles.mdx
     - https://github.com/auth0/docs-v2/blob/main/main/docs/api/management/v2/logs/get-logs.mdx
@@ -28,6 +62,36 @@ provider_api:
     - id: audit_events
       method: GET
       path: /logs
+    - id: organizations
+      method: GET
+      path: /organizations
+    - id: organization_members
+      method: GET
+      path: /organizations/{organization_id}/members
+    - id: clients
+      method: GET
+      path: /clients
+    - id: connections
+      method: GET
+      path: /connections
+    - id: resource_servers
+      method: GET
+      path: /resource-servers
+    - id: client_grants
+      method: GET
+      path: /client-grants
+    - id: grants
+      method: GET
+      path: /grants
+    - id: user_roles
+      method: GET
+      path: /users/{user_id}/roles
+    - id: user_authentication_methods
+      method: GET
+      path: /users/{user_id}/authentication-methods
+    - id: guardian_factors
+      method: GET
+      path: /guardian/factors
 families:
   - id: users
     incremental: watermark
@@ -35,73 +99,180 @@ families:
     incremental: watermark
   - id: audit_events
     incremental: watermark
+  - id: organizations
+    incremental: opaque_cursor
+  - id: organization_members
+    incremental: opaque_cursor
+  - id: clients
+    incremental: opaque_cursor
+  - id: connections
+    incremental: opaque_cursor
+  - id: resource_servers
+    incremental: opaque_cursor
+  - id: client_grants
+    incremental: opaque_cursor
+  - id: grants
+    incremental: opaque_cursor
+  - id: user_roles
+    incremental: opaque_cursor
+  - id: user_authentication_methods
+    incremental: opaque_cursor
+  - id: guardian_factors
+    incremental: opaque_cursor
 coverage_contract:
-  owner_domain: source_runtime
+  owner_domain: identity
   authority_domain: auth0
   dimensions:
     - id: users
       type: entity_family
-      title: "Users"
+      title: "Tenant users"
       families: [users]
-      support: partial
+      support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - "GET /users from the Auth0 Management API. Official OpenAPI: https://auth0.com/docs/oas/management/v2/management-api-oas.json"
     - id: roles
-      type: entity_family
-      title: "Roles"
-      families: [roles]
-      support: partial
+      type: app_entitlement
+      title: "Tenant roles"
+      families: [roles, user_roles]
+      support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - "GET /roles and GET /users/{id}/roles. User role reads require configured user_id or user_ids fanout."
+    - id: organizations
+      type: entity_family
+      title: "Organizations"
+      families: [organizations]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      notes:
+        - "GET /organizations with Auth0 checkpoint pagination."
+    - id: organization_members
+      type: relationship
+      title: "Organization members"
+      families: [organization_members]
+      support: supported
+      high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [identity_access]
+      notes:
+        - "GET /organizations/{id}/members requires configured organization_id or organization_ids fanout."
+    - id: applications
+      type: entity_family
+      title: "Applications and OAuth clients"
+      families: [clients]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      notes:
+        - "GET /clients. Secret-bearing client fields are not requested by default."
+    - id: connections
+      type: relationship
+      title: "Identity provider connections"
+      families: [connections]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      notes:
+        - "GET /connections with Auth0 checkpoint pagination."
+    - id: apis
+      type: app_entitlement
+      title: "Resource servers and API scopes"
+      families: [resource_servers]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      notes:
+        - "GET /resource-servers. Scope values are projected as API entitlements."
+    - id: grants
+      type: app_entitlement
+      title: "Client and user grants"
+      families: [client_grants, grants]
+      support: supported
+      high_value: true
+      evidence_types: [relationship_evidence]
+      control_domains: [identity_access]
+      notes:
+        - "GET /client-grants and GET /grants map applications or users to API scopes."
+    - id: mfa
+      type: entity_family
+      title: "Authentication methods and Guardian factors"
+      families: [user_authentication_methods, guardian_factors]
+      support: supported
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access]
+      notes:
+        - "GET /users/{id}/authentication-methods requires configured user_id or user_ids fanout. GET /guardian/factors is tenant-wide."
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Tenant logs"
       families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: incremental_sync
-      type: audit_event
-      title: Incremental cursor sync
-      families: [users, roles, audit_events]
       support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Watermark filtering is applied from durable source checkpoints; provider page continuation cursors are preserved when present.
+        - "GET /logs uses Auth0 checkpoint mode with from/take and the last returned log_id."
 event_contracts:
   - kind: auth0.users
     schema_ref: auth0/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - user_id
+    required_attributes: [tenant_id, source_event_id, user_id]
+    required_payload_fields: [user_id]
   - kind: auth0.roles
     schema_ref: auth0/roles/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, group_id]
+    required_payload_fields: [id]
   - kind: auth0.audit_events
     schema_ref: auth0/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - log_id
+    required_attributes: [tenant_id, source_event_id, event_type, actor_id]
+    required_payload_fields: [log_id]
+  - kind: auth0.organizations
+    schema_ref: auth0/organizations/v1
+    required_attributes: [tenant_id, source_event_id, organization_id]
+    required_payload_fields: [id]
+  - kind: auth0.organization_members
+    schema_ref: auth0/organization_members/v1
+    required_attributes: [tenant_id, source_event_id, organization_id, member_user_id]
+    required_payload_fields: [user_id]
+  - kind: auth0.clients
+    schema_ref: auth0/clients/v1
+    required_attributes: [tenant_id, source_event_id, client_id]
+    required_payload_fields: [client_id]
+  - kind: auth0.connections
+    schema_ref: auth0/connections/v1
+    required_attributes: [tenant_id, source_event_id, connection_id]
+    required_payload_fields: [id]
+  - kind: auth0.resource_servers
+    schema_ref: auth0/resource_servers/v1
+    required_attributes: [tenant_id, source_event_id, api_id]
+    required_payload_fields: [id]
+  - kind: auth0.client_grants
+    schema_ref: auth0/client_grants/v1
+    required_attributes: [tenant_id, source_event_id, client_grant_id, client_id, audience]
+    required_payload_fields: [id]
+  - kind: auth0.grants
+    schema_ref: auth0/grants/v1
+    required_attributes: [tenant_id, source_event_id, grant_id]
+    required_payload_fields: [id]
+  - kind: auth0.user_roles
+    schema_ref: auth0/user_roles/v1
+    required_attributes: [tenant_id, source_event_id, user_id, group_id]
+    required_payload_fields: [id]
+  - kind: auth0.user_authentication_methods
+    schema_ref: auth0/user_authentication_methods/v1
+    required_attributes: [tenant_id, source_event_id, user_id, credential_id]
+    required_payload_fields: [id]
+  - kind: auth0.guardian_factors
+    schema_ref: auth0/guardian_factors/v1
+    required_attributes: [tenant_id, source_event_id, credential_id]
+    required_payload_fields: [name]

@@ -234,6 +234,100 @@ func TestCheckConnectorDefinitionCatalogIgnoresCatalogOnlyRuntimeBacklog(t *test
 	}
 }
 
+func TestCheckConnectorDefinitionCatalogAcceptsRuntimeBackedBespokeSource(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/connectorcatalog/catalog/batch.yaml", `
+entries:
+  - classifier_output: bespoke_required
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-custom-bespoke
+      tenant_id: builtin_catalog
+      source_id: custom_bespoke
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /healthz
+      resource_families:
+        - id: users
+          path: /v1/users
+          id_field: id
+          event: {kind: custom_bespoke.users, schema_ref: custom_bespoke/users/v1}
+          projection: {template: identity_user}
+          coverage:
+            - id: users
+              type: entity_family
+              title: Users
+              families: [users]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: applications
+          path: /v1/apps
+          id_field: id
+          event: {kind: custom_bespoke.applications, schema_ref: custom_bespoke/applications/v1}
+          projection:
+            entity:
+              entity_type: custom_bespoke.application
+              urn_kind: custom_bespoke_application
+              id_attributes: [application_id]
+          coverage:
+            - id: applications
+              type: entity_family
+              title: Applications
+              families: [applications]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+`)
+	writeFile(t, root, "sources/custom_bespoke/catalog.yaml", `
+id: custom_bespoke
+emitted_kinds:
+  - custom_bespoke.users
+  - custom_bespoke.applications
+runtime_families:
+  - users
+  - applications
+coverage_contract: {}
+event_contracts:
+  - kind: custom_bespoke.users
+  - kind: custom_bespoke.applications
+`)
+	writeFile(t, root, "sources/custom_bespoke/source.go", "package custom_bespoke\n")
+	writeFile(t, root, "sources/custom_bespoke/source_test.go", "package custom_bespoke\n")
+	writeFile(t, root, "sources/custom_bespoke/deploy.yaml", "sourceId: custom_bespoke\n")
+	writeFile(t, root, "sources/custom_bespoke/testdata/discover_users.json", "[]")
+	writeFile(t, root, "sources/custom_bespoke/testdata/read_users.json", "[]")
+	writeFile(t, root, "sources/custom_bespoke/testdata/discover_applications.json", "[]")
+	writeFile(t, root, "sources/custom_bespoke/testdata/read_applications.json", "[]")
+	writeFile(t, root, "internal/sourceprojection/custom_bespoke_test.go", `package sourceprojection
+
+var _ = []struct {
+	SourceId string
+	Kind     string
+}{
+	{SourceId: "custom_bespoke", Kind: "custom_bespoke.users"},
+	{SourceId: "custom_bespoke", Kind: "custom_bespoke.applications"},
+}
+`)
+
+	issues, err := checkConnectorDefinitionCatalogWithOptions(root, repositoryCheckOptions{requireSourcegenReady: true})
+	if err != nil {
+		t.Fatalf("checkConnectorDefinitionCatalogWithOptions() error = %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none", issues)
+	}
+}
+
 func TestCheckRepositoryRejectsUnprojectedEmittedKind(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "policies/github/test.yaml", policyDSL("github-test", "github::repository"))
