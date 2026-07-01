@@ -100,11 +100,11 @@ entries:
           event:
             kind: new_relic.audit_events
             required_payload_fields:
-              - eventId
+              - actionIdentifier
             schema_ref: new_relic/audit_events/v1
             urn_kind: new_relic_audit_events
           id: audit_events
-          id_field: eventId
+          id_field: actionIdentifier
           label: Audit events
           method: POST
           path: /graphql
@@ -112,8 +112,8 @@ entries:
             fields:
               actor_email: actorEmail|userEmail|email
               actor_id: actorId|userId|user
-              event_type: eventType|action|category
-              id: eventId
+              event_type: actionIdentifier|action|category|eventType
+              id: eventId|id|uuid|actionIdentifier
             template: audit_event
           record_selector: $.data.actor.account.nrql.results[*]
       schema_version: cerebro.integration/v1

@@ -81,15 +81,15 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"actor": map[string]any{"account": map[string]any{"nrql": map[string]any{
 				"results": []map[string]any{{
-					"eventId":     "AUDIT-1",
-					"eventType":   "user.create",
-					"actorId":     "USER-1",
-					"actorEmail":  "admin@example.test",
-					"targetId":    "NR-ENTITY-1",
-					"targetName":  "Checkout service",
-					"targetType":  "entity",
-					"timestamp":   float64(1780272000000),
-					"description": "Created user",
+					"eventType":        "NrAuditEvent",
+					"actionIdentifier": "user.create",
+					"actorId":          "USER-1",
+					"actorEmail":       "admin@example.test",
+					"targetId":         "NR-ENTITY-1",
+					"targetName":       "Checkout service",
+					"targetType":       "entity",
+					"timestamp":        float64(1780272000000),
+					"description":      "Created user",
 				}},
 			}}}}})
 		default:
@@ -133,8 +133,7 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 		{
 			family:         familyAuditEvents,
 			wantKind:       "new_relic.audit_events",
-			wantAttributes: map[string]string{"event_type": "user.create", "resource_urn": "urn:cerebro:tenant:new_relic_audit_events:AUDIT-1"},
-			wantURN:        "urn:cerebro:tenant:new_relic_audit_events:AUDIT-1",
+			wantAttributes: map[string]string{"event_type": "user.create"},
 		},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -153,6 +152,18 @@ func TestSourceCheckAndReadNerdGraphFamilies(t *testing.T) {
 			for attr, want := range tt.wantAttributes {
 				if got := event.Attributes[attr]; got != want {
 					t.Fatalf("%s = %q, want %q", attr, got, want)
+				}
+			}
+			if tcFamily := tt.family; tcFamily == familyAuditEvents {
+				sourceEventID := event.Attributes["source_event_id"]
+				if !strings.HasPrefix(sourceEventID, "user.create-") {
+					t.Fatalf("source_event_id = %q, want action-prefixed derived ID", sourceEventID)
+				}
+				if strings.Contains(sourceEventID, "NrAuditEvent") {
+					t.Fatalf("source_event_id = %q, should not derive from NRQL table name", sourceEventID)
+				}
+				if got := event.Attributes["resource_urn"]; !strings.Contains(got, "new_relic_audit_events") || strings.Contains(got, "NrAuditEvent") {
+					t.Fatalf("resource_urn = %q, want derived audit event URN without NrAuditEvent table name", got)
 				}
 			}
 			if tt.wantNextCursor != "" {

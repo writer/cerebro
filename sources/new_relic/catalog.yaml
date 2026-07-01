@@ -94,4 +94,4 @@ event_contracts:
   - kind: new_relic.audit_events
     schema_ref: new_relic/audit_events/v1
     required_attributes: [tenant_id, source_event_id, event_type, actor_id, resource_urn]
-    required_payload_fields: [eventId]
+    required_payload_fields: [actionIdentifier]

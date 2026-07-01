@@ -191,13 +191,14 @@ func NewFindingEvent(settings Settings, issue Record) *primitives.Event {
 }
 
 func NewAuditEvent(settings Settings, row Record) *primitives.Event {
-	eventID := FirstNonEmpty(stringValue(row, "eventId"), stringValue(row, "id"), stringValue(row, "uuid"), stableHash(row))
+	eventType := auditEventType(row)
+	eventID := auditEventID(row, eventType)
 	resourceURN := ProjectionURN(settings.TenantID, "new_relic_audit_events", eventID)
 	attrs := map[string]string{
 		"actor_email":     FirstNonEmpty(stringValue(row, "actorEmail"), stringValue(row, "userEmail"), stringValue(row, "email")),
 		"actor_id":        FirstNonEmpty(stringValue(row, "actorId"), stringValue(row, "userId"), stringValue(row, "user")),
 		"actor_name":      FirstNonEmpty(stringValue(row, "actorName"), stringValue(row, "userName"), stringValue(row, "user")),
-		"event_type":      FirstNonEmpty(stringValue(row, "eventType"), stringValue(row, "action"), stringValue(row, "category")),
+		"event_type":      eventType,
 		"external_id":     eventID,
 		"family":          FamilyAuditEvents,
 		"id":              eventID,
@@ -214,6 +215,26 @@ func NewAuditEvent(settings Settings, row Record) *primitives.Event {
 		"tenant_id":       settings.TenantID,
 	}
 	return eventFromPayload(settings, FamilyAuditEvents, eventID, row, attrs, observedAt(row))
+}
+
+func auditEventType(row Record) string {
+	return FirstNonEmpty(
+		stringValue(row, "actionIdentifier"),
+		stringValue(row, "action"),
+		stringValue(row, "category"),
+		stringValue(row, "eventType"),
+	)
+}
+
+func auditEventID(row Record, eventType string) string {
+	if explicit := FirstNonEmpty(stringValue(row, "eventId"), stringValue(row, "id"), stringValue(row, "uuid")); explicit != "" {
+		return explicit
+	}
+	hash := stableHash(row)
+	if eventType == "" {
+		return hash
+	}
+	return eventType + "-" + hash
 }
 
 func eventFromPayload(settings Settings, family string, id string, payload Record, attrs map[string]string, occurredAt time.Time) *primitives.Event {
