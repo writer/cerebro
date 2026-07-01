@@ -30,11 +30,11 @@ entries:
           key: base_url
           label: Web API host
         - help: Slack Audit Logs API host. Keep the default unless using a test endpoint.
-          key: audit_base_url
+          key: audit_log_base_url
           label: Audit Logs API host
       description: Collects Slack workspaces, users, channels, user groups, memberships, team access logs, and Enterprise Grid audit logs and projects them into the Cerebro graph for inventory, access review, membership review, login review, and collaboration audit context.
       display_name: Slack
-      id: builtin-slack
+      id: builtin_catalog-slack
       ingest:
         mode: pull
       resource_families:
