@@ -103,6 +103,11 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 					t.Fatalf("resource_type = %q, want %q", got, want)
 				}
 			}
+			if tc.family == familyDigitalWalletToken {
+				if got := event.Attributes["secret_type"]; got != "digital_wallet_token" {
+					t.Fatalf("secret_type = %q, want digital_wallet_token", got)
+				}
+			}
 			if tc.family == familyAchPrenotification {
 				if got := event.Attributes["alert_name"]; got != "Account Funding" {
 					t.Fatalf("alert_name = %q, want Account Funding", got)
