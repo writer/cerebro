@@ -1,0 +1,25 @@
+[
+  {
+    "id": "okta-threat-insight-writer.okta.com-1776925200000",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.threat_insight",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/threat_insight/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "action": "block",
+      "exclude_zones": [
+        "nzo-trusted"
+      ]
+    },
+    "attributes": {
+      "action": "block",
+      "domain": "writer.okta.com",
+      "exclude_zone_count": "1",
+      "family": "threat_insight",
+      "resource_id": "threat_insight_config",
+      "resource_type": "ThreatInsightConfiguration"
+    }
+  }
+]

@@ -130,21 +130,24 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
-func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
 		t.Fatalf("NewFixture() error = %v", err)
 	}
 	for _, tt := range []struct {
-		family string
-		config map[string]string
-		kind   string
+		family       string
+		config       map[string]string
+		kind         string
+		wantDiscover int
+		wantRead     int
 	}{
 		{family: "admin_role", config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"}, kind: "okta.admin_role"},
 		{family: "api_token", kind: "okta.api_token"},
 		{family: "app_assignment", config: map[string]string{"app_id": "app-prod"}, kind: "okta.app_assignment"},
 		{family: "application", kind: "okta.application"},
 		{family: "authorization_server", kind: "okta.authorization_server"},
+		{family: "authenticator", kind: "okta.authenticator"},
 		{family: "brand", kind: "okta.brand"},
 		{family: "device_assurance", kind: "okta.device_assurance"},
 		{family: "event_hook", kind: "okta.event_hook"},
@@ -155,9 +158,19 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		{family: "log_stream", kind: "okta.log_stream"},
 		{family: "network_zone", kind: "okta.network_zone"},
 		{family: "policy_rule", kind: "okta.policy_rule"},
+		{family: "threat_insight", kind: "okta.threat_insight"},
 		{family: "trusted_origin", kind: "okta.trusted_origin"},
+		{family: "user", kind: "okta.user", wantDiscover: 2},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
+			wantDiscover := tt.wantDiscover
+			if wantDiscover == 0 {
+				wantDiscover = 1
+			}
+			wantRead := tt.wantRead
+			if wantRead == 0 {
+				wantRead = 1
+			}
 			config := map[string]string{
 				"domain": "writer.okta.com",
 				"family": tt.family,
@@ -170,15 +183,15 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover(%s) error = %v", tt.family, err)
 			}
-			if len(urns) != 1 {
-				t.Fatalf("len(Discover(%s)) = %d, want 1", tt.family, len(urns))
+			if len(urns) != wantDiscover {
+				t.Fatalf("len(Discover(%s)) = %d, want %d", tt.family, len(urns), wantDiscover)
 			}
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
 			if err != nil {
 				t.Fatalf("Read(%s) error = %v", tt.family, err)
 			}
-			if len(pull.Events) != 1 {
-				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			if len(pull.Events) != wantRead {
+				t.Fatalf("len(Read(%s).Events) = %d, want %d", tt.family, len(pull.Events), wantRead)
 			}
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
