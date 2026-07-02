@@ -69,14 +69,17 @@ func (c *TokenCache) Token(ctx context.Context, cfg sourcecdk.Config, allowLoopb
 	cacheKey := tokenCacheKey(tokenURL, clientID, clientSecret)
 	now := time.Now()
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if cached, ok := c.entries[cacheKey]; ok && cached.value != "" && now.Before(cached.expiresAt) {
+		c.mu.Unlock()
 		return cached.value, nil
 	}
+	c.mu.Unlock()
 	token, expiresAt, err := exchangeToken(ctx, tokenURL, clientID, clientSecret, allowLoopback)
 	if err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.entries == nil {
 		c.entries = map[string]tokenCacheEntry{}
 	}

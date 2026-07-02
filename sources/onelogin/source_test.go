@@ -174,6 +174,9 @@ func TestSourceReadFansOutRoleUsers(t *testing.T) {
 	if len(first.Events) != 1 || first.Events[0].Attributes["role_id"] != "role-1" {
 		t.Fatalf("first Events = %#v, want role-1 membership", first.Events)
 	}
+	if first.Events[0].Attributes["member_type"] != "user" {
+		t.Fatalf("member_type = %q, want user", first.Events[0].Attributes["member_type"])
+	}
 	if first.NextCursor == nil {
 		t.Fatal("first NextCursor = nil, want fanout cursor for role-2")
 	}

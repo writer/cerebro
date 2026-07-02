@@ -251,19 +251,20 @@ func privilegesFamily() jsonapi.Family {
 		Attributes: map[string]string{
 			"role_id":          "id",
 			"role_name":        "name",
-			"role_type":        "privilege",
 			"source_event_id":  "id",
 			"entitlement_id":   "id",
 			"entitlement_name": "name",
-			"capability":       "identity_admin",
-			"is_admin":         "true",
 			"description":      "description",
 			"privilege":        "privilege",
 			"resource_id":      "id",
 			"resource_name":    "name",
 			"resource_type":    "privilege",
 		},
-		StaticAttributes: staticAttributes("privileges", "identity_role_assignment", "privilege"),
+		StaticAttributes: staticAttributesWith("privileges", "identity_role_assignment", "privilege", map[string]string{
+			"capability": "identity_admin",
+			"is_admin":   "true",
+			"role_type":  "privilege",
+		}),
 	})
 }
 
@@ -274,9 +275,6 @@ func mappingsFamily() jsonapi.Family {
 		URNKind: "onelogin_mappings",
 		IDKeys:  []string{"id", "name"},
 		Attributes: map[string]string{
-			"policy_id":       "user_mappings",
-			"policy_name":     "User mappings",
-			"policy_type":     "user_mapping",
 			"policy_rule_id":  "id",
 			"source_event_id": "id",
 			"name":            "name",
@@ -288,7 +286,11 @@ func mappingsFamily() jsonapi.Family {
 			"resource_name":   "name",
 			"resource_type":   "user_mapping",
 		},
-		StaticAttributes: staticAttributes("mappings", "identity_policy_rule", "user_mapping"),
+		StaticAttributes: staticAttributesWith("mappings", "identity_policy_rule", "user_mapping", map[string]string{
+			"policy_id":   "user_mappings",
+			"policy_name": "User mappings",
+			"policy_type": "user_mapping",
+		}),
 	})
 }
 
@@ -301,7 +303,6 @@ func userAppsFamily() jsonapi.Family {
 		IDKeys:     []string{"id", "app_id", "login_id"},
 		Attributes: map[string]string{
 			"subject_id":           "user_id",
-			"subject_type":         "user",
 			"user_id":              "user_id",
 			"app_id":               "id|app_id",
 			"application_id":       "id|app_id",
@@ -317,7 +318,9 @@ func userAppsFamily() jsonapi.Family {
 			"resource_name":        "name",
 			"resource_type":        "application_assignment",
 		},
-		StaticAttributes: staticAttributes("user_apps", "identity_app_assignment", "application_assignment"),
+		StaticAttributes: staticAttributesWith("user_apps", "identity_app_assignment", "application_assignment", map[string]string{
+			"subject_type": "user",
+		}),
 	})
 }
 
@@ -330,21 +333,22 @@ func userPrivilegesFamily() jsonapi.Family {
 		IDKeys:     []string{"id", "name"},
 		Attributes: map[string]string{
 			"subject_id":       "user_id",
-			"subject_type":     "user",
 			"user_id":          "user_id",
 			"role_id":          "id",
 			"role_name":        "name",
-			"role_type":        "privilege",
 			"source_event_id":  "id",
 			"entitlement_id":   "id",
 			"entitlement_name": "name",
-			"capability":       "identity_admin",
-			"is_admin":         "true",
 			"resource_id":      "id",
 			"resource_name":    "name",
 			"resource_type":    "user_privilege",
 		},
-		StaticAttributes: staticAttributes("user_privileges", "identity_role_assignment", "user_privilege"),
+		StaticAttributes: staticAttributesWith("user_privileges", "identity_role_assignment", "user_privilege", map[string]string{
+			"capability":   "identity_admin",
+			"is_admin":     "true",
+			"role_type":    "privilege",
+			"subject_type": "user",
+		}),
 	})
 }
 
@@ -353,8 +357,12 @@ func delegatedPrivilegesFamily() jsonapi.Family {
 	family.Name = FamilyDelegatedPrivileges
 	family.Path = "/api/2/users/{user_id}/delegated_privileges"
 	family.URNKind = "onelogin_delegated_privileges"
-	family.StaticAttributes = staticAttributes("delegated_privileges", "identity_role_assignment", "delegated_privilege")
-	family.Attributes["resource_type"] = "delegated_privilege"
+	family.StaticAttributes = staticAttributesWith("delegated_privileges", "identity_role_assignment", "delegated_privilege", map[string]string{
+		"capability":   "identity_admin",
+		"is_admin":     "true",
+		"role_type":    "privilege",
+		"subject_type": "user",
+	})
 	return family
 }
 
@@ -367,7 +375,6 @@ func mfaDevicesFamily() jsonapi.Family {
 		IDKeys:     []string{"device_id", "id", "auth_factor_id"},
 		Attributes: map[string]string{
 			"subject_id":        "user_id",
-			"subject_type":      "user",
 			"user_id":           "user_id",
 			"credential_id":     "device_id|id|auth_factor_id",
 			"credential_name":   "user_display_name|type_display_name|auth_factor_name",
@@ -381,7 +388,9 @@ func mfaDevicesFamily() jsonapi.Family {
 			"resource_name":     "user_display_name|type_display_name|auth_factor_name",
 			"resource_type":     "mfa_device",
 		},
-		StaticAttributes: staticAttributes("mfa_devices", "identity_credential", "mfa_device"),
+		StaticAttributes: staticAttributesWith("mfa_devices", "identity_credential", "mfa_device", map[string]string{
+			"subject_type": "user",
+		}),
 	})
 }
 
@@ -399,7 +408,6 @@ func roleUsersFamily() jsonapi.Family {
 			"member_id":       "id|user_id",
 			"member_email":    "email",
 			"member_name":     "name|username|email",
-			"member_type":     "user",
 			"member_status":   "status|state",
 			"source_event_id": "id|user_id|email",
 			"email":           "email",
@@ -407,7 +415,9 @@ func roleUsersFamily() jsonapi.Family {
 			"resource_name":   "name|username|email",
 			"resource_type":   "role_user",
 		},
-		StaticAttributes: staticAttributes("role_users", "identity_group_membership", "role_membership"),
+		StaticAttributes: staticAttributesWith("role_users", "identity_group_membership", "role_membership", map[string]string{
+			"member_type": "user",
+		}),
 	})
 }
 
@@ -416,12 +426,14 @@ func roleAdminsFamily() jsonapi.Family {
 	family.Name = FamilyRoleAdmins
 	family.Path = "/api/2/roles/{role_id}/admins"
 	family.URNKind = "onelogin_role_admins"
-	family.StaticAttributes = staticAttributes("role_admins", "identity_role_assignment", "role_admin")
+	family.StaticAttributes = staticAttributesWith("role_admins", "identity_role_assignment", "role_admin", map[string]string{
+		"capability":   "identity_admin",
+		"is_admin":     "true",
+		"member_type":  "user",
+		"role_type":    "admin_role",
+		"subject_type": "user",
+	})
 	family.Attributes["subject_id"] = "id|user_id"
-	family.Attributes["subject_type"] = "user"
-	family.Attributes["role_type"] = "admin_role"
-	family.Attributes["is_admin"] = "true"
-	family.Attributes["capability"] = "identity_admin"
 	family.Attributes["resource_type"] = "role_admin"
 	return family
 }
@@ -435,7 +447,6 @@ func roleAppsFamily() jsonapi.Family {
 		IDKeys:     []string{"id", "app_id", "name"},
 		Attributes: map[string]string{
 			"subject_id":      "role_id",
-			"subject_type":    "group",
 			"group_id":        "role_id",
 			"role_id":         "role_id",
 			"app_id":          "id|app_id",
@@ -447,7 +458,9 @@ func roleAppsFamily() jsonapi.Family {
 			"resource_name":   "name",
 			"resource_type":   "role_app",
 		},
-		StaticAttributes: staticAttributes("role_apps", "identity_app_assignment", "role_app_assignment"),
+		StaticAttributes: staticAttributesWith("role_apps", "identity_app_assignment", "role_app_assignment", map[string]string{
+			"subject_type": "group",
+		}),
 	})
 }
 
@@ -460,7 +473,6 @@ func appUsersFamily() jsonapi.Family {
 		IDKeys:     []string{"id", "user_id", "email"},
 		Attributes: map[string]string{
 			"subject_id":        "id|user_id",
-			"subject_type":      "user",
 			"subject_email":     "email",
 			"user_id":           "id|user_id",
 			"email":             "email",
@@ -473,7 +485,9 @@ func appUsersFamily() jsonapi.Family {
 			"resource_name":     "name|username|email",
 			"resource_type":     "app_user",
 		},
-		StaticAttributes: staticAttributes("app_users", "identity_app_assignment", "app_user_assignment"),
+		StaticAttributes: staticAttributesWith("app_users", "identity_app_assignment", "app_user_assignment", map[string]string{
+			"subject_type": "user",
+		}),
 	})
 }
 
@@ -486,8 +500,6 @@ func appRulesFamily() jsonapi.Family {
 		IDKeys:     []string{"id", "name"},
 		Attributes: map[string]string{
 			"policy_id":       "app_id",
-			"policy_name":     "OneLogin app rules",
-			"policy_type":     "app_rule",
 			"policy_rule_id":  "id",
 			"source_event_id": "id",
 			"name":            "name",
@@ -500,7 +512,10 @@ func appRulesFamily() jsonapi.Family {
 			"resource_name":   "name",
 			"resource_type":   "app_rule",
 		},
-		StaticAttributes: staticAttributes("app_rules", "identity_policy_rule", "app_rule"),
+		StaticAttributes: staticAttributesWith("app_rules", "identity_policy_rule", "app_rule", map[string]string{
+			"policy_name": "OneLogin app rules",
+			"policy_type": "app_rule",
+		}),
 	})
 }
 
@@ -514,18 +529,19 @@ func privilegeUsersFamily() jsonapi.Family {
 		ListKeys:   []string{"users"},
 		Attributes: map[string]string{
 			"subject_id":      "user_id",
-			"subject_type":    "user",
 			"user_id":         "user_id",
 			"role_id":         "privilege_id",
-			"role_type":       "privilege",
 			"source_event_id": "user_id",
 			"entitlement_id":  "privilege_id",
-			"capability":      "identity_admin",
-			"is_admin":        "true",
 			"resource_id":     "user_id",
 			"resource_type":   "privilege_user",
 		},
-		StaticAttributes: staticAttributes("privilege_users", "identity_role_assignment", "privilege_user"),
+		StaticAttributes: staticAttributesWith("privilege_users", "identity_role_assignment", "privilege_user", map[string]string{
+			"capability":   "identity_admin",
+			"is_admin":     "true",
+			"role_type":    "privilege",
+			"subject_type": "user",
+		}),
 	})
 }
 
@@ -539,16 +555,18 @@ func privilegeRolesFamily() jsonapi.Family {
 		ListKeys:   []string{"roles"},
 		Attributes: map[string]string{
 			"subject_id":      "role_id",
-			"subject_type":    "group",
 			"role_id":         "privilege_id",
 			"source_event_id": "role_id",
 			"entitlement_id":  "privilege_id",
-			"capability":      "identity_admin",
-			"is_admin":        "true",
 			"resource_id":     "role_id",
 			"resource_type":   "privilege_role",
 		},
-		StaticAttributes: staticAttributes("privilege_roles", "identity_role_assignment", "privilege_role"),
+		StaticAttributes: staticAttributesWith("privilege_roles", "identity_role_assignment", "privilege_role", map[string]string{
+			"capability":   "identity_admin",
+			"is_admin":     "true",
+			"role_type":    "privilege",
+			"subject_type": "group",
+		}),
 	})
 }
 
@@ -604,6 +622,14 @@ func staticAttributes(schema string, recordClass string, resourceType string) ma
 		"schema":        schema,
 		"source_system": "onelogin",
 	}
+}
+
+func staticAttributesWith(schema string, recordClass string, resourceType string, extra map[string]string) map[string]string {
+	attributes := staticAttributes(schema, recordClass, resourceType)
+	for key, value := range extra {
+		attributes[key] = value
+	}
+	return attributes
 }
 
 func oneloginConfig(config jsonapi.FamilyConfig) jsonapi.FamilyConfig {
