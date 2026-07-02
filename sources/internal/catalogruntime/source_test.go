@@ -85,6 +85,134 @@ func TestSourceCheckAndReadDefinition(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionReadsNestedRecordSelector(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/connections" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items": []map[string]any{{
+					"id":         "connection-1",
+					"service":    "postgres",
+					"updated_at": "2026-06-01T00:00:00Z",
+				}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "connections",
+			Path:           "/connections",
+			RecordSelector: "$.data.items[*]",
+			IDField:        "id",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "example.connections",
+				SchemaRef: "example/connections/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{
+				Template: "asset",
+				Fields: map[string]string{
+					"resource_id":   "id",
+					"resource_type": "service",
+				},
+			},
+			Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "example.connections" || event.Attributes["resource_id"] != "connection-1" {
+		t.Fatalf("event = %#v, want nested selector event", event)
+	}
+}
+
+func TestSourceDefinitionRedactsSensitivePayloadPaths(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/keys" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":     "key-1",
+				"name":   "Automation key",
+				"key":    "public-material",
+				"secret": "secret-material",
+				"nested": map[string]any{"secret": "nested-secret"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-example",
+		TenantID:    "tenant",
+		SourceID:    "example",
+		DisplayName: "Example",
+		Auth:        connectordefinitions.AuthSpec{Model: "none"},
+		Transport:   &connectordefinitions.TransportSpec{BaseURL: server.URL},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "system_keys",
+			Path:           "/keys",
+			RecordSelector: "$.data[*]",
+			IDField:        "id",
+			Event:          connectordefinitions.EventMappingSpec{Kind: "example.system_keys", SchemaRef: "example/system_keys/v1"},
+			Projection:     &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:       []connectordefinitions.CoverageDimensionSpec{{Type: "app_entitlement", Support: "partial"}},
+			SensitivePayloadPaths: []string{
+				"$.key",
+				"$.secret",
+				"$.nested.secret",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant"}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if _, ok := payload["key"]; ok {
+		t.Fatalf("payload retained key: %#v", payload)
+	}
+	if _, ok := payload["secret"]; ok {
+		t.Fatalf("payload retained secret: %#v", payload)
+	}
+	nested, _ := payload["nested"].(map[string]any)
+	if _, ok := nested["secret"]; ok {
+		t.Fatalf("payload retained nested secret: %#v", payload)
+	}
+}
+
 func TestReadDefinitionFixtureSeedsRequiredConfigFields(t *testing.T) {
 	result, err := ReadDefinitionFixture(context.Background(), connectordefinitions.Definition{
 		ID:          "tenant-example",
@@ -617,6 +745,61 @@ func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
 	}
 	if len(pull.Events) != 1 || pull.Events[0].Kind != "huggingface.repositories" {
 		t.Fatalf("events = %#v, want huggingface.repositories event", pull.Events)
+	}
+}
+
+func TestSourceDefinitionUsesFamilyStaticHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept"); got != "application/json;version=2" {
+			t.Fatalf("Accept = %q, want Fivetran v2 header", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items": []map[string]any{{"id": "dest-1", "service": "snowflake"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-fivetran",
+		TenantID:    "tenant",
+		SourceID:    "fivetran",
+		DisplayName: "Fivetran",
+		Auth:        connectordefinitions.AuthSpec{Model: "basic"},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: server.URL,
+			Headers: map[string]string{
+				"Accept": "application/json",
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "destinations",
+			Path:           "/v1/destinations",
+			RecordSelector: "$.data.items[*]",
+			IDField:        "id",
+			StaticHeaders: map[string]string{
+				"Accept": "application/json;version=2",
+			},
+			Event:      connectordefinitions.EventMappingSpec{Kind: "fivetran.destinations", SchemaRef: "fivetran/destinations/v1"},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"username":  "key",
+		"password":  "secret",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "fivetran.destinations" {
+		t.Fatalf("events = %#v, want fivetran.destinations event", pull.Events)
 	}
 }
 

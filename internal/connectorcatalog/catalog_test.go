@@ -533,6 +533,55 @@ func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {
 	}
 }
 
+func TestBuiltinFivetranV2FamiliesCarryAcceptHeader(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	for _, familyID := range []string{"destinations", "connections"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.StaticHeaders["Accept"] != "application/json;version=2" {
+			t.Fatalf("%s static_headers = %#v, want Fivetran v2 Accept header", familyID, family.StaticHeaders)
+		}
+	}
+}
+
+func TestBuiltinFivetranConfigPayloadsAreSensitive(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	for _, familyID := range []string{"destinations", "connections", "account_log_service", "log_services"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if !stringsContain(family.SensitivePayloadPaths, "$.config") {
+			t.Fatalf("%s sensitive_payload_paths = %#v, want $.config", familyID, family.SensitivePayloadPaths)
+		}
+	}
+}
+
+func TestBuiltinFivetranServiceAccountProjectionDoesNotReadCredentialAsResourceType(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	family := catalogFamily(t, entry.Definition.ResourceFamilies, "group_service_accounts")
+	if family.Projection == nil {
+		t.Fatal("group_service_accounts projection missing")
+	}
+	if got := family.Projection.Fields["resource_type"]; got != "credential_type|type" {
+		t.Fatalf("group_service_accounts resource_type projection = %q, want credential_type|type", got)
+	}
+}
+
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {
@@ -559,6 +608,15 @@ func assertCatalogFamilyPath(t *testing.T, families []connectordefinitions.Resou
 		return
 	}
 	t.Fatalf("family %s not found in %#v", id, families)
+}
+
+func stringsContain(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {

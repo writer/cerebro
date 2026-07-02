@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fivetran-proxy_agents-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.proxy_agents",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/proxy_agents/v1",
+    "payload": {
+      "id": "proxy-agent-1",
+      "name": "Proxy agent east",
+      "status": "active",
+      "family": "proxy_agents",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/proxy_agents/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "proxy-agent-1",
+      "external_id": "proxy-agent-1",
+      "family": "proxy_agents",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "proxy_agents",
+      "record_class": "asset",
+      "resource_type": "proxy_agent",
+      "resource_id": "proxy-agent-1",
+      "resource_name": "Proxy agent east",
+      "resource_urn": "urn:cerebro:tenant:fivetran_proxy_agents:proxy-agent-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "status": "active"
+    }
+  }
+]

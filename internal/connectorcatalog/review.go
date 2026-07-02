@@ -710,7 +710,7 @@ func familyHasCollectionShape(family connectordefinitions.ResourceFamily) bool {
 	if family.Pagination != nil || family.Incremental != nil || family.Singleton {
 		return true
 	}
-	return family.Read != nil && (family.Read.Singleton || strings.TrimSpace(family.Read.DetailPath) != "")
+	return family.Read != nil && (family.Read.Singleton || strings.TrimSpace(family.Read.DetailPath) != "" || len(family.Read.MapRecords) > 0)
 }
 
 func countFamilies(entry Entry, predicate func(connectordefinitions.ResourceFamily) bool) int {

@@ -313,6 +313,19 @@ func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
 	}
 }
 
+func TestFamilyHasCollectionShapeAcceptsMapRecords(t *testing.T) {
+	family := connectordefinitions.ResourceFamily{
+		ID:   "columns",
+		Path: "/v1/connections/{connection_id}/columns",
+		Read: &connectordefinitions.ResourceReadSpec{
+			MapRecords: map[string]string{"data.columns": "config"},
+		},
+	}
+	if !familyHasCollectionShape(family) {
+		t.Fatal("familyHasCollectionShape() = false, want true for map_records")
+	}
+}
+
 func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	analysis := Analysis{
 		Summary: Summary{Total: 3, Generateable: 3},

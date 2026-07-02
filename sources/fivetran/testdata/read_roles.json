@@ -1,0 +1,41 @@
+[
+  {
+    "id": "fivetran-roles-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.roles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/roles/v1",
+    "payload": {
+      "id": "role-1",
+      "name": "Account Reviewer",
+      "description": "Can review account users and roles.",
+      "scope": "account",
+      "family": "roles",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/roles/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "role-1",
+      "external_id": "role-1",
+      "family": "roles",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "roles",
+      "record_class": "identity_role",
+      "resource_type": "role",
+      "resource_id": "role-1",
+      "resource_name": "Account Reviewer",
+      "resource_urn": "urn:cerebro:tenant:fivetran_roles:role-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "role_id": "role-1",
+      "role_name": "Account Reviewer",
+      "description": "Can review account users and roles.",
+      "scope": "account"
+    }
+  }
+]

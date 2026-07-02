@@ -1,6 +1,7 @@
 package jsonapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
@@ -1062,6 +1063,228 @@ func TestReadUsesConfiguredNestedListKeys(t *testing.T) {
 	}
 }
 
+func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "Success",
+			"data": map[string]any{
+				"id":     "state-1",
+				"status": "connected",
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "state",
+		Path:       "/state",
+		URNKind:    "test_state",
+		IDKeys:     []string{"id"},
+		Singleton:  true,
+		Attributes: map[string]string{"resource_id": "id", "status": "status"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "state",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["resource_id"] != "state-1" || attrs["status"] != "connected" {
+		t.Fatalf("attributes = %#v, want unwrapped data object", attrs)
+	}
+}
+
+func TestReadSingletonKeepsProviderDataField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "setting-1",
+			"name":   "Sync settings",
+			"data":   map[string]any{"mode": "manual"},
+			"status": "enabled",
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:      "setting",
+		Path:      "/setting",
+		URNKind:   "test_setting",
+		IDKeys:    []string{"id"},
+		Singleton: true,
+		Attributes: map[string]string{
+			"mode":        "data.mode",
+			"resource_id": "id",
+			"status":      "status",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "setting",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["resource_id"] != "setting-1" || attrs["mode"] != "manual" || attrs["status"] != "enabled" {
+		t.Fatalf("attributes = %#v, want outer singleton fields preserved", attrs)
+	}
+}
+
+func TestReadAppliesFamilyStaticHeaders(t *testing.T) {
+	acceptByPath := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		acceptByPath[r.URL.Path] = r.Header.Get("Accept")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "record-1"}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New(&cerebrov1.SourceSpec{Id: "jsonapi", Name: "JSON API"}, Options{
+		SourceID:        "jsonapi",
+		DefaultFamily:   "default",
+		RequireTenantID: true,
+		AuthModel:       "bearer_token",
+		Families: []Family{
+			{Name: "default", Path: "/default", URNKind: "default_record", IDKeys: []string{"id"}},
+			{Name: "v2", Path: "/v2", URNKind: "v2_record", IDKeys: []string{"id"}, Config: FamilyConfig{StaticHeaders: map[string]string{"Accept": "application/json;version=2"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "base_url": server.URL, "token": "token-1"})
+	if _, err := source.Read(context.Background(), cfg, nil); err != nil {
+		t.Fatalf("Read(default) error = %v", err)
+	}
+	cfg = sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "base_url": server.URL, "token": "token-1", "family": "v2"})
+	if _, err := source.Read(context.Background(), cfg, nil); err != nil {
+		t.Fatalf("Read(v2) error = %v", err)
+	}
+	if got := acceptByPath["/default"]; got != "application/json" {
+		t.Fatalf("default Accept = %q, want application/json", got)
+	}
+	if got := acceptByPath["/v2"]; got != "application/json;version=2" {
+		t.Fatalf("v2 Accept = %q, want application/json;version=2", got)
+	}
+}
+
+func TestReadRedactsConfiguredPayloadKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":     "key-1",
+				"name":   "automation-key",
+				"key":    "public-material",
+				"secret": "secret-material",
+				"serial": int64(9223372036854775807),
+				"nested": map[string]any{"secret": "nested-secret", "status": "active"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "key",
+		Path:    "/keys",
+		URNKind: "test_key",
+		IDKeys:  []string{"id"},
+		Config: FamilyConfig{
+			RedactPayloadKeys: []string{"key", "secret", "nested.secret"},
+		},
+		Attributes: map[string]string{"key_id": "id", "key_name": "name", "status": "nested.status"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if _, ok := payload["key"]; ok {
+		t.Fatalf("payload retained key: %#v", payload)
+	}
+	if _, ok := payload["secret"]; ok {
+		t.Fatalf("payload retained secret: %#v", payload)
+	}
+	nested, _ := payload["nested"].(map[string]any)
+	if _, ok := nested["secret"]; ok {
+		t.Fatalf("payload retained nested secret: %#v", payload)
+	}
+	redacted, _ := payload["redacted_fields"].([]any)
+	if len(redacted) != 3 || redacted[0] != "key" || redacted[1] != "secret" || redacted[2] != "nested.secret" {
+		t.Fatalf("redacted_fields = %#v, want configured removed fields", payload["redacted_fields"])
+	}
+	if pull.Events[0].Attributes["status"] != "active" {
+		t.Fatalf("status attribute = %q, want active", pull.Events[0].Attributes["status"])
+	}
+	var precisePayload map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(pull.Events[0].Payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&precisePayload); err != nil {
+		t.Fatalf("decode precise payload: %v", err)
+	}
+	if got := precisePayload["serial"].(json.Number).String(); got != "9223372036854775807" {
+		t.Fatalf("serial = %q, want exact large integer", got)
+	}
+}
+
+func TestReadUsesNestedConfiguredListKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items":       []map[string]any{{"id": "U1", "name": "alice"}},
+				"next_cursor": "page-2",
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "user",
+		Path:           "/users",
+		URNKind:        "test_user",
+		IDKeys:         []string{"id"},
+		CursorParam:    "cursor",
+		NextCursorKeys: []string{"data.next_cursor"},
+		ListKeys:       []string{"data.items"},
+		Attributes:     map[string]string{"user_id": "id", "name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "user",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["user_id"] != "U1" {
+		t.Fatalf("Events = %#v, want user from nested items list", pull.Events)
+	}
+	if pull.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("NextCursor = %q, want page-2", pull.NextCursor.GetOpaque())
+	}
+}
+
 func TestReadWrapsScalarListItemsWithIDKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("channel"); got != "C1" {
@@ -1931,6 +2154,43 @@ func TestReadObjectMapRecords(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["members"]; got != "alice@example.com,bob@example.com" {
 		t.Fatalf("members = %q, want joined map values", got)
+	}
+}
+
+func TestReadNestedObjectMapRecords(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"columns": map[string]any{
+					"EMAIL": map[string]any{"enabled": true, "hashed": false},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "column",
+		Path:       "/columns",
+		URNKind:    "test_column",
+		IDKeys:     []string{"id"},
+		MapRecords: map[string]string{"data.columns": "config"},
+		Attributes: map[string]string{"column_name": "id", "enabled": "config.enabled"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "column",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want nested map-derived record", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["column_name"] != "EMAIL" || attrs["enabled"] != "true" {
+		t.Fatalf("attributes = %#v, want nested map record attributes", attrs)
 	}
 }
 
