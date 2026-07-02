@@ -8,12 +8,10 @@ import (
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
-// Source is the Kolide/osquery endpoint inventory source.
 type Source struct {
 	inner *jsonapi.Source
 }
 
-// New constructs the Kolide source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -25,7 +23,15 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
-		Families:        families(),
+		StaticHeaders:   map[string]string{"X-Kolide-Api-Version": defaultAPIVersion},
+		RecordFilters: map[string]jsonapi.RecordFilter{
+			familyVulnerability: jsonapi.RecordFilterAnyPrefixOrNonEmpty(
+				[]string{"cve_id", "value.cve_id", "value.cve", "issue_value", "ghsa_id", "value.ghsa_id"},
+				[]string{"advisory_id", "value.advisory_id"},
+				"CVE-", "GHSA-",
+			),
+		},
+		Families: families(),
 	})
 	if err != nil {
 		return nil, err
@@ -33,7 +39,6 @@ func New() (*Source, error) {
 	return &Source{inner: inner}, nil
 }
 
-// Spec returns static Kolide source metadata.
 func (s *Source) Spec() *cerebrov1.SourceSpec {
 	if s == nil || s.inner == nil {
 		return nil
@@ -41,17 +46,14 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 	return s.inner.Spec()
 }
 
-// Check validates the configured Kolide collection.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return s.inner.Check(ctx, cfg)
 }
 
-// Discover returns Kolide URNs for the configured family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return s.inner.Discover(ctx, cfg)
 }
 
-// Read pages Kolide records and emits kolide.* events.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return s.inner.Read(ctx, cfg, cursor)
 }

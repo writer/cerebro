@@ -44,6 +44,8 @@ type Family struct {
 	IncrementalWatermark bool
 }
 
+type RecordFilter func(map[string]any) bool
+
 // FamilyConfig groups request and event bindings that are derived from family
 // configuration rather than directly from provider records.
 type FamilyConfig struct {
@@ -103,6 +105,7 @@ type Options struct {
 	DiscoverURNScope                  string
 	PrivateEndpointAllowlistConfigKey string
 	ResponseError                     func([]byte) error
+	RecordFilters                     map[string]RecordFilter
 	Families                          []Family
 }
 
