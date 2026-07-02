@@ -213,7 +213,7 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/tags/${escaped_tag}$"
+            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/(tags/${escaped_tag}|heads/main)$"
 
       - name: Verify web GHCR image signature
         id: verify-web-ghcr-image
@@ -439,7 +439,7 @@ jobs:
           bash .github/scripts/verify-ghcr-image.sh \
             "${GHCR_IMAGE}" \
             "${IMAGE_TAG}" \
-            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/tags/${escaped_tag}$"
+            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/(tags/${escaped_tag}|heads/main)$"
 
       - name: Configure AWS credentials (sec-prod)
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2

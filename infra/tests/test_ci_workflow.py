@@ -41,6 +41,22 @@ class CIWorkflowTest(unittest.TestCase):
         self.assertIn("name: promotion-receipt-sec-dev", workflow)
         self.assertIn("name: promotion-receipt-go-prod", workflow)
 
+    def test_publish_jobs_accept_main_release_workflow_signatures(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        identity_regexp = (
+            '"^https://github\\.com/writer/cerebro/\\.github/workflows/'
+            'release\\.yml@refs/(tags/${escaped_tag}|heads/main)$"'
+        )
+        verify_blocks = [
+            block.split("\n      - name:", 1)[0]
+            for block in workflow.split("- name: Verify GHCR image signature and attestations")[1:]
+        ]
+
+        self.assertEqual(2, len(verify_blocks))
+        for block in verify_blocks:
+            with self.subTest(block=block.splitlines()[0].strip()):
+                self.assertIn(identity_regexp, block)
+
     def test_ci_workflow_contract_changes_do_not_trigger_deploys(self) -> None:
         workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         filter_block = workflow.split("- name: Filter changed paths", 1)[1].split("\n      - name:", 1)[0]
