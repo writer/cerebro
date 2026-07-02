@@ -67,6 +67,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["resource_type"]; got != "model" {
 		t.Fatalf("resource_type = %q, want model", got)
 	}
+	if got := event.Attributes["tenant_id"]; got != "tenant" {
+		t.Fatalf("tenant_id = %q, want tenant", got)
+	}
 }
 
 func TestReadAIGatewaysMapsProviderName(t *testing.T) {
@@ -117,6 +120,7 @@ func TestReadAIGatewaysMapsProviderName(t *testing.T) {
 		"deployment_name": "production-gateway",
 		"resource_type":   "ai_gateway",
 		"resource_urn":    "urn:cerebro:tenant:cloudflare_workers_ai_ai_gateways:gateway-1",
+		"tenant_id":       "tenant",
 	} {
 		if got := attrs[attr]; got != want {
 			t.Fatalf("%s = %q, want %q", attr, got, want)
@@ -171,6 +175,7 @@ func TestReadGatewayProviderConfigsDerivesProviderAlias(t *testing.T) {
 		"resource_type": "gateway_provider_config",
 		"secret_name":   "openai-production",
 		"secret_status": "active",
+		"tenant_id":     "tenant",
 	} {
 		if got := attrs[attr]; got != want {
 			t.Fatalf("%s = %q, want %q", attr, got, want)
@@ -228,6 +233,7 @@ func TestReadGatewayEvaluationsUsesCanonicalResourceType(t *testing.T) {
 		"policy_status": "enabled",
 		"policy_type":   "prompt_guard",
 		"resource_type": "gateway_evaluation",
+		"tenant_id":     "tenant",
 	} {
 		if got := attrs[attr]; got != want {
 			t.Fatalf("%s = %q, want %q", attr, got, want)
@@ -282,6 +288,9 @@ func TestReadGatewayLogsDefaultsResourceType(t *testing.T) {
 	if got := pull.Events[0].Attributes["resource_type"]; got != "ai_gateway" {
 		t.Fatalf("resource_type = %q, want static gateway resource type", got)
 	}
+	if got := pull.Events[0].Attributes["tenant_id"]; got != "tenant" {
+		t.Fatalf("tenant_id = %q, want tenant", got)
+	}
 }
 
 func TestReadVectorizeIndexesDerivesRequiredAttributes(t *testing.T) {
@@ -329,6 +338,7 @@ func TestReadVectorizeIndexesDerivesRequiredAttributes(t *testing.T) {
 		"resource_type":   "vectorize_index",
 		"resource_urn":    "urn:cerebro:tenant:cloudflare_workers_ai_vectorize_indexes:docs-index",
 		"source_event_id": "docs-index",
+		"tenant_id":       "tenant",
 	} {
 		if got := attrs[attr]; got != want {
 			t.Fatalf("%s = %q, want %q", attr, got, want)

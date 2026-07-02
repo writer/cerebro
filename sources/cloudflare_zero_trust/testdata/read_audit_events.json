@@ -9,6 +9,7 @@
       "external_id": "access-request-1",
       "family": "audit_events",
       "id": "access-request-1",
+      "ip_address": "198.51.100.20",
       "record_class": "audit_event",
       "resource_id": "access-request-1",
       "resource_email": "alice@example.com",
@@ -19,7 +20,6 @@
       "source_event_id": "access-request-1",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",
-      "ip_address": "198.51.100.20",
       "tenant_id": "tenant"
     },
     "id": "cloudflare_zero_trust-audit_events-event-1",

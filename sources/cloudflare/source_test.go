@@ -351,6 +351,68 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 	}
 }
 
+func TestAuditLogDoesNotSynthesizeResourceURNFromAuditedResource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/accounts/account-1/audit_logs" {
+			t.Fatalf("request path = %q, want /accounts/account-1/audit_logs", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":   "audit-1",
+				"when": "2026-06-01T00:00:00Z",
+				"action": map[string]any{
+					"type": "zone.settings.update",
+				},
+				"resource": map[string]any{
+					"id":   "zone-1",
+					"type": "zone",
+				},
+				"account": map[string]any{
+					"id": "account-1",
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"account_id": "account-1",
+		"base_url":   server.URL,
+		"family":     "audit_log",
+		"tenant_id":  "writer",
+		"token":      "token-1",
+	})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:cloudflare_audit_log:audit-1" {
+		t.Fatalf("Discover() URNs = %v, want audit log record URN", urns)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["audit_id"]; got != "audit-1" {
+		t.Fatalf("audit_id = %q, want audit-1", got)
+	}
+	if got := attrs["resource_id"]; got != "zone-1" {
+		t.Fatalf("resource_id = %q, want audited resource id zone-1", got)
+	}
+	if got := attrs["resource_urn"]; got != "" {
+		t.Fatalf("resource_urn = %q, want empty because audit_log resource_id is the audited resource", got)
+	}
+}
+
 func TestReadRulesetDetailFailureKeepsListRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch got := r.URL.EscapedPath(); got {

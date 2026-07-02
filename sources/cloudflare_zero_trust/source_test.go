@@ -60,6 +60,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
 	}
+	if got := event.Attributes["tenant_id"]; got != "tenant" {
+		t.Fatalf("tenant_id = %q, want tenant", got)
+	}
 }
 
 func TestReadUsesCloudflareV4Pagination(t *testing.T) {
@@ -324,6 +327,7 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 				"resource_name": tc.wantName,
 				"resource_type": tc.wantType,
 				"resource_urn":  tc.wantURN,
+				"tenant_id":     "tenant",
 			} {
 				if got := attrs[attr]; got != want {
 					t.Fatalf("%s = %q, want %q", attr, got, want)
