@@ -70,6 +70,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["display_name"]; got != "Alice Example" {
 		t.Fatalf("display_name = %q, want Asana name", got)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:runtime_users:1200123456789012" {
+		t.Fatalf("resource_urn = %q, want synthesized user URN", got)
+	}
 }
 
 func TestRuntimeUsesAsanaAPIPathsAndOffsetPagination(t *testing.T) {
@@ -227,12 +230,14 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
 				"id":          "audit-1",
+				"created_at":  "2026-06-01T00:00:00Z",
 				"event_type":  "project.created",
 				"actor":       map[string]any{"id": "legacy-user-1", "gid": "user-1", "email": "user@example.test", "name": "User One"},
 				"resource":    map[string]any{"id": "legacy-project-1", "gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
 				"target_name": "Target Fallback",
 			}, {
 				"id":         "audit-2",
+				"created_at": "2026-06-02T00:00:00Z",
 				"event_type": "project.deleted",
 				"actor":      map[string]any{"gid": "user-2", "email": "user2@example.test", "name": "User Two"},
 				"target":     map[string]any{"gid": "target-project-2", "id": "legacy-target-project-2", "name": "Fallback Project"},
@@ -257,6 +262,8 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 	attrs := pull.Events[0].Attributes
 	for key, want := range map[string]string{
 		"actor_id":      "user-1",
+		"created_at":    "2026-06-01T00:00:00Z",
+		"observed_at":   "2026-06-01T00:00:00Z",
 		"resource_id":   "project-1",
 		"resource_name": "Security Evidence",
 		"resource_type": "project",
@@ -267,6 +274,10 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 	}
 	if got := attrs["resource_urn"]; got != "" {
 		t.Fatalf("resource_urn = %q, want empty unless provider sends resource_urn", got)
+	}
+	wantOccurredAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(wantOccurredAt) {
+		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), wantOccurredAt.Format(time.RFC3339))
 	}
 	fallbackAttrs := pull.Events[1].Attributes
 	if got := fallbackAttrs["resource_id"]; got != "target-project-2" {
