@@ -237,6 +237,37 @@ func TestProjectDuoGroupEmptyIDSkipped(t *testing.T) {
 	}
 }
 
+func TestProjectDuoAdministratorLinksEmailIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := duoEvent("duo.administrator", map[string]string{
+		"admin_id": "admin-1",
+		"name":     "Security Admin",
+		"email":    "secadmin@writer.com",
+		"role":     "Owner",
+		"status":   "Active",
+	})
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	adminURN := "urn:cerebro:writer:duo_administrator:admin-1"
+	admin := state.entities[adminURN]
+	if admin == nil || admin.EntityType != "duo.administrator" {
+		t.Fatalf("duo.administrator entity missing or wrong: %#v", admin)
+	}
+	if admin.Label != "Security Admin" {
+		t.Fatalf("administrator label = %q", admin.Label)
+	}
+	for key, want := range map[string]string{"admin_id": "admin-1", "email": "secadmin@writer.com", "role": "Owner", "status": "Active"} {
+		if got := admin.Attributes[key]; got != want {
+			t.Fatalf("administrator attribute %q = %q, want %q", key, got, want)
+		}
+	}
+	assertProjectedLink(t, state, adminURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:secadmin@writer.com")
+}
+
 func TestProjectDuoEndpointAttributes(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -419,6 +450,39 @@ func TestProjectDuoWebAuthnCredentialMFAControlLink(t *testing.T) {
 	assertProjectedLink(t, state, userURN, relationContains, factorURN)
 }
 
+func TestProjectDuoRoleApplicationAndAuditLog(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		duoEvent("duo.role", map[string]string{"policy_id": "owner", "policy_name": "Owner", "policy_type": "administrator_role"}),
+		duoEvent("duo.application", map[string]string{"integration_key": "DIAPP1", "name": "GitHub Enterprise", "type": "websdk", "resource_id": "DIAPP1", "resource_type": "websdk"}),
+		duoEvent("duo.audit_event", map[string]string{"event_type": "user_update", "actor_id": "admin-1", "actor_name": "Security Admin", "resource_id": "user-1", "resource_type": "user"}),
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.Kind, err)
+		}
+	}
+
+	role := state.entities["urn:cerebro:writer:duo_role:owner"]
+	if role == nil || role.EntityType != "policy" {
+		t.Fatalf("duo role policy missing or wrong: %#v", role)
+	}
+	application := state.entities["urn:cerebro:writer:duo_application:DIAPP1"]
+	if application == nil || application.EntityType != "duo.application" {
+		t.Fatalf("duo application missing or wrong: %#v", application)
+	}
+	actor := state.entities["urn:cerebro:writer:duo_user:admin-1"]
+	if actor == nil || actor.EntityType != "duo.user" {
+		t.Fatalf("duo audit actor missing or wrong: %#v", actor)
+	}
+	resource := state.entities["urn:cerebro:writer:duo_user:user-1"]
+	if resource == nil || resource.EntityType != "duo.user" {
+		t.Fatalf("duo audit resource missing or wrong: %#v", resource)
+	}
+}
+
 func TestRegistryRoutesDuoCoreKinds(t *testing.T) {
 	cases := []struct {
 		kind       string
@@ -427,10 +491,20 @@ func TestRegistryRoutesDuoCoreKinds(t *testing.T) {
 	}{
 		{"duo.user", map[string]string{"user_id": "user-1", "status": "active", "is_enrolled": "true"}, "duo.user"},
 		{"duo.group", map[string]string{"group_id": "group-1", "name": "Engineering"}, "duo.group"},
+		{"duo.administrator", map[string]string{"admin_id": "admin-1", "email": "admin@example.test"}, "duo.administrator"},
 		{"duo.endpoint", map[string]string{"endpoint_id": "endpoint-1", "hostname": "mba-1"}, "duo.endpoint"},
 		{"duo.phone", map[string]string{"phone_id": "phone-1", "platform": "Apple iOS"}, "duo.phone"},
+		{"duo.application", map[string]string{"integration_key": "DIAPP1", "name": "GitHub Enterprise"}, "duo.application"},
+		{"duo.role", map[string]string{"policy_id": "owner", "policy_name": "Owner"}, "policy"},
+		{"duo.audit_event", map[string]string{"event_type": "user_update", "actor_id": "admin-1", "resource_id": "user-1", "resource_type": "user"}, "duo.user"},
+		{"duo.authentication_log", map[string]string{"event_type": "authentication", "actor_id": "user-1", "resource_id": "DIAPP1", "resource_type": "application"}, "duo.user"},
 		{"duo.token", map[string]string{"token_id": "token-1", "type": "h6"}, "duo.token"},
 		{"duo.web_authn_credential", map[string]string{"credential_id": "cred-1", "user_id": "user-1"}, "duo.web_authn_credential"},
+		{"duo_security.users", map[string]string{"user_id": "user-1", "status": "active", "is_enrolled": "true"}, "duo.user"},
+		{"duo_security.groups", map[string]string{"group_id": "group-1", "name": "Engineering"}, "duo.group"},
+		{"duo_security.roles", map[string]string{"policy_id": "owner", "policy_name": "Owner"}, "policy"},
+		{"duo_security.applications", map[string]string{"integration_key": "DIAPP1", "name": "GitHub Enterprise"}, "duo.application"},
+		{"duo_security.audit_events", map[string]string{"event_type": "user_update", "actor_id": "admin-1", "resource_id": "user-1", "resource_type": "user"}, "duo.user"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {

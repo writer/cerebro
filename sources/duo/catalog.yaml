@@ -1,41 +1,100 @@
 id: duo
 name: Duo
-description: Duo user, group, endpoint, and MFA factor source.
+description: Collects Duo users, groups, administrators, endpoints, MFA factors, administrator roles, protected applications, activity logs, and authentication logs from the Duo Admin API.
+provider_api:
+  status: verified
+  transport: rest
+  auth: duo_signed_admin_api
+  base_url: https://api-XXXXXXXX.duosecurity.com
+  references:
+    - https://duo.com/docs/adminapi
+    - https://github.com/duosecurity/duo_client_python/blob/master/duo_client/admin.py
+    - https://github.com/duosecurity/duo_api_golang/blob/master/duoapi.go
+  families:
+    - id: user
+      method: GET
+      path: /admin/v1/users
+    - id: group
+      method: GET
+      path: /admin/v1/groups
+    - id: administrator
+      method: GET
+      path: /admin/v1/admins
+    - id: endpoint
+      method: GET
+      path: /admin/v1/endpoints
+    - id: phone
+      method: GET
+      path: /admin/v1/phones
+    - id: token
+      method: GET
+      path: /admin/v1/tokens
+    - id: web_authn_credential
+      method: GET
+      path: /admin/v1/webauthncredentials
+    - id: role
+      method: GET
+      path: /admin/v1/admin_roles
+    - id: application
+      method: GET
+      path: /admin/v3/integrations
+    - id: audit_event
+      method: GET
+      path: /admin/v2/logs/activity
+    - id: authentication_log
+      method: GET
+      path: /admin/v2/logs/authentication
 emitted_kinds:
   - duo.user
   - duo.group
+  - duo.administrator
   - duo.endpoint
   - duo.phone
   - duo.token
   - duo.web_authn_credential
+  - duo.role
+  - duo.application
+  - duo.audit_event
+  - duo.authentication_log
+runtime_families:
+  - user
+  - group
+  - administrator
+  - endpoint
+  - phone
+  - token
+  - web_authn_credential
+  - role
+  - application
+  - audit_event
+  - authentication_log
+kind_lifecycle:
+  - kind: duo.user
+    status: active
+  - kind: duo.group
+    status: active
+  - kind: duo.administrator
+    status: active
+  - kind: duo.endpoint
+    status: active
+  - kind: duo.phone
+    status: active
+  - kind: duo.token
+    status: active
+  - kind: duo.web_authn_credential
+    status: active
+  - kind: duo.role
+    status: active
+  - kind: duo.application
+    status: active
+  - kind: duo.audit_event
+    status: active
+  - kind: duo.authentication_log
+    status: active
 coverage_contract:
   owner_domain: identity
   authority_domain: duo
   dimensions:
-    - id: endpoints
-      type: entity_family
-      title: Endpoints
-      families: [endpoint]
-      support: supported
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-    - id: groups
-      type: entity_family
-      title: Groups
-      families: [group]
-      support: supported
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-    - id: mfa_devices
-      type: entity_family
-      title: MFA phones, hardware tokens, and WebAuthn credentials
-      families: [phone, token, web_authn_credential]
-      support: supported
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
     - id: users
       type: entity_family
       title: Users
@@ -43,42 +102,122 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, access_review]
+    - id: groups
+      type: entity_family
+      title: Groups
+      families: [group]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, access_review]
+    - id: administrators
+      type: entity_family
+      title: Administrators
+      families: [administrator]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, access_review]
+    - id: endpoints
+      type: entity_family
+      title: Endpoints
+      families: [endpoint]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, device_posture]
+    - id: mfa_devices
+      type: entity_family
+      title: MFA factors
+      families: [phone, token, web_authn_credential]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access, access_review]
+    - id: roles
+      type: lifecycle_state
+      title: Administrator roles
+      families: [role]
+      support: supported
+      high_value: true
+      evidence_types: [configuration_state]
+      control_domains: [identity_access, security_operations]
+    - id: applications
+      type: entity_family
+      title: Protected applications
+      families: [application]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory, identity_access]
+    - id: activity_logs
+      type: audit_event
+      title: Activity logs
+      families: [audit_event]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
+    - id: authentication_logs
+      type: audit_event
+      title: Authentication logs
+      families: [authentication_log]
+      support: supported
+      high_value: true
+      evidence_types: [logging_configuration]
+      control_domains: [logging_monitoring, identity_access]
+    - id: incremental_sync
+      type: incremental_sync
+      title: Incremental cursor sync
+      families: [user, group, administrator, endpoint, phone, token, web_authn_credential, role, application, audit_event, authentication_log]
+      support: supported
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Uses Duo offset pagination for inventory families and next_offset cursors for v2 log families.
 event_contracts:
   - kind: duo.user
     schema_ref: duo/user/v1
-    required_attributes:
-      - user_id
-      - username
-    required_payload_fields:
-      - user_id
+    required_attributes: [user_id, username]
+    required_payload_fields: [user_id]
   - kind: duo.group
     schema_ref: duo/group/v1
-    required_attributes:
-      - group_id
-    required_payload_fields:
-      - group_id
+    required_attributes: [group_id]
+    required_payload_fields: [group_id]
+  - kind: duo.administrator
+    schema_ref: duo/administrator/v1
+    required_attributes: [admin_id]
+    required_payload_fields: [admin_id]
   - kind: duo.endpoint
     schema_ref: duo/endpoint/v1
-    required_attributes:
-      - endpoint_id
-    required_payload_fields:
-      - endpoint_id
+    required_attributes: [endpoint_id]
+    required_payload_fields: [endpoint_id]
   - kind: duo.phone
     schema_ref: duo/phone/v1
-    required_attributes:
-      - phone_id
-    required_payload_fields:
-      - phone_id
+    required_attributes: [phone_id]
+    required_payload_fields: [phone_id]
   - kind: duo.token
     schema_ref: duo/token/v1
-    required_attributes:
-      - token_id
-    required_payload_fields:
-      - token_id
+    required_attributes: [token_id]
+    required_payload_fields: [token_id]
   - kind: duo.web_authn_credential
     schema_ref: duo/web_authn_credential/v1
-    required_attributes:
-      - credential_id
-    required_payload_fields:
-      - credential_id
+    required_attributes: [credential_id]
+    required_payload_fields: [webauthnkey]
+  - kind: duo.role
+    schema_ref: duo/role/v1
+    required_attributes: [policy_id]
+    required_payload_fields: [role_id]
+  - kind: duo.application
+    schema_ref: duo/application/v1
+    required_attributes: [integration_key, resource_id]
+    required_payload_fields: [integration_key]
+  - kind: duo.audit_event
+    schema_ref: duo/audit_event/v1
+    required_attributes: [event_type, actor_id]
+    required_payload_fields: [activity_id]
+  - kind: duo.authentication_log
+    schema_ref: duo/authentication_log/v1
+    required_attributes: [event_type, actor_id]
+    required_payload_fields: [txid]

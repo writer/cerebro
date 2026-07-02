@@ -81,6 +81,8 @@ func DefaultGrammar() Grammar {
 			"jwt",
 			"signature",
 			"aws_sigv4",
+			"duo_hmac",
+			"duo_hmac_v5",
 		},
 		Methods: []string{
 			"GET",
@@ -166,6 +168,9 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 	}
 
 	for _, family := range normalized.ResourceFamilies {
+		if familyAuthModel := familyConfigAuthModel(family.Config); familyAuthModel != "" {
+			check("auth", familyAuthModel, contains(authModels, familyAuthModel), fmt.Sprintf("family %s", family.ID))
+		}
 		method := strings.ToUpper(strings.TrimSpace(family.Method))
 		check("method", method, contains(methods, method), fmt.Sprintf("family %s", family.ID))
 		pageType := "none"

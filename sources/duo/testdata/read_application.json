@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-application-DIAPP1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.application",
+    "schema_ref": "duo/application/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"integration_key": "DIAPP1", "name": "GitHub Enterprise"},
+    "attributes": {"external_id": "DIAPP1", "family": "application", "provider": "duo", "source_provider": "duo", "source_product": "duo", "integration_key": "DIAPP1", "resource_id": "DIAPP1", "resource_name": "GitHub Enterprise", "resource_type": "websdk"}
+  }
+]

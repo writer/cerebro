@@ -30,6 +30,8 @@ const (
 	AuthModelSignature              = "signature"
 	AuthModelAWSSigV4               = "aws_sigv4"
 	AuthModelTwoStep                = "two_step"
+	AuthModelDuoHMAC                = "duo_hmac"
+	AuthModelDuoHMACV5              = "duo_hmac_v5"
 
 	defaultFreshnessExpectation = 24 * time.Hour
 	defaultHealthPath           = "/healthz"
@@ -111,6 +113,7 @@ type familyData struct {
 	ProjectorName         string
 	Path                  string
 	Method                string
+	AuthModel             string
 	RecordSelector        string
 	URNKind               string
 	EventKind             string
@@ -439,6 +442,8 @@ func authModelConfig(authModel string) (string, string, error) {
 		return "AWS4-HMAC-SHA256", "client_id", nil
 	case AuthModelTwoStep:
 		return "Bearer", "api_key", nil
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return "Basic", "client_id", nil
 	default:
 		return "", "", fmt.Errorf("auth_model %q must be executable by a JSON API runtime", authModel)
 	}
@@ -464,6 +469,10 @@ func executableAuthModel(authModel string) (string, error) {
 		return AuthModelAWSSigV4, nil
 	case AuthModelTwoStep:
 		return AuthModelTwoStep, nil
+	case AuthModelDuoHMAC:
+		return AuthModelDuoHMAC, nil
+	case AuthModelDuoHMACV5:
+		return AuthModelDuoHMACV5, nil
 	default:
 		return "", fmt.Errorf("%w: auth model %q needs provider auth runtime support before sourcegen can emit executable code", errUnsupportedDefinition, authModel)
 	}
@@ -691,6 +700,17 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 		if len(requiredPayloadFields) == 0 {
 			requiredPayloadFields = []string{firstNonEmptyString(resource.IDField, "id")}
 		}
+		authModel := ""
+		if resource.Config != nil {
+			authModel = strings.TrimSpace(resource.Config.AuthModel)
+		}
+		if authModel != "" {
+			var err error
+			authModel, err = executableAuthModel(authModel)
+			if err != nil {
+				return nil, err
+			}
+		}
 		families = append(families, familyData{
 			Name:                  name,
 			Schema:                schemaNameFromRef(schemaRef, name),
@@ -699,6 +719,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			ProjectorName:         lowerCamelIdentifier(request.SourceID + "_" + name + "_projections"),
 			Path:                  resource.Path,
 			Method:                methodForResource(resource),
+			AuthModel:             authModel,
 			RecordSelector:        strings.TrimSpace(resource.RecordSelector),
 			URNKind:               urnKind,
 			EventKind:             eventKind,
@@ -1084,11 +1105,7 @@ func renderDeploy(request normalizedRequest) string {
 		secretKeys = append(secretKeys, envNameForConfigKey(request, key))
 	}
 	for _, key := range authConfigKeys {
-		envName := envNameForConfigKey(request, key)
-		if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
-			envName = tokenEnv
-		}
-		secretKeys = append(secretKeys, envName)
+		secretKeys = append(secretKeys, deployAuthEnvName(request, key, tokenEnv))
 	}
 	for _, key := range uniqueStrings(secretKeys) {
 		fmt.Fprintf(&b, "  - %s\n", key)
@@ -1116,14 +1133,17 @@ func renderDeploy(request normalizedRequest) string {
 				continue
 			}
 			writtenConfigKeys[key] = struct{}{}
-			envName := envNameForConfigKey(request, key)
-			if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 {
-				envName = tokenEnv
-			}
-			fmt.Fprintf(&b, "      %s: env:%s\n", key, envName)
+			fmt.Fprintf(&b, "      %s: env:%s\n", key, deployAuthEnvName(request, key, tokenEnv))
 		}
 	}
 	return b.String()
+}
+
+func deployAuthEnvName(request normalizedRequest, key string, tokenEnv string) string {
+	if request.OAuth == nil && request.AuthModel != AuthModelAWSSigV4 && !isDuoHMACAuthModel(request.AuthModel) && key == request.TokenConfigKey {
+		return tokenEnv
+	}
+	return envNameForConfigKey(request, key)
 }
 
 func coverageDimensionType(class string) string {
@@ -1178,11 +1198,11 @@ func coverageControlDomains(dimensionType string) []string {
 }
 
 func deployAuthConfigKeys(request normalizedRequest) []string {
+	keys := []string{}
 	if request.OAuth != nil {
-		return uniqueStrings(request.CredentialKeys)
-	}
-	if request.AuthModel == AuthModelAWSSigV4 {
-		keys := uniqueStrings(request.CredentialKeys)
+		keys = append(keys, request.CredentialKeys...)
+	} else if request.AuthModel == AuthModelAWSSigV4 {
+		keys = append(keys, request.CredentialKeys...)
 		hasAccessKey := false
 		hasSecretKey := false
 		for _, key := range keys {
@@ -1199,9 +1219,15 @@ func deployAuthConfigKeys(request normalizedRequest) []string {
 		if !hasSecretKey {
 			keys = append(keys, "secret_key")
 		}
-		return uniqueStrings(keys)
+	} else if isDuoHMACAuthModel(request.AuthModel) {
+		keys = append(keys, request.CredentialKeys...)
+	} else {
+		keys = append(keys, request.TokenConfigKey)
 	}
-	return []string{request.TokenConfigKey}
+	if usesDuoHMACAuth(request) {
+		keys = append(keys, "client_id", "client_secret")
+	}
+	return uniqueStrings(keys)
 }
 
 func envNameForConfigKey(request normalizedRequest, key string) string {
@@ -1308,10 +1334,13 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
-		if strings.TrimSpace(family.Method) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
+		if strings.TrimSpace(family.Method) != "" || strings.TrimSpace(family.AuthModel) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
 			if strings.TrimSpace(family.Method) != "" {
 				fmt.Fprintf(&b, "\t\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
+			}
+			if strings.TrimSpace(family.AuthModel) != "" {
+				fmt.Fprintf(&b, "\t\t\t\t\tAuthModel: %s,\n", strconv.Quote(family.AuthModel))
 			}
 			if len(family.Config.StaticQuery) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))
@@ -1543,16 +1572,30 @@ func familyConstList(families []familyData) string {
 func renderSourceTestGo(request normalizedRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
-	fmt.Fprintf(&b, "import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
+	fmt.Fprintf(&b, "import (\n\t\"context\"\n")
+	if usesDuoHMACAuth(request) {
+		fmt.Fprintf(&b, "\t\"encoding/base64\"\n")
+	}
+	fmt.Fprintf(&b, "\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
 	fmt.Fprintf(&b, "func TestSourceCheckAndRead(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
-	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n\t\tresponseBody json.RawMessage\n\t}{\n")
+	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n")
+	if usesDuoHMACAuth(request) {
+		fmt.Fprintf(&b, "\t\tauthHeaderName string\n\t\tauthHeaderValue string\n\t\tduoSignatureLength int\n")
+	}
+	fmt.Fprintf(&b, "\t\tresponseBody json.RawMessage\n\t}{\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\tname: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\tpath: %s,\n", strconv.Quote(renderTestPath(family.Path)))
 		fmt.Fprintf(&b, "\t\t\tkind: %s,\n", strconv.Quote(family.EventKind))
 		fmt.Fprintf(&b, "\t\t\texpectedAttributes: map[string]string{%s},\n", renderedAttributeMap(sourceTestExpectedAttributes(request, family)))
+		if usesDuoHMACAuth(request) {
+			authHeaderName, authHeaderValue := sourceTestExpectedAuthHeader(request, family)
+			fmt.Fprintf(&b, "\t\t\tauthHeaderName: %s,\n", strconv.Quote(authHeaderName))
+			fmt.Fprintf(&b, "\t\t\tauthHeaderValue: %s,\n", strconv.Quote(authHeaderValue))
+			fmt.Fprintf(&b, "\t\t\tduoSignatureLength: %d,\n", duoHMACSignatureLength(firstNonEmptyString(family.AuthModel, request.AuthModel)))
+		}
 		fmt.Fprintf(&b, "\t\t\tresponseBody: json.RawMessage(`%s`),\n", sourceTestResponseBody(request, family))
 		fmt.Fprintf(&b, "\t\t},\n")
 	}
@@ -1592,7 +1635,16 @@ func renderSourceTestGo(request normalizedRequest) string {
 		emitCfgValue("access_key", strconv.Quote("test-access-key"))
 		emitCfgValue("secret_key", strconv.Quote("test-secret-key"))
 	} else {
-		emitCfgValue(request.TokenConfigKey, strconv.Quote("test-token"))
+		if !isDuoHMACAuthModel(request.AuthModel) {
+			emitCfgValue(request.TokenConfigKey, strconv.Quote("test-token"))
+		}
+	}
+	if request.OAuth == nil && usesDuoHMACAuth(request) {
+		emitCfgValue("client_id", strconv.Quote("DIXXXXXXXXXXXXXXXXXX"))
+		emitCfgValue("client_secret", strconv.Quote("deadbeefsecret"))
+	}
+	for _, key := range request.CredentialKeys {
+		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
 	}
 	for _, key := range request.ConfigKeys {
 		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
@@ -1739,12 +1791,81 @@ func generatedTestAuthHeader(request normalizedRequest) (string, string) {
 	return header, scheme + " test-token"
 }
 
+func sourceTestExpectedAuthHeader(request normalizedRequest, family familyData) (string, string) {
+	authModel := firstNonEmptyString(family.AuthModel, request.AuthModel)
+	switch authModel {
+	case AuthModelBearerToken:
+		return "Authorization", "Bearer test-token"
+	case AuthModelBasic:
+		return "Authorization", "Basic test-token"
+	case AuthModelOAuthAuthorizationCode, AuthModelOAuthClientCredentials, AuthModelJWT, AuthModelTwoStep:
+		return "Authorization", "Bearer test-token"
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return "Authorization", ""
+	case AuthModelAPIKey, AuthModelAPIToken:
+		header := firstNonEmptyString(request.TokenHeader, "Authorization")
+		scheme := firstNonEmptyString(request.TokenScheme, "Token")
+		if strings.EqualFold(header, "Authorization") {
+			return header, scheme + " test-token"
+		}
+		return header, "test-token"
+	case AuthModelSignature:
+		return "Authorization", firstNonEmptyString(request.TokenScheme, "Signature") + " test-token"
+	default:
+		return generatedTestAuthHeader(request)
+	}
+}
+
 func generatedTestAuthAssertion(request normalizedRequest) string {
+	if usesDuoHMACAuth(request) {
+		defaultFamily := familyData{}
+		if len(request.Families) != 0 {
+			defaultFamily = request.Families[0]
+		}
+		authHeaderName, authHeaderValue := sourceTestExpectedAuthHeader(request, defaultFamily)
+		return fmt.Sprintf("\t\twantSignatureLength := %d\n\t\texpectedAuthHeaderName := %s\n\t\texpectedAuthHeaderValue := %s\n\t\tfor _, tc := range familyCases {\n\t\t\tif r.URL.Path == tc.path {\n\t\t\t\twantSignatureLength = tc.duoSignatureLength\n\t\t\t\texpectedAuthHeaderName = tc.authHeaderName\n\t\t\t\texpectedAuthHeaderValue = tc.authHeaderValue\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\tif wantSignatureLength == 0 {\n\t\t\tif r.Header.Get(expectedAuthHeaderName) != expectedAuthHeaderValue {\n\t\t\t\thttp.Error(w, expectedAuthHeaderName+\" mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t} else {\n\t\t\tdecodedAuth, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get(\"Authorization\"), \"Basic \"))\n\t\t\tif err != nil {\n\t\t\t\tt.Fatalf(\"decode Authorization: %%v\", err)\n\t\t\t}\n\t\t\tusername, signature, ok := strings.Cut(string(decodedAuth), \":\")\n\t\t\tif !ok {\n\t\t\t\tt.Fatalf(\"Authorization payload = %%q\", decodedAuth)\n\t\t\t}\n\t\t\tif username != \"DIXXXXXXXXXXXXXXXXXX\" {\n\t\t\t\tt.Fatalf(\"Duo integration key = %%q\", username)\n\t\t\t}\n\t\t\tif len(signature) != wantSignatureLength {\n\t\t\t\tt.Fatalf(\"Duo signature length = %%d, want %%d\", len(signature), wantSignatureLength)\n\t\t\t}\n\t\t}\n", duoHMACSignatureLength(firstNonEmptyString(defaultFamily.AuthModel, request.AuthModel)), strconv.Quote(authHeaderName), strconv.Quote(authHeaderValue))
+	}
+	return generatedSourceTestAuthAssertion(request)
+}
+
+func generatedSourceTestAuthAssertion(request normalizedRequest) string {
 	header, value := generatedTestAuthHeader(request)
 	if request.AuthModel != AuthModelAWSSigV4 {
 		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\thttp.Error(w, %s+\" mismatch\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header))
 	}
 	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing SigV4 prefix\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing credential scope\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
+}
+
+func usesDuoHMACAuth(request normalizedRequest) bool {
+	if isDuoHMACAuthModel(request.AuthModel) {
+		return true
+	}
+	for _, family := range request.Families {
+		if isDuoHMACAuthModel(family.AuthModel) {
+			return true
+		}
+	}
+	return false
+}
+
+func duoHMACSignatureLength(authModel string) int {
+	switch strings.TrimSpace(authModel) {
+	case AuthModelDuoHMACV5:
+		return 128
+	case AuthModelDuoHMAC:
+		return 40
+	default:
+		return 0
+	}
+}
+
+func isDuoHMACAuthModel(authModel string) bool {
+	switch strings.TrimSpace(authModel) {
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return true
+	default:
+		return false
+	}
 }
 
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -62,6 +63,8 @@ func (s *Source) authorizeRequest(ctx context.Context, settings settings, req *h
 		return setTokenHeader(req, "Authorization", "Basic", settings.token, s.options.SourceID)
 	case "duo_hmac":
 		return setDuoHMACAuth(req, settings, s.options.SourceID)
+	case "duo_hmac_v5":
+		return setDuoHMACV5Auth(req, settings, s.options.SourceID)
 	case "oauth_client_credentials":
 		token := settings.token
 		if token == "" {
@@ -119,6 +122,39 @@ func setDuoHMACAuth(req *http.Request, settings settings, sourceID string) error
 	signature := hex.EncodeToString(mac.Sum(nil))
 	req.SetBasicAuth(integrationKey, signature)
 	return nil
+}
+
+func setDuoHMACV5Auth(req *http.Request, settings settings, sourceID string) error {
+	integrationKey := firstNonEmpty(settings.clientID, settings.authPrincipal)
+	secretKey := firstNonEmpty(settings.clientSecret, settings.authSecret)
+	if integrationKey == "" || secretKey == "" {
+		return fmt.Errorf("%s client_id and client_secret are required for Duo HMAC v5 auth", sourceID)
+	}
+	if req.Body != nil {
+		return fmt.Errorf("%s Duo HMAC v5 request bodies are not supported by jsonapi", sourceID)
+	}
+	date := time.Now().UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", date)
+	canonical := strings.Join([]string{
+		date,
+		strings.ToUpper(req.Method),
+		strings.ToLower(req.URL.Host),
+		req.URL.EscapedPath(),
+		req.URL.Query().Encode(),
+		hashSHA512Hex(""),
+		hashSHA512Hex(""),
+	}, "\n")
+	mac := hmac.New(sha512.New, []byte(secretKey))
+	_, _ = mac.Write([]byte(canonical))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.SetBasicAuth(integrationKey, signature)
+	return nil
+}
+
+func hashSHA512Hex(value string) string {
+	hash := sha512.New()
+	_, _ = hash.Write([]byte(value))
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // setAWSSigV4Auth signs the request with AWS Signature Version 4.
@@ -395,7 +431,7 @@ func normalizedAuthModel(value string) string {
 		return "bearer_token"
 	case "api_key", "api_token":
 		return "api_key"
-	case "basic", "duo_hmac", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none", "aws_sigv4", "two_step":
+	case "basic", "duo_hmac", "duo_hmac_v5", "oauth_client_credentials", "oauth_authorization_code", "jwt", "signature", "none", "aws_sigv4", "two_step":
 		return value
 	default:
 		return value
