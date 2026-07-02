@@ -1572,7 +1572,7 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	}
 }
 
-func TestConnectorCatalogDefaultViewOmitsSetupPayloads(t *testing.T) {
+func TestConnectorCatalogDefaultViewReturnsFullPayload(t *testing.T) {
 	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
 	registry, err := sourcecdk.NewRegistry(source)
 	if err != nil {
@@ -1593,6 +1593,59 @@ func TestConnectorCatalogDefaultViewOmitsSetupPayloads(t *testing.T) {
 	defer closeResponseBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialTransport json.RawMessage              `json:"credential_transport"`
+		Connectors          []map[string]json.RawMessage `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.CredentialTransport) == 0 {
+		t.Fatal("credential_transport missing from default connector catalog response")
+	}
+	var aws map[string]json.RawMessage
+	for _, connector := range payload.Connectors {
+		var sourceID string
+		if err := json.Unmarshal(connector["source_id"], &sourceID); err != nil {
+			t.Fatalf("decode connector source_id: %v", err)
+		}
+		if sourceID == "aws" {
+			aws = connector
+			break
+		}
+	}
+	if aws == nil {
+		t.Fatal("aws connector missing from default connector catalog response")
+	}
+	for _, field := range []string{"connection_methods", "scope_options", "emitted_kinds", "description", "integration_depth"} {
+		if _, ok := aws[field]; !ok {
+			t.Fatalf("default connector catalog response missing %s for aws", field)
+		}
+	}
+}
+
+func TestConnectorCatalogSummaryViewOmitsSetupPayloads(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors?view=summary")
+	if err != nil {
+		t.Fatalf("GET /connectors?view=summary error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors?view=summary status = %d, want 200", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -1628,6 +1681,11 @@ func TestConnectorCatalogDefaultViewOmitsSetupPayloads(t *testing.T) {
 		for _, field := range []string{"connection_methods", "scope_options", "resource_families", "credential_stores", "emitted_kinds", "description", "integration_depth"} {
 			if _, ok := connector[field]; ok {
 				t.Fatalf("summary connector %q included %s: %s", sourceID, field, body)
+			}
+		}
+		for _, field := range []string{"cataloged", "callable", "setup_allowed"} {
+			if _, ok := connector[field]; !ok {
+				t.Fatalf("summary connector %q omitted %s: %s", sourceID, field, body)
 			}
 		}
 		if sourceID == "aws" {

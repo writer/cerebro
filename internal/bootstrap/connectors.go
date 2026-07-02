@@ -180,10 +180,10 @@ type connectorCatalogSummaryEntry struct {
 	DefinitionOrigin       string   `json:"definition_origin,omitempty"`
 	ReadinessStage         string   `json:"readiness_stage,omitempty"`
 	ValidationGrade        string   `json:"validation_grade,omitempty"`
-	Cataloged              bool     `json:"cataloged,omitempty"`
-	Callable               bool     `json:"callable,omitempty"`
+	Cataloged              bool     `json:"cataloged"`
+	Callable               bool     `json:"callable"`
 	AccessStatus           string   `json:"access_status,omitempty"`
-	SetupAllowed           bool     `json:"setup_allowed,omitempty"`
+	SetupAllowed           bool     `json:"setup_allowed"`
 	Requestable            bool     `json:"requestable,omitempty"`
 	IntegrationLevel       string   `json:"integration_level,omitempty"`
 	IntegrationScore       int      `json:"integration_score,omitempty"`
@@ -560,11 +560,11 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 
 func connectorLibraryView(r *http.Request) (string, error) {
 	if r == nil || r.URL == nil {
-		return connectorLibraryViewSummary, nil
+		return connectorLibraryViewFull, nil
 	}
 	view := strings.TrimSpace(r.URL.Query().Get("view"))
 	if view == "" {
-		return connectorLibraryViewSummary, nil
+		return connectorLibraryViewFull, nil
 	}
 	switch view {
 	case connectorLibraryViewFull, connectorLibraryViewSummary:
