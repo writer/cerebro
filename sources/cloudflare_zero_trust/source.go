@@ -60,7 +60,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "resource_type": "user", "schema": "users", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_users"},
+				Config:           tenantFamilyConfig("cloudflare_zero_trust_users"),
 			},
 			{
 				Name:             familyGroups,
@@ -74,7 +74,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "resource_type": "group", "schema": "groups", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_groups"},
+				Config:           tenantFamilyConfig("cloudflare_zero_trust_groups"),
 			},
 			{
 				Name:             familyRoles,
@@ -88,7 +88,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"decision": "decision", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "include": "include", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "status", "policy_type": "type|decision", "precedence": "precedence", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "policy", "resource_type": "access_policy", "schema": "roles", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_roles"},
+				Config:           tenantFamilyConfig("cloudflare_zero_trust_roles"),
 			},
 			{
 				Name:             familyApplications,
@@ -102,7 +102,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"aud": "aud", "domain": "domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "policies": "policies", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "session_duration": "session_duration", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "application", "schema": "applications", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_applications"},
+				Config:           tenantFamilyConfig("cloudflare_zero_trust_applications"),
 			},
 			{
 				Name:             familyAuditEvents,
@@ -116,7 +116,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|user_email|email", "actor_id": "actor_id|user_id", "actor_name": "actor_name|actor.name|user.name", "app_domain": "app_domain", "app_id": "app_id|application_id", "event_type": "event_type|action|status", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "ip_address": "ip_address", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email|user_email", "resource_id": "resource_id|id|app_id", "resource_name": "resource_name|target_name|target.name|resource.name|app_domain", "resource_type": "resource_type|target_type|resource.type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_audit_events"},
+				Config:           tenantFamilyConfig("cloudflare_zero_trust_audit_events"),
 			},
 		},
 	})
@@ -188,6 +188,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func tenantFamilyConfig(resourceURNKind string) jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{
+		ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+		ResourceURNKind:  resourceURNKind,
+	}
 }
 
 func (s *Source) allowLoopbackForTest() {

@@ -3,12 +3,15 @@
     "attributes": {
       "actor_email": "alice@example.com",
       "actor_id": "access-user-1",
+      "app_domain": "admin.example.com",
+      "app_id": "access-app-1",
       "event_type": "login",
       "external_id": "access-request-1",
       "family": "audit_events",
       "id": "access-request-1",
       "record_class": "audit_event",
       "resource_id": "access-request-1",
+      "resource_email": "alice@example.com",
       "resource_name": "admin.example.com",
       "resource_type": "application",
       "resource_urn": "urn:cerebro:tenant:cloudflare_zero_trust_audit_events:access-request-1",
@@ -16,6 +19,7 @@
       "source_event_id": "access-request-1",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",
+      "ip_address": "198.51.100.20",
       "tenant_id": "tenant"
     },
     "id": "cloudflare_zero_trust-audit_events-event-1",

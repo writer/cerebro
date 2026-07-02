@@ -12,7 +12,6 @@
       "resource_id": "zone-1",
       "resource_name": "zone.settings.update",
       "resource_type": "zone",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_audit_log:zone-1",
       "source_event_id": "audit-1",
       "source_product": "cloudflare",
       "source_provider": "cloudflare",

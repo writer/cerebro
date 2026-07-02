@@ -1,11 +1,15 @@
 [
   {
     "attributes": {
+      "created_at": "2026-05-01T00:00:00Z",
       "display_name": "Alice Example",
       "email": "alice@example.com",
       "external_id": "access-user-1",
       "family": "users",
+      "last_login_at": "2026-06-01T00:00:00Z",
+      "login": "alice@example.com",
       "observed_at": "2026-06-01T00:00:00Z",
+      "primary_email": "alice@example.com",
       "record_class": "identity_user",
       "resource_id": "access-user-1",
       "resource_name": "Alice Example",

@@ -60,9 +60,10 @@ func New() (*Source, error) {
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "model", "schema": "model_catalog", "source_system": "cloudflare_workers_ai"},
 				Config: jsonapi.FamilyConfig{
-					StaticQuery:     map[string]string{"format": "openrouter"},
-					EncodeURNID:     true,
-					ResourceURNKind: "cloudflare_workers_ai_model_catalog",
+					ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+					StaticQuery:      map[string]string{"format": "openrouter"},
+					EncodeURNID:      true,
+					ResourceURNKind:  "cloudflare_workers_ai_model_catalog",
 				},
 			},
 			{
@@ -75,7 +76,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"deployment_branch": "branch|ref|git_branch|head_branch", "deployment_commit_sha": "commit_sha|commit|sha|revision|git_sha", "deployment_created_at": "created_at|created|date_created", "deployment_environment": "environment|env|stage|target", "deployment_id": "id", "deployment_name": "name", "deployment_status": "status|state|ready", "deployment_updated_at": "updated_at|updated|last_modified", "deployment_url": "url|deployment_url|endpoint|domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "deployment", "resource_type": "ai_gateway", "schema": "ai_gateways", "source_system": "cloudflare_workers_ai"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_workers_ai_ai_gateways"},
+				Config:           workersAITenantFamilyConfig("cloudflare_workers_ai_ai_gateways"),
 			},
 			{
 				Name:             familyGatewayProviderConfigs,
@@ -87,6 +88,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|alias|hostname|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "created_at|created|date_created", "secret_id": "id", "secret_last_rotated_at": "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at", "secret_name": "alias", "secret_rotation_enabled": "secret_rotation_enabled|rotation_enabled|auto_rotate", "secret_status": "secret_status|status|state", "secret_type": "secret_type|type|kind", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "secret", "resource_type": "gateway_provider_config", "schema": "gateway_provider_configs", "source_system": "cloudflare_workers_ai"},
+				Config:           workersAITenantFamilyConfig(""),
 			},
 			{
 				Name:             familyGatewayEvaluations,
@@ -98,6 +100,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "name", "policy_severity": "severity|risk|priority", "policy_status": "policy_status|status|state|enabled", "policy_type": "policy_type|type|kind|category", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "policy", "resource_type": "gateway_evaluation", "schema": "gateway_evaluations", "source_system": "cloudflare_workers_ai"},
+				Config:           workersAITenantFamilyConfig(""),
 			},
 			{
 				Name:             familyGatewayLogs,
@@ -109,6 +112,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "resource_type": "ai_gateway", "schema": "gateway_logs", "source_system": "cloudflare_workers_ai"},
+				Config:           workersAITenantFamilyConfig(""),
 			},
 			{
 				Name:             familyVectorizeIndexes,
@@ -120,7 +124,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "name", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id|name", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "vectorize_index", "schema": "vectorize_indexes", "source_system": "cloudflare_workers_ai"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_workers_ai_vectorize_indexes"},
+				Config:           workersAITenantFamilyConfig("cloudflare_workers_ai_vectorize_indexes"),
 			},
 		},
 	})
@@ -192,6 +196,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func workersAITenantFamilyConfig(resourceURNKind string) jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{
+		ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+		ResourceURNKind:  resourceURNKind,
+	}
 }
 
 func (s *Source) allowLoopbackForTest() {

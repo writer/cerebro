@@ -60,7 +60,7 @@ func cloudflareFamilies() []jsonapi.Family {
 		families[i].Attributes = cloudflareEventAttributes(families[i])
 		families[i].StaticAttributes = cloudflareEventStaticAttributes(families[i])
 		families[i].Config.ConfigAttributes = cloudflareConfigAttributes(families[i].Config.ConfigAttributes)
-		if families[i].Config.ResourceURNKind == "" {
+		if families[i].Name != "audit_log" && families[i].Config.ResourceURNKind == "" {
 			families[i].Config.ResourceURNKind = families[i].URNKind
 		}
 	}
