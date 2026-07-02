@@ -3,7 +3,6 @@
     "attributes": {
       "external_id": "evaluation-1",
       "family": "gateway_evaluations",
-      "observed_at": "2026-06-01T00:00:00Z",
       "policy_id": "evaluation-1",
       "policy_name": "Sensitive data policy",
       "policy_status": "enabled",
@@ -20,7 +19,7 @@
     },
     "id": "cloudflare_workers_ai-gateway_evaluations-event-1",
     "kind": "cloudflare_workers_ai.gateway_evaluations",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-05-01T00:00:00Z",
     "payload": {
       "id": "evaluation-1",
       "name": "Sensitive data policy",

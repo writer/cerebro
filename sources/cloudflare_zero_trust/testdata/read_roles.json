@@ -3,7 +3,6 @@
     "attributes": {
       "external_id": "access-policy-1",
       "family": "roles",
-      "observed_at": "2026-06-01T00:00:00Z",
       "policy_description": "Access policy requiring MFA group membership",
       "policy_id": "access-policy-1",
       "policy_name": "Require MFA",
@@ -22,7 +21,7 @@
     },
     "id": "cloudflare_zero_trust-roles-event-1",
     "kind": "cloudflare_zero_trust.roles",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-05-01T00:00:00Z",
     "payload": {
       "id": "access-policy-1",
       "name": "Require MFA",

@@ -200,6 +200,9 @@ func TestReadApplicationsDerivesRequiredAttributes(t *testing.T) {
 			t.Fatalf("%s = %q, want %q", attr, got, want)
 		}
 	}
+	if got := attrs["observed_at"]; got != "" {
+		t.Fatalf("observed_at = %q, want empty without provider observed/updated timestamp", got)
+	}
 }
 
 func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
@@ -272,6 +275,7 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 				"user_email": "alice@example.com",
 				"app_id":     "access-app-1",
 				"app_domain": "admin.example.com",
+				"created_at": "2026-06-01T00:00:00Z",
 			},
 			wantType: "application",
 			wantID:   "access-app-1",
@@ -323,6 +327,14 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 			} {
 				if got := attrs[attr]; got != want {
 					t.Fatalf("%s = %q, want %q", attr, got, want)
+				}
+			}
+			if tc.family == familyAuditEvents {
+				if got := attrs["event_type"]; got != "login" {
+					t.Fatalf("event_type = %q, want action value", got)
+				}
+				if got := attrs["observed_at"]; got != "" {
+					t.Fatalf("observed_at = %q, want empty without provider observed/updated timestamp", got)
 				}
 			}
 		})

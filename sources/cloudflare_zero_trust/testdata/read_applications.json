@@ -5,7 +5,6 @@
       "family": "applications",
       "id": "access-app-1",
       "name": "Admin Console",
-      "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "asset",
       "resource_id": "access-app-1",
       "resource_name": "Admin Console",
@@ -19,7 +18,7 @@
     },
     "id": "cloudflare_zero_trust-applications-event-1",
     "kind": "cloudflare_zero_trust.applications",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-05-01T00:00:00Z",
     "payload": {
       "id": "access-app-1",
       "name": "Admin Console",

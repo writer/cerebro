@@ -3,11 +3,10 @@
     "attributes": {
       "actor_email": "alice@example.com",
       "actor_id": "access-user-1",
-      "event_type": "access.request.approved",
+      "event_type": "login",
       "external_id": "access-request-1",
       "family": "audit_events",
       "id": "access-request-1",
-      "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "audit_event",
       "resource_id": "access-app-1",
       "resource_name": "admin.example.com",

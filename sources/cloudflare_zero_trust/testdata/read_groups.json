@@ -6,7 +6,6 @@
       "family": "groups",
       "group_id": "access-group-1",
       "group_name": "Employees",
-      "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "identity_group",
       "resource_id": "access-group-1",
       "resource_name": "Employees",
@@ -20,7 +19,7 @@
     },
     "id": "cloudflare_zero_trust-groups-event-1",
     "kind": "cloudflare_zero_trust.groups",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-05-01T00:00:00Z",
     "payload": {
       "id": "access-group-1",
       "name": "Employees",

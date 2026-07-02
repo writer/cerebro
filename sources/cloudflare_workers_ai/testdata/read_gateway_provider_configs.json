@@ -3,7 +3,6 @@
     "attributes": {
       "external_id": "provider-config-1",
       "family": "gateway_provider_configs",
-      "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "secret",
       "resource_id": "provider-config-1",
       "resource_name": "openai-production",
@@ -20,7 +19,7 @@
     },
     "id": "cloudflare_workers_ai-gateway_provider_configs-event-1",
     "kind": "cloudflare_workers_ai.gateway_provider_configs",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-05-01T00:00:00Z",
     "payload": {
       "id": "provider-config-1",
       "alias": "openai-production",

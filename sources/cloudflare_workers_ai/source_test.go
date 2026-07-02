@@ -124,6 +124,120 @@ func TestReadAIGatewaysMapsProviderName(t *testing.T) {
 	}
 }
 
+func TestReadGatewayProviderConfigsDerivesProviderAlias(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/test-account/ai-gateway/gateways/gateway-1/provider_configs" {
+			t.Errorf("path = %q, want /accounts/test-account/ai-gateway/gateways/gateway-1/provider_configs", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":         "provider-config-1",
+				"alias":      "openai-production",
+				"provider":   "openai",
+				"status":     "active",
+				"created_at": "2026-05-01T00:00:00Z",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "test-account",
+		"base_url":   server.URL,
+		"family":     familyGatewayProviderConfigs,
+		"gateway_id": "gateway-1",
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"resource_id":   "provider-config-1",
+		"resource_name": "openai-production",
+		"resource_type": "gateway_provider_config",
+		"secret_name":   "openai-production",
+		"secret_status": "active",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+	if got := attrs["observed_at"]; got != "" {
+		t.Fatalf("observed_at = %q, want empty without provider observed/updated timestamp", got)
+	}
+}
+
+func TestReadGatewayEvaluationsUsesCanonicalResourceType(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/test-account/ai-gateway/gateways/gateway-1/evaluations" {
+			t.Errorf("path = %q, want /accounts/test-account/ai-gateway/gateways/gateway-1/evaluations", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":         "evaluation-1",
+				"name":       "Sensitive data policy",
+				"status":     "enabled",
+				"type":       "prompt_guard",
+				"created_at": "2026-05-01T00:00:00Z",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "test-account",
+		"base_url":   server.URL,
+		"family":     familyGatewayEvaluations,
+		"gateway_id": "gateway-1",
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"policy_id":     "evaluation-1",
+		"policy_name":   "Sensitive data policy",
+		"policy_status": "enabled",
+		"policy_type":   "prompt_guard",
+		"resource_type": "gateway_evaluation",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+	if got := attrs["observed_at"]; got != "" {
+		t.Fatalf("observed_at = %q, want empty without provider observed/updated timestamp", got)
+	}
+}
+
 func TestReadVectorizeIndexesDerivesRequiredAttributes(t *testing.T) {
 	source, err := New()
 	if err != nil {
