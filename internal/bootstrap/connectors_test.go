@@ -1596,10 +1596,14 @@ func TestConnectorCatalogDefaultViewReturnsFullPayload(t *testing.T) {
 	}
 	var payload struct {
 		CredentialTransport json.RawMessage              `json:"credential_transport"`
+		View                string                       `json:"view"`
 		Connectors          []map[string]json.RawMessage `json:"connectors"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
+	}
+	if payload.View != connectorLibraryViewFull {
+		t.Fatalf("view = %q, want full", payload.View)
 	}
 	if len(payload.CredentialTransport) == 0 {
 		t.Fatal("credential_transport missing from default connector catalog response")

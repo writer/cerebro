@@ -147,6 +147,7 @@ type connectorLibraryResponse struct {
 	Connectors          []connectorCatalogEntry `json:"connectors"`
 	Counts              connectorLibraryCounts  `json:"counts"`
 	GeneratedAt         string                  `json:"generated_at"`
+	View                string                  `json:"view"`
 	TenantID            string                  `json:"tenant_id,omitempty"`
 	RuntimeStore        string                  `json:"runtime_store"`
 	CatalogVersion      string                  `json:"catalog_version,omitempty"`
@@ -772,6 +773,7 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		Connectors:          entries,
 		Counts:              connectorLibraryCountsFor(entries),
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
+		View:                connectorLibraryViewFull,
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
 		CatalogVersion:      connectordefinitions.SchemaVersionIntegrationV1,
