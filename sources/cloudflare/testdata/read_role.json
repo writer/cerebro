@@ -15,6 +15,7 @@
       "role_id": "role-admin",
       "source_event_id": "role-admin",
       "source_product": "cloudflare",
+      "provider": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tenant_id": "tenant"

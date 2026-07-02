@@ -17,6 +17,7 @@
       "script_id": "edge-auth",
       "source_event_id": "edge-auth",
       "source_product": "cloudflare",
+      "provider": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tags": "production",

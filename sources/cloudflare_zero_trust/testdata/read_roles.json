@@ -19,6 +19,7 @@
       "resource_urn": "urn:cerebro:tenant:cloudflare_zero_trust_roles:access-policy-1",
       "schema": "roles",
       "source_event_id": "access-policy-1",
+      "provider": "cloudflare_zero_trust",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",
       "tenant_id": "tenant"

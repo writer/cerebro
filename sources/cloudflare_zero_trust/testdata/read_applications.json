@@ -16,6 +16,7 @@
       "schema": "applications",
       "session_duration": "24h",
       "source_event_id": "access-app-1",
+      "provider": "cloudflare_zero_trust",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",
       "tenant_id": "tenant"

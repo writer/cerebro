@@ -18,6 +18,7 @@
       "resource_urn": "urn:cerebro:tenant:cloudflare_zero_trust_audit_events:access-request-1",
       "schema": "audit_events",
       "source_event_id": "access-request-1",
+      "provider": "cloudflare_zero_trust",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",
       "tenant_id": "tenant"

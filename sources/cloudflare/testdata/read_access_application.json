@@ -18,6 +18,7 @@
       "session_duration": "24h",
       "source_event_id": "app-1",
       "source_product": "cloudflare",
+      "provider": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "tenant_id": "tenant",

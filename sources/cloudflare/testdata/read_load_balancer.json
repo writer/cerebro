@@ -15,6 +15,7 @@
       "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer:lb-1",
       "source_event_id": "lb-1",
       "source_product": "cloudflare",
+      "provider": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
       "steering_policy": "dynamic_latency",
