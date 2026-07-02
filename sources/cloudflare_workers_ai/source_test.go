@@ -83,6 +83,7 @@ func TestReadAIGatewaysMapsProviderName(t *testing.T) {
 			"result": []map[string]any{{
 				"id":         "gateway-1",
 				"name":       "production-gateway",
+				"type":       "cloudflare_resource",
 				"url":        "https://gateway.example.com",
 				"status":     "active",
 				"created_at": "2026-05-01T00:00:00Z",
