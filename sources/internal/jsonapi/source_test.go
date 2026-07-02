@@ -76,6 +76,33 @@ func TestRecordFromRawUsesIDTemplate(t *testing.T) {
 	}
 }
 
+func TestMergedRecordOmitsSyntheticRecordIDFromRawPayload(t *testing.T) {
+	family := Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate: "${created}-${event}",
+		},
+	}
+	original, err := recordFromRaw(family, json.RawMessage(`{"created":"2026-06-01T00:00:00Z","event":"org.project.create","summary":"list"}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	merged, err := mergedRecord(family, original, json.RawMessage(`{"summary":"detail","actor":"user-1"}`))
+	if err != nil {
+		t.Fatalf("mergedRecord() error = %v", err)
+	}
+	if strings.Contains(string(merged.Raw), "_record_id") {
+		t.Fatalf("merged raw payload leaked synthetic _record_id: %s", string(merged.Raw))
+	}
+	if got := firstValueString(merged.Values, "_record_id"); got != original.ID {
+		t.Fatalf("_record_id = %q, want original id %q", got, original.ID)
+	}
+	if got := firstValueString(merged.Values, "summary"); got != "detail" {
+		t.Fatalf("summary = %q, want detail", got)
+	}
+}
+
 func TestParseTimeAcceptsProviderTimestampWithoutTimezone(t *testing.T) {
 	got, ok := parseTime("2026-06-01T03:33:51")
 	if !ok {

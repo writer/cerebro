@@ -734,6 +734,7 @@ func mergedRecord(family Family, original record, raw json.RawMessage) (record, 
 	for key, value := range detailValues {
 		merged[key] = value
 	}
+	delete(merged, "_record_id")
 	mergedRaw, err := json.Marshal(merged)
 	if err != nil {
 		return record{}, fmt.Errorf("marshal merged detail record: %w", err)
