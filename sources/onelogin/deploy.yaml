@@ -1,15 +1,195 @@
 sourceId: onelogin
 secretKeys:
+  - ONELOGIN_SUBDOMAIN
   - ONELOGIN_CLIENT_ID
   - ONELOGIN_CLIENT_SECRET
+  - ONELOGIN_USER_IDS
+  - ONELOGIN_ROLE_IDS
+  - ONELOGIN_APP_IDS
+  - ONELOGIN_PRIVILEGE_IDS
 runtimes:
   - localId: users
     config:
       family: users
-      failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /api/1/users
-      expected_cadence_seconds: "86400"
-      stale_after_seconds: "86400"
-      per_page: "100"
+      subdomain: env:ONELOGIN_SUBDOMAIN
       client_id: env:ONELOGIN_CLIENT_ID
       client_secret: env:ONELOGIN_CLIENT_SECRET
+      health_path: /api/2/users?limit=1
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: groups
+    config:
+      family: groups
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: roles
+    config:
+      family: roles
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: apps
+    config:
+      family: apps
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: audit-events
+    config:
+      family: audit_events
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      per_page: "100"
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: privileges
+    config:
+      family: privileges
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: mappings
+    config:
+      family: mappings
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+  - localId: user-apps
+    config:
+      family: user_apps
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      user_ids: env:ONELOGIN_USER_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: user-privileges
+    config:
+      family: user_privileges
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      user_ids: env:ONELOGIN_USER_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: delegated-privileges
+    config:
+      family: delegated_privileges
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      user_ids: env:ONELOGIN_USER_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: mfa-devices
+    config:
+      family: mfa_devices
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      user_ids: env:ONELOGIN_USER_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: role-users
+    config:
+      family: role_users
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      role_ids: env:ONELOGIN_ROLE_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: role-admins
+    config:
+      family: role_admins
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      role_ids: env:ONELOGIN_ROLE_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: role-apps
+    config:
+      family: role_apps
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      role_ids: env:ONELOGIN_ROLE_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: app-users
+    config:
+      family: app_users
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      app_ids: env:ONELOGIN_APP_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: app-rules
+    config:
+      family: app_rules
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      app_ids: env:ONELOGIN_APP_IDS
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: privilege-users
+    config:
+      family: privilege_users
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      privilege_ids: env:ONELOGIN_PRIVILEGE_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
+  - localId: privilege-roles
+    config:
+      family: privilege_roles
+      subdomain: env:ONELOGIN_SUBDOMAIN
+      client_id: env:ONELOGIN_CLIENT_ID
+      client_secret: env:ONELOGIN_CLIENT_SECRET
+      privilege_ids: env:ONELOGIN_PRIVILEGE_IDS
+      per_page: "100"
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      failure_modes: api_error,auth_error,rate_limit,schema_drift,missing_parent_ids
