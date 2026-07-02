@@ -476,15 +476,18 @@ paths:
             type: string
         - name: view
           in: query
-          description: Omit this parameter or use summary for catalog browsing. The summary view keeps connector identity, status, access, readiness, and scalar integration-depth counts, and omits setup payloads such as connection methods, scope options, resource-family detail, descriptions, emitted-kind lists, and credential-store setup guidance. Use full only when setup metadata for the complete catalog is required.
+          description: The default is full. Use summary for catalog browsing when setup payloads are not needed; it keeps connector identity, status, access, readiness, and scalar integration-depth counts, and omits setup payloads such as connection methods, scope options, resource-family detail, descriptions, emitted-kind lists, and credential-store setup guidance. Use full when setup metadata for the complete catalog is required.
           schema:
             type: string
+            default: full
             enum:
               - full
               - summary
       responses:
         '200':
-          description: Compact connector catalog with executable built-in sources plus catalog-only connector definitions. Default and summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
+          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail.
+        '400':
+          description: Connector catalog view or tenant filter was invalid.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
