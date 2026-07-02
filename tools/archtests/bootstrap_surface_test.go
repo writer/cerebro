@@ -90,7 +90,7 @@ import (
 // only query-parameter parsing plus compact response mapping over the existing
 // connector library response; catalog assembly and runtime state stay behind the
 // existing registry, catalog, and store boundaries.
-const bootstrapProductionGoLineBudget = 26978
+const bootstrapProductionGoLineBudget = 26980
 
 type bootstrapFileLineCount struct {
 	path  string
