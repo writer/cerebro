@@ -353,7 +353,9 @@ func logServicesFamily() jsonapi.Family {
 }
 
 func webhooksFamily() jsonapi.Family {
-	return fivetranAssetFamily(FamilyWebhooks, "/v1/webhooks", "webhook", "webhook")
+	family := fivetranAssetFamily(FamilyWebhooks, "/v1/webhooks", "webhook", "webhook")
+	family.Config.RedactPayloadKeys = []string{"signing_key"}
+	return family
 }
 
 func externalSecretManagersFamily() jsonapi.Family {

@@ -1095,6 +1095,8 @@ entries:
               status: active|status
             template: asset
           record_selector: $.data.items[*]
+          sensitive_payload_paths:
+            - $.signing_key
         - coverage:
             - control_domains: [identity_access, data_governance]
               evidence_types: [credential_inventory, configuration_state, source_snapshot]

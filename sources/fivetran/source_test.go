@@ -284,7 +284,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			family:    fivetranapi.FamilyWebhooks,
 			path:      "/v1/webhooks",
 			accept:    "application/json",
-			item:      map[string]any{"id": "webhook-1", "url": "https://hooks.example.test/fivetran", "active": true},
+			item:      map[string]any{"id": "webhook-1", "url": "https://hooks.example.test/fivetran", "active": true, "signing_key": "webhook-signing-material"},
 			kind:      "fivetran.webhooks",
 			attrKey:   "resource_id",
 			attrValue: "webhook-1",
@@ -526,6 +526,15 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				}
 				if got := event.Attributes["resource_id"]; got != "group-1" {
 					t.Fatalf("resource_id = %q, want group-1", got)
+				}
+			}
+			if tt.family == fivetranapi.FamilyWebhooks {
+				var payload map[string]any
+				if err := json.Unmarshal(event.Payload, &payload); err != nil {
+					t.Fatalf("decode webhook payload: %v", err)
+				}
+				if _, ok := payload["signing_key"]; ok {
+					t.Fatalf("webhook payload retained signing key: %#v", payload)
 				}
 			}
 		})
