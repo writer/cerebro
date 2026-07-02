@@ -5580,6 +5580,172 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "google_workspace",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account",
+            "active_account",
+            "archived",
+            "dormant_user",
+            "employee_record",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "suspended",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account",
+            "active_account",
+            "dormant_user",
+            "employee_record",
+            "last_seen",
+            "never_logged_in",
+            "personal_email",
+            "privileged_user",
+            "stale_login",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "dormant_users",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "dormant_user",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "active_account",
+            "deprovisioned",
+            "dormant_user",
+            "employee_record",
+            "external_user",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "suspended",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -5628,51 +5794,6 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "archived",
-            "dormant_user",
-            "employee_record",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.16"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
           "source_id": "okta",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -5686,51 +5807,6 @@
             "last_login",
             "never_logged_in",
             "personal_email",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.16"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "dormant_user",
-            "employee_record",
-            "last_seen",
-            "never_logged_in",
-            "personal_email",
-            "privileged_user",
             "stale_login",
             "terminated_account",
             "user"
@@ -5919,37 +5995,6 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "dormant_users",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "dormant_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
           "source_id": "tailscale",
           "dimension_id": "privileged_users",
           "dimension_type": "app_entitlement",
@@ -5978,83 +6023,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "deprovisioned",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.16"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
             }
           ]
         }

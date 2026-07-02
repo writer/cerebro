@@ -545,6 +545,70 @@ func TestSourceCoverageCapKeepsSupportedRefsOverPartialTies(t *testing.T) {
 	t.Fatalf("SourceCoverageRefs omitted supported okta/support_access_events: %#v", refs)
 }
 
+func TestSourceCoverageCapKeepsLifecycleRefsForInactiveIdentityDetections(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "grc-inactive-identity-active-access",
+		Name:        "Inactive GRC Identity Still Has Active Access",
+		Description: "Detect inactive users whose identity still bridges to active access.",
+		SourceID:    "grc",
+		Tags:        []string{"identity", "offboarding"},
+		EventKinds:  []string{"grc.user", "okta.user"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+		},
+	}
+	genericUserDimensions := make([]sourcecdk.CoverageDimension, 0, maxPublicDetectionSourceCoverageRefs)
+	for i := 0; i < maxPublicDetectionSourceCoverageRefs; i++ {
+		genericUserDimensions = append(genericUserDimensions, sourcecdk.CoverageDimension{
+			ID:        "users_" + strconv.Itoa(i),
+			Type:      "entity_family",
+			Families:  []string{"user"},
+			Support:   sourcecdk.CoverageSupportSupported,
+			HighValue: true,
+			ControlRefs: []sourcecdk.CoverageControlRef{
+				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+			},
+		})
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID:   "alpha",
+			Dimensions: genericUserDimensions,
+		},
+		{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "user_lifecycle",
+				Type:      "lifecycle_state",
+				Families:  []string{"deprovisioned", "suspended", "terminated_account", "user"},
+				Support:   sourcecdk.CoverageSupportPartial,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+				},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != maxPublicDetectionSourceCoverageRefs {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
+	}
+	for _, ref := range refs {
+		if ref.SourceID == "okta" && ref.DimensionID == "user_lifecycle" {
+			return
+		}
+	}
+	t.Fatalf("SourceCoverageRefs omitted okta/user_lifecycle for inactive identity detection: %#v", refs)
+}
+
 func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *testing.T) {
 	detection := PublicDetection{
 		ID:          "identity-vanta-stale-login-90d",
