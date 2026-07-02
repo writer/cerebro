@@ -1,9 +1,4 @@
 [
-  {
-    "id": "member-1",
-    "email": "admin@writer.com",
-    "type": "USER",
-    "role": "OWNER",
-    "status": "ACTIVE"
-  }
+  "urn:cerebro:writer.com:google_workspace_group_member:member-1",
+  "urn:cerebro:writer.com:google_workspace_group_member:member-2"
 ]
