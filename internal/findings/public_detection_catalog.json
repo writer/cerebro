@@ -6012,6 +6012,51 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "okta",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "active_account",
+            "deprovisioned",
+            "dormant_user",
+            "employee_record",
+            "external_user",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "suspended",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
         }
       ]
     },

@@ -3,6 +3,7 @@
     "attributes": {
       "external_id": "evaluation-1",
       "family": "gateway_evaluations",
+      "provider": "cloudflare_workers_ai",
       "policy_id": "evaluation-1",
       "policy_name": "Sensitive data policy",
       "policy_status": "enabled",

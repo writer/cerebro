@@ -3,6 +3,7 @@
     "attributes": {
       "external_id": "provider-config-1",
       "family": "gateway_provider_configs",
+      "provider": "cloudflare_workers_ai",
       "record_class": "secret",
       "resource_id": "provider-config-1",
       "resource_name": "openai-production",

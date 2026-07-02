@@ -8,6 +8,7 @@
       "external_id": "gateway-1",
       "family": "ai_gateways",
       "observed_at": "2026-06-01T00:00:00Z",
+      "provider": "cloudflare_workers_ai",
       "record_class": "deployment",
       "resource_id": "gateway-1",
       "resource_name": "production-gateway",

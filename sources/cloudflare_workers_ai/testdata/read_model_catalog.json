@@ -3,6 +3,7 @@
     "attributes": {
       "external_id": "@cf/meta/llama-3.1-8b-instruct",
       "family": "model_catalog",
+      "provider": "cloudflare_workers_ai",
       "record_class": "asset",
       "resource_id": "@cf/meta/llama-3.1-8b-instruct",
       "resource_name": "Llama 3.1 8B Instruct",
