@@ -102,18 +102,28 @@ func fivetranScopedMembershipProjections(event *cerebrov1.EventEnvelope) ([]*por
 	memberURN := fivetranPrincipalOrAssetURN(tenantID, memberType, memberID)
 	addFivetranMembershipEntity(entities, tenantID, event.GetSourceId(), scopeURN, scopeType, scopeID, firstNonEmpty(attributes["scope_name"], attributes[scopeType+"_name"], scopeID), attributes)
 	addFivetranMembershipEntity(entities, tenantID, event.GetSourceId(), memberURN, memberType, memberID, firstNonEmpty(attributes["member_name"], attributes["resource_name"], attributes["name"], attributes["email"], memberID), attributes)
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, scopeURN, relationMemberOf, compactAttributes(map[string]string{
+	linkMemberType, linkMemberID, linkMemberURN, linkScopeType, linkScopeID, linkScopeURN := fivetranMembershipLinkEndpoints(event, scopeType, scopeID, scopeURN, memberType, memberID, memberURN)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), linkMemberURN, linkScopeURN, relationMemberOf, compactAttributes(map[string]string{
 		"event_id":      event.GetId(),
-		"match_type":    "fivetran_" + scopeType + "_" + memberType + "_membership",
-		"member_id":     memberID,
-		"member_type":   memberType,
+		"match_type":    "fivetran_" + linkScopeType + "_" + linkMemberType + "_membership",
+		"member_id":     linkMemberID,
+		"member_type":   linkMemberType,
 		"role":          strings.TrimSpace(attributes["role"]),
-		"scope_id":      scopeID,
-		"scope_type":    scopeType,
+		"scope_id":      linkScopeID,
+		"scope_type":    linkScopeType,
 		"source_kind":   strings.TrimSpace(event.GetKind()),
 		"source_system": "fivetran",
 	})))
 	return identityProjectionResult(entities, links)
+}
+
+func fivetranMembershipLinkEndpoints(event *cerebrov1.EventEnvelope, scopeType string, scopeID string, scopeURN string, memberType string, memberID string, memberURN string) (string, string, string, string, string, string) {
+	switch fivetranKindFamily(event) {
+	case "user_groups", "team_groups":
+		return scopeType, scopeID, scopeURN, memberType, memberID, memberURN
+	default:
+		return memberType, memberID, memberURN, scopeType, scopeID, scopeURN
+	}
 }
 
 func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

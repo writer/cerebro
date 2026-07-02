@@ -231,6 +231,53 @@ func TestFivetranMembershipEdgesUseStandaloneEntityURNs(t *testing.T) {
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_user:connection-1")
 }
 
+func TestFivetranUserAndTeamGroupsLinkPrincipalToGroup(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "user-group-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.user_groups",
+			Attributes: map[string]string{
+				"member_id":   "group-1",
+				"member_type": "group",
+				"resource_id": "group-1",
+				"role":        "member",
+				"user_id":     "user-1",
+			},
+		},
+		{
+			Id:       "team-group-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.team_groups",
+			Attributes: map[string]string{
+				"member_id":   "group-2",
+				"member_type": "group",
+				"resource_id": "group-2",
+				"role":        "member",
+				"team_id":     "team-1",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	userURN := "urn:cerebro:writer:fivetran_user:user-1"
+	teamURN := "urn:cerebro:writer:fivetran_group:team-1"
+	group1URN := "urn:cerebro:writer:fivetran_group:group-1"
+	group2URN := "urn:cerebro:writer:fivetran_group:group-2"
+	assertProjectedLink(t, state, userURN, relationMemberOf, group1URN)
+	assertProjectedLink(t, state, teamURN, relationMemberOf, group2URN)
+	assertProjectedLinkMissing(t, state, group1URN, relationMemberOf, userURN)
+	assertProjectedLinkMissing(t, state, group2URN, relationMemberOf, teamURN)
+}
+
 func TestFivetranRoleTargetsUseRuntimeAssetURNs(t *testing.T) {
 	if got, want := fivetranPrincipalOrAssetURN("writer", "role", "role-1"), "urn:cerebro:writer:runtime_fivetran_role:role-1"; got != want {
 		t.Fatalf("role URN = %q, want %q", got, want)
