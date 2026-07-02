@@ -152,6 +152,20 @@ func TestSnykAssetRelationshipProjectionLinksAssetToProjectAndTarget(t *testing.
 			if !hasSnykProjectedLink(links, projectionURN("tenant", "snyk_assets", "asset-1"), relationAssociatedWith, tt.wantURN) {
 				t.Fatalf("expected asset relationship link; links=%#v", links)
 			}
+
+			entities, links, err = BuiltinRegistry().Project(event)
+			if err != nil {
+				t.Fatalf("registry projection error = %v", err)
+			}
+			if hasProjectedEntityURN(entities, projectionURN("tenant", "snyk_assets", "asset-1")) {
+				t.Fatalf("registry asset relationship projection upserted asset entity with conflicting type; entities=%#v", entities)
+			}
+			if !hasProjectedEntityType(entities, tt.wantType) {
+				t.Fatalf("registry projection missing related entity; entities=%#v", entities)
+			}
+			if !hasSnykProjectedLink(links, projectionURN("tenant", "snyk_assets", "asset-1"), relationAssociatedWith, tt.wantURN) {
+				t.Fatalf("registry projection missing asset relationship link; links=%#v", links)
+			}
 		})
 	}
 }
