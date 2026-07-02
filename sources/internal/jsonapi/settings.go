@@ -36,6 +36,7 @@ type settings struct {
 	path                     string
 	request                  requestSettings
 	perPage                  int
+	perPageConfigured        bool
 	privateEndpointAllowlist []string
 	region                   string
 	service                  string
@@ -162,6 +163,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return resolved, fmt.Errorf("%s per_page must be between 1 and %d", s.options.SourceID, maxPageSize)
 		}
 		resolved.perPage = perPage
+		resolved.perPageConfigured = true
 	}
 	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, resolved.family+"_path"), sourcecdk.ConfigValue(cfg, "path"), family.Path)
 	path, err = resolveConfigTemplate(s.options.SourceID, path, cfg)

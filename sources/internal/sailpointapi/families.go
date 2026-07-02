@@ -258,7 +258,6 @@ func Families() []jsonapi.Family {
 		}, "role"),
 		scopedPaged(FamilyRoleAssignedIdentities, "/roles/{role_id}/assigned-identities", "sailpoint_identitynow_role_assigned_identities", []string{"id", "email", "name"}, []string{}, []string{"role_id"}, map[string]string{
 			"role_id":           "role_id",
-			"role_name":         "role_id",
 			"subject_id":        "id",
 			"subject_name":      "name|aliasName",
 			"subject_email":     "email",
@@ -269,7 +268,6 @@ func Families() []jsonapi.Family {
 		}, "role_assignment"),
 		scopedPaged50(FamilyRoleEntitlements, "/roles/{role_id}/entitlements", "sailpoint_identitynow_role_entitlements", []string{"id", "name"}, []string{"modified", "created"}, []string{"role_id"}, map[string]string{
 			"role_id":           "role_id",
-			"role_name":         "role_id",
 			"entitlement_id":    "id",
 			"entitlement_name":  "name",
 			"entitlement_value": "value",
@@ -453,7 +451,7 @@ func Families() []jsonapi.Family {
 			"created_at":    "created",
 			"observed_at":   "modified|completed|created",
 		}, "account_activity"),
-		unpaged(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created", "expirationDate"}, map[string]string{
+		paged50(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created", "expirationDate"}, map[string]string{
 			"credential_id":                 "id",
 			"credential_type":               "personal_access_token",
 			"credential_name":               "name",
@@ -496,7 +494,7 @@ func paged(name, path, urnKind string, idKeys, timestampKeys []string, attrs map
 
 func paged50(name, path, urnKind string, idKeys, timestampKeys []string, attrs map[string]string, recordClass string) jsonapi.Family {
 	family := paged(name, path, urnKind, idKeys, timestampKeys, attrs, recordClass)
-	family.PageSizeParams = []string{"limit"}
+	family.Config.DefaultPageSize = 50
 	return family
 }
 

@@ -22,7 +22,6 @@
       "record_class": "role_assignment",
       "tenant_id": "tenant",
       "role_id": "2c918086749d78830174a1a40e121518",
-      "role_name": "Finance approver",
       "subject_id": "2c91808568c529c60168cca6f90c1001",
       "subject_name": "Morgan Alvarez",
       "subject_email": "morgan.alvarez@example.com",

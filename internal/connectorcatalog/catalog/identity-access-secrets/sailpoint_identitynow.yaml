@@ -497,8 +497,6 @@ entries:
             fields:
               secret_id: id
               secret_name: name
-              secret_status: status
-              secret_type: type
             template: secret
           record_selector: $[*]
       schema_version: cerebro.integration/v1

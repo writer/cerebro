@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -76,11 +77,18 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	var fanoutValues []string
+	if fanout, ok := fanoutFor(runtimeCfg); ok {
+		fanoutValues, err = requiredFanoutValues(runtimeCfg, fanout)
+		if err != nil {
+			return err
+		}
+	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
 	}
 	if fanout, ok := fanoutFor(runtimeCfg); ok {
-		return s.inner.CheckPathParamValues(ctx, runtimeCfg, fanout.Param, fanoutValues(runtimeCfg, fanout.ConfigKey))
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, fanout.Param, fanoutValues)
 	}
 	return s.inner.Check(ctx, runtimeCfg)
 }
@@ -91,7 +99,11 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 		return nil, err
 	}
 	if fanout, ok := fanoutFor(runtimeCfg); ok {
-		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, fanout.Param, fanoutValues(runtimeCfg, fanout.ConfigKey))
+		values, err := requiredFanoutValues(runtimeCfg, fanout)
+		if err != nil {
+			return nil, err
+		}
+		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, fanout.Param, values)
 	}
 	return s.inner.Discover(ctx, runtimeCfg)
 }
@@ -102,7 +114,11 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 		return sourcecdk.Pull{}, err
 	}
 	if fanout, ok := fanoutFor(runtimeCfg); ok {
-		return s.inner.ReadPathParamValues(ctx, runtimeCfg, cursor, fanout.Param, fanoutValues(runtimeCfg, fanout.ConfigKey))
+		values, err := requiredFanoutValues(runtimeCfg, fanout)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return s.inner.ReadPathParamValues(ctx, runtimeCfg, cursor, fanout.Param, values)
 	}
 	return s.inner.Read(ctx, runtimeCfg, cursor)
 }
@@ -113,7 +129,11 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	if fanout, ok := fanoutFor(runtimeCfg); ok {
-		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, fanout.Param, fanoutValues(runtimeCfg, fanout.ConfigKey))
+		values, err := requiredFanoutValues(runtimeCfg, fanout)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, fanout.Param, values)
 	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
@@ -122,13 +142,20 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 	if s == nil {
 		return sourcecdk.Config{}, fmt.Errorf("%s source is required", sourceID)
 	}
+	runtimeCfg, err := sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	if err := validateManagedBaseURLHost(sourcecdk.ConfigValue(runtimeCfg, "base_url"), s.allowLoopback); err != nil {
+		return sourcecdk.Config{}, err
+	}
 	if strings.TrimSpace(sourcecdk.ConfigValue(cfg, "token")) != "" {
-		return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+		return runtimeCfg, nil
 	}
 	options := oauthRuntimeConfigOptions
 	options.TokenCache = &s.tokenCache
 	options.AllowLoopback = s.allowLoopback
-	return sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, cfg, options)
+	return sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, runtimeCfg, options)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
@@ -173,6 +200,32 @@ func fanoutValues(cfg sourcecdk.Config, key string) []string {
 		}
 	}
 	return values
+}
+
+func requiredFanoutValues(cfg sourcecdk.Config, fanout sailpointapi.Fanout) ([]string, error) {
+	values := fanoutValues(cfg, fanout.ConfigKey)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%w: %s %s is required for %s", sourcecdk.ErrInvalidConfig, sourceID, fanout.ConfigKey, sourcecdk.ConfigValue(cfg, "family"))
+	}
+	return values, nil
+}
+
+func validateManagedBaseURLHost(raw string, allowLoopback bool) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("parse %s base_url: %w", sourceID, err)
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return fmt.Errorf("%w: %s base_url must include a host", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	if allowLoopback && sourcehttp.IsLoopbackHost(host) {
+		return nil
+	}
+	if host == "api.identitynow.com" || strings.HasSuffix(host, ".api.identitynow.com") {
+		return nil
+	}
+	return fmt.Errorf("%w: %s base_url host is not allowed", sourcecdk.ErrInvalidConfig, sourceID)
 }
 
 func (s *Source) allowLoopbackForTest() {

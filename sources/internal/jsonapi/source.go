@@ -68,6 +68,7 @@ type FamilyConfig struct {
 	LastItemCursorKeys  []string
 	Method              string
 	AuthModel           string
+	DefaultPageSize     int
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

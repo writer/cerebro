@@ -29,7 +29,6 @@
       "record_class": "role_entitlement",
       "tenant_id": "tenant",
       "role_id": "2c918086749d78830174a1a40e121518",
-      "role_name": "Finance approver",
       "entitlement_id": "2c91808874ff91550175097daaec161c",
       "entitlement_name": "PayrollControls",
       "source_id": "2c91808568c529c60168cca6f90c1324",
