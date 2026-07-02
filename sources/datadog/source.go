@@ -3,7 +3,6 @@ package datadog
 import (
 	"context"
 	"embed"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -93,15 +92,21 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.inner.Read(ctx, cfg, cursor)
 }
 
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	if err := validateConfig(cfg); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func (s *Source) allowLoopbackForTest() { s.inner.AllowLoopbackBaseURL = true }
 
 func validateConfig(cfg sourcecdk.Config) error {
-	for _, key := range []string{"api_key", "application_key"} {
-		if strings.TrimSpace(sourcecdk.ConfigValue(cfg, key)) == "" {
-			return fmt.Errorf("%w: %s %s is required", sourcecdk.ErrInvalidConfig, sourceID, key)
-		}
+	if _, err := sourcecdk.RequiredConfigValue(sourceID, cfg, "api_key"); err != nil {
+		return err
 	}
-	return nil
+	_, err := sourcecdk.RequiredConfigValue(sourceID, cfg, "application_key")
+	return err
 }
 
 func datadogFamilies() []jsonapi.Family {
