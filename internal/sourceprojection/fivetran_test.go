@@ -136,6 +136,45 @@ func TestFivetranRegistryContainsProviderFamilies(t *testing.T) {
 	}
 }
 
+func TestFivetranLegacyAssetsKeepGenericRuntimeURNs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "account-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.accounts",
+			Attributes: map[string]string{
+				"resource_id":   "account-1",
+				"resource_name": "Primary account",
+				"resource_type": "account",
+			},
+		},
+		{
+			Id:       "record-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.records",
+			Attributes: map[string]string{
+				"resource_id":   "record-1",
+				"resource_name": "Runtime record",
+				"resource_type": "record",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:runtime_account:account-1", "runtime.account")
+	assertProjectedEntityType(t, state, "urn:cerebro:writer:runtime_record:record-1", "runtime.record")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:runtime_fivetran_account:account-1")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:runtime_fivetran_record:record-1")
+}
+
 func TestFivetranMembershipEdgesUseStandaloneEntityURNs(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
