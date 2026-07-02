@@ -73,7 +73,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
-		return s.inner.ReadPathParamValues(ctx, cfg, cursor, pagerDutyServiceIDConfig, serviceIDs)
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, cfg, cursor, checkpoint, pagerDutyServiceIDConfig, serviceIDs)
 	}
 	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }

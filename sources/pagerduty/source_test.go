@@ -313,6 +313,108 @@ func TestReadWithCheckpointPreservesPagerDutyOffsetCursor(t *testing.T) {
 	}
 }
 
+func TestReadWithCheckpointIntegrationsFansOutAcrossServiceIDs(t *testing.T) {
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath()+"?offset="+r.URL.Query().Get(pagerDutyCursorParam))
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.EscapedPath() == "/services/PS1/integrations" && r.URL.Query().Get(pagerDutyCursorParam) == "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"integrations": []map[string]any{{
+					"id": "PI-PS1-1", "name": "Integration PS1 first",
+					"service": map[string]any{"id": "PS1", "summary": "Service PS1"},
+					"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+				}},
+				"limit":  1,
+				"offset": 0,
+				"more":   true,
+			})
+		case r.URL.EscapedPath() == "/services/PS1/integrations" && r.URL.Query().Get(pagerDutyCursorParam) == "1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"integrations": []map[string]any{{
+					"id": "PI-PS1-2", "name": "Integration PS1 second",
+					"service": map[string]any{"id": "PS1", "summary": "Service PS1"},
+					"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+				}},
+				"limit":  1,
+				"offset": 1,
+				"more":   false,
+			})
+		case r.URL.EscapedPath() == "/services/PS2/integrations" && r.URL.Query().Get(pagerDutyCursorParam) == "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"integrations": []map[string]any{{
+					"id": "PI-PS2-1", "name": "Integration PS2",
+					"service": map[string]any{"id": "PS2", "summary": "Service PS2"},
+					"vendor":  map[string]any{"id": "PV1", "summary": "Vendor"},
+				}},
+				"limit":  1,
+				"offset": 0,
+				"more":   false,
+			})
+		default:
+			t.Errorf("request = %s?offset=%s, want PS1 first page, PS1 second page, or PS2 first page", r.URL.EscapedPath(), r.URL.Query().Get(pagerDutyCursorParam))
+			http.Error(w, "unexpected request", http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":    server.URL,
+		"family":      familyIntegration,
+		"tenant_id":   "writer",
+		"token":       "pagerduty-token",
+		"service_ids": "PS1,PS2",
+		"per_page":    "1",
+	})
+	first, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(first) error = %v", err)
+	}
+	if len(first.Events) != 1 || first.Events[0].Attributes["integration_id"] != "PI-PS1-1" {
+		t.Fatalf("first events = %#v, want first PS1 integration", first.Events)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor = nil, want service fan-out cursor with provider offset")
+	}
+	if first.Checkpoint == nil || first.Checkpoint.GetCursorOpaque() != "1" {
+		t.Fatalf("first Checkpoint = %#v, want provider offset 1", first.Checkpoint)
+	}
+	second, err := source.ReadWithCheckpoint(context.Background(), cfg, first.NextCursor, first.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(second) error = %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Attributes["integration_id"] != "PI-PS1-2" {
+		t.Fatalf("second events = %#v, want second PS1 integration", second.Events)
+	}
+	if second.NextCursor == nil {
+		t.Fatal("second NextCursor = nil, want cursor for PS2")
+	}
+	third, err := source.ReadWithCheckpoint(context.Background(), cfg, second.NextCursor, second.Checkpoint)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint(third) error = %v", err)
+	}
+	if len(third.Events) != 1 || third.Events[0].Attributes["service_id"] != "PS2" {
+		t.Fatalf("third events = %#v, want PS2 integration", third.Events)
+	}
+	if third.NextCursor != nil {
+		t.Fatalf("third NextCursor = %#v, want nil", third.NextCursor)
+	}
+	wantRequests := []string{
+		"/services/PS1/integrations?offset=",
+		"/services/PS1/integrations?offset=1",
+		"/services/PS2/integrations?offset=",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
 func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"error":"service unavailable"}`, http.StatusServiceUnavailable)
