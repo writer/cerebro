@@ -21,7 +21,7 @@
       "source_event_id": "501",
       "source_provider": "files_com",
       "source_system": "files_com",
-      "status": "active",
+      "suspended": "false",
       "tenant_id": "tenant",
       "user_id": "501"
     },
