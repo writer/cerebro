@@ -103,6 +103,15 @@ func TestMergedRecordOmitsSyntheticRecordIDFromRawPayload(t *testing.T) {
 	}
 }
 
+func TestBoundedSliceCapacityAvoidsOverflow(t *testing.T) {
+	if got := boundedSliceCapacity(8, 3, 4); got != 15 {
+		t.Fatalf("boundedSliceCapacity() = %d, want 15", got)
+	}
+	if got := boundedSliceCapacity(8, maxInt); got != 0 {
+		t.Fatalf("boundedSliceCapacity() = %d, want zero-capacity overflow fallback", got)
+	}
+}
+
 func TestParseTimeAcceptsProviderTimestampWithoutTimezone(t *testing.T) {
 	got, ok := parseTime("2026-06-01T03:33:51")
 	if !ok {

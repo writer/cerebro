@@ -34,6 +34,7 @@ type record struct {
 }
 
 const responseCursorDone = "__jsonapi_response_cursor_done__"
+const maxInt = int(^uint(0) >> 1)
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
 	query := url.Values{}
@@ -427,7 +428,7 @@ func scalarRecordIDKey(family Family) string {
 }
 
 func responseListKeys(family Family) []string {
-	keys := make([]string, 0, max(len(family.ListKeys), 0)+8)
+	keys := make([]string, 0, boundedSliceCapacity(8, len(family.ListKeys)))
 	for _, key := range family.ListKeys {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)
@@ -675,7 +676,7 @@ func intValueAtResponsePath(object map[string]json.RawMessage, paths ...string) 
 }
 
 func responseIntPaths(configured []string, defaults ...string) []string {
-	paths := make([]string, 0, len(configured)+len(defaults))
+	paths := make([]string, 0, boundedSliceCapacity(0, len(configured), len(defaults)))
 	for _, path := range configured {
 		if path = strings.TrimSpace(path); path != "" {
 			paths = append(paths, path)
@@ -685,7 +686,7 @@ func responseIntPaths(configured []string, defaults ...string) []string {
 }
 
 func responseCursorKeys(family Family) []string {
-	keys := make([]string, 0, max(len(family.NextCursorKeys), 0)+8)
+	keys := make([]string, 0, boundedSliceCapacity(8, len(family.NextCursorKeys)))
 	for _, key := range family.NextCursorKeys {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)
@@ -1473,6 +1474,23 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+func boundedSliceCapacity(extra int, lengths ...int) int {
+	if extra < 0 {
+		extra = 0
+	}
+	capacity := extra
+	for _, length := range lengths {
+		if length < 0 {
+			continue
+		}
+		if capacity > maxInt-length {
+			return 0
+		}
+		capacity += length
+	}
+	return capacity
 }
 
 func stableID(value string) string {
