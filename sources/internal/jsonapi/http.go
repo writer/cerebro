@@ -966,8 +966,18 @@ func payloadForRecord(family Family, raw json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return cloneRaw(raw)
 	}
+	redactedFields := make([]string, 0, len(family.Config.RedactPayloadKeys))
 	for _, key := range family.Config.RedactPayloadKeys {
-		deleteObjectPath(object, key)
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if deleteObjectPath(object, key) {
+			redactedFields = append(redactedFields, key)
+		}
+	}
+	if len(redactedFields) > 0 {
+		object["redacted_fields"] = redactedFields
 	}
 	redacted, err := json.Marshal(object)
 	if err != nil {
@@ -976,32 +986,39 @@ func payloadForRecord(family Family, raw json.RawMessage) json.RawMessage {
 	return redacted
 }
 
-func deleteObjectPath(object map[string]any, path string) {
+func deleteObjectPath(object map[string]any, path string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return
+		return false
 	}
 	if !strings.Contains(path, ".") {
+		if _, ok := object[path]; !ok {
+			return false
+		}
 		delete(object, path)
-		return
+		return true
 	}
 	parts := strings.Split(path, ".")
 	current := object
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return
+			return false
 		}
 		if i == len(parts)-1 {
+			if _, ok := current[part]; !ok {
+				return false
+			}
 			delete(current, part)
-			return
+			return true
 		}
 		next, ok := current[part].(map[string]any)
 		if !ok {
-			return
+			return false
 		}
 		current = next
 	}
+	return false
 }
 
 func eventID(sourceID string, tenantID string, baseURL string, path string, family string, recordID string) string {

@@ -316,7 +316,7 @@ func TestSourceReadsScopedMembershipsWithFanout(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	attrs := pull.Events[0].Attributes
-	if attrs["group_id"] != "group-1" || attrs["member_id"] != "user-1" || attrs["role"] != "Destination Reviewer" {
+	if attrs["group_id"] != "group-1" || attrs["member_id"] != "user-1" || attrs["member_type"] != "user" || attrs["role"] != "Destination Reviewer" || attrs["email"] != "user@example.test" {
 		t.Fatalf("attributes = %#v, want scoped membership", attrs)
 	}
 }

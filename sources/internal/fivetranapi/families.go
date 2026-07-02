@@ -237,6 +237,8 @@ func transformationsFamily() jsonapi.Family {
 }
 
 func fivetranScopedMembershipFamily(name string, path string, scopeParam string, memberType string) jsonapi.Family {
+	staticAttributes := fivetranStaticAttributes(name, "identity_membership", memberType+"_membership")
+	staticAttributes["member_type"] = memberType
 	return fivetranPagedFamily(jsonapi.Family{
 		Name:       name,
 		Path:       path,
@@ -245,14 +247,14 @@ func fivetranScopedMembershipFamily(name string, path string, scopeParam string,
 		IDKeys:     []string{"id", memberType + "_id", "user_id", "group_id", "connection_id"},
 		Attributes: map[string]string{
 			scopeParam:        scopeParam,
+			"email":           "email",
 			"member_id":       "id|" + memberType + "_id|user_id|group_id|connection_id",
-			"member_type":     "resource_type",
 			"role":            "role",
 			"source_event_id": "id|" + memberType + "_id|user_id|group_id|connection_id",
 			"resource_id":     "id|" + memberType + "_id|user_id|group_id|connection_id",
 			"resource_name":   "name|email|schema|service",
 		},
-		StaticAttributes: fivetranStaticAttributes(name, "identity_membership", memberType+"_membership"),
+		StaticAttributes: staticAttributes,
 		Config: fivetranFamilyConfig(jsonapi.FamilyConfig{
 			ConfigAttributes: map[string]string{scopeParam: scopeParam},
 			IdentityKeys:     []string{scopeParam},

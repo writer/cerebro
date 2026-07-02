@@ -1151,6 +1151,10 @@ func TestReadRedactsConfiguredPayloadKeys(t *testing.T) {
 	if _, ok := nested["secret"]; ok {
 		t.Fatalf("payload retained nested secret: %#v", payload)
 	}
+	redacted, _ := payload["redacted_fields"].([]any)
+	if len(redacted) != 3 || redacted[0] != "key" || redacted[1] != "secret" || redacted[2] != "nested.secret" {
+		t.Fatalf("redacted_fields = %#v, want configured removed fields", payload["redacted_fields"])
+	}
 	if pull.Events[0].Attributes["status"] != "active" {
 		t.Fatalf("status attribute = %q, want active", pull.Events[0].Attributes["status"])
 	}
