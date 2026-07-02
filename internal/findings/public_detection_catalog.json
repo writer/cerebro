@@ -669,6 +669,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -2798,6 +2820,28 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -3004,38 +3048,6 @@
             "identity_access"
           ],
           "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "mfa_posture",
-          "dimension_type": "app_entitlement",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "enrolled_factor",
-            "factor",
-            "mfa",
-            "mfa_exempt",
-            "no_mfa",
-            "weak_factor"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.5"
-            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -5434,6 +5446,50 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -5853,6 +5909,36 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "directory_role_assignment",
           "dimension_type": "app_entitlement",
@@ -5994,40 +6080,6 @@
           "control_domains": [
             "asset_inventory",
             "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "admin_role_lifecycle_events",
-          "dimension_type": "audit_event",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "admin_privilege",
-            "admin_role",
-            "audit",
-            "privilege_grant",
-            "role_assignment",
-            "role_grant"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "logging_configuration"
-          ],
-          "control_domains": [
-            "identity_access",
-            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
@@ -10354,6 +10406,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -10561,6 +10635,28 @@
               "control_id": "A.8.16"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            }
+          ]
         }
       ]
     },
@@ -10617,6 +10713,32 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
         {
           "source_id": "azure",
           "dimension_id": "user",
@@ -10947,43 +11069,6 @@
             "identity_access"
           ],
           "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "deprovisioned",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.16"
-            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -19578,6 +19663,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -19762,6 +19869,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -19955,6 +20084,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -20140,6 +20291,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -20361,6 +20534,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -20572,6 +20767,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -20762,6 +20979,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -20947,6 +21186,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -21167,6 +21428,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -21352,6 +21635,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -21545,6 +21850,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -21731,6 +22058,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -21932,6 +22281,28 @@
           "high_value": true,
           "families": [
             "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -22159,6 +22530,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -22370,6 +22763,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -24162,6 +24577,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -30713,6 +31150,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "group",
           "dimension_type": "entity_family",
@@ -32224,6 +32683,33 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "IA-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
             },
             {
               "framework_name": "SOC 2",
@@ -33744,6 +34230,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "group",
           "dimension_type": "entity_family",
@@ -34730,6 +35238,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "onelogin",
           "dimension_id": "directory_inventory",
           "dimension_type": "entity_family",
@@ -35465,6 +35995,28 @@
           "high_value": true,
           "families": [
             "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -38850,6 +39402,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "group",
           "dimension_type": "entity_family",
@@ -39780,6 +40354,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -39802,6 +40406,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         }
@@ -40127,6 +40757,66 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -40149,6 +40839,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         }
@@ -40709,6 +41425,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -40731,6 +41477,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         }
@@ -41730,6 +42502,49 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -42118,6 +42933,40 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "dormant_users",
           "dimension_type": "lifecycle_state",
@@ -42174,97 +43023,6 @@
             {
               "framework_name": "CIS Controls v8",
               "control_id": "6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "deprovisioned",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
             },
             {
               "framework_name": "SOC 2",
@@ -46194,6 +46952,32 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -46434,6 +47218,33 @@
           "high_value": true,
           "families": [
             "iam_policy"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
           ],
           "evidence_types": [
             "identity_configuration"
@@ -49506,6 +50317,32 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "groups",
           "dimension_type": "entity_family",
@@ -49582,28 +50419,6 @@
           "high_value": true,
           "families": [
             "user"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "files_com",
-          "dimension_id": "group",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "group"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -57234,6 +58049,44 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         },
@@ -65889,6 +66742,36 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
         }
       ]
     },
@@ -66226,6 +67109,28 @@
         {
           "source_id": "azure",
           "dimension_id": "application",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
           "dimension_type": "entity_family",
           "support_level": "supported",
           "high_value": true,
@@ -66644,6 +67549,44 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "3.5"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit_events"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "8"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AU-12"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AU-2"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "10.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         },
@@ -83593,6 +84536,66 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -83615,6 +84618,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         },
@@ -86777,6 +87806,40 @@
               "framework_name": "CIS Controls v8",
               "control_id": "8"
             },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.15"
@@ -92371,6 +93434,32 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -99499,6 +100588,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -100003,6 +101114,49 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "acl_grants",
           "dimension_type": "app_entitlement",
@@ -100284,6 +101438,53 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "1.4"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
@@ -101082,6 +102283,49 @@
           ],
           "control_domains": [
             "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
             "identity_access"
           ],
           "matched_control_refs": [
@@ -104760,6 +106004,49 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -105254,6 +106541,49 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -105652,59 +106982,6 @@
             {
               "framework_name": "CIS Controls v8",
               "control_id": "6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "deprovisioned",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
             },
             {
               "framework_name": "SOC 2",
@@ -105922,6 +107199,53 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -106315,39 +107639,6 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "policy_rules",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "policy",
-            "policy_lifecycle",
-            "policy_rule",
-            "policy_tampering"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             },
             {
               "framework_name": "SOC 2",
@@ -125788,6 +127079,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -131422,6 +132735,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "agents",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "agent"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -164761,6 +166096,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "groups",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -218071,6 +219428,36 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "azure",
           "dimension_id": "directory_role_assignment",
           "dimension_type": "app_entitlement",
@@ -218175,43 +219562,6 @@
             "identity_configuration"
           ],
           "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "google_workspace",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "email",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -251844,6 +253194,28 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -253154,6 +254526,40 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "cloudflare_zero_trust",
           "dimension_id": "users",
           "dimension_type": "app_entitlement",
@@ -253573,6 +254979,44 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
             },
             {
               "framework_name": "SOC 2",
@@ -254080,6 +255524,44 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "cloudflare_zero_trust",
           "dimension_id": "users",
           "dimension_type": "app_entitlement",
@@ -254509,6 +255991,32 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "pagerduty",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -254716,6 +256224,57 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-6"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
         {
           "source_id": "azure",
           "dimension_id": "directory_role_assignment",
@@ -255135,6 +256694,32 @@
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.17"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
             },
             {
               "framework_name": "SOC 2",
@@ -255566,6 +257151,30 @@
           "framework_name": "CIS Controls v8",
           "control_id": "5"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "sites",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "site"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        }
       ]
     },
     {
@@ -255651,6 +257260,30 @@
         {
           "framework_name": "NIST 800-53 r5",
           "control_id": "AU-2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "sites",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "site"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -256032,6 +257665,40 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         },
@@ -258491,6 +260158,36 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
             },
             {
               "framework_name": "SOC 2",
@@ -266177,6 +267874,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -266411,6 +268138,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -266623,6 +268380,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -266801,6 +268588,36 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
             },
             {
               "framework_name": "SOC 2",
@@ -267116,6 +268933,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -267294,6 +269141,36 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
             },
             {
               "framework_name": "SOC 2",
@@ -267497,6 +269374,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -267676,6 +269583,36 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
             },
             {
               "framework_name": "SOC 2",
@@ -267879,6 +269816,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -268057,6 +270024,36 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
             },
             {
               "framework_name": "SOC 2",
@@ -273377,6 +275374,32 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -273547,6 +275570,32 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
         {
           "source_id": "google_workspace",
           "dimension_id": "audit_events",
@@ -273830,8 +275879,20 @@
           ],
           "matched_control_refs": [
             {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
             }
           ]
         },
@@ -273851,6 +275912,10 @@
             "remediation"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.4"
@@ -274956,6 +277021,44 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "role_assignments",
           "dimension_type": "app_entitlement",
@@ -275092,31 +277195,6 @@
           ],
           "control_domains": [
             "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "onelogin",
-          "dimension_id": "directory_inventory",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups",
-            "roles",
-            "users"
-          ],
-          "evidence_types": [
-            "access_review",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -275543,6 +277621,40 @@
           ]
         },
         {
+          "source_id": "auth0",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -275642,38 +277754,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "github",
-          "dimension_id": "organization_authentication_policy",
-          "dimension_type": "audit_event",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "2fa",
-            "audit",
-            "auth_control",
-            "authentication",
-            "mfa",
-            "org_auth",
-            "two_factor"
-          ],
-          "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
             }
           ]
         }
@@ -279030,6 +281110,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -279052,6 +281162,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         }
@@ -279249,6 +281385,36 @@
           ]
         },
         {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
           "source_id": "github",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -279271,6 +281437,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
             }
           ]
         }
@@ -291750,6 +293942,54 @@
               "control_id": "CC7.3"
             }
           ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.4"
+            }
+          ]
         }
       ]
     },
@@ -294959,6 +297199,30 @@
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.24"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -295250,6 +297514,74 @@
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.16"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "exclusions",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "exclusion"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            }
+          ]
+        }
       ]
     },
     {
@@ -295303,6 +297635,74 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.16"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "activities",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "activity"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "exclusions",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "exclusion"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.16"
+            }
+          ]
         }
       ]
     },
@@ -295358,6 +297758,30 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.25"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -295435,6 +297859,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
+        },
         {
           "source_id": "azure",
           "dimension_id": "directory_role_assignment",
@@ -295659,6 +298105,52 @@
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.26"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.26"
+            }
+          ]
+        }
       ]
     },
     {
@@ -295842,6 +298334,30 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.25"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "threats",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "threat"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -296490,6 +299006,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "sentinelone",
+          "dimension_id": "agents",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "agent"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
         {
           "source_id": "tailscale",
           "dimension_id": "devices",

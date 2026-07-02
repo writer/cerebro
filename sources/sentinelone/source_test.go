@@ -384,6 +384,45 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 	}
 }
 
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "ApiToken "+fixtureToken {
+			t.Errorf("Authorization = %q, want ApiToken token", got)
+			http.Error(w, "unexpected auth", http.StatusInternalServerError)
+			return
+		}
+		if r.URL.Path != "/web/api/v2.1/agents" {
+			t.Errorf("path = %q, want /web/api/v2.1/agents", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]any{{
+			"title":  "Service Unavailable",
+			"detail": "retry later",
+		}}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyAgent,
+		"token":    fixtureToken,
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "sentinelone API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
 func TestSentinelOneEmailLikeRejectsUsernameOnlyUPNs(t *testing.T) {
 	for _, value := range []string{"owner@WRITER", "user@localhost", "jdoe@"} {
 		if got := sentinelOneEmailLike(value); got != "" {
