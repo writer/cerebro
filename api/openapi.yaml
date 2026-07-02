@@ -474,9 +474,17 @@ paths:
           in: query
           schema:
             type: string
+        - name: view
+          in: query
+          description: Omit this parameter or use summary for catalog browsing. The summary view keeps connector identity, status, access, readiness, and scalar integration-depth counts, and omits setup payloads such as connection methods, scope options, resource-family detail, descriptions, emitted-kind lists, and credential-store setup guidance. Use full only when setup metadata for the complete catalog is required.
+          schema:
+            type: string
+            enum:
+              - full
+              - summary
       responses:
         '200':
-          description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Entries include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
+          description: Compact connector catalog with executable built-in sources plus catalog-only connector definitions. Default and summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail. Full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary

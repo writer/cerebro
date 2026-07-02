@@ -71,6 +71,9 @@ const (
 	connectorReadinessStageRuntimeNeeded       = "runtime_required"
 	connectorReadinessStageRuntimeBacked       = "runtime_backed"
 	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
+
+	connectorLibraryViewFull    = "full"
+	connectorLibraryViewSummary = "summary"
 )
 
 var errConnectorAccessRestricted = errors.New("connector access restricted")
@@ -151,6 +154,42 @@ type connectorLibraryResponse struct {
 	CredentialTransport connectorTransportView  `json:"credential_transport"`
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
 	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
+}
+type connectorLibrarySummaryResponse struct {
+	Connectors          []connectorCatalogSummaryEntry `json:"connectors"`
+	Counts              connectorLibraryCounts         `json:"counts"`
+	GeneratedAt         string                         `json:"generated_at"`
+	View                string                         `json:"view"`
+	TenantID            string                         `json:"tenant_id,omitempty"`
+	RuntimeStore        string                         `json:"runtime_store"`
+	CatalogVersion      string                         `json:"catalog_version,omitempty"`
+	CatalogSourceCommit string                         `json:"catalog_source_commit,omitempty"`
+}
+type connectorCatalogSummaryEntry struct {
+	SourceID               string   `json:"source_id"`
+	DisplayName            string   `json:"display_name,omitempty"`
+	Status                 string   `json:"status,omitempty"`
+	ConfiguredRuntimes     int      `json:"configured_runtimes,omitempty"`
+	HealthyRuntimes        int      `json:"healthy_runtimes,omitempty"`
+	NeedsAttentionRuntimes int      `json:"needs_attention_runtimes,omitempty"`
+	CatalogStatus          string   `json:"catalog_status,omitempty"`
+	ClassifierOutput       string   `json:"classifier_output,omitempty"`
+	AuthModel              string   `json:"auth_model,omitempty"`
+	RuntimeExecutable      bool     `json:"runtime_executable,omitempty"`
+	CatalogCategories      []string `json:"catalog_categories,omitempty"`
+	DefinitionOrigin       string   `json:"definition_origin,omitempty"`
+	ReadinessStage         string   `json:"readiness_stage,omitempty"`
+	ValidationGrade        string   `json:"validation_grade,omitempty"`
+	Cataloged              bool     `json:"cataloged,omitempty"`
+	Callable               bool     `json:"callable,omitempty"`
+	AccessStatus           string   `json:"access_status,omitempty"`
+	SetupAllowed           bool     `json:"setup_allowed,omitempty"`
+	Requestable            bool     `json:"requestable,omitempty"`
+	IntegrationLevel       string   `json:"integration_level,omitempty"`
+	IntegrationScore       int      `json:"integration_score,omitempty"`
+	ResourceFamilyCount    int      `json:"resource_family_count,omitempty"`
+	EmittedKindCount       int      `json:"emitted_kind_count,omitempty"`
+	ScopeOptionCount       int      `json:"scope_option_count,omitempty"`
 }
 type connectorLibraryCounts struct {
 	Total        int `json:"total"`
@@ -506,8 +545,79 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
+	view, err := connectorLibraryView(r)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	response := a.connectorLibrary(r, tenantID)
+	if view == connectorLibraryViewSummary {
+		writeJSON(w, http.StatusOK, summarizeConnectorLibrary(response))
+		return
+	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func connectorLibraryView(r *http.Request) (string, error) {
+	if r == nil || r.URL == nil {
+		return connectorLibraryViewSummary, nil
+	}
+	view := strings.TrimSpace(r.URL.Query().Get("view"))
+	if view == "" {
+		return connectorLibraryViewSummary, nil
+	}
+	switch view {
+	case connectorLibraryViewFull, connectorLibraryViewSummary:
+		return view, nil
+	default:
+		return "", fmt.Errorf("%w: connector library view must be full or summary", connectorcredentials.ErrInvalidRequest)
+	}
+}
+
+func summarizeConnectorLibrary(response connectorLibraryResponse) connectorLibrarySummaryResponse {
+	summary := connectorLibrarySummaryResponse{
+		Connectors:          make([]connectorCatalogSummaryEntry, 0, len(response.Connectors)),
+		Counts:              response.Counts,
+		GeneratedAt:         response.GeneratedAt,
+		View:                connectorLibraryViewSummary,
+		TenantID:            response.TenantID,
+		RuntimeStore:        response.RuntimeStore,
+		CatalogVersion:      response.CatalogVersion,
+		CatalogSourceCommit: response.CatalogSourceCommit,
+	}
+	for _, entry := range response.Connectors {
+		summary.Connectors = append(summary.Connectors, summarizeConnectorCatalogEntry(entry))
+	}
+	return summary
+}
+
+func summarizeConnectorCatalogEntry(entry connectorCatalogEntry) connectorCatalogSummaryEntry {
+	return connectorCatalogSummaryEntry{
+		SourceID:               entry.SourceID,
+		DisplayName:            entry.DisplayName,
+		Status:                 entry.Status,
+		ConfiguredRuntimes:     entry.ConfiguredRuntimes,
+		HealthyRuntimes:        entry.HealthyRuntimes,
+		NeedsAttentionRuntimes: entry.NeedsAttentionRuntimes,
+		CatalogStatus:          entry.CatalogStatus,
+		ClassifierOutput:       entry.ClassifierOutput,
+		AuthModel:              entry.AuthModel,
+		RuntimeExecutable:      entry.RuntimeExecutable,
+		CatalogCategories:      append([]string{}, entry.CatalogCategories...),
+		DefinitionOrigin:       entry.DefinitionOrigin,
+		ReadinessStage:         entry.ReadinessStage,
+		ValidationGrade:        entry.ValidationGrade,
+		Cataloged:              entry.Cataloged,
+		Callable:               entry.Callable,
+		AccessStatus:           entry.AccessStatus,
+		SetupAllowed:           entry.SetupAllowed,
+		Requestable:            entry.Requestable,
+		IntegrationLevel:       entry.IntegrationDepth.Level,
+		IntegrationScore:       entry.IntegrationDepth.Score,
+		ResourceFamilyCount:    entry.IntegrationDepth.ResourceFamilies,
+		EmittedKindCount:       entry.IntegrationDepth.EmittedKinds,
+		ScopeOptionCount:       entry.IntegrationDepth.ScopeOptions,
+	}
 }
 
 func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibraryResponse {
