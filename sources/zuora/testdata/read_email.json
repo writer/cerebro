@@ -1,26 +1,28 @@
 [
   {
     "attributes": {
+      "created_at": "2026-06-01T03:31:43",
       "display_name": "New subscription was created",
-      "email": "audit@example.test",
+      "email": "billing@example.test",
       "name": "New subscription was created",
+      "observed_at": "2026-06-01T03:31:43",
       "primary_email": "billing@example.test",
-      "provider_id": "audit@example.test",
+      "provider_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created",
       "record_class": "identity_user",
-      "resource_id": "audit@example.test",
+      "resource_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created",
       "resource_name": "New subscription was created",
       "resource_type": "email_history",
-      "resource_urn": "urn:cerebro:tenant:zuora_email:audit@example.test",
+      "resource_urn": "urn:cerebro:tenant:zuora_email:2c9e8084769a87be0176f0cfa138001e-2026-06-01T03%3A31%3A43-1210-New%20Subscription%20Created",
       "schema": "email",
-      "source_event_id": "audit@example.test",
+      "source_event_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created",
       "source_system": "zuora",
       "status": "OK",
       "tenant_id": "tenant",
-      "user_id": "audit@example.test"
+      "user_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created"
     },
-    "id": "zuora-email-audit@example.test-observed",
+    "id": "zuora-email-2c9e8084769a87be0176f0cfa138001e-2026-06-01T03-31-43-1210-New-Subscription-Created-observed",
     "kind": "zuora.email",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-06-01T03:31:43Z",
     "payload": {
       "accountId": "2c9e8084769a87be0176f0cfa138001e",
       "bcc": "audit@example.test",

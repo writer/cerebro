@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -630,14 +631,44 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	if err := decoder.Decode(&values); err != nil {
 		return record{}, fmt.Errorf("decode record: %w", err)
 	}
-	id := firstValueString(values, family.IDKeys...)
+	id := recordTemplateValue(values, family.Config.IDTemplate)
+	if id == "" {
+		id = firstValueString(values, family.IDKeys...)
+	}
 	if id == "" {
 		if family.RequireID {
 			return record{}, fmt.Errorf("%s id is required", family.Name)
 		}
 		id = stableID(string(raw))
 	}
+	values["_record_id"] = id
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
+}
+
+var recordTemplatePattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+func recordTemplateValue(values map[string]any, template string) string {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return ""
+	}
+	missing := false
+	out := recordTemplatePattern.ReplaceAllStringFunc(template, func(match string) string {
+		parts := recordTemplatePattern.FindStringSubmatch(match)
+		if len(parts) != 2 {
+			missing = true
+			return ""
+		}
+		value := firstValueString(values, strings.TrimSpace(parts[1]))
+		if value == "" {
+			missing = true
+		}
+		return value
+	})
+	if missing || strings.Contains(out, "${") {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -845,7 +876,7 @@ func parseTime(raw string) (time.Time, bool) {
 		whole, fraction := math.Modf(seconds)
 		return time.Unix(int64(whole), int64(fraction*1_000_000_000)).UTC(), true
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02T15:04:05", "2006-01-02"} {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
 			return parsed.UTC(), true

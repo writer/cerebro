@@ -2,9 +2,11 @@
   {
     "attributes": {
       "alert_id": "6e569e1e05f040eda51a927b140c0ac2",
+      "alert_fired_at": "2026-06-01T07:36:19.798Z",
       "alert_name": "Account Edit Email",
       "alert_status": "true",
       "name": "Account Edit Email",
+      "observed_at": "2026-06-02T07:36:19.798Z",
       "provider_id": "6e569e1e05f040eda51a927b140c0ac2",
       "record_class": "alert",
       "resource_id": "6e569e1e05f040eda51a927b140c0ac2",
@@ -18,7 +20,7 @@
     },
     "id": "zuora-notification_definition-6e569e1e05f040eda51a927b140c0ac2-observed",
     "kind": "zuora.notification_definition",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-06-02T07:36:19.798Z",
     "payload": {
       "active": true,
       "createdBy": "6e569e1e05f040eda51a927b140c0ac3",

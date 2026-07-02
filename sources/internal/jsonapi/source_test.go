@@ -53,6 +53,40 @@ func TestRecordIdentityIncludesFanoutScope(t *testing.T) {
 	}
 }
 
+func TestRecordFromRawUsesIDTemplate(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate:   "${created}-${event}",
+			IdentityKeys: []string{"content.user_id"},
+		},
+	}, json.RawMessage(`{"created":"2026-06-01T00:00:00Z","event":"org.project.create","content":{"user_id":"user-1"}}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	if record.ID != "2026-06-01T00:00:00Z-org.project.create" {
+		t.Fatalf("record.ID = %q, want templated id", record.ID)
+	}
+	if got := firstValueString(record.Values, "_record_id"); got != record.ID {
+		t.Fatalf("_record_id = %q, want record id %q", got, record.ID)
+	}
+	if record.Identity == record.ID || !strings.HasPrefix(record.Identity, record.ID+"-") {
+		t.Fatalf("record.Identity = %q, want scoped templated identity", record.Identity)
+	}
+}
+
+func TestParseTimeAcceptsProviderTimestampWithoutTimezone(t *testing.T) {
+	got, ok := parseTime("2026-06-01T03:33:51")
+	if !ok {
+		t.Fatal("parseTime() ok = false, want true")
+	}
+	want := time.Date(2026, 6, 1, 3, 33, 51, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTime() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
 func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
 	first := recordIdentity("install-1", map[string]any{"device_id": "device-a"}, nil)
 	second := recordIdentity("install-1", map[string]any{"device_id": "device-b"}, nil)

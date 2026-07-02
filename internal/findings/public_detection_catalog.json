@@ -8999,6 +8999,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "zuora",
+          "dimension_id": "email",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "email"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },

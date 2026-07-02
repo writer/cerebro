@@ -6,6 +6,7 @@
       "alert_source": "https://callback.example.test/zuora",
       "alert_status": "405",
       "alert_type": "1210",
+      "observed_at": "2026-06-01T03:33:51",
       "provider_id": "3",
       "record_class": "alert",
       "resource_id": "3",
@@ -19,7 +20,7 @@
     },
     "id": "zuora-callout-3-observed",
     "kind": "zuora.callout",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-06-01T03:33:51Z",
     "payload": {
       "attemptedNum": 3,
       "createTime": "2026-06-01T03:33:51",

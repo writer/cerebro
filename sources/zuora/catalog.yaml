@@ -122,7 +122,7 @@ coverage_contract:
       control_domains: [logging_monitoring]
       control_refs:
         - framework_name: SOC 2
-          control_id: CC6.1
+          control_id: CC7.2
       notes:
         - Maps the official List all products catalog response under `products`, including product ID, product number, SKU, category, effective dates, and rate-plan link.
     - id: accounting_period
@@ -148,7 +148,7 @@ coverage_contract:
       control_domains: [asset_inventory]
       control_refs:
         - framework_name: SOC 2
-          control_id: CC7.2
+          control_id: CC6.1
       notes:
         - Maps notification email history under `emailHistories`, retaining result, event category, notification name, subject, recipients, sender, reply-to, and send time.
       known_unsupported_fields:
@@ -163,7 +163,7 @@ coverage_contract:
       control_domains: [asset_inventory]
       control_refs:
         - framework_name: SOC 2
-          control_id: CC7.2
+          control_id: CC6.1
       notes:
         - Maps the official List email templates response under `data`, including template ID, event type, name, description, subject, sender settings, and active state.
     - id: notification_definition

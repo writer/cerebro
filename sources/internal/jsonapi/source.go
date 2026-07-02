@@ -46,6 +46,7 @@ type FamilyConfig struct {
 	StaticQuery      map[string]string
 	ConfigQuery      map[string]string
 	ConfigAttributes map[string]string
+	IDTemplate       string
 	EncodeURNID      bool
 	IdentityKeys     []string
 	RequireDetail    bool

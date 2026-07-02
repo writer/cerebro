@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -20,6 +21,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 		response       map[string]any
 		wantAttributes map[string]string
 		wantPayloadKey string
+		wantOccurredAt string
 	}{
 		{
 			name:   "event trigger",
@@ -94,8 +96,9 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"notification":  "New Subscription Created",
 				"createTime":    "2026-06-01T03:33:51",
 			}}},
-			wantAttributes: map[string]string{"alert_id": "3", "alert_name": "New Subscription Created", "alert_source": "https://callback.example.test/zuora", "alert_status": "405", "resource_id": "3", "resource_name": "New Subscription Created", "source_event_id": "3"},
+			wantAttributes: map[string]string{"alert_id": "3", "alert_name": "New Subscription Created", "alert_source": "https://callback.example.test/zuora", "alert_status": "405", "observed_at": "2026-06-01T03:33:51", "resource_id": "3", "resource_name": "New Subscription Created", "source_event_id": "3"},
 			wantPayloadKey: "requestUrl",
+			wantOccurredAt: "2026-06-01T03:33:51Z",
 		},
 		{
 			name:   "email history",
@@ -116,8 +119,9 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"sendTime":      "2026-06-01T03:31:43",
 				"errorMessage":  nil,
 			}}},
-			wantAttributes: map[string]string{"name": "New subscription was created", "provider_id": "audit@example.test", "resource_name": "New subscription was created"},
+			wantAttributes: map[string]string{"email": "billing@example.test", "name": "New subscription was created", "provider_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created", "resource_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created", "resource_name": "New subscription was created", "resource_type": "email_history"},
 			wantPayloadKey: "toEmail",
+			wantOccurredAt: "2026-06-01T03:31:43Z",
 		},
 		{
 			name:   "email template",
@@ -142,8 +146,9 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"active":         true,
 				"isHtml":         true,
 			}}},
-			wantAttributes: map[string]string{"name": "Account Edit Email", "user_id": "6e569e1e05f040eda51a927b140c0ac2"},
+			wantAttributes: map[string]string{"name": "Account Edit Email", "observed_at": "2026-06-02T07:36:19.798Z", "resource_type": "email_template", "user_id": "6e569e1e05f040eda51a927b140c0ac2"},
 			wantPayloadKey: "emailSubject",
+			wantOccurredAt: "2026-06-02T07:36:19.798Z",
 		},
 		{
 			name:   "hosted page",
@@ -155,7 +160,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"pageType":    "Credit Card",
 				"pageVersion": "2.0",
 			}}},
-			wantAttributes: map[string]string{"resource_id": "8a85858f49a3f2230149a71083d40019", "resource_type": "hostedpage"},
+			wantAttributes: map[string]string{"provider_id": "8a85858f49a3f2230149a71083d40019", "resource_id": "8a85858f49a3f2230149a71083d40019", "resource_type": "hostedpage", "resource_urn": "urn:cerebro:tenant:zuora_hostedpage:8a85858f49a3f2230149a71083d40019", "source_event_id": "8a85858f49a3f2230149a71083d40019"},
 			wantPayloadKey: "pageType",
 		},
 		{
@@ -176,8 +181,9 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"active":        true,
 				"isHtml":        true,
 			}}},
-			wantAttributes: map[string]string{"alert_id": "6e569e1e05f040eda51a927b140c0ac2", "alert_name": "Account Edit Email"},
+			wantAttributes: map[string]string{"alert_id": "6e569e1e05f040eda51a927b140c0ac2", "alert_name": "Account Edit Email", "observed_at": "2026-06-02T07:36:19.798Z", "provider_id": "6e569e1e05f040eda51a927b140c0ac2", "resource_type": "notification_definition"},
 			wantPayloadKey: "emailSubject",
+			wantOccurredAt: "2026-06-02T07:36:19.798Z",
 		},
 		{
 			name:   "product",
@@ -311,9 +317,25 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 					t.Fatalf("attribute %q = %q, want %q; attrs=%#v", key, got, want, event.Attributes)
 				}
 			}
+			if tc.wantOccurredAt != "" {
+				want, err := time.Parse(time.RFC3339Nano, tc.wantOccurredAt)
+				if err != nil {
+					t.Fatalf("parse wantOccurredAt: %v", err)
+				}
+				if got := event.OccurredAt.AsTime(); !got.Equal(want) {
+					t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
+				}
+			}
 			if tc.family == familyCallout {
 				if got := event.Attributes["alert_severity"]; got != "" {
 					t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+				}
+			}
+			if tc.family == familyEmail {
+				for _, surface := range []string{event.Id, event.Attributes["provider_id"], event.Attributes["resource_id"], event.Attributes["resource_urn"], event.Attributes["source_event_id"], event.Attributes["user_id"]} {
+					if strings.Contains(surface, "audit@example.test") {
+						t.Fatalf("email identifier surface leaks BCC address: %#v", event.Attributes)
+					}
 				}
 			}
 			if tc.family == familyNotificationDefinition {
