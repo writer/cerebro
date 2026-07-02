@@ -1493,7 +1493,7 @@ func TestSourceFamilyDuoHMACV5Override(t *testing.T) {
 		ResourceFamilies: []connectordefinitions.ResourceFamily{{
 			ID:             "application",
 			Path:           "/admin/v3/integrations",
-			AuthModel:      "duo_hmac_v5",
+			Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "duo_hmac_v5"},
 			RecordSelector: "$.response[*]",
 			IDField:        "integration_key",
 			Event: connectordefinitions.EventMappingSpec{

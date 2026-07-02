@@ -700,7 +700,10 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 		if len(requiredPayloadFields) == 0 {
 			requiredPayloadFields = []string{firstNonEmptyString(resource.IDField, "id")}
 		}
-		authModel := strings.TrimSpace(resource.AuthModel)
+		authModel := ""
+		if resource.Config != nil {
+			authModel = strings.TrimSpace(resource.Config.AuthModel)
+		}
 		if authModel != "" {
 			var err error
 			authModel, err = executableAuthModel(authModel)

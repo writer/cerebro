@@ -340,7 +340,8 @@ entries:
               policy_type: administrator_role
             template: policy
           record_selector: $.response[*]
-        - auth_model: duo_hmac_v5
+        - config:
+            auth_model: duo_hmac_v5
           coverage:
             - control_domains:
                 - asset_inventory

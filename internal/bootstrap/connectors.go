@@ -2323,7 +2323,7 @@ func connectorDefinitionResourceFamilies(definition connectordefinitions.Definit
 			Label:              firstNonEmpty(family.Label, connectorFieldLabel(family.ID)),
 			Method:             family.Method,
 			Path:               family.Path,
-			AuthModel:          family.AuthModel,
+			AuthModel:          family.FamilyAuthModel(),
 			RecordSelector:     family.RecordSelector,
 			IDField:            family.IDField,
 			NameField:          family.NameField,

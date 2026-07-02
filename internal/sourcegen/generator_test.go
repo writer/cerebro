@@ -1340,7 +1340,7 @@ func TestGenerateDefinitionSupportsDuoHMACAuth(t *testing.T) {
 			}, {
 				ID:             "application",
 				Path:           "/admin/v3/integrations",
-				AuthModel:      "duo_hmac_v5",
+				Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "duo_hmac_v5"},
 				RecordSelector: "$.response[*]",
 				IDField:        "integration_key",
 				Event: connectordefinitions.EventMappingSpec{
@@ -1424,7 +1424,7 @@ func TestGenerateDefinitionSupportsFamilyLevelDuoHMACAuth(t *testing.T) {
 			}, {
 				ID:             "applications",
 				Path:           "/admin/v3/integrations",
-				AuthModel:      "duo_hmac_v5",
+				Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "duo_hmac_v5"},
 				RecordSelector: "$.response[*]",
 				IDField:        "integration_key",
 				Event: connectordefinitions.EventMappingSpec{
@@ -1525,7 +1525,7 @@ func TestGenerateDefinitionSupportsFamilyLevelBearerOverrideUnderDuoHMACAuth(t *
 			}, {
 				ID:             "account",
 				Path:           "/v1/account",
-				AuthModel:      "bearer_token",
+				Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "bearer_token"},
 				RecordSelector: "$.data[*]",
 				IDField:        "id",
 				Event: connectordefinitions.EventMappingSpec{
@@ -1604,7 +1604,7 @@ func TestGenerateDefinitionUsesDefaultFamilyAuthForDuoHealthCheck(t *testing.T) 
 			ResourceFamilies: []connectordefinitions.ResourceFamily{{
 				ID:             "account",
 				Path:           "/v1/account",
-				AuthModel:      "bearer_token",
+				Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "bearer_token"},
 				RecordSelector: "$.data[*]",
 				IDField:        "id",
 				Event: connectordefinitions.EventMappingSpec{

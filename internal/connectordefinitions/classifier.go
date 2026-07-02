@@ -168,8 +168,8 @@ func Classify(definition Definition, grammar Grammar) (SupportReport, error) {
 	}
 
 	for _, family := range normalized.ResourceFamilies {
-		if strings.TrimSpace(family.AuthModel) != "" {
-			check("auth", family.AuthModel, contains(authModels, family.AuthModel), fmt.Sprintf("family %s", family.ID))
+		if familyAuthModel := familyConfigAuthModel(family.Config); familyAuthModel != "" {
+			check("auth", familyAuthModel, contains(authModels, familyAuthModel), fmt.Sprintf("family %s", family.ID))
 		}
 		method := strings.ToUpper(strings.TrimSpace(family.Method))
 		check("method", method, contains(methods, method), fmt.Sprintf("family %s", family.ID))

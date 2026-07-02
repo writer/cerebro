@@ -308,7 +308,6 @@ type ResourceFamily struct {
 	Label                 string                  `json:"label,omitempty"`
 	Path                  string                  `json:"path"`
 	Method                string                  `json:"method,omitempty"`
-	AuthModel             string                  `json:"auth_model,omitempty"`
 	RecordSelector        string                  `json:"record_selector,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
 	Read                  *ResourceReadSpec       `json:"read,omitempty"`
@@ -344,6 +343,7 @@ type ResourceReadSpec struct {
 // FamilyConfigSpec binds static and runtime config values into a resource-family request.
 type FamilyConfigSpec struct {
 	BaseURL          string            `json:"base_url,omitempty"`
+	AuthModel        string            `json:"auth_model,omitempty"`
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
@@ -541,7 +541,7 @@ func Validate(definition Definition) ValidationResult {
 				add(blocking("method_"+family.ID, "Read-only method", "Generic connector reads support GET and POST list/search endpoints."))
 			}
 		}
-		if authModel := strings.TrimSpace(family.AuthModel); authModel != "" {
+		if authModel := familyConfigAuthModel(family.Config); authModel != "" {
 			if _, ok := authModels[authModel]; !ok {
 				add(blocking("auth_"+family.ID, "Family auth model", fmt.Sprintf("Auth model %q is not supported.", authModel)))
 			}
@@ -1157,7 +1157,6 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		if family.Method == "" {
 			family.Method = "GET"
 		}
-		family.AuthModel = strings.TrimSpace(family.AuthModel)
 		family.ListKey = strings.TrimSpace(family.ListKey)
 		family.RecordSelector = strings.TrimSpace(family.RecordSelector)
 		family.IDField = strings.TrimSpace(family.IDField)
@@ -1326,14 +1325,26 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	}
 	next := *config
 	next.BaseURL = strings.TrimSpace(next.BaseURL)
+	next.AuthModel = strings.TrimSpace(next.AuthModel)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
 	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
-	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
+	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next
+}
+
+func familyConfigAuthModel(config *FamilyConfigSpec) string {
+	if config == nil {
+		return ""
+	}
+	return strings.TrimSpace(config.AuthModel)
+}
+
+func (family ResourceFamily) FamilyAuthModel() string {
+	return familyConfigAuthModel(family.Config)
 }
 
 func normalizeIncrementalSpec(incremental *IncrementalSpec) *IncrementalSpec {

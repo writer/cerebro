@@ -238,10 +238,10 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		ConfigQuery:       cloneStringMap(resource.ConfigQuery),
 		RedactPayloadKeys: sensitivePayloadKeys(resource.SensitivePayloadPaths),
 		Method:            strings.ToUpper(strings.TrimSpace(resource.Method)),
-		AuthModel:         strings.TrimSpace(resource.AuthModel),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
+		out.AuthModel = strings.TrimSpace(resource.Config.AuthModel)
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
