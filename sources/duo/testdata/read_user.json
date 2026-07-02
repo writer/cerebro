@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-user-DUUSER1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.user",
+    "schema_ref": "duo/user/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"user_id": "DUUSER1", "username": "alice", "email": "alice@example.test"},
+    "attributes": {"external_id": "DUUSER1", "family": "user", "provider": "duo", "source_provider": "duo", "source_product": "duo", "user_id": "DUUSER1", "username": "alice", "email": "alice@example.test"}
+  }
+]

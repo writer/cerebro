@@ -28,6 +28,7 @@ func TestCoverageControlDomainRefsLoad(t *testing.T) {
 		{domain: "identity_access", framework: "SOC 2", control: "CC6.1"},
 		{domain: "authorization", framework: "NIST 800-53 r5", control: "AC-3"},
 		{domain: "change_management", framework: "SOC 2", control: "CC8.1"},
+		{domain: "device_posture", framework: "NIST 800-53 r5", control: "SI-3"},
 	} {
 		refs := controlRefsForControlDomains([]string{tc.domain})
 		if len(refs) == 0 {
@@ -545,6 +546,70 @@ func TestSourceCoverageCapKeepsSupportedRefsOverPartialTies(t *testing.T) {
 	t.Fatalf("SourceCoverageRefs omitted supported okta/support_access_events: %#v", refs)
 }
 
+func TestSourceCoverageCapKeepsLifecycleRefsForInactiveIdentityDetections(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "grc-inactive-identity-active-access",
+		Name:        "Inactive GRC Identity Still Has Active Access",
+		Description: "Detect inactive users whose identity still bridges to active access.",
+		SourceID:    "grc",
+		Tags:        []string{"identity", "offboarding"},
+		EventKinds:  []string{"grc.user", "okta.user"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+		},
+	}
+	genericUserDimensions := make([]sourcecdk.CoverageDimension, 0, maxPublicDetectionSourceCoverageRefs)
+	for i := 0; i < maxPublicDetectionSourceCoverageRefs; i++ {
+		genericUserDimensions = append(genericUserDimensions, sourcecdk.CoverageDimension{
+			ID:        "users_" + strconv.Itoa(i),
+			Type:      "entity_family",
+			Families:  []string{"user"},
+			Support:   sourcecdk.CoverageSupportSupported,
+			HighValue: true,
+			ControlRefs: []sourcecdk.CoverageControlRef{
+				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+			},
+		})
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID:   "alpha",
+			Dimensions: genericUserDimensions,
+		},
+		{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "user_lifecycle",
+				Type:      "lifecycle_state",
+				Families:  []string{"deprovisioned", "suspended", "terminated_account", "user"},
+				Support:   sourcecdk.CoverageSupportPartial,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
+				},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != maxPublicDetectionSourceCoverageRefs {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
+	}
+	for _, ref := range refs {
+		if ref.SourceID == "okta" && ref.DimensionID == "user_lifecycle" {
+			return
+		}
+	}
+	t.Fatalf("SourceCoverageRefs omitted okta/user_lifecycle for inactive identity detection: %#v", refs)
+}
+
 func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *testing.T) {
 	detection := PublicDetection{
 		ID:          "identity-vanta-stale-login-90d",
@@ -573,6 +638,79 @@ func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *tes
 
 	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
 		t.Fatalf("SourceCoverageRefs = %#v, want no generic cross-provider coverage for source-named policy", refs)
+	}
+}
+
+func TestPolicySourceCoverageDoesNotUseFivetranAccountAccessForCloudIdentityRules(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "aws-iam-no-policies-attached-user",
+		Name:        "IAM Policies Attached to Groups Not Users",
+		Description: "Flags failed resource-state evidence for aws iam user access.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"aws", "iam", "users", "groups", "identity", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "cloud_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "NIST 800-53 r5", ControlID: "AC-2"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{loadSourceCoverageContractForTest(t, "fivetran")}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no Fivetran account access coverage for cloud IAM policy", refs)
+	}
+}
+
+func loadSourceCoverageContractForTest(t *testing.T, sourceID string) sourcecdk.CoverageContract {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("..", "..", "sources", sourceID, "catalog.yaml")) // #nosec G304 -- test reads repository source catalog fixtures.
+	if err != nil {
+		t.Fatalf("read %s catalog: %v", sourceID, err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(payload)
+	if err != nil {
+		t.Fatalf("load %s catalog: %v", sourceID, err)
+	}
+	if catalog.CoverageContract == nil {
+		t.Fatalf("%s catalog missing coverage contract", sourceID)
+	}
+	return *catalog.CoverageContract
+}
+
+func TestPolicySourceCoverageDoesNotUseCrossSourceOperationalSyncCoverage(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "aws-cloudwatch-log-group-retention",
+		Name:        "CloudWatch Log Group Retention",
+		Description: "Flags failed resource-state evidence for AWS log group retention.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"aws", "cloudwatch", "logs", "log-group", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "cloud_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "NIST 800-53 r5", ControlID: "AU-12"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "fivetran",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:             "incremental_sync",
+			Type:           "incremental_sync",
+			Families:       []string{"log_services", "connections"},
+			Support:        sourcecdk.CoverageSupportSupported,
+			EvidenceTypes:  []string{"source_sync_status"},
+			ControlDomains: []string{"source_operations"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "NIST 800-53 r5",
+				ControlID:     "AU-12",
+			}},
+		}},
+	}}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no cross-source operational sync coverage for cloud logging policy", refs)
 	}
 }
 

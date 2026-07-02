@@ -1,18 +1,4 @@
 [
-  {
-    "id": "1001",
-    "primaryEmail": "admin@writer.com",
-    "name": {
-      "fullName": "Admin Writer"
-    },
-    "isAdmin": true,
-    "isDelegatedAdmin": true,
-    "isEnrolledIn2Sv": false,
-    "isEnforcedIn2Sv": false,
-    "suspended": false,
-    "archived": false,
-    "creationTime": "2025-01-01T00:00:00.000Z",
-    "lastLoginTime": "2025-01-15T00:00:00.000Z",
-    "orgUnitPath": "/"
-  }
+  "urn:cerebro:writer.com:google_workspace_user:1001",
+  "urn:cerebro:writer.com:google_workspace_user:1002"
 ]

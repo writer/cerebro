@@ -248,7 +248,6 @@ import (
 	dropboxbusinesssource "github.com/writer/cerebro/sources/dropbox_business"
 	dropboxsignsource "github.com/writer/cerebro/sources/dropbox_sign"
 	duosource "github.com/writer/cerebro/sources/duo"
-	duosecuritysource "github.com/writer/cerebro/sources/duo_security"
 	dynamics365salessource "github.com/writer/cerebro/sources/dynamics_365_sales"
 	dynatracesource "github.com/writer/cerebro/sources/dynatrace"
 	easyllamasource "github.com/writer/cerebro/sources/easyllama"
@@ -2276,12 +2275,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "duo",
 		load: func() (sourcecdk.Source, error) {
 			return duosource.New()
-		},
-	},
-	{
-		name: "duo_security",
-		load: func() (sourcecdk.Source, error) {
-			return duosecuritysource.New()
 		},
 	},
 	{

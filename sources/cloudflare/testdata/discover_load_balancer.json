@@ -1,1 +1,3 @@
-["urn:cerebro:writer:cloudflare_load_balancer:zone-1%7Clb-1"]
+[
+  "urn:cerebro:tenant:cloudflare_load_balancer:lb-1"
+]

@@ -1,1 +1,46 @@
-[{"id":"cloudflare-role-role-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.role","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/role/v1","payload":{"id":"role-1","name":"Administrator","description":"Full account access","permissions":["com.cloudflare.api.account.read"]},"attributes":{"account_id":"acct-1","role_id":"role-1","name":"Administrator","description":"Full account access","permissions":"[\"com.cloudflare.api.account.read\"]","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "description": "Full account administration",
+      "external_id": "role-admin",
+      "family": "role",
+      "name": "Administrator",
+      "permission_groups": "{\"id\":\"pg-account\",\"name\":\"Account Settings Read\"}",
+      "permissions": "{\"id\":\"com.cloudflare.api.account.read\"}",
+      "resource_id": "role-admin",
+      "resource_name": "Administrator",
+      "resource_type": "role",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_role:role-admin",
+      "role_id": "role-admin",
+      "source_event_id": "role-admin",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-role-event-1",
+    "kind": "cloudflare.role",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "role-admin",
+      "name": "Administrator",
+      "description": "Full account administration",
+      "permissions": [
+        {
+          "id": "com.cloudflare.api.account.read"
+        }
+      ],
+      "permission_groups": [
+        {
+          "id": "pg-account",
+          "name": "Account Settings Read"
+        }
+      ]
+    },
+    "schema_ref": "cloudflare/role/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

@@ -1,7 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
-  "evidence_cas_reference_kind": "fivetran.evidence_cas_reference",
+  "adapter_health_path": "/v1/account/info",
+  "auth_model": "basic",
   "expected_cadence_seconds": 86400,
   "failure_modes": [
     "api_error",

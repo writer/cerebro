@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fivetran-connection_certificates-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.connection_certificates",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/connection_certificates/v1",
+    "payload": {
+      "id": "certificate-1",
+      "name": "Warehouse TLS certificate",
+      "hash": "sha256:8f7f3d2c",
+      "public_key": "ssh-rsa AAAA certificate",
+      "family": "connection_certificates",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/connection_certificates/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "connection_id": "connection-1"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "certificate-1",
+      "external_id": "certificate-1",
+      "family": "connection_certificates",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "connection_certificates",
+      "record_class": "credential",
+      "resource_type": "certificate",
+      "resource_id": "certificate-1",
+      "resource_name": "Warehouse TLS certificate",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connection_certificates:certificate-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "connection_id": "connection-1",
+      "credential_id": "certificate-1",
+      "hash": "sha256:8f7f3d2c",
+      "public_key": "ssh-rsa AAAA certificate"
+    }
+  }
+]

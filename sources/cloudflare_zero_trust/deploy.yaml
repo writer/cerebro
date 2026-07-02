@@ -1,14 +1,60 @@
 sourceId: cloudflare_zero_trust
 secretKeys:
+  - CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
   - CLOUDFLARE_ZERO_TRUST_BASE_URL
   - CLOUDFLARE_ZERO_TRUST_TOKEN
 runtimes:
+  - localId: applications
+    config:
+      account_id: env:CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
+      base_url: env:CLOUDFLARE_ZERO_TRUST_BASE_URL
+      family: applications
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/access/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_ZERO_TRUST_TOKEN
+  - localId: audit-events
+    config:
+      account_id: env:CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
+      base_url: env:CLOUDFLARE_ZERO_TRUST_BASE_URL
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/access/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_ZERO_TRUST_TOKEN
+  - localId: groups
+    config:
+      account_id: env:CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
+      base_url: env:CLOUDFLARE_ZERO_TRUST_BASE_URL
+      family: groups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/access/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_ZERO_TRUST_TOKEN
+  - localId: roles
+    config:
+      account_id: env:CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
+      base_url: env:CLOUDFLARE_ZERO_TRUST_BASE_URL
+      family: roles
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/access/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_ZERO_TRUST_TOKEN
   - localId: users
     config:
+      account_id: env:CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
       base_url: env:CLOUDFLARE_ZERO_TRUST_BASE_URL
       family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /accounts/${config.account_id}/access/users
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

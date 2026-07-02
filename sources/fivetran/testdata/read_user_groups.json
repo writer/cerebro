@@ -1,0 +1,41 @@
+[
+  {
+    "id": "fivetran-user_groups-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.user_groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/user_groups/v1",
+    "payload": {
+      "id": "group-1",
+      "name": "Finance warehouse users",
+      "role": "member",
+      "family": "user_groups",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/user_groups/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "user-1"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "group-1-f22e708d7e5b4b382912991b",
+      "external_id": "group-1",
+      "family": "user_groups",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "user_groups",
+      "record_class": "identity_membership",
+      "resource_type": "group_membership",
+      "resource_id": "group-1-f22e708d7e5b4b382912991b",
+      "resource_name": "Finance warehouse users",
+      "resource_urn": "urn:cerebro:tenant:fivetran_user_groups:group-1-f22e708d7e5b4b382912991b",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "user_id": "user-1",
+      "member_id": "group-1",
+      "member_type": "group",
+      "role": "member"
+    }
+  }
+]

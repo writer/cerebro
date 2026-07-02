@@ -389,7 +389,12 @@ type connectorScopeOptionView = connectorpreview.ScopeOption
 type connectorResourceFamilyView struct {
 	ID                 string   `json:"id"`
 	Label              string   `json:"label,omitempty"`
+	Method             string   `json:"method,omitempty"`
 	Path               string   `json:"path,omitempty"`
+	AuthModel          string   `json:"auth_model,omitempty"`
+	RecordSelector     string   `json:"record_selector,omitempty"`
+	IDField            string   `json:"id_field,omitempty"`
+	NameField          string   `json:"name_field,omitempty"`
 	EventKind          string   `json:"event_kind,omitempty"`
 	SchemaRef          string   `json:"schema_ref,omitempty"`
 	ProjectionTemplate string   `json:"projection_template,omitempty"`
@@ -1978,6 +1983,17 @@ func connectorSchemaFromDefinition(definition connectordefinitions.Definition) c
 		schema.RequiredCredentials = append(schema.RequiredCredentials, key)
 	}
 	for _, family := range definition.ResourceFamilies {
+		for _, configKey := range family.ConfigQuery {
+			addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
+		}
+		if family.Config != nil {
+			for _, configKey := range family.Config.ConfigQuery {
+				addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
+			}
+			for _, configKey := range family.Config.ConfigAttributes {
+				addConnectorSchemaConfigKey(schema.ConfigKeys, configKey)
+			}
+		}
 		if family.Pagination == nil {
 			continue
 		}
@@ -2305,7 +2321,12 @@ func connectorDefinitionResourceFamilies(definition connectordefinitions.Definit
 		view := connectorResourceFamilyView{
 			ID:                 family.ID,
 			Label:              firstNonEmpty(family.Label, connectorFieldLabel(family.ID)),
+			Method:             family.Method,
 			Path:               family.Path,
+			AuthModel:          family.FamilyAuthModel(),
+			RecordSelector:     family.RecordSelector,
+			IDField:            family.IDField,
+			NameField:          family.NameField,
 			EventKind:          family.Event.Kind,
 			SchemaRef:          family.Event.SchemaRef,
 			ProjectionTemplate: connectorProjectionTemplate(family),

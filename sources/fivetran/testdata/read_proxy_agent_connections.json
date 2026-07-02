@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fivetran-proxy_agent_connections-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.proxy_agent_connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/proxy_agent_connections/v1",
+    "payload": {
+      "id": "connection-1",
+      "name": "Salesforce connection",
+      "proxy_agent_id": "proxy-1",
+      "family": "proxy_agent_connections",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/proxy_agent_connections/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "connection-1",
+      "external_id": "connection-1",
+      "family": "proxy_agent_connections",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "proxy_agent_connection",
+      "record_class": "asset",
+      "resource_type": "proxy_agent_connection",
+      "resource_id": "connection-1",
+      "resource_name": "Salesforce connection",
+      "resource_urn": "urn:cerebro:tenant:fivetran_proxy_agent_connections:connection-1",
+      "proxy_agent_id": "proxy-1",
+      "observed_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]

@@ -58,6 +58,9 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		sourceMatched := sourceMatchesDetection(detection, sourceID, searchText)
 		sourceConflicted := coverageSourceConflictsWithPolicyDetection(detection.SourceID, sourceID, searchText)
 		for _, dimension := range contract.Dimensions {
+			if sourceOperationalPolicyCoverageRequiresSourceMatch(detection.SourceID, sourceMatched, dimension) {
+				continue
+			}
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
 			effectiveSourceMatched := sourceMatched || genericIdentityCoverageMatchesDetection(sourceID, dimension, sourceMatchRequired, identityProviderNamed, genericIdentityCoverageAllowed, dimensionMatched)
@@ -75,6 +78,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
+			lifecycleStateMatched := lifecycleStateCoverageMatchesDetection(detection.ID, searchText, dimension)
 			ref := SourceCoverageRef{
 				SourceID:           sourceID,
 				DimensionID:        strings.TrimSpace(dimension.ID),
@@ -88,7 +92,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			}
 			candidates = append(candidates, sourceCoverageCandidate{
 				ref:                ref,
-				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
+				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, lifecycleStateMatched, dimension, len(matchedControls)),
 				exactControlMatch:  exactControlMatch,
 				dimensionMatched:   dimensionMatched,
 				evidenceMatched:    evidenceMatched,
@@ -177,13 +181,16 @@ func pruneSourceOnlyCoverageCandidates(candidates []sourceCoverageCandidate) []s
 	return pruned
 }
 
-func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
+func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, lifecycleStateMatched bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
 	score := 0
 	if sourceMatched {
 		score += 10
 	}
 	if dimensionMatched {
 		score += 8
+	}
+	if lifecycleStateMatched {
+		score += 4
 	}
 	if evidenceMatched {
 		score += 4
@@ -204,6 +211,28 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 		matchedControls = 3
 	}
 	return score + matchedControls
+}
+
+func lifecycleStateCoverageMatchesDetection(detectionID string, searchText string, dimension sourcecdk.CoverageDimension) bool {
+	if normalizeCoverageText(dimension.Type) != "lifecycle_state" {
+		return false
+	}
+	if normalizeCoverageText(detectionID) != normalizeCoverageText(grcInactiveIdentityActiveAccessRuleID) {
+		return false
+	}
+	for _, token := range []string{
+		"deactivated",
+		"deprovisioned",
+		"inactive",
+		"offboarding",
+		"suspended",
+		"terminated",
+	} {
+		if coverageTextContains(searchText, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceCoverageSupportRank(support string) int {
@@ -228,6 +257,16 @@ func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, d
 		return false
 	}
 	return true
+}
+
+func sourceOperationalPolicyCoverageRequiresSourceMatch(detectionSourceID string, sourceMatched bool, dimension sourcecdk.CoverageDimension) bool {
+	if strings.TrimSpace(detectionSourceID) != policyRuleSourceID || sourceMatched {
+		return false
+	}
+	if strings.TrimSpace(dimension.Type) == "incremental_sync" {
+		return true
+	}
+	return dimensionHasControlDomain(dimension, "source_operations")
 }
 
 func policyIdentityNamespaceRequiresSourceMatch(detection PublicDetection) bool {
@@ -274,7 +313,6 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 var identityProviderCoverageAliases = map[string][]string{
 	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
 	"duo":                {"duo", "duo_security"},
-	"duo_security":       {"duo", "duo_security"},
 	"github":             {"github", "github_org", "github_organization"},
 	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
 	"jumpcloud":          {"jumpcloud", "jump_cloud"},

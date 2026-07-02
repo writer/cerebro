@@ -131,6 +131,13 @@ func TestNewFixtureReplaysGoogleWorkspaceFamilies(t *testing.T) {
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
 			}
+			urns, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", tt.family, err)
+			}
+			if len(urns) == 0 {
+				t.Fatalf("Discover(%s) returned no URNs", tt.family)
+			}
 		})
 	}
 }
@@ -290,6 +297,33 @@ func TestGoogleWorkspaceRoleAssignmentCachesUserLookupsPerPage(t *testing.T) {
 	}
 	if userLookups != 1 {
 		t.Fatalf("user lookups = %d, want 1", userLookups)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/directory/v1/users" {
+			t.Fatalf("path = %q, want /admin/directory/v1/users", r.URL.Path)
+		}
+		http.Error(w, `{"error":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.com",
+		"family":   familyUser,
+		"token":    "test-token",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "google_workspace API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
 	}
 }
 

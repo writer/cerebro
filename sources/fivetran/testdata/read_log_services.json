@@ -1,0 +1,39 @@
+[
+  {
+    "id": "fivetran-log_services-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.log_services",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/log_services/v1",
+    "payload": {
+      "id": "log-service-1",
+      "service": "splunk",
+      "name": "Splunk audit export",
+      "status": "enabled",
+      "family": "log_services",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/log_services/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "log-service-1",
+      "external_id": "log-service-1",
+      "family": "log_services",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "log_services",
+      "record_class": "asset",
+      "resource_type": "log_service",
+      "resource_id": "log-service-1",
+      "resource_name": "Splunk audit export",
+      "resource_urn": "urn:cerebro:tenant:fivetran_log_services:log-service-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "service": "splunk",
+      "status": "enabled"
+    }
+  }
+]

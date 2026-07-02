@@ -55,7 +55,7 @@ func accountFamilies() []jsonapi.Family {
 			IDKeys:           []string{"id"},
 			TimestampKeys:    []string{"created_on", "modified_on"},
 			ListKeys:         cloudflareResultListKeys(),
-			Attributes:       map[string]string{"script_id": "id", "account_id": "account_id", "created_on": "created_on", "modified_on": "modified_on", "compatibility_date": "compatibility_date", "tags": "tags", "bindings": "bindings", "placement": "placement"},
+			Attributes:       map[string]string{"script_id": "id", "account_id": "account_id", "created_on": "created_on", "modified_on": "modified_on", "compatibility_date": "compatibility_date", "tags": "tags", "bindings": "bindings", "placement": "placement", "resource_name": "id|name"},
 			StaticAttributes: cloudflareStaticAttributes(),
 		},
 		{

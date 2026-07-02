@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-group-DGROUP1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.group",
+    "schema_ref": "duo/group/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"group_id": "DGROUP1", "name": "Engineering"},
+    "attributes": {"external_id": "DGROUP1", "family": "group", "provider": "duo", "source_provider": "duo", "source_product": "duo", "group_id": "DGROUP1", "name": "Engineering"}
+  }
+]

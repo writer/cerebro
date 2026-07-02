@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/oneloginapi"
 )
 
 //go:embed testdata/*.json
@@ -25,7 +26,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{"audit_events", "groups", "users"} {
+	for _, family := range oneloginapi.FamilyNames() {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err

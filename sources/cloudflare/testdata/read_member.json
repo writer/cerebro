@@ -1,1 +1,47 @@
-[{"id":"cloudflare-member-member-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.member","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/member/v1","payload":{"id":"member-1","status":"accepted","user":{"email":"alice@example.com"},"roles":[{"id":"role-1","name":"Administrator"}]},"attributes":{"account_id":"acct-1","member_id":"member-1","email":"alice@example.com","status":"accepted","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "email": "alice@example.com",
+      "external_id": "member-1",
+      "family": "member",
+      "member_id": "member-1",
+      "resource_id": "member-1",
+      "resource_name": "Alice Example",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_member:member-1",
+      "roles": "{\"id\":\"role-admin\",\"name\":\"Administrator\"}",
+      "source_event_id": "member-1",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "status": "accepted",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-member-event-1",
+    "kind": "cloudflare.member",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "member-1",
+      "status": "accepted",
+      "roles": [
+        {
+          "id": "role-admin",
+          "name": "Administrator"
+        }
+      ],
+      "user": {
+        "id": "user-1",
+        "email": "alice@example.com",
+        "name": "Alice Example"
+      },
+      "account": {
+        "id": "account-1"
+      }
+    },
+    "schema_ref": "cloudflare/member/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]
