@@ -76,6 +76,26 @@ func TestRecordFromRawUsesIDTemplate(t *testing.T) {
 	}
 }
 
+func TestAttributesForBoolStatusAttributes(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "notifications",
+		IDKeys: []string{"id"},
+	}, json.RawMessage(`{"id":"notification-1","active":false}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	attrs := attributesFor("jsonapi", settings{tenantID: "tenant"}, Family{
+		Name:       "notifications",
+		Attributes: map[string]string{"alert_status": "status"},
+		Config: FamilyConfig{
+			BoolStatusAttributes: map[string]string{"alert_status": "active"},
+		},
+	}, record)
+	if got := attrs["alert_status"]; got != "inactive" {
+		t.Fatalf("alert_status = %q, want inactive; attrs=%#v", got, attrs)
+	}
+}
+
 func TestMergedRecordOmitsSyntheticRecordIDFromRawPayload(t *testing.T) {
 	family := Family{
 		Name:   "audit_logs",

@@ -955,6 +955,9 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	for attr, path := range family.Attributes {
 		addAttribute(attrs, attr, firstValueString(record.Values, path))
 	}
+	for attr, path := range family.Config.BoolStatusAttributes {
+		addAttribute(attrs, attr, boolStatusValue(firstValue(record.Values, path)))
+	}
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
 		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record))
 	}
@@ -1191,11 +1194,43 @@ func rawString(raw json.RawMessage) string {
 }
 
 func firstValueString(values map[string]any, paths ...string) string {
+	return valueString(firstValue(values, paths...))
+}
+
+func firstValue(values map[string]any, paths ...string) any {
 	for _, path := range paths {
 		for _, candidate := range attributePaths(path) {
-			if value := valueString(valueAt(values, candidate)); value != "" {
+			value := valueAt(values, candidate)
+			if valueString(value) != "" {
 				return value
 			}
+		}
+	}
+	return nil
+}
+
+func boolStatusValue(value any) string {
+	switch typed := value.(type) {
+	case bool:
+		if typed {
+			return "active"
+		}
+		return "inactive"
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		if err == nil {
+			if parsed {
+				return "active"
+			}
+			return "inactive"
+		}
+	case json.Number:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed.String()))
+		if err == nil {
+			if parsed {
+				return "active"
+			}
+			return "inactive"
 		}
 	}
 	return ""
