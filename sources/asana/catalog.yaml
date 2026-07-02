@@ -49,6 +49,19 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [identity_access, asset_inventory]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+      known_unsupported_fields:
+        - workspace guest access may need additional workspace membership context
       notes:
         - Reads `GET /users` with optional workspace filtering and preserves user gid, name, and email fields for identity matching and access review.
     - id: projects
@@ -61,6 +74,19 @@ coverage_contract:
       control_domains: [asset_inventory]
       notes:
         - Reads `GET /projects` with workspace filtering and emits project gid, name, archive state, and timestamps as project inventory.
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "3"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.12
+      known_unsupported_fields:
+        - task and attachment inventory are outside this project-level snapshot
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -71,6 +97,21 @@ coverage_contract:
       control_domains: [logging_monitoring]
       notes:
         - Reads `GET /workspaces/{workspace_gid}/audit_log_events`; each event keeps actor, resource, event type, and observed timestamp for workspace change review.
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "8"
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AU-6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+      known_unsupported_fields:
+        - audit log availability depends on Asana plan and workspace audit permissions
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

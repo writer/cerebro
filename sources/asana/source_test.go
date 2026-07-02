@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -28,11 +29,23 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.URL.Path != "/users" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("workspace"); got != "workspace-1" {
+			t.Fatalf("workspace query = %q, want workspace-1", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"gid": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{
+				"gid":           "1200123456789012",
+				"resource_type": "user",
+				"name":          "Alice Example",
+				"display_name":  "Display Fallback",
+				"email":         "alice@example.test",
+				"created_at":    "2026-06-01T00:00:00Z",
+			}},
+		})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token", "workspace_gid": "workspace-1"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -50,6 +63,15 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	if got := event.Attributes["workspace_gid"]; got != "workspace-1" {
+		t.Fatalf("workspace_gid = %q, want workspace-1", got)
+	}
+	if got := event.Attributes["display_name"]; got != "Alice Example" {
+		t.Fatalf("display_name = %q, want Asana name", got)
+	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:runtime_users:1200123456789012" {
+		t.Fatalf("resource_urn = %q, want synthesized user URN", got)
 	}
 }
 
@@ -136,7 +158,134 @@ func TestRuntimeUsesAsanaAPIPathsAndOffsetPagination(t *testing.T) {
 	}
 }
 
-func TestNewFixtureReplaysAsanaFamilies(t *testing.T) {
+func TestProjectsUseModifiedAtForOccurredAt(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/projects" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("workspace"); got != "workspace-1" {
+			t.Fatalf("workspace query = %q, want workspace-1", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"gid":           "project-1",
+				"resource_type": "project",
+				"name":          "Security Evidence",
+				"created_at":    "2026-06-01T00:00:00Z",
+				"modified_at":   "2026-06-03T00:00:00Z",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        familyProjects,
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if got := event.Attributes["observed_at"]; got != "2026-06-03T00:00:00Z" {
+		t.Fatalf("observed_at = %q, want modified_at", got)
+	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:runtime_projects:project-1" {
+		t.Fatalf("resource_urn = %q, want synthesized project URN", got)
+	}
+	want := time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC)
+	if got := event.OccurredAt.AsTime(); !got.Equal(want) {
+		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
+func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/workspaces/workspace-1/audit_log_events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":          "audit-1",
+				"created_at":  "2026-06-01T00:00:00Z",
+				"event_type":  "project.created",
+				"actor":       map[string]any{"id": "legacy-user-1", "gid": "user-1", "email": "user@example.test", "name": "User One"},
+				"resource":    map[string]any{"id": "legacy-project-1", "gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
+				"target_name": "Target Fallback",
+			}, {
+				"id":         "audit-2",
+				"created_at": "2026-06-02T00:00:00Z",
+				"event_type": "project.deleted",
+				"actor":      map[string]any{"gid": "user-2", "email": "user2@example.test", "name": "User Two"},
+				"target":     map[string]any{"gid": "target-project-2", "id": "legacy-target-project-2", "name": "Fallback Project"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        familyAuditEvents,
+		"token":         "test-token",
+		"workspace_gid": "workspace-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for key, want := range map[string]string{
+		"actor_id":      "user-1",
+		"created_at":    "2026-06-01T00:00:00Z",
+		"observed_at":   "2026-06-01T00:00:00Z",
+		"resource_id":   "project-1",
+		"resource_name": "Security Evidence",
+		"resource_type": "project",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q; attrs=%#v", key, got, want, attrs)
+		}
+	}
+	if got := attrs["resource_urn"]; got != "" {
+		t.Fatalf("resource_urn = %q, want empty unless provider sends resource_urn", got)
+	}
+	wantOccurredAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(wantOccurredAt) {
+		t.Fatalf("OccurredAt = %s, want %s", got.Format(time.RFC3339), wantOccurredAt.Format(time.RFC3339))
+	}
+	fallbackAttrs := pull.Events[1].Attributes
+	if got := fallbackAttrs["resource_id"]; got != "target-project-2" {
+		t.Fatalf("target fallback resource_id = %q, want target gid; attrs=%#v", got, fallbackAttrs)
+	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
 		t.Fatalf("NewFixture() error = %v", err)
@@ -160,7 +309,7 @@ func TestNewFixtureReplaysAsanaFamilies(t *testing.T) {
 	}{
 		{family: familyUsers, kind: "asana.users", wantResourceURN: "urn:cerebro:tenant:runtime_users:user-1"},
 		{family: familyProjects, kind: "asana.projects", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
-		{family: familyAuditEvents, kind: "asana.audit_events", wantResourceURN: "urn:cerebro:tenant:runtime_projects:project-1"},
+		{family: familyAuditEvents, kind: "asana.audit_events"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
