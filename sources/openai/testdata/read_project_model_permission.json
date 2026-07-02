@@ -1,65 +1,26 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/organization/projects/{project_id}/model_permissions",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/openai/project_model_permission/source-openai-project_model_permission-1",
-      "external_id": "source-openai-project_model_permission-1",
-      "family": "project_model_permission",
-      "mode": "mode-source-openai-project_model_permission-1",
-      "model_ids": "model-ids-source-openai-project_model_permission-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "policy_id": "source-openai-policy-1",
-      "policy_name": "Openai Project Model Permission Fixture",
-      "project_id": "project-id-source-openai-project_model_permission-1",
-      "provider": "openai",
-      "resource_id": "source-openai-project_model_permission-1",
-      "resource_name": "Openai Project Model Permission Fixture",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:openai_project_model_permission:source-openai-project_model_permission-1",
-      "source_event_id": "source-openai-project_model_permission-1",
-      "source_product": "openai",
-      "source_provider": "openai",
-      "source_system": "openai",
-      "status": "active",
-      "tenant_id": "tenant"
-    },
-    "id": "source-openai-project_model_permission-event-1",
+    "id": "openai-project_model_permission-event-1",
     "kind": "openai.project_model_permission",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/organization/projects/{project_id}/model_permissions",
-      "event_id": "source-openai-project_model_permission-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/openai/project_model_permission/source-openai-project_model_permission-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/openai/project_model_permission/source-openai-project_model_permission-1",
-      "family": "project_model_permission",
-      "id": "source-openai-project_model_permission-1",
-      "mode": "mode-source-openai-project_model_permission-1",
-      "model_ids": "model-ids-source-openai-project_model_permission-1",
-      "name": "Openai Project Model Permission Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "policy_id": "source-openai-policy-1",
-      "policy_name": "Openai Project Model Permission Fixture",
-      "project_id": "project-id-source-openai-project_model_permission-1",
-      "resource_id": "source-openai-project_model_permission-1",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:openai_project_model_permission:source-openai-project_model_permission-1",
-      "schema_ref": "openai/project_model_permission/v1",
-      "source_id": "openai",
-      "status": "active",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "object": "project.model_permissions",
+      "project_id": "proj_prod_01",
+      "mode": "allow",
+      "model_ids": [
+        "gpt-4o",
+        "gpt-4o-mini"
+      ]
     },
     "schema_ref": "openai/project_model_permission/v1",
     "source_id": "openai",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "openai",
+      "external_id": "proj_prod_01:model_permissions",
+      "project_id": "proj_prod_01",
+      "mode": "allow",
+      "model_ids": "[\"gpt-4o\",\"gpt-4o-mini\"]"
+    }
   }
 ]
