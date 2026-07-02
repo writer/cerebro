@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"context"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -91,5 +92,69 @@ func TestFivetranRegistryContainsProviderFamilies(t *testing.T) {
 		if registry.projectors[stale] != nil {
 			t.Fatalf("stale projector registered for %s", stale)
 		}
+	}
+}
+
+func TestFivetranMembershipEdgesUseStandaloneEntityURNs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "team-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.teams",
+			Attributes: map[string]string{
+				"group_id":   "team-1",
+				"group_name": "Data Platform",
+				"team_id":    "team-1",
+			},
+		},
+		{
+			Id:       "connection-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.connections",
+			Attributes: map[string]string{
+				"resource_id":   "connection-1",
+				"resource_name": "Salesforce production sync",
+				"resource_type": "connection",
+			},
+		},
+		{
+			Id:       "membership-event",
+			TenantId: "writer",
+			SourceId: "fivetran",
+			Kind:     "fivetran.team_connections",
+			Attributes: map[string]string{
+				"member_id":     "connection-1",
+				"member_type":   "connection",
+				"resource_name": "Salesforce production sync",
+				"role":          "owner",
+				"team_id":       "team-1",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	teamURN := "urn:cerebro:writer:fivetran_group:team-1"
+	connectionURN := "urn:cerebro:writer:runtime_fivetran_connection:connection-1"
+	assertProjectedEntityType(t, state, teamURN, "fivetran.group")
+	assertProjectedEntityType(t, state, connectionURN, "runtime.fivetran.connection")
+	assertProjectedLink(t, state, connectionURN, relationMemberOf, teamURN)
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_user:team-1")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_user:connection-1")
+}
+
+func TestFivetranRoleTargetsUseRuntimeAssetURNs(t *testing.T) {
+	if got, want := fivetranPrincipalOrAssetURN("writer", "role", "role-1"), "urn:cerebro:writer:runtime_fivetran_role:role-1"; got != want {
+		t.Fatalf("role URN = %q, want %q", got, want)
+	}
+	if got, want := fivetranEntityType("role"), "runtime.fivetran.role"; got != want {
+		t.Fatalf("role entity type = %q, want %q", got, want)
 	}
 }

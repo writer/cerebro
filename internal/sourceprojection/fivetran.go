@@ -216,9 +216,11 @@ func addFivetranMembershipEntity(entities map[string]*ports.ProjectedEntity, ten
 }
 
 func fivetranPrincipalOrAssetURN(tenantID string, entityType string, id string) string {
-	switch identityPrincipalType(entityType) {
-	case "user", "group", "role":
-		return identityPrincipalURN(tenantID, fivetranIdentityProfile.Provider, entityType, id, "")
+	switch fivetranIdentityKind(entityType) {
+	case "user":
+		return identityUserURN(tenantID, fivetranIdentityProfile.Provider, id, "")
+	case "group":
+		return identityGroupURN(tenantID, fivetranIdentityProfile.Provider, id, "")
 	default:
 		return fivetranRuntimeAssetURN(tenantID, entityType, id)
 	}
@@ -232,11 +234,20 @@ func fivetranRuntimeAssetURN(tenantID string, resourceType string, id string) st
 }
 
 func fivetranEntityType(entityType string) string {
-	switch identityPrincipalType(entityType) {
-	case "user", "group", "role":
-		return fivetranIdentityProfile.entityType(identityPrincipalType(entityType))
+	if identityKind := fivetranIdentityKind(entityType); identityKind != "" {
+		return fivetranIdentityProfile.entityType(identityKind)
+	}
+	return "runtime.fivetran." + strings.ReplaceAll(normalizeCloudType(entityType), "_", ".")
+}
+
+func fivetranIdentityKind(entityType string) string {
+	switch normalizeCloudType(entityType) {
+	case "user", "users":
+		return "user"
+	case "group", "groups", "team", "teams":
+		return "group"
 	default:
-		return "runtime.fivetran." + strings.ReplaceAll(normalizeCloudType(entityType), "_", ".")
+		return ""
 	}
 }
 
