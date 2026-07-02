@@ -11,16 +11,16 @@ public detections,1595
 non-policy detections,86
 finding-control rows,10234
 finding-tag rows,38601
-source-coverage rows,4747
+source-coverage rows,5084
 finding compliance review rows,1595
 unique finding review tags,1575
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
-detections missing source coverage refs,341
-detections source-backed,457
-detections partial source-backed,797
-detections control-only,341
+detections missing source coverage refs,328
+detections source-backed,462
+detections partial source-backed,805
+detections control-only,328
 
 evidence mode,rules
 cel,992

@@ -138,6 +138,15 @@ func TestKolideHostFailingComplianceChecksDeprovisionResolves(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, newKolideHostFailingComplianceChecksRule(), open, offboarded, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestKolideHostDeprovisioningUsesLifecycleStatusNotAuthState(t *testing.T) {
+	if kolideHostDeprovisioned(map[string]string{"auth_state": "inactive"}) {
+		t.Fatal("auth_state should not be treated as lifecycle deprovisioning status")
+	}
+	if !kolideHostDeprovisioned(map[string]string{"status": "inactive"}) {
+		t.Fatal("inactive lifecycle status should deprovision host")
+	}
+}
+
 func TestKolideHostFailingComplianceChecksReopensOnRecurrence(t *testing.T) {
 	rule := newKolideHostFailingComplianceChecksRule()
 	runtime := &cerebrov1.SourceRuntime{
