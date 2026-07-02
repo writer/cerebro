@@ -5,8 +5,8 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
       "id": "fi_aws_oidc_01",
-      "issuer": "https://token.actions.githubusercontent.com",
-      "name": "GitHub OIDC",
+      "issuer": "https://token.actions.example.test",
+      "name": "Example OIDC",
       "status": "active",
       "created_at": "2026-06-01T00:00:00Z",
       "updated_at": "2026-06-01T01:00:00Z"
@@ -17,8 +17,8 @@
     "attributes": {
       "source_product": "anthropic",
       "federation_issuer_id": "fi_aws_oidc_01",
-      "issuer": "https://token.actions.githubusercontent.com",
-      "name": "GitHub OIDC",
+      "issuer": "https://token.actions.example.test",
+      "name": "Example OIDC",
       "status": "active",
       "created_at": "2026-06-01T00:00:00Z",
       "updated_at": "2026-06-01T01:00:00Z"
