@@ -591,6 +591,62 @@ func FamilyName(cfg sourcecdk.Config) string {
 	return DefaultFamily
 }
 
+func PathParamValues(cfg sourcecdk.Config) (string, []string) {
+	switch FamilyName(cfg) {
+	case FamilyUserConnections, FamilyUserGroups:
+		return "user_id", ConfigListValues(cfg, "user_ids", "user_id")
+	case FamilyTeamUsers, FamilyTeamConnections, FamilyTeamGroups:
+		return "team_id", ConfigListValues(cfg, "team_ids", "team_id")
+	case FamilyGroupUsers, FamilyGroupConnections, FamilyGroupPublicKeys, FamilyGroupServiceAccounts:
+		return "group_id", ConfigListValues(cfg, "group_ids", "group_id")
+	case FamilyConnectionCertificates, FamilyConnectionFingerprints, FamilyConnectionSchemas, FamilyConnectionState:
+		return "connection_id", ConfigListValues(cfg, "connection_ids", "connection_id")
+	case FamilyDestinationCertificates, FamilyDestinationFingerprints:
+		return "destination_id", ConfigListValues(cfg, "destination_ids", "destination_id")
+	case FamilyExternalSecretManagerAssignments:
+		return "external_secret_manager_id", ConfigListValues(cfg, "external_secret_manager_ids", "external_secret_manager_id", "esm_ids", "esm_id")
+	case FamilyProxyAgentConnections:
+		return "proxy_agent_id", ConfigListValues(cfg, "proxy_agent_ids", "proxy_agent_id", "agent_ids", "agent_id")
+	case FamilyConnectorMetadataDetails:
+		return "service", ConfigListValues(cfg, "connector_services", "services", "service")
+	case FamilyTransformationPackageDetails:
+		return "package_definition_id", ConfigListValues(cfg, "package_definition_ids", "package_definition_id")
+	default:
+		return "", nil
+	}
+}
+
+func ParentFamilyForParam(param string) (string, string) {
+	switch param {
+	case "user_id":
+		return FamilyUsers, "user_id"
+	case "team_id":
+		return FamilyTeams, "team_id"
+	case "group_id":
+		return FamilyGroups, "group_id"
+	case "connection_id":
+		return FamilyConnections, "resource_id"
+	case "destination_id":
+		return FamilyDestinations, "resource_id"
+	case "external_secret_manager_id":
+		return FamilyExternalSecretManagers, "resource_id"
+	case "proxy_agent_id":
+		return FamilyProxyAgents, "resource_id"
+	case "service":
+		return FamilyConnectorMetadata, "service"
+	case "package_definition_id":
+		return FamilyTransformationPackageMetadata, "resource_id"
+	default:
+		return "", ""
+	}
+}
+
+func ConfigWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.Config {
+	values := cfg.Values()
+	values[key] = value
+	return sourcecdk.NewConfig(values)
+}
+
 func ConfigListValues(cfg sourcecdk.Config, keys ...string) []string {
 	values := []string{}
 	for _, key := range keys {
@@ -601,6 +657,23 @@ func ConfigListValues(cfg sourcecdk.Config, keys ...string) []string {
 		}
 	}
 	return values
+}
+
+func CompactStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, value := range values {
+		value = FirstNonEmpty(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func FirstNonEmpty(values ...string) string {
