@@ -1,14 +1,31 @@
 {
   "data": [
     {
-      "id": "device-1",
-      "name": "mba-1",
-      "hostname": "mba-1.writer.test",
-      "serial_number": "SERIAL1",
-      "owner": {
-        "email": "alice@writer.com"
+      "id": "device_01",
+      "name": "ENG-MBA-01",
+      "registered_at": "2026-05-01T12:00:00Z",
+      "last_authenticated_at": "2026-05-29T17:05:00Z",
+      "last_seen_at": "2026-05-30T08:30:00Z",
+      "registered_owner_info": {
+        "identifier": "person_01",
+        "location": "https://api.kolide.example.test/people/person_01"
       },
-      "updated_at": "2026-05-21T00:00:00Z"
+      "operating_system": "macOS 15.5",
+      "hardware_model": "MacBook Pro",
+      "serial": "C02KOLIDE001",
+      "hardware_uuid": "E7C0B9B1-8E76-4D24-A423-589A2B035C12",
+      "auth_state": "Good",
+      "auth_configuration": {
+        "device_id": "device_01",
+        "authentication_mode": "only_registered_owner"
+      },
+      "device_type": "Mac",
+      "form_factor": "Computer"
     }
-  ]
+  ],
+  "pagination": {
+    "current_cursor": "",
+    "next_cursor": "",
+    "count": 1
+  }
 }

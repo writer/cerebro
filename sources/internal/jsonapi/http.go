@@ -106,6 +106,9 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		if err != nil {
 			return nil, "", fmt.Errorf("%s %s: %w", s.options.SourceID, settings.family, err)
 		}
+		if filter := s.options.RecordFilters[family.Name]; filter != nil && !filter(record.Values) {
+			continue
+		}
 		if record.ID != "" {
 			records = append(records, record)
 		}
