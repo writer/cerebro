@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -212,6 +213,41 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertFalse(fake_process.killed)
         self.assertEqual(fake_process.wait_calls, [3, 10])
         self.assertIn("graph health verification timed out after 3s", result.diagnostics)
+
+    def test_stream_graph_health_timeout_terminates_process_group(self) -> None:
+        class FakeStreamProcess:
+            pid = 4321
+
+            def __init__(self) -> None:
+                self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
+                self.wait_calls: list[int | None] = []
+
+            def wait(self, timeout: int | None = None) -> int:
+                self.wait_calls.append(timeout)
+                if timeout == 3:
+                    raise subprocess.TimeoutExpired("fake graph health", timeout)
+                return 124
+
+        fake_process = FakeStreamProcess()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch("scripts.run_aws_deploy_verifications.subprocess.Popen", return_value=fake_process) as popen,
+                patch("scripts.run_aws_deploy_verifications.os.getpgid", return_value=9876),
+                patch("scripts.run_aws_deploy_verifications.os.killpg") as killpg,
+            ):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = run_aws_deploy_verifications._stream_graph_health(
+                        ["python", "scripts/verify_graph_health_ecs.py"],
+                        Path(temp_dir) / "graph.tsv",
+                        timeout_seconds=3,
+                    )
+
+        self.assertEqual(result.status, 124)
+        popen.assert_called_once()
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        killpg.assert_called_once_with(9876, signal.SIGTERM)
+        self.assertEqual(fake_process.wait_calls, [3, 10])
 
     def test_graph_health_failure_artifact_records_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

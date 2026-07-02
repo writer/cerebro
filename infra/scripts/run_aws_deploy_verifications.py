@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -170,10 +171,31 @@ def _start_process(command: list[str]) -> subprocess.Popen[str]:
     return subprocess.Popen(command, text=True)
 
 
+def _terminate_process_tree(process: subprocess.Popen[str], *, timeout_seconds: int) -> None:
+    try:
+        pgid = os.getpgid(process.pid)
+    except (AttributeError, ProcessLookupError, OSError):
+        process.terminate()
+        try:
+            process.wait(timeout=timeout_seconds)
+            return
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            return
+
+    os.killpg(pgid, signal.SIGTERM)
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        os.killpg(pgid, signal.SIGKILL)
+        process.wait()
+
+
 def _stream_graph_health(command: list[str], output_path: Path, timeout_seconds: int | None = None) -> GraphHealthResult:
     print(f"Running: {' '.join(command)}", file=sys.stderr, flush=True)
     with output_path.open("w", encoding="utf-8") as output:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         assert process.stdout is not None
         assert process.stderr is not None
         stderr_lines: list[str] = []
@@ -198,12 +220,7 @@ def _stream_graph_health(command: list[str], output_path: Path, timeout_seconds:
         except subprocess.TimeoutExpired:
             diagnostics = f"ERROR: graph health verification timed out after {timeout_seconds}s"
             print(diagnostics, file=sys.stderr, flush=True)
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            _terminate_process_tree(process, timeout_seconds=10)
             status = 124
             stderr_lines.append(f"{diagnostics}; command: {' '.join(command)}\n")
         stdout_thread.join()
