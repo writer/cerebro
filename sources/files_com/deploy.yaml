@@ -11,3 +11,102 @@ runtimes:
       stale_after_seconds: "86400"
       per_page: "100"
       api_token: env:FILES_COM_API_TOKEN
+  - localId: api-key
+    config:
+      family: api_key
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /api_keys
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: group
+    config:
+      family: group
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /groups
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: group-user
+    config:
+      family: group_user
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /group_users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: action-notification-export-result
+    config:
+      family: action_notification_export_result
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /action_notification_export_results
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: permission
+    config:
+      family: permission
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /permissions
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: login
+    config:
+      family: login
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /history/login
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: site-api-key
+    config:
+      family: site_api_key
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /site/api_keys
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: user-api-key
+    config:
+      family: user_api_key
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /user/api_keys
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: exavault-reserved
+    config:
+      family: exavault_reserved
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /ip_addresses/exavault-reserved
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: user-group
+    config:
+      family: user_group
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /user/groups
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN
+  - localId: user
+    config:
+      family: user
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      api_token: env:FILES_COM_API_TOKEN

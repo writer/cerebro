@@ -122,6 +122,16 @@ RETURN b.urn AS urn LIMIT 25`,
 			reason: "row-expanding",
 		},
 		{
+			name:   "variable length traversal",
+			cypher: `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION*1..1000]->(dst:Entity {tenant_id: $tenant_id}) RETURN dst.urn LIMIT 1`,
+			reason: "variable-length",
+		},
+		{
+			name:   "unbounded variable length traversal",
+			cypher: `MATCH (src:Entity {tenant_id: $tenant_id})<-[r:RELATION*]-(dst:Entity {tenant_id: $tenant_id}) RETURN dst.urn LIMIT 1`,
+			reason: "variable-length",
+		},
+		{
 			name:   "collect expansion before limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN collect(e.attributes_json) AS attributes LIMIT 1`,
 			reason: "row-expanding",

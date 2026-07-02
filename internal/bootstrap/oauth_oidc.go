@@ -224,13 +224,13 @@ func (c *mcpOAuthOIDCClient) verifyIDToken(ctx context.Context, token string, no
 	if subject == "" {
 		return mcpoauth.Identity{}, mcpoauthOAuthError("invalid_grant", "upstream id_token missing subject", http.StatusBadGateway)
 	}
-	email := firstNonEmpty(oauthStringClaim(claims, "email"), oauthStringClaim(claims, "preferred_username"), subject)
-	return mcpoauth.Identity{
-		Subject: subject,
-		Email:   email,
-		Name:    oauthStringClaim(claims, "name"),
-		Groups:  oauthStringListClaim(claims, c.cfg.GroupsClaim),
-	}, nil
+	email, _ := mcpoauth.NewVerifiedEmail(oauthStringClaim(claims, "email"), oauthBoolClaim(claims, "email_verified"))
+	return mcpoauth.NewIdentity(
+		subject,
+		email,
+		oauthStringClaim(claims, "name"),
+		oauthStringListClaim(claims, c.cfg.GroupsClaim),
+	), nil
 }
 
 type oauthOIDCDiscovery struct {
@@ -503,6 +503,15 @@ func oauthInt64Claim(claims map[string]any, key string) int64 {
 	default:
 		return 0
 	}
+}
+
+func oauthBoolClaim(claims map[string]any, key string) bool {
+	value, ok := claims[key]
+	if !ok {
+		return false
+	}
+	typed, ok := value.(bool)
+	return ok && typed
 }
 
 func oauthStringListClaim(claims map[string]any, key string) []string {

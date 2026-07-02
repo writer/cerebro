@@ -17,3 +17,51 @@ runtimes:
       per_page: "100"
       access_key: env:AWS_BEDROCK_ACCESS_KEY
       secret_key: env:AWS_BEDROCK_SECRET_KEY
+  - localId: custom-models
+    config:
+      region: env:AWS_BEDROCK_REGION
+      service: env:AWS_BEDROCK_SERVICE
+      family: custom_models
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /custom-models
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      access_key: env:AWS_BEDROCK_ACCESS_KEY
+      secret_key: env:AWS_BEDROCK_SECRET_KEY
+  - localId: guardrails
+    config:
+      region: env:AWS_BEDROCK_REGION
+      service: env:AWS_BEDROCK_SERVICE
+      family: guardrails
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /guardrails
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      access_key: env:AWS_BEDROCK_ACCESS_KEY
+      secret_key: env:AWS_BEDROCK_SECRET_KEY
+  - localId: model-customization-jobs
+    config:
+      region: env:AWS_BEDROCK_REGION
+      service: env:AWS_BEDROCK_SERVICE
+      family: model_customization_jobs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /model-customization-jobs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      access_key: env:AWS_BEDROCK_ACCESS_KEY
+      secret_key: env:AWS_BEDROCK_SECRET_KEY
+  - localId: provisioned-model-throughputs
+    config:
+      region: env:AWS_BEDROCK_REGION
+      service: env:AWS_BEDROCK_SERVICE
+      family: provisioned_model_throughputs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /provisioned-model-throughputs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      access_key: env:AWS_BEDROCK_ACCESS_KEY
+      secret_key: env:AWS_BEDROCK_SECRET_KEY
