@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-auth-auth-1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.authentication_log",
+    "schema_ref": "duo/authentication_log/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"txid": "auth-1", "event_type": "authentication"},
+    "attributes": {"external_id": "auth-1", "family": "authentication_log", "provider": "duo", "source_provider": "duo", "source_product": "duo", "event_type": "authentication", "actor_id": "DUUSER1", "actor_name": "alice", "resource_id": "DIAPP1", "resource_type": "application", "factor": "duo_push", "result": "SUCCESS"}
+  }
+]

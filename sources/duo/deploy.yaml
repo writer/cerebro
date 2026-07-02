@@ -1,0 +1,149 @@
+sourceId: duo
+secretKeys:
+  - DUO_TENANT_ID
+  - DUO_BASE_URL
+  - DUO_CLIENT_ID
+  - DUO_CLIENT_SECRET
+  - DUO_ACTIVITY_MINTIME
+  - DUO_ACTIVITY_MAXTIME
+  - DUO_AUTH_MINTIME
+  - DUO_AUTH_MAXTIME
+runtimes:
+  - localId: users
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: user
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: groups
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: group
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/groups
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: administrators
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: administrator
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/admins
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: endpoints
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: endpoint
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/endpoints
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: phones
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: phone
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/phones
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: tokens
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: token
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/tokens
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: web-authn-credentials
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: web_authn_credential
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/webauthncredentials
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: roles
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: role
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v1/admin_roles
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: applications
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: application
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v3/integrations
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+  - localId: audit-events
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: audit_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v2/logs/activity
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+      mintime: env:DUO_ACTIVITY_MINTIME
+      maxtime: env:DUO_ACTIVITY_MAXTIME
+      sort: ts:asc
+  - localId: authentication-logs
+    config:
+      tenant_id: env:DUO_TENANT_ID
+      base_url: env:DUO_BASE_URL
+      family: authentication_log
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /admin/v2/logs/authentication
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      client_id: env:DUO_CLIENT_ID
+      client_secret: env:DUO_CLIENT_SECRET
+      mintime: env:DUO_AUTH_MINTIME
+      maxtime: env:DUO_AUTH_MAXTIME
+      sort: ts:asc

@@ -1,1 +1,47 @@
-[{"id":"cloudflare-zone-ruleset-ruleset-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.zone_ruleset","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/zone_ruleset/v1","payload":{"id":"ruleset-1","name":"Zone WAF","kind":"zone","phase":"http_request_firewall_custom"},"attributes":{"zone_id":"zone-1","ruleset_id":"ruleset-1","name":"Zone WAF","kind":"zone","phase":"http_request_firewall_custom","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "external_id": "zone-ruleset-1",
+      "family": "zone_ruleset",
+      "kind": "zone",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "name": "Zone WAF",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "phase": "http_request_firewall_custom",
+      "resource_id": "zone-ruleset-1",
+      "resource_name": "Zone WAF",
+      "resource_type": "zone_ruleset",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone_ruleset:zone-ruleset-1",
+      "rules": "{\"action\":\"challenge\",\"id\":\"zone-rule-1\"}",
+      "ruleset_id": "zone-ruleset-1",
+      "source_event_id": "zone-ruleset-1",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant",
+      "version": "3",
+      "zone_id": "zone-1"
+    },
+    "id": "cloudflare-zone_ruleset-event-1",
+    "kind": "cloudflare.zone_ruleset",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "zone-ruleset-1",
+      "name": "Zone WAF",
+      "kind": "zone",
+      "phase": "http_request_firewall_custom",
+      "version": "3",
+      "last_updated": "2026-06-01T00:00:00Z",
+      "rules": [
+        {
+          "id": "zone-rule-1",
+          "action": "challenge"
+        }
+      ]
+    },
+    "schema_ref": "cloudflare/zone_ruleset/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

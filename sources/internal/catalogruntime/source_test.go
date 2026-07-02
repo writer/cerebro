@@ -260,6 +260,15 @@ func TestReadDefinitionFixtureSeedsRequiredConfigFields(t *testing.T) {
 	}
 }
 
+func TestSelectorListKeySupportsNestedSelectors(t *testing.T) {
+	if got := selectorListKey("$.response.items[*]"); got != "response.items" {
+		t.Fatalf("selectorListKey() = %q, want response.items", got)
+	}
+	if got := selectorListKey("$.response.authlogs[*]"); got != "response.authlogs" {
+		t.Fatalf("selectorListKey() = %q, want response.authlogs", got)
+	}
+}
+
 func TestSourceDefinitionUsesFamilyBaseURLOverride(t *testing.T) {
 	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("default server received family override request at %q", r.URL.Path)
@@ -1429,6 +1438,87 @@ func TestSourceAuthModels(t *testing.T) {
 				t.Fatalf("tokenRequests = %d, want 1", tokenRequests)
 			}
 		})
+	}
+}
+
+func TestSourceFamilyDuoHMACV5Override(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/v3/integrations" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Date"); got == "" {
+			t.Fatal("Date header is empty")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Authorization"), "Basic "))
+		if err != nil {
+			t.Fatalf("decode Authorization: %v", err)
+		}
+		username, signature, ok := strings.Cut(string(decoded), ":")
+		if !ok {
+			t.Fatalf("Authorization payload = %q, want username:signature", decoded)
+		}
+		if username != "DIXXXXXXXXXXXXXXXXXX" {
+			t.Fatalf("Duo integration key = %q, want DIXXXXXXXXXXXXXXXXXX", username)
+		}
+		if len(signature) != 128 {
+			t.Fatalf("Duo signature length = %d, want SHA-512 hex signature", len(signature))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response": []map[string]any{{
+				"integration_key": "DIAPP",
+				"name":            "Admin Panel",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-duo",
+		TenantID:    "tenant",
+		SourceID:    "duo",
+		DisplayName: "Duo",
+		Auth: connectordefinitions.AuthSpec{
+			Model: "duo_hmac",
+			CredentialFields: []connectordefinitions.Field{
+				{Key: "client_id", Secret: true, ReferenceOnly: true},
+				{Key: "client_secret", Secret: true, ReferenceOnly: true},
+			},
+		},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: server.URL,
+			Verification: &connectordefinitions.VerificationSpec{
+				Path: "/admin/v1/users",
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "application",
+			Path:           "/admin/v3/integrations",
+			Config:         &connectordefinitions.FamilyConfigSpec{AuthModel: "duo_hmac_v5"},
+			RecordSelector: "$.response[*]",
+			IDField:        "integration_key",
+			Event: connectordefinitions.EventMappingSpec{
+				Kind:      "duo.application",
+				SchemaRef: "duo/application/v1",
+			},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"family":        "application",
+		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
+		"client_secret": "deadbeefsecret",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 }
 

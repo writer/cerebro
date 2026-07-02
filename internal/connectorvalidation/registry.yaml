@@ -25,19 +25,19 @@ entries:
         grade: fixture_validated
         evidence_refs:
           - internal/connectorvalidation/testdata/cassettes/box/users.json
-  - source_id: duo_security
+  - source_id: duo
     grade: fixture_validated
     last_validated_at: "2026-06-28T00:00:00Z"
     evidence:
       - type: fixture
-        ref: internal/connectorvalidation/testdata/cassettes/duo_security/users.json
-        resource_family: users
+        ref: internal/connectorvalidation/testdata/cassettes/duo/user.json
+        resource_family: user
         test: connector-contract-check
     resource_families:
-      - id: users
+      - id: user
         grade: fixture_validated
         evidence_refs:
-          - internal/connectorvalidation/testdata/cassettes/duo_security/users.json
+          - internal/connectorvalidation/testdata/cassettes/duo/user.json
   - source_id: jamf_pro
     grade: fixture_validated
     last_validated_at: "2026-06-28T00:00:00Z"

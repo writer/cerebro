@@ -90,8 +90,10 @@ import (
 // pagination add only query-parameter parsing plus compact and paginated
 // response mapping over the existing connector library response; catalog
 // assembly and runtime state stay behind the existing registry, catalog, and
-// store boundaries.
-const bootstrapProductionGoLineBudget = 27067
+// store boundaries. Duo connector setup adds resource-family metadata and
+// config-query keys through schema/response mapping at the existing connector
+// catalog boundary.
+const bootstrapProductionGoLineBudget = 27088
 
 type bootstrapFileLineCount struct {
 	path  string

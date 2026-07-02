@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-phone-DPHONE1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.phone",
+    "schema_ref": "duo/phone/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"phone_id": "DPHONE1", "name": "Alice phone"},
+    "attributes": {"external_id": "DPHONE1", "family": "phone", "provider": "duo", "source_provider": "duo", "source_product": "duo", "phone_id": "DPHONE1", "name": "Alice phone", "user_id": "DUUSER1"}
+  }
+]

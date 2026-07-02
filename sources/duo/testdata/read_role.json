@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-role-owner",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.role",
+    "schema_ref": "duo/role/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"role_id": "owner", "name": "Owner"},
+    "attributes": {"external_id": "owner", "family": "role", "provider": "duo", "source_provider": "duo", "source_product": "duo", "policy_id": "owner", "policy_name": "Owner", "policy_type": "administrator_role"}
+  }
+]

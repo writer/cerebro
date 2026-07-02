@@ -1,1 +1,41 @@
-[{"id":"cloudflare-zone-zone-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.zone","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/zone/v1","payload":{"id":"zone-1","name":"example.com","status":"active","type":"full","paused":false,"account":{"id":"acct-1"}},"attributes":{"zone_id":"zone-1","account_id":"acct-1","name":"example.com","status":"active","type":"full","paused":"false","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "external_id": "zone-1",
+      "family": "zone",
+      "name": "example.com",
+      "paused": "false",
+      "resource_id": "zone-1",
+      "resource_name": "example.com",
+      "resource_type": "zone",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_zone:zone-1",
+      "source_event_id": "zone-1",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "status": "active",
+      "tenant_id": "tenant",
+      "type": "full",
+      "zone_id": "zone-1"
+    },
+    "id": "cloudflare-zone-event-1",
+    "kind": "cloudflare.zone",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "zone-1",
+      "name": "example.com",
+      "status": "active",
+      "type": "full",
+      "paused": false,
+      "account": {
+        "id": "account-1",
+        "name": "Example Account"
+      }
+    },
+    "schema_ref": "cloudflare/zone/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

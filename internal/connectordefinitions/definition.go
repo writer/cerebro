@@ -89,6 +89,8 @@ var (
 		"jwt":                      {},
 		"signature":                {},
 		"aws_sigv4":                {},
+		"duo_hmac":                 {},
+		"duo_hmac_v5":              {},
 	}
 )
 
@@ -341,6 +343,7 @@ type ResourceReadSpec struct {
 // FamilyConfigSpec binds static and runtime config values into a resource-family request.
 type FamilyConfigSpec struct {
 	BaseURL          string            `json:"base_url,omitempty"`
+	AuthModel        string            `json:"auth_model,omitempty"`
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
@@ -536,6 +539,14 @@ func Validate(definition Definition) ValidationResult {
 		if method := strings.ToUpper(strings.TrimSpace(family.Method)); method != "" {
 			if _, ok := supportedMethods[method]; !ok {
 				add(blocking("method_"+family.ID, "Read-only method", "Generic connector reads support GET and POST list/search endpoints."))
+			}
+		}
+		if authModel := familyConfigAuthModel(family.Config); authModel != "" {
+			if _, ok := authModels[authModel]; !ok {
+				add(blocking("auth_"+family.ID, "Family auth model", fmt.Sprintf("Auth model %q is not supported.", authModel)))
+			}
+			if (authModel == "duo_hmac" || authModel == "duo_hmac_v5") && (!hasCredentialField(definition.Auth.CredentialFields, "client_id") || !hasCredentialField(definition.Auth.CredentialFields, "client_secret")) {
+				add(blocking("auth_fields_"+family.ID, "Family signing credentials", "Family Duo HMAC auth requires client_id and client_secret credential fields."))
 			}
 		}
 		if strings.TrimSpace(family.IDField) == "" {
@@ -748,6 +759,10 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	case "signature", "aws_sigv4":
 		if len(auth.CredentialFields) == 0 {
 			add(blocking("auth_signing_fields", "Signing credentials", "Signed request auth requires explicit credential fields."))
+		}
+	case "duo_hmac", "duo_hmac_v5":
+		if !hasCredentialField(auth.CredentialFields, "client_id") || !hasCredentialField(auth.CredentialFields, "client_secret") {
+			add(blocking("auth_duo_hmac_fields", "Duo signing credentials", "Duo HMAC auth requires client_id and client_secret credential fields."))
 		}
 	}
 	if auth.TokenExpirationBufferSeconds < 0 {
@@ -1310,14 +1325,26 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	}
 	next := *config
 	next.BaseURL = strings.TrimSpace(next.BaseURL)
+	next.AuthModel = strings.TrimSpace(next.AuthModel)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
 	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
-	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
+	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next
+}
+
+func familyConfigAuthModel(config *FamilyConfigSpec) string {
+	if config == nil {
+		return ""
+	}
+	return strings.TrimSpace(config.AuthModel)
+}
+
+func (family ResourceFamily) FamilyAuthModel() string {
+	return familyConfigAuthModel(family.Config)
 }
 
 func normalizeIncrementalSpec(incremental *IncrementalSpec) *IncrementalSpec {

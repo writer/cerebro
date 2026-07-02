@@ -47,23 +47,25 @@ type Family struct {
 // FamilyConfig groups request and event bindings that are derived from family
 // configuration rather than directly from provider records.
 type FamilyConfig struct {
-	BaseURL            string
-	StaticQuery        map[string]string
-	ConfigQuery        map[string]string
-	ConfigAttributes   map[string]string
-	StaticHeaders      map[string]string
-	RedactPayloadKeys  []string
-	EncodeURNID        bool
-	IdentityKeys       []string
-	IdentityResourceID bool
-	OffsetCursor       bool
-	RequireDetail      bool
-	ResourceURNKind    string
-	TotalKeys          []string
-	OffsetKeys         []string
-	LimitKeys          []string
-	LastItemCursorKeys []string
-	Method             string
+	BaseURL             string
+	StaticQuery         map[string]string
+	ConfigQuery         map[string]string
+	ConfigAttributes    map[string]string
+	StaticHeaders       map[string]string
+	RedactPayloadKeys   []string
+	EncodeURNID         bool
+	IdentityKeys        []string
+	IdentityResourceID  bool
+	OffsetCursor        bool
+	RequireDetail       bool
+	RepeatedCursorParam bool
+	ResourceURNKind     string
+	TotalKeys           []string
+	OffsetKeys          []string
+	LimitKeys           []string
+	LastItemCursorKeys  []string
+	Method              string
+	AuthModel           string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

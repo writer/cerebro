@@ -635,6 +635,17 @@ func TestParseTimeSupportsJiraAuditOffsetTimestamp(t *testing.T) {
 	}
 }
 
+func TestParseTimeTreatsLargeIntegerTimestampsAsMilliseconds(t *testing.T) {
+	got, ok := parseTime("1700000000000")
+	if !ok {
+		t.Fatal("parseTime() ok = false")
+	}
+	want := time.Date(2023, 11, 14, 22, 13, 20, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTime() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
+	}
+}
+
 func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
