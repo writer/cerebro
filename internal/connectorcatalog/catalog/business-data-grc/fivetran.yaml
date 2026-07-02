@@ -644,7 +644,7 @@ entries:
             Accept: application/json;version=2
           projection: &fivetran_asset_projection
             fields:
-              destination_id: id|group_id
+              destination_id: destination_id
               group_id: group_id
               resource_id: id|name|schema|service
               resource_name: name|schema|service|id

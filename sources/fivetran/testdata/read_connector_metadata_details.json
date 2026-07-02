@@ -10,7 +10,6 @@
       "id": "postgres",
       "name": "PostgreSQL",
       "service_status": "general_availability",
-      "link_to_docs": "https://fivetran.com/docs/connectors/databases/postgresql",
       "family": "connector_metadata_details",
       "source_id": "fivetran",
       "schema_ref": "fivetran/connector_metadata_details/v1",

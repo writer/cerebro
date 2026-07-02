@@ -489,7 +489,7 @@ func fivetranAssetFamily(name string, path string, schema string, resourceType s
 			"schema":                     "schema",
 			"group_id":                   "group_id",
 			"connection_id":              "connection_id",
-			"destination_id":             "destination_id|group_id",
+			"destination_id":             "destination_id",
 			"external_secret_manager_id": "external_secret_manager_id|secret_manager_id|esm_id",
 			"project_id":                 "project_id|transformation_project_id",
 			"transformation_project_id":  "transformation_project_id|project_id",

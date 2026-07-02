@@ -320,6 +320,34 @@ func TestFivetranTableColumnUsesCompositeRuntimeURN(t *testing.T) {
 	assertProjectedLink(t, state, columnURN, relationBelongsTo, connectionURN)
 }
 
+func TestFivetranConnectionGroupDoesNotCreateDestination(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "connection-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.connections",
+		Attributes: map[string]string{
+			"group_id":      "group-1",
+			"resource_id":   "connection-1",
+			"resource_name": "Salesforce production sync",
+			"resource_type": "connection",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	connectionURN := "urn:cerebro:writer:runtime_fivetran_connection:connection-1"
+	groupURN := "urn:cerebro:writer:fivetran_group:group-1"
+	assertProjectedEntityType(t, state, connectionURN, "runtime.fivetran.connection")
+	assertProjectedEntityType(t, state, groupURN, "fivetran.group")
+	assertProjectedLink(t, state, connectionURN, relationBelongsTo, groupURN)
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:runtime_fivetran_destination:group-1")
+	assertProjectedLinkMissing(t, state, connectionURN, relationBelongsTo, "urn:cerebro:writer:runtime_fivetran_destination:group-1")
+}
+
 func TestFivetranAssetRelationshipsProjectToGraph(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
