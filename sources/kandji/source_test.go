@@ -234,8 +234,8 @@ func TestReadApplicationFamily(t *testing.T) {
 	if attrs["device_name"] != "MacBook Pro" || attrs["platform"] != "Mac" || attrs["owner_email"] != "alice@example.com" {
 		t.Fatalf("attrs = %#v, want Prism device/user attributes", attrs)
 	}
-	if attrs["external_id"] != "device-1/com.apple.Safari" {
-		t.Fatalf("external_id = %q, want device-scoped bundle id", attrs["external_id"])
+	if attrs["external_id"] != "com.apple.Safari" {
+		t.Fatalf("external_id = %q, want bundle id", attrs["external_id"])
 	}
 	for key, want := range map[string]string{
 		"resource_id":   "device-1/com.apple.Safari",
@@ -292,11 +292,11 @@ func TestReadApplicationFamilyKeepsSameBundleOnDifferentDevices(t *testing.T) {
 	}
 	got := map[string]bool{}
 	for _, event := range pull.Events {
-		got[event.Attributes["external_id"]] = true
+		got[event.Attributes["resource_id"]] = true
 	}
 	for _, want := range []string{"device-1/com.apple.Safari", "device-2/com.apple.Safari"} {
 		if !got[want] {
-			t.Fatalf("external IDs = %#v, missing %q", got, want)
+			t.Fatalf("resource IDs = %#v, missing %q", got, want)
 		}
 	}
 }
@@ -356,8 +356,8 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	if attrs["severity"] != "High" || attrs["description"] != "WebKit memory safety issue" || attrs["serial_number"] != "SERIAL1" {
 		t.Fatalf("attrs = %#v, want Kandji vulnerability detection attributes", attrs)
 	}
-	if attrs["external_id"] != "device-1/CVE-2026-0001/Safari/18.0" {
-		t.Fatalf("external_id = %q, want device-scoped CVE detection id", attrs["external_id"])
+	if attrs["external_id"] != "CVE-2026-0001" {
+		t.Fatalf("external_id = %q, want CVE id", attrs["external_id"])
 	}
 	for key, want := range map[string]string{
 		"resource_id":   "device-1/CVE-2026-0001/Safari/18.0",
@@ -492,11 +492,11 @@ func TestReadVulnerabilityFamilyKeepsSameCVEOnDifferentDevices(t *testing.T) {
 	}
 	got := map[string]bool{}
 	for _, event := range pull.Events {
-		got[event.Attributes["external_id"]] = true
+		got[event.Attributes["resource_id"]] = true
 	}
 	for _, want := range []string{"device-1/CVE-2026-0001/Safari/1.0.0", "device-2/CVE-2026-0001/Safari/1.0.0"} {
 		if !got[want] {
-			t.Fatalf("external IDs = %#v, missing %q", got, want)
+			t.Fatalf("resource IDs = %#v, missing %q", got, want)
 		}
 	}
 }
