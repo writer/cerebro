@@ -148,6 +148,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			break
 		}
 	}
+	refs = preserveSourceCoverageDimensionType(refs, candidates, "audit_event")
 	return refs
 }
 
@@ -244,6 +245,66 @@ func sourceCoverageSupportRank(support string) int {
 	default:
 		return 0
 	}
+}
+
+func preserveSourceCoverageDimensionType(refs []SourceCoverageRef, candidates []sourceCoverageCandidate, dimensionType string) []SourceCoverageRef {
+	if len(refs) == 0 {
+		return refs
+	}
+	selected := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		selected[sourceCoverageRefKey(ref)] = struct{}{}
+	}
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.ref.DimensionType) != dimensionType {
+			continue
+		}
+		candidateKey := sourceCoverageRefKey(candidate.ref)
+		if _, ok := selected[candidateKey]; ok {
+			continue
+		}
+		replacement := sourceCoverageReplacementIndex(refs, dimensionType)
+		if replacement < 0 {
+			return refs
+		}
+		delete(selected, sourceCoverageRefKey(refs[replacement]))
+		refs[replacement] = candidate.ref
+		selected[candidateKey] = struct{}{}
+	}
+	return refs
+}
+
+func sourceCoverageReplacementIndex(refs []SourceCoverageRef, protectedDimensionType string) int {
+	replacement := -1
+	replacementRank := 0
+	for i, ref := range refs {
+		if strings.TrimSpace(ref.DimensionType) == protectedDimensionType {
+			continue
+		}
+		rank := sourceCoverageDimensionPreservationRank(ref.DimensionType)
+		if replacement < 0 || rank < replacementRank || (rank == replacementRank && i > replacement) {
+			replacement = i
+			replacementRank = rank
+		}
+	}
+	return replacement
+}
+
+func sourceCoverageDimensionPreservationRank(dimensionType string) int {
+	switch strings.TrimSpace(dimensionType) {
+	case "audit_event":
+		return 4
+	case "lifecycle_state":
+		return 3
+	case "relationship":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func sourceCoverageRefKey(ref SourceCoverageRef) string {
+	return ref.SourceID + "\x00" + ref.DimensionID
 }
 
 func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool) bool {

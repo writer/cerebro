@@ -6113,26 +6113,27 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
+          "source_id": "okta",
+          "dimension_id": "admin_role_lifecycle_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "account",
-            "active_account",
-            "email",
-            "personal_email",
-            "user"
+            "admin_privilege",
+            "admin_role",
+            "audit",
+            "privilege_grant",
+            "role_assignment",
+            "role_grant"
           ],
           "evidence_types": [
             "access_review",
             "identity_configuration",
-            "source_snapshot"
+            "logging_configuration"
           ],
           "control_domains": [
-            "asset_inventory",
-            "identity_access"
+            "identity_access",
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
@@ -6886,20 +6887,27 @@
           ]
         },
         {
-          "source_id": "aws",
-          "dimension_id": "iam_role_assignment",
-          "dimension_type": "app_entitlement",
+          "source_id": "okta",
+          "dimension_id": "support_access_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "iam_role_assignment"
+            "audit",
+            "impersonation",
+            "session",
+            "support",
+            "support_access",
+            "support_session"
           ],
           "evidence_types": [
             "access_review",
-            "identity_configuration"
+            "identity_configuration",
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "identity_access",
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
@@ -48615,21 +48623,21 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -48638,27 +48646,23 @@
           "matched_control_refs": [
             {
               "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "control_id": "IA-5"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
+              "control_id": "8.3"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         }
@@ -62724,21 +62728,21 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -62747,27 +62751,23 @@
           "matched_control_refs": [
             {
               "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "control_id": "IA-5"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
+              "control_id": "8.3"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         }
@@ -63394,21 +63394,21 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -63417,27 +63417,23 @@
           "matched_control_refs": [
             {
               "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "control_id": "IA-5"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
+              "control_id": "8.3"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         }
@@ -64064,21 +64060,21 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -64087,27 +64083,23 @@
           "matched_control_refs": [
             {
               "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "control_id": "IA-5"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
+              "control_id": "8.3"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         }
@@ -84608,29 +84600,24 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "mfa_posture",
-          "dimension_type": "app_entitlement",
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "2sv",
-            "admin_mfa",
-            "mfa",
-            "two_factor",
-            "two_step_verification",
-            "user"
+            "audit"
           ],
           "evidence_types": [
-            "identity_configuration"
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
               "framework_name": "SOC 2",
-              "control_id": "CC6.6"
+              "control_id": "CC7.1"
             }
           ]
         }
@@ -86519,21 +86506,21 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -86542,27 +86529,23 @@
           "matched_control_refs": [
             {
               "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "control_id": "IA-5"
             },
             {
               "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
+              "control_id": "8.3"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         }
@@ -108529,47 +108512,29 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
+          "source_id": "okta",
+          "dimension_id": "support_access_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "audit",
+            "impersonation",
+            "session",
+            "support",
+            "support_access",
+            "support_session"
           ],
           "evidence_types": [
             "access_review",
-            "identity_configuration"
+            "identity_configuration",
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "identity_access",
+            "logging_monitoring"
           ],
           "matched_control_refs": [
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "5"
-            },
-            {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "PCI DSS v4.0.1",
-              "control_id": "7.2"
-            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -223554,13 +223519,19 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "authenticators",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "authenticator"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
             "identity_configuration"
@@ -223570,24 +223541,12 @@
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.17"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.8.5"
-            },
-            {
               "framework_name": "NIST 800-53 r5",
               "control_id": "IA-2"
             },
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "IA-5"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             },
             {
               "framework_name": "SOC 2",
@@ -265695,25 +265654,24 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "account",
-            "active_account",
-            "email",
-            "personal_email",
-            "user"
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
+            "mfa",
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
+            "identity_configuration"
           ],
           "control_domains": [
-            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -265722,12 +265680,20 @@
               "control_id": "6"
             },
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.17"
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-2"
             },
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "IA-5"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.3"
+            },
+            {
+              "framework_name": "PCI DSS v4.0.1",
+              "control_id": "8.4"
             }
           ]
         },
@@ -275789,18 +275755,19 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "mfa_posture",
-          "dimension_type": "app_entitlement",
-          "support_level": "supported",
+          "source_id": "github",
+          "dimension_id": "organization_authentication_policy",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
           "high_value": true,
           "families": [
-            "2sv",
-            "admin_mfa",
+            "2fa",
+            "audit",
+            "auth_control",
+            "authentication",
             "mfa",
-            "two_factor",
-            "two_step_verification",
-            "user"
+            "org_auth",
+            "two_factor"
           ],
           "evidence_types": [
             "identity_configuration"
@@ -275810,8 +275777,8 @@
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.9"
             }
           ]
         },
@@ -280958,72 +280925,46 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "audit"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
+          "source_id": "google_workspace",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
           "high_value": true,
           "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
-            "user"
+            "audit"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.15"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
               "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "control_id": "CC7.1"
             }
           ]
         }
@@ -281867,72 +281808,46 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
+          "source_id": "okta",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
-            "user"
+            "audit"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
+          "source_id": "google_workspace",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
           "high_value": true,
           "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
-            "user"
+            "audit"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "logging_configuration"
           ],
           "control_domains": [
-            "identity_access"
+            "logging_monitoring"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.15"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-2"
-            },
-            {
               "framework_name": "SOC 2",
-              "control_id": "CC6.1"
+              "control_id": "CC7.1"
             }
           ]
         }

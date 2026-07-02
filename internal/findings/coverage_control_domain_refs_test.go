@@ -602,12 +602,105 @@ func TestSourceCoverageCapKeepsLifecycleRefsForInactiveIdentityDetections(t *tes
 	if len(refs) != maxPublicDetectionSourceCoverageRefs {
 		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
 	}
+	if !sourceCoverageRefsContain(refs, "okta", "user_lifecycle") {
+		t.Fatalf("SourceCoverageRefs omitted okta/user_lifecycle for inactive identity detection: %#v", refs)
+	}
+}
+
+func TestSourceCoverageCapKeepsAuditCoverageWhenAddingNewProvider(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "container-root-user",
+		Name:        "Container Running as Root",
+		Description: "Audit impact. Checks whether containers are not running as root user.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"container", "root", "user"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
+			{FrameworkName: "CIS Controls v8", ControlID: "4"},
+		},
+	}
+	contracts := make([]sourcecdk.CoverageContract, 0, maxPublicDetectionSourceCoverageRefs+1)
+	for i := 0; i < maxPublicDetectionSourceCoverageRefs-2; i++ {
+		contracts = append(contracts, sourcecdk.CoverageContract{
+			SourceID: "aaa" + strconv.Itoa(i),
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "users",
+				Type:      "entity_family",
+				Families:  []string{"user"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		})
+	}
+	contracts = append(contracts,
+		sourcecdk.CoverageContract{
+			SourceID: "linear",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "users",
+				Type:      "entity_family",
+				Families:  []string{"user"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		},
+		sourcecdk.CoverageContract{
+			SourceID: "kolide",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "checks",
+				Type:      "lifecycle_state",
+				Families:  []string{"check"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "CIS Controls v8",
+					ControlID:     "4",
+				}},
+			}},
+		},
+		sourcecdk.CoverageContract{
+			SourceID: "okta",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "audit_events",
+				Type:      "audit_event",
+				Families:  []string{"audit"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC7.1",
+				}},
+			}},
+		},
+	)
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != maxPublicDetectionSourceCoverageRefs {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
+	}
+	if !sourceCoverageRefsContain(refs, "kolide", "checks") {
+		t.Fatalf("SourceCoverageRefs omitted kolide/checks: %#v", refs)
+	}
+	if !sourceCoverageRefsContain(refs, "okta", "audit_events") {
+		t.Fatalf("SourceCoverageRefs omitted okta/audit_events: %#v", refs)
+	}
+}
+
+func sourceCoverageRefsContain(refs []SourceCoverageRef, sourceID string, dimensionID string) bool {
 	for _, ref := range refs {
-		if ref.SourceID == "okta" && ref.DimensionID == "user_lifecycle" {
-			return
+		if ref.SourceID == sourceID && ref.DimensionID == dimensionID {
+			return true
 		}
 	}
-	t.Fatalf("SourceCoverageRefs omitted okta/user_lifecycle for inactive identity detection: %#v", refs)
+	return false
 }
 
 func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *testing.T) {
