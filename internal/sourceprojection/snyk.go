@@ -61,12 +61,18 @@ func snykGenericAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	resourceID := firstNonEmpty(attributes["resource_id"], attributes["external_id"], event.GetId())
+	assetID := firstNonEmpty(attributes["asset_id"], attributes["resource_id"], attributes["external_id"], event.GetId())
+	resourceID := firstNonEmpty(attributes["resource_id"], assetID, attributes["external_id"], event.GetId())
 	resourceType := firstNonEmpty(attributes["resource_type"], attributes["schema"], "asset")
 	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, "runtime_"+normalizeCloudType(resourceType), resourceID))
+	assetURN := projectionURN(tenantID, "snyk_assets", assetID)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	addEntity(entities, &ports.ProjectedEntity{URN: resourceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime." + strings.ReplaceAll(normalizeCloudType(resourceType), "_", "."), Label: firstNonEmpty(attributes["resource_name"], resourceID), Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType, "source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})
+	if assetURN != "" && assetURN != resourceURN {
+		addEntity(entities, &ports.ProjectedEntity{URN: assetURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "snyk.assets", Label: firstNonEmpty(attributes["resource_name"], assetID), Attributes: map[string]string{"asset_id": assetID, "resource_id": resourceID, "resource_type": resourceType, "source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])}})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), assetURN, resourceURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "snyk_asset_runtime_resource"}))
+	}
 	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
 		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
 		addEntity(entities, &ports.ProjectedEntity{URN: evidenceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "runtime.evidence", Label: evidenceID, Attributes: map[string]string{"evidence_id": evidenceID, "evidence_cas_uri": strings.TrimSpace(attributes["evidence_cas_uri"]), "evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"])}})

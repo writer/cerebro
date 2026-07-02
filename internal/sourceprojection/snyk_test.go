@@ -19,6 +19,14 @@ func TestSnykAssetProjection(t *testing.T) {
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")
 	}
+	assetURN := projectionURN("tenant", "snyk_assets", "asset-1")
+	runtimeURN := projectionURN("tenant", "runtime_host", "asset-1")
+	if !hasProjectedEntityURN(entities, assetURN) || !hasProjectedEntityURN(entities, runtimeURN) {
+		t.Fatalf("expected Snyk asset alias and runtime host entities; entities=%#v", entities)
+	}
+	if !hasSnykProjectedLink(links, assetURN, relationRepresents, runtimeURN) {
+		t.Fatalf("expected Snyk asset alias to represent runtime asset; links=%#v", links)
+	}
 }
 
 func TestSnykFindingProjection(t *testing.T) {
@@ -106,6 +114,7 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 		wantURNKind      string
 	}{
 		{name: "project", resourceID: "project-1", resourceType: "project", wantResourceType: "snyk.projects", wantURNKind: "snyk_projects"},
+		{name: "asset", resourceID: "asset-1", resourceType: "asset", wantResourceType: "snyk.assets", wantURNKind: "snyk_assets"},
 		{name: "collection", resourceID: "collection-1", resourceType: "collection", wantResourceType: "snyk.collections", wantURNKind: "snyk_collections"},
 		{name: "cloud environment", resourceID: "environment-1", resourceType: "cloud_environment", wantResourceType: "snyk.cloud_environments", wantURNKind: "snyk_cloud_environments"},
 		{name: "cloud scan", resourceID: "scan-1", resourceType: "cloud_scan", wantResourceType: "snyk.cloud_scans", wantURNKind: "snyk_cloud_scans"},
