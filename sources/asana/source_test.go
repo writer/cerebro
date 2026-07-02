@@ -231,6 +231,11 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 				"actor":       map[string]any{"id": "legacy-user-1", "gid": "user-1", "email": "user@example.test", "name": "User One"},
 				"resource":    map[string]any{"id": "legacy-project-1", "gid": "project-1", "resource_type": "project", "name": "Security Evidence"},
 				"target_name": "Target Fallback",
+			}, {
+				"id":         "audit-2",
+				"event_type": "project.deleted",
+				"actor":      map[string]any{"gid": "user-2", "email": "user2@example.test", "name": "User Two"},
+				"target":     map[string]any{"gid": "target-project-2", "id": "legacy-target-project-2", "name": "Fallback Project"},
 			}},
 		})
 	}))
@@ -246,8 +251,8 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2", len(pull.Events))
 	}
 	attrs := pull.Events[0].Attributes
 	for key, want := range map[string]string{
@@ -262,6 +267,10 @@ func TestAuditEventDoesNotFabricateAffectedResourceURN(t *testing.T) {
 	}
 	if got := attrs["resource_urn"]; got != "" {
 		t.Fatalf("resource_urn = %q, want empty unless provider sends resource_urn", got)
+	}
+	fallbackAttrs := pull.Events[1].Attributes
+	if got := fallbackAttrs["resource_id"]; got != "target-project-2" {
+		t.Fatalf("target fallback resource_id = %q, want target gid; attrs=%#v", got, fallbackAttrs)
 	}
 }
 
