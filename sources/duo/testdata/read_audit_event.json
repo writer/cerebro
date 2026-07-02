@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-audit-activity-1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.audit_event",
+    "schema_ref": "duo/audit_event/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"activity_id": "activity-1", "action": "user_update"},
+    "attributes": {"external_id": "activity-1", "family": "audit_event", "provider": "duo", "source_provider": "duo", "source_product": "duo", "event_type": "user_update", "actor_id": "DADMIN1", "actor_name": "Security Admin", "resource_id": "DUUSER1", "resource_type": "user"}
+  }
+]

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-administrator-DADMIN1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.administrator",
+    "schema_ref": "duo/administrator/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"admin_id": "DADMIN1", "name": "Security Admin"},
+    "attributes": {"external_id": "DADMIN1", "family": "administrator", "provider": "duo", "source_provider": "duo", "source_product": "duo", "admin_id": "DADMIN1", "user_id": "DADMIN1", "name": "Security Admin"}
+  }
+]

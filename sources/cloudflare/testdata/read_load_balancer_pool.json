@@ -1,1 +1,47 @@
-[{"id":"cloudflare-load-balancer-pool-pool-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.load_balancer_pool","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/load_balancer_pool/v1","payload":{"id":"pool-1","name":"Primary Pool","enabled":true,"origins":[{"name":"origin-1","address":"203.0.113.10"}]},"attributes":{"account_id":"acct-1","pool_id":"pool-1","name":"Primary Pool","enabled":"true","origins":"[{\"name\":\"origin-1\",\"address\":\"203.0.113.10\"}]","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "check_regions": "WNAM",
+      "enabled": "true",
+      "external_id": "pool-1",
+      "family": "load_balancer_pool",
+      "minimum_origins": "1",
+      "name": "primary-pool",
+      "origins": "{\"address\":\"203.0.113.20\",\"enabled\":true,\"name\":\"origin-1\"}",
+      "pool_id": "pool-1",
+      "resource_id": "pool-1",
+      "resource_name": "primary-pool",
+      "resource_type": "load_balancer_pool",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer_pool:pool-1",
+      "source_event_id": "pool-1",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-load_balancer_pool-event-1",
+    "kind": "cloudflare.load_balancer_pool",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "pool-1",
+      "name": "primary-pool",
+      "enabled": true,
+      "origins": [
+        {
+          "name": "origin-1",
+          "address": "203.0.113.20",
+          "enabled": true
+        }
+      ],
+      "check_regions": [
+        "WNAM"
+      ],
+      "minimum_origins": 1
+    },
+    "schema_ref": "cloudflare/load_balancer_pool/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

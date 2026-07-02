@@ -1,1 +1,3 @@
-["urn:cerebro:writer:cloudflare_access_application:acct-1%7Capp-1"]
+[
+  "urn:cerebro:tenant:cloudflare_access_application:app-1"
+]

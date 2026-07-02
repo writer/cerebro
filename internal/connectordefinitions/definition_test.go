@@ -125,6 +125,34 @@ func TestNormalizePreservesProviderAPIMapping(t *testing.T) {
 	}
 }
 
+func TestNormalizeValidatesDuoHMACCredentialFields(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:    "tenant-a",
+		SourceID:    "duo",
+		DisplayName: "Duo",
+		Auth: AuthSpec{
+			Model: "duo_hmac",
+			CredentialFields: []Field{{
+				Key:           "client_id",
+				Secret:        true,
+				ReferenceOnly: true,
+			}},
+		},
+		ResourceFamilies: []ResourceFamily{{
+			ID:             "users",
+			Path:           "/admin/v1/users",
+			RecordSelector: "$.response[*]",
+			IDField:        "user_id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "auth_duo_hmac_fields") {
+		t.Fatalf("checks = %#v, want missing Duo client_secret blocked", definition.Validation.Checks)
+	}
+}
+
 func TestDefinitionYAMLDecodesProviderAPIMapping(t *testing.T) {
 	var definition Definition
 	if err := yaml.Unmarshal([]byte(`

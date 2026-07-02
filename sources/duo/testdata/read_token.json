@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-token-DTOKEN1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.token",
+    "schema_ref": "duo/token/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"token_id": "DTOKEN1", "serial": "SN-123"},
+    "attributes": {"external_id": "DTOKEN1", "family": "token", "provider": "duo", "source_provider": "duo", "source_product": "duo", "token_id": "DTOKEN1", "serial": "SN-123", "user_id": "DUUSER1"}
+  }
+]

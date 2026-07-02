@@ -1,0 +1,12 @@
+[
+  {
+    "id": "duo-endpoint-DENDPOINT1",
+    "source_id": "duo",
+    "tenant_id": "tenant",
+    "kind": "duo.endpoint",
+    "schema_ref": "duo/endpoint/v1",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {"endpoint_id": "DENDPOINT1", "hostname": "macbook-1"},
+    "attributes": {"external_id": "DENDPOINT1", "family": "endpoint", "provider": "duo", "source_provider": "duo", "source_product": "duo", "endpoint_id": "DENDPOINT1", "hostname": "macbook-1"}
+  }
+]

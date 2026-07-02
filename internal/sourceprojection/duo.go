@@ -31,6 +31,18 @@ func duoWebAuthnCredentialURN(tenantID string, credentialID string) string {
 	return projectionURN(tenantID, "duo_web_authn_credential", strings.TrimSpace(credentialID))
 }
 
+func duoAdministratorURN(tenantID string, adminID string) string {
+	return projectionURN(tenantID, "duo_administrator", strings.TrimSpace(adminID))
+}
+
+func duoApplicationURN(tenantID string, applicationID string) string {
+	return projectionURN(tenantID, "duo_application", strings.TrimSpace(applicationID))
+}
+
+func duoRoleURN(tenantID string, roleID string) string {
+	return projectionURN(tenantID, "duo_role", strings.TrimSpace(roleID))
+}
+
 func duoEntity(event *cerebrov1.EventEnvelope, urn string, entityType string, label string, attrs map[string]string) *ports.ProjectedEntity {
 	return &ports.ProjectedEntity{
 		URN:        urn,
@@ -120,6 +132,35 @@ func duoGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 	return projectedEntities, nil, nil
 }
 
+func duoAdministratorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	adminID := strings.TrimSpace(attrs["admin_id"])
+	if adminID == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	adminURN := duoAdministratorURN(tenantID, adminID)
+	addEntity(entities, duoEntity(event, adminURN, "duo.administrator", firstNonEmpty(attrs["name"], attrs["email"], adminID), duoAttributes(map[string]string{
+		"admin_id":      adminID,
+		"email":         attrs["email"],
+		"name":          attrs["name"],
+		"role":          attrs["role"],
+		"status":        attrs["status"],
+		"last_login_at": attrs["last_login_at"],
+		"created_at":    attrs["created_at"],
+	})))
+	if email := strings.TrimSpace(attrs["email"]); email != "" {
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), adminURN, email, event.GetOccurredAt())
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func duoEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -197,6 +238,59 @@ func duoWebAuthnCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	addDuoFactorOwnerLink(entities, links, event, tenantID, credentialURN, attrs["user_id"])
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func duoRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	roleID := strings.TrimSpace(attrs["policy_id"])
+	if roleID == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	roleURN := duoRoleURN(tenantID, roleID)
+	addEntity(entities, duoEntity(event, roleURN, "policy", firstNonEmpty(attrs["policy_name"], roleID), duoAttributes(map[string]string{
+		"policy_id":   roleID,
+		"policy_name": attrs["policy_name"],
+		"policy_type": firstNonEmpty(attrs["policy_type"], "administrator_role"),
+		"description": attrs["description"],
+	})))
+	projectedEntities, _ := entitiesAndLinks(entities, map[string]*ports.ProjectedLink{})
+	return projectedEntities, nil, nil
+}
+
+func duoApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	applicationID := firstNonEmpty(attrs["integration_key"], attrs["resource_id"])
+	if strings.TrimSpace(applicationID) == "" {
+		return nil, nil, nil
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	applicationURN := duoApplicationURN(tenantID, applicationID)
+	addEntity(entities, duoEntity(event, applicationURN, "duo.application", firstNonEmpty(attrs["name"], attrs["resource_name"], applicationID), duoAttributes(map[string]string{
+		"integration_key": applicationID,
+		"name":            firstNonEmpty(attrs["name"], attrs["resource_name"]),
+		"type":            firstNonEmpty(attrs["type"], attrs["resource_type"]),
+		"resource_id":     attrs["resource_id"],
+		"resource_type":   attrs["resource_type"],
+	})))
+	projectedEntities, _ := entitiesAndLinks(entities, map[string]*ports.ProjectedLink{})
+	return projectedEntities, nil, nil
+}
+
+func duoAuditEventProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "duo"})
+}
+
+func duoAuthenticationLogProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, identityProjectionProfile{Provider: "duo"})
 }
 
 func duoFactorProjections(event *cerebrov1.EventEnvelope, idKey string, urnFunc func(string, string) string, entityType string, attributeMap map[string]string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

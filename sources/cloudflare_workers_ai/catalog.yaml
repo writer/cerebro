@@ -37,61 +37,91 @@ coverage_contract:
       title: "Model Catalog"
       families: [model_catalog]
       support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
     - id: ai_gateways
       type: deployment_state
       title: "Ai Gateways"
       families: [ai_gateways]
       support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.32
     - id: gateway_provider_configs
       type: entity_family
       title: "Gateway Provider Configs"
       families: [gateway_provider_configs]
       support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider field mapping review is required before certification.
+      high_value: true
+      evidence_types: [identity_configuration]
+      control_domains: [identity_access, data_protection]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
     - id: gateway_evaluations
       type: lifecycle_state
       title: "Gateway Evaluations"
       families: [gateway_evaluations]
       support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
     - id: gateway_logs
       type: audit_event
       title: "Gateway Logs"
       families: [gateway_logs]
       support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
     - id: vectorize_indexes
       type: entity_family
       title: "Vectorize Indexes"
       families: [vectorize_indexes]
       support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
