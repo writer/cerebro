@@ -192,9 +192,6 @@ func fivetranRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	resourceType := firstNonEmpty(attributes["resource_type"], attributes["schema"], fivetranKindFamily(event), "asset")
 	resourceID := fivetranRuntimeResourceID(event, attributes, resourceType)
 	resourceURN := fivetranRuntimeAssetURN(tenantID, resourceType, resourceID)
-	if explicitURN := strings.TrimSpace(attributes["resource_urn"]); explicitURN != "" && !fivetranUsesCompositeRuntimeID(resourceType) {
-		resourceURN = explicitURN
-	}
 	if resourceURN == "" {
 		return nil, nil, nil
 	}

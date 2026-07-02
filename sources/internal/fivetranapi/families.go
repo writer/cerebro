@@ -264,12 +264,14 @@ func groupServiceAccountsFamily() jsonapi.Family {
 func destinationsFamily() jsonapi.Family {
 	family := fivetranAssetFamily(FamilyDestinations, "/v1/destinations", "destination", "destination")
 	family.Config.StaticHeaders = fivetranV2Headers()
+	family.Config.RedactPayloadKeys = []string{"config"}
 	return family
 }
 
 func connectionsFamily() jsonapi.Family {
 	family := fivetranAssetFamily(FamilyConnections, "/v1/connections", "connection", "connection")
 	family.Config.StaticHeaders = fivetranV2Headers()
+	family.Config.RedactPayloadKeys = []string{"config"}
 	return family
 }
 

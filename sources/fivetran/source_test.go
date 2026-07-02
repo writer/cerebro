@@ -164,7 +164,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			family:    fivetranapi.FamilyDestinations,
 			path:      "/v1/destinations",
 			accept:    "application/json;version=2",
-			item:      map[string]any{"id": "destination-1", "service": "snowflake", "region": "AWS_US_EAST_1"},
+			item:      map[string]any{"id": "destination-1", "service": "snowflake", "region": "AWS_US_EAST_1", "config": map[string]any{"host": "warehouse.example"}},
 			kind:      "fivetran.destinations",
 			attrKey:   "resource_id",
 			attrValue: "destination-1",
@@ -174,7 +174,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			family:    fivetranapi.FamilyConnections,
 			path:      "/v1/connections",
 			accept:    "application/json;version=2",
-			item:      map[string]any{"id": "connection-1", "service": "postgres", "schema": "prod", "group_id": "group-1"},
+			item:      map[string]any{"id": "connection-1", "service": "postgres", "schema": "prod", "group_id": "group-1", "config": map[string]any{"host": "source.example"}},
 			kind:      "fivetran.connections",
 			attrKey:   "resource_id",
 			attrValue: "connection-1",
@@ -528,6 +528,15 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				}
 				if got := event.Attributes["resource_id"]; got != "group-1" {
 					t.Fatalf("resource_id = %q, want group-1", got)
+				}
+			}
+			if tt.family == fivetranapi.FamilyDestinations || tt.family == fivetranapi.FamilyConnections {
+				var payload map[string]any
+				if err := json.Unmarshal(event.Payload, &payload); err != nil {
+					t.Fatalf("decode config-bearing payload: %v", err)
+				}
+				if _, ok := payload["config"]; ok {
+					t.Fatalf("%s payload retained config: %#v", tt.family, payload)
 				}
 			}
 			if tt.family == fivetranapi.FamilyWebhooks {

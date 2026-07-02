@@ -1,6 +1,6 @@
 id: fivetran
 name: "Fivetran"
-description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secrets manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for account, group credential, connection schema, connection state, log service, connector metadata, and transformation package detail routes, expands nested object maps for connection table columns, applies v2 Accept headers only to connection and destination list routes, redacts system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, schema columns, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
+description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secret manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for account, group credential, connection schema, connection state, log service, connector metadata, and transformation package detail routes, expands nested object maps for connection table columns, applies v2 Accept headers only to connection and destination list routes, redacts destination config, connection config, and system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, schema columns, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
 emitted_kinds:
   - fivetran.account_info
   - fivetran.users
@@ -155,6 +155,7 @@ provider_api:
       path: /v1/destinations
       response: data.items
       pagination: cursor
+      payload_redaction: [config]
       headers:
         Accept: application/json;version=2
     - id: connections
@@ -162,6 +163,7 @@ provider_api:
       path: /v1/connections
       response: data.items
       pagination: cursor
+      payload_redaction: [config]
       headers:
         Accept: application/json;version=2
     - id: connection_certificates

@@ -549,6 +549,22 @@ func TestBuiltinFivetranV2FamiliesCarryAcceptHeader(t *testing.T) {
 	}
 }
 
+func TestBuiltinFivetranConfigPayloadsAreSensitive(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	for _, familyID := range []string{"destinations", "connections"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if !stringsContain(family.SensitivePayloadPaths, "$.config") {
+			t.Fatalf("%s sensitive_payload_paths = %#v, want $.config", familyID, family.SensitivePayloadPaths)
+		}
+	}
+}
+
 func TestBuiltinFivetranServiceAccountProjectionDoesNotReadCredentialAsResourceType(t *testing.T) {
 	entry, ok, err := BuiltinEntry("fivetran")
 	if err != nil {
@@ -592,6 +608,15 @@ func assertCatalogFamilyPath(t *testing.T, families []connectordefinitions.Resou
 		return
 	}
 	t.Fatalf("family %s not found in %#v", id, families)
+}
+
+func stringsContain(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {

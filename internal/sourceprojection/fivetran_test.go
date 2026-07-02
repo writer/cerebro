@@ -397,6 +397,63 @@ func TestFivetranTableColumnUsesCompositeRuntimeURN(t *testing.T) {
 	assertProjectedLink(t, state, columnURN, relationBelongsTo, connectionURN)
 }
 
+func TestFivetranRuntimeAssetIgnoresSourceFamilyURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "connection-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.connections",
+		Attributes: map[string]string{
+			"destination_id": "destination-1",
+			"group_id":       "group-1",
+			"resource_id":    "connection-1",
+			"resource_name":  "Salesforce production sync",
+			"resource_type":  "connection",
+			"resource_urn":   "urn:cerebro:writer:fivetran_connections:connection-1",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	connectionURN := "urn:cerebro:writer:runtime_fivetran_connection:connection-1"
+	destinationURN := "urn:cerebro:writer:runtime_fivetran_destination:destination-1"
+	groupURN := "urn:cerebro:writer:fivetran_group:group-1"
+	assertProjectedEntityType(t, state, connectionURN, "runtime.fivetran.connection")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_connections:connection-1")
+	assertProjectedLink(t, state, connectionURN, relationBelongsTo, destinationURN)
+	assertProjectedLink(t, state, connectionURN, relationBelongsTo, groupURN)
+}
+
+func TestFivetranCredentialUsesCanonicalRuntimeURNForAssignment(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "certificate-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.connection_certificates",
+		Attributes: map[string]string{
+			"connection_id": "connection-1",
+			"credential_id": "proof-1",
+			"resource_id":   "proof-1",
+			"resource_type": "certificate",
+			"resource_urn":  "urn:cerebro:writer:fivetran_connection_certificates:proof-1",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	certificateURN := "urn:cerebro:writer:runtime_fivetran_certificate:proof-1"
+	connectionURN := "urn:cerebro:writer:runtime_fivetran_connection:connection-1"
+	assertProjectedEntityType(t, state, certificateURN, "runtime.fivetran.certificate")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_connection_certificates:proof-1")
+	assertProjectedLink(t, state, certificateURN, relationAssignedTo, connectionURN)
+}
+
 func TestFivetranConnectionGroupDoesNotCreateDestination(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
