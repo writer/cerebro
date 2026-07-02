@@ -63,6 +63,9 @@ func TestProjectGitHubAudit(t *testing.T) {
 	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping || !depth.ProviderAPI.HasRuntimeTransport || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
 		t.Fatalf("runtime depth flags = %#v, want all reference-runtime flags", depth)
 	}
+	if depth.ProviderAPI.BaseURL != "https://api.github.com" || !containsString(depth.ProviderAPI.References, "https://docs.github.com/rest") || !containsString(depth.ProviderAPI.MappedFamilies, "repository") {
+		t.Fatalf("provider API details = %#v", depth.ProviderAPI)
+	}
 	if got := depth.PackagePath; got != "sources/github" {
 		t.Fatalf("package path = %q, want sources/github", got)
 	}

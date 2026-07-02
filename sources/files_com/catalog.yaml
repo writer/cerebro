@@ -64,8 +64,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com external event delivery state, event type, body pointer, and creation time.
     - id: api_key
       type: entity_family
       title: "Api Key"
@@ -74,8 +79,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com API key owner, permission set, key label, and use timestamps where returned.
     - id: group
       type: entity_family
       title: "Group"
@@ -84,8 +94,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com group membership lists and protocol permissions returned by the group resource.
     - id: group_user
       type: entity_family
       title: "Group User"
@@ -94,8 +109,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com user-to-group assignments, including membership id and group admin flag.
     - id: action_notification_export_result
       type: alert_state
       title: "Action Notification Export Result"
@@ -104,8 +124,15 @@ coverage_contract:
       high_value: true
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: SOC 2
+          control_id: CC7.3
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com action notification export delivery result, HTTP status, target URL, and message.
     - id: permission
       type: entity_family
       title: "Permission"
@@ -114,8 +141,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com path permissions for users, groups, partners, recursion, and permission level.
     - id: login
       type: audit_event
       title: "Login"
@@ -124,8 +156,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com login history with actor, source IP, interface, action, and timestamp.
     - id: site_api_key
       type: entity_family
       title: "Site Api Key"
@@ -134,8 +171,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures site-wide Files.com API keys and permission sets when returned by the site API key endpoint.
     - id: user_api_key
       type: entity_family
       title: "User Api Key"
@@ -144,8 +186,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.17
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures current-user Files.com API keys and permission sets returned by the user API key endpoint.
     - id: exavault_reserved
       type: entity_family
       title: "Exavault Reserved"
@@ -154,8 +201,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.20
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com ExaVault reserved IP address groups returned by the IP address resource.
     - id: user_group
       type: entity_family
       title: "User Group"
@@ -164,8 +216,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com group records returned from the current-user group endpoint.
     - id: user
       type: entity_family
       title: "User"
@@ -174,8 +231,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Captures Files.com user account identity, access flags, group ids, login timestamps, and admin state.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -189,7 +251,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - outcome_result
     required_payload_fields:
       - id
   - kind: files_com.api_key
@@ -216,14 +278,15 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - admin
+      - id
+      - user_id
   - kind: files_com.action_notification_export_result
     schema_ref: files_com/action_notification_export_result/v1
     required_attributes:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_status
     required_payload_fields:
       - id
   - kind: files_com.permission
@@ -231,7 +294,6 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - resource_urn
       - resource_type
       - resource_id
     required_payload_fields:
@@ -268,10 +330,10 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - secret_id
-      - secret_name
+      - resource_id
+      - resource_type
     required_payload_fields:
-      - ftp_enabled
+      - id
   - kind: files_com.user_group
     schema_ref: files_com/user_group/v1
     required_attributes:
@@ -279,7 +341,7 @@ event_contracts:
       - source_event_id
       - group_id
     required_payload_fields:
-      - admin
+      - id
   - kind: files_com.user
     schema_ref: files_com/user/v1
     required_attributes:

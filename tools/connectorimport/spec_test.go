@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -27,5 +28,33 @@ func TestIsSwaggerV2(t *testing.T) {
 	}
 	if isSwaggerV2([]byte("openapi: 3.0.0\n")) {
 		t.Error("expected OpenAPI 3 not to be detected as swagger 2.0")
+	}
+}
+
+func TestTargetWithProviderAPIReferencesDoesNotDuplicateManifestReferences(t *testing.T) {
+	entry := manifestTarget{
+		SourceID:              "example",
+		SpecURL:               "https://provider.example/openapi.json",
+		ProviderAPIReferences: []string{"https://provider.example/openapi.json"},
+	}
+
+	got := targetWithProviderAPIReferences(apisGuruRegistry{}, entry).ProviderAPIReferences
+	want := []string{"https://provider.example/openapi.json"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ProviderAPIReferences = %v, want %v", got, want)
+	}
+}
+
+func TestTargetWithProviderAPIReferencesUsesResolvedSpecSourcePrecedence(t *testing.T) {
+	entry := manifestTarget{
+		SourceID: "example",
+		SpecFile: "testdata/provider/openapi.yaml",
+		SpecURL:  "https://provider.example/openapi.json",
+	}
+
+	got := targetWithProviderAPIReferences(apisGuruRegistry{}, entry).ProviderAPIReferences
+	want := []string{"testdata/provider/openapi.yaml"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ProviderAPIReferences = %v, want %v", got, want)
 	}
 }
