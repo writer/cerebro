@@ -117,7 +117,7 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 		{name: "asset", resourceID: "asset-1", resourceType: "asset", wantResourceType: "snyk.assets", wantURNKind: "snyk_assets"},
 		{name: "collection", resourceID: "collection-1", resourceType: "collection", wantResourceType: "snyk.collections", wantURNKind: "snyk_collections"},
 		{name: "cloud environment", resourceID: "environment-1", resourceType: "cloud_environment", wantResourceType: "snyk.cloud_environments", wantURNKind: "snyk_cloud_environments"},
-		{name: "cloud resource", resourceID: "resource-1", resourceType: "cloud_resource", wantResourceType: "snyk.cloud_resources", wantURNKind: "snyk_cloud_resources"},
+		{name: "cloud resource", resourceID: "resource-1", resourceType: "cloud_resource", wantResourceType: "snyk.assets", wantURNKind: "snyk_assets"},
 		{name: "cloud scan", resourceID: "scan-1", resourceType: "cloud_scan", wantResourceType: "snyk.cloud_scans", wantURNKind: "snyk_cloud_scans"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,6 +133,53 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 				t.Fatalf("expected acted_on link to %s; links=%#v", tt.wantURNKind, links)
 			}
 		})
+	}
+}
+
+func TestSnykAuditProjectionCloudResourceMergesWithInventoryAssetAlias(t *testing.T) {
+	resourceID := "arn:aws:s3:::prod-bucket"
+	inventoryEvent := &cerebrov1.EventEnvelope{
+		Id:       "inventory-event-1",
+		TenantId: "tenant",
+		SourceId: "snyk",
+		Kind:     "snyk.cloud_resources",
+		Attributes: map[string]string{
+			"resource_id":   resourceID,
+			"resource_type": "aws_s3_bucket",
+			"resource_name": "prod-bucket",
+		},
+	}
+	inventoryEntities, _, err := snykCloudResourcesProjections(inventoryEvent)
+	if err != nil {
+		t.Fatalf("inventory projection error = %v", err)
+	}
+	assetURN := projectionURN("tenant", "snyk_assets", resourceID)
+	if !hasProjectedEntityURN(inventoryEntities, assetURN) {
+		t.Fatalf("expected inventory asset alias %s; entities=%#v", assetURN, inventoryEntities)
+	}
+
+	auditEvent := &cerebrov1.EventEnvelope{
+		Id:       "audit-event-1",
+		TenantId: "tenant",
+		SourceId: "snyk",
+		Kind:     "snyk.audit_logs",
+		Attributes: map[string]string{
+			"actor_id":      "user-1",
+			"actor_email":   "alice@example.test",
+			"resource_id":   resourceID,
+			"resource_type": "cloud_resource",
+			"event_type":    "cloud.resource.update",
+		},
+	}
+	auditEntities, auditLinks, err := snykAuditLogsProjections(auditEvent)
+	if err != nil {
+		t.Fatalf("audit projection error = %v", err)
+	}
+	if hasProjectedEntityURN(auditEntities, projectionURN("tenant", "snyk_cloud_resources", resourceID)) {
+		t.Fatalf("audit projection created disconnected cloud resource stub; entities=%#v", auditEntities)
+	}
+	if !hasSnykProjectedLink(auditLinks, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, assetURN) {
+		t.Fatalf("expected audit acted_on link to inventory asset alias; links=%#v", auditLinks)
 	}
 }
 
