@@ -201,6 +201,18 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 					Path: "/v1/me",
 				},
 			},
+			ProviderAPI: &connectordefinitions.ProviderAPISpec{
+				Status:     "verified",
+				Transport:  "rest",
+				Auth:       "bearer_token",
+				BaseURL:    "https://api.example.test",
+				References: []string{"https://docs.example.test/openapi.yaml"},
+				Families: []connectordefinitions.ProviderAPIFamilySpec{{
+					ID:     "users",
+					Method: "GET",
+					Path:   "/v1/users",
+				}},
+			},
 			ResourceFamilies: []connectordefinitions.ResourceFamily{{
 				ID:             "users",
 				Path:           "/v1/users",
@@ -233,7 +245,16 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 	catalog := readGeneratedFile(t, outputDir, "sources/example_idp/catalog.yaml")
-	for _, want := range []string{"- example_idp.user", "families: [users]", "schema_ref: example_idp/user/v1"} {
+	for _, want := range []string{
+		"provider_api:",
+		"status: \"verified\"",
+		"base_url: \"https://api.example.test\"",
+		"- \"https://docs.example.test/openapi.yaml\"",
+		"path: \"/v1/users\"",
+		"- example_idp.user",
+		"families: [users]",
+		"schema_ref: example_idp/user/v1",
+	} {
 		if !strings.Contains(catalog, want) {
 			t.Fatalf("catalog missing %q:\n%s", want, catalog)
 		}
