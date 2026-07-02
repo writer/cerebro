@@ -59,7 +59,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"createdOn":       "2026-06-01T00:00:00Z",
 				"updatedOn":       "2026-06-02T00:00:00Z",
 			}}},
-			wantAttributes: map[string]string{"name": "Subscription Revenue", "observed_at": "2026-06-02T00:00:00Z", "status": "Active"},
+			wantAttributes: map[string]string{"name": "Subscription Revenue", "observed_at": "2026-06-02T00:00:00Z", "resource_type": "accounting_code", "status": "Active"},
 			wantPayloadKey: "glAccountNumber",
 		},
 		{
@@ -79,7 +79,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"createdOn":             "2026-06-01T00:00:00Z",
 				"updatedOn":             "2026-06-02T00:00:00Z",
 			}}},
-			wantAttributes: map[string]string{"name": "Jun 2026", "observed_at": "2026-06-02T00:00:00Z", "status": "Open"},
+			wantAttributes: map[string]string{"name": "Jun 2026", "observed_at": "2026-06-02T00:00:00Z", "resource_type": "accounting_period", "status": "Open"},
 			wantPayloadKey: "runTrialBalanceStatus",
 		},
 		{
@@ -114,7 +114,6 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"toEmail":       "billing@example.test",
 				"fromEmail":     "no-reply@example.test",
 				"cc":            "ops@example.test",
-				"bcc":           "audit@example.test",
 				"replyTo":       "support@example.test",
 				"sendTime":      "2026-06-01T03:31:43",
 				"errorMessage":  nil,
@@ -181,7 +180,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"active":        true,
 				"isHtml":        true,
 			}}},
-			wantAttributes: map[string]string{"alert_id": "6e569e1e05f040eda51a927b140c0ac2", "alert_name": "Account Edit Email", "observed_at": "2026-06-02T07:36:19.798Z", "provider_id": "6e569e1e05f040eda51a927b140c0ac2", "resource_type": "notification_definition"},
+			wantAttributes: map[string]string{"alert_id": "6e569e1e05f040eda51a927b140c0ac2", "alert_name": "Account Edit Email", "alert_status": "active", "observed_at": "2026-06-02T07:36:19.798Z", "provider_id": "6e569e1e05f040eda51a927b140c0ac2", "resource_type": "notification_definition"},
 			wantPayloadKey: "emailSubject",
 			wantOccurredAt: "2026-06-02T07:36:19.798Z",
 		},
@@ -346,6 +345,11 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			var payload map[string]any
 			if err := json.Unmarshal(event.Payload, &payload); err != nil {
 				t.Fatalf("unmarshal payload: %v", err)
+			}
+			if tc.family == familyEmail {
+				if _, ok := payload["bcc"]; ok {
+					t.Fatalf("email payload includes optional BCC field; test should cover missing BCC: %#v", payload)
+				}
 			}
 			if _, ok := payload[tc.wantPayloadKey]; !ok {
 				t.Fatalf("payload missing %q: %#v", tc.wantPayloadKey, payload)

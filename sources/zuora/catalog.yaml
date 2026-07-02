@@ -294,7 +294,7 @@ event_contracts:
       - provider_id
       - resource_name
     required_payload_fields:
-      - bcc
+      - accountId
   - kind: zuora.email_template
     schema_ref: zuora/email_template/v1
     required_attributes:

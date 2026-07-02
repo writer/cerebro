@@ -25,7 +25,6 @@
     "occurred_at": "2026-06-01T03:31:43Z",
     "payload": {
       "accountId": "2c9e8084769a87be0176f0cfa138001e",
-      "bcc": "audit@example.test",
       "cc": "ops@example.test",
       "errorMessage": null,
       "eventCategory": 1210,
