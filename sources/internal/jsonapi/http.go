@@ -1086,17 +1086,23 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	for key, value := range settings.request.configAttributes {
 		addAttribute(attrs, key, value)
 	}
+	resourceIDEncoded := false
 	for attr, path := range family.Attributes {
-		addAttribute(attrs, attr, firstValueString(record.Values, path))
+		value, encoded := firstValueStringInfo(record.Values, path)
+		addAttribute(attrs, attr, value)
+		if attr == "resource_id" && strings.TrimSpace(value) != "" {
+			resourceIDEncoded = encoded
+		}
 	}
 	if family.Config.IdentityResourceID {
 		if identity := strings.TrimSpace(record.Identity); identity != "" {
 			addAttribute(attrs, "resource_id", identity)
 			addAttribute(attrs, "source_event_id", identity)
+			resourceIDEncoded = false
 		}
 	}
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
-		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record))
+		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record, resourceIDEncoded))
 	}
 	trimEmptyAttributes(attrs)
 	return attrs
@@ -1109,17 +1115,22 @@ func urnRecordID(family Family, recordID string, recordIDEncoded bool) string {
 	return recordID
 }
 
-func resourceURNFor(settings settings, family Family, attrs map[string]string, record record) string {
+func resourceURNFor(settings settings, family Family, attrs map[string]string, record record, resourceIDEncoded bool) string {
 	kind := strings.TrimSpace(family.Config.ResourceURNKind)
 	if kind == "" {
 		return ""
 	}
 	recordKind := firstNonEmpty(family.URNKind, family.Name)
-	recordID := firstNonEmpty(attrs["resource_id"], record.ID)
+	recordID := strings.TrimSpace(attrs["resource_id"])
+	recordIDEncoded := resourceIDEncoded
+	if recordID == "" {
+		recordID = record.ID
+		recordIDEncoded = record.IDEncoded
+	}
 	if strings.TrimSpace(attrs["resource_id"]) == "" && kind != recordKind {
 		return ""
 	}
-	recordID = urnRecordID(family, recordID, recordID == record.ID && record.IDEncoded)
+	recordID = urnRecordID(family, recordID, recordIDEncoded)
 	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
 	if err != nil {
 		return ""

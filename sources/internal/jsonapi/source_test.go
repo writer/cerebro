@@ -1108,6 +1108,51 @@ func TestReadSynthesizesEncodedResourceURNAttributeWhenConfigured(t *testing.T) 
 	}
 }
 
+func TestReadDoesNotDoubleEncodeCompositeResourceURNAttribute(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"apps": []map[string]any{{
+				"id":        "install-1",
+				"device_id": "device:1",
+				"bundle_id": "role/Admin+Owner",
+				"name":      "Example App",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:     "application",
+		Path:     "/api/v1/apps",
+		URNKind:  "test_application",
+		IDKeys:   []string{"id"},
+		ListKeys: []string{"apps"},
+		Attributes: map[string]string{
+			"resource_id":   "device_id+bundle_id",
+			"resource_name": "name",
+		},
+		Config: FamilyConfig{EncodeURNID: true, ResourceURNKind: "test_application"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "application",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["resource_id"]; got != "device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("resource_id = %q, want encoded composite resource ID", got)
+	}
+	if got := attrs["resource_urn"]; got != "urn:cerebro:writer:test_application:device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("resource_urn = %q, want composite URN without second encoding pass", got)
+	}
+}
+
 func TestReadUsesConfiguredListKeys(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
