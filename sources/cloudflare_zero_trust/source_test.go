@@ -19,10 +19,14 @@ func TestSourceCheckAndRead(t *testing.T) {
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+			http.Error(w, "bad authorization", http.StatusUnauthorized)
+			return
 		}
 		if r.URL.Path != "/accounts/test-account_id/access/users" {
-			t.Fatalf("path = %q", r.URL.Path)
+			t.Errorf("path = %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -55,6 +59,91 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+}
+
+func TestReadUsesCloudflareV4Pagination(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/accounts/account-1/access/users" {
+			t.Errorf("path = %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.URL.Query().Get("per_page"); got != "1" {
+			t.Errorf("per_page = %q, want 1", got)
+			http.Error(w, "bad per_page", http.StatusBadRequest)
+			return
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Errorf("limit = %q, want empty", got)
+			http.Error(w, "bad limit", http.StatusBadRequest)
+			return
+		}
+		if got := r.URL.Query().Get("cursor"); got != "" {
+			t.Errorf("cursor = %q, want empty", got)
+			http.Error(w, "bad cursor", http.StatusBadRequest)
+			return
+		}
+		requests = append(requests, r.Clone(r.Context()))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("page") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": []map[string]any{{
+					"id":    "user-1",
+					"email": "alice@example.com",
+					"name":  "Alice Example",
+				}},
+				"result_info": map[string]any{"page": 1, "total_pages": 2},
+				"success":     true,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": []map[string]any{{
+					"id":    "user-2",
+					"email": "bob@example.com",
+					"name":  "Bob Example",
+				}},
+				"result_info": map[string]any{"page": 2, "total_pages": 2},
+				"success":     true,
+			})
+		default:
+			t.Errorf("page = %q, want empty or 2", r.URL.Query().Get("page"))
+			http.Error(w, "bad page", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"account_id": "account-1",
+		"base_url":   server.URL,
+		"family":     familyUsers,
+		"per_page":   "1",
+		"tenant_id":  "writer",
+		"token":      "token-1",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("page") != "2" {
+		t.Fatalf("requests = %#v, want second request with page=2", requests)
 	}
 }
 
