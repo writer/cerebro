@@ -625,7 +625,11 @@ func TestSourceDefinitionUsesFamilyStaticHeaders(t *testing.T) {
 		if got := r.Header.Get("Accept"); got != "application/json;version=2" {
 			t.Fatalf("Accept = %q, want Fivetran v2 header", got)
 		}
-		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "dest-1", "service": "snowflake"}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items": []map[string]any{{"id": "dest-1", "service": "snowflake"}},
+			},
+		})
 	}))
 	defer server.Close()
 
@@ -644,7 +648,7 @@ func TestSourceDefinitionUsesFamilyStaticHeaders(t *testing.T) {
 		ResourceFamilies: []connectordefinitions.ResourceFamily{{
 			ID:             "destinations",
 			Path:           "/v1/destinations",
-			RecordSelector: "$[*]",
+			RecordSelector: "$.data.items[*]",
 			IDField:        "id",
 			StaticHeaders: map[string]string{
 				"Accept": "application/json;version=2",

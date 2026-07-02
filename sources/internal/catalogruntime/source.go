@@ -303,7 +303,7 @@ func selectorListKey(selector string) string {
 	}
 	if strings.HasPrefix(selector, "$.") && strings.HasSuffix(selector, "[*]") {
 		key := strings.TrimSuffix(strings.TrimPrefix(selector, "$."), "[*]")
-		if !strings.Contains(key, ".") {
+		if key != "" && !strings.ContainsAny(key, "[]*") {
 			return key
 		}
 	}
