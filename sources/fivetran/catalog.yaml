@@ -1,6 +1,6 @@
 id: fivetran
 name: "Fivetran"
-description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, applies v2 Accept headers only to connection and destination list routes, redacts system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, network trust controls, logging targets, credentials, and transformation records."
+description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secrets manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for connection schema and state routes, applies v2 Accept headers only to connection and destination list routes, redacts system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
 emitted_kinds:
   - fivetran.users
   - fivetran.user_connections
@@ -17,14 +17,26 @@ emitted_kinds:
   - fivetran.connections
   - fivetran.connection_certificates
   - fivetran.connection_fingerprints
+  - fivetran.connection_schemas
+  - fivetran.connection_state
+  - fivetran.connector_sdk_packages
+  - fivetran.destination_certificates
+  - fivetran.destination_fingerprints
   - fivetran.log_services
   - fivetran.webhooks
+  - fivetran.external_secret_managers
+  - fivetran.external_secret_manager_entities
+  - fivetran.external_secret_manager_assignments
   - fivetran.private_links
   - fivetran.proxy_agents
+  - fivetran.proxy_agent_connections
   - fivetran.hybrid_deployment_agents
+  - fivetran.public_connector_types
   - fivetran.connector_metadata
   - fivetran.system_keys
   - fivetran.transformations
+  - fivetran.transformation_projects
+  - fivetran.transformation_package_metadata
 provider_api:
   status: verified
   transport: rest
@@ -42,6 +54,11 @@ provider_api:
     - https://fivetran.com/docs/rest-api/api-reference/groups
     - https://fivetran.com/docs/rest-api/api-reference/destinations/list-destinations
     - https://fivetran.com/docs/rest-api/api-reference/connections/list-connections
+    - https://fivetran.com/docs/rest-api/api-reference/connections
+    - https://fivetran.com/docs/rest-api/api-reference/certificates
+    - https://fivetran.com/docs/rest-api/api-reference/external-secrets-managers
+    - https://fivetran.com/docs/rest-api/api-reference/proxy-agent
+    - https://fivetran.com/docs/rest-api/api-reference/transformation-projects-management/list-all-transformation-projects
     - https://github.com/fivetran/go-fivetran
   pagination:
     type: cursor
@@ -138,6 +155,33 @@ provider_api:
       response: data.items
       pagination: cursor
       path_params: [connection_id]
+    - id: connection_schemas
+      method: GET
+      path: /v1/connections/{connection_id}/schemas
+      response: data
+      path_params: [connection_id]
+    - id: connection_state
+      method: GET
+      path: /v1/connections/{connection_id}/state
+      response: data
+      path_params: [connection_id]
+    - id: connector_sdk_packages
+      method: GET
+      path: /v1/connector-sdk/packages
+      response: data.items
+      pagination: cursor
+    - id: destination_certificates
+      method: GET
+      path: /v1/destinations/{destination_id}/certificates
+      response: data.items
+      pagination: cursor
+      path_params: [destination_id]
+    - id: destination_fingerprints
+      method: GET
+      path: /v1/destinations/{destination_id}/fingerprints
+      response: data.items
+      pagination: cursor
+      path_params: [destination_id]
     - id: log_services
       method: GET
       path: /v1/external-logging
@@ -148,6 +192,22 @@ provider_api:
       path: /v1/webhooks
       response: data.items
       pagination: cursor
+    - id: external_secret_managers
+      method: GET
+      path: /v1/external-secrets-managers
+      response: data.items
+      pagination: cursor
+    - id: external_secret_manager_entities
+      method: GET
+      path: /v1/external-secrets-managers-entities
+      response: data.items
+      pagination: cursor
+    - id: external_secret_manager_assignments
+      method: GET
+      path: /v1/external-secrets-managers/{external_secret_manager_id}/entities
+      response: data.items
+      pagination: cursor
+      path_params: [external_secret_manager_id]
     - id: private_links
       method: GET
       path: /v1/private-links
@@ -158,9 +218,20 @@ provider_api:
       path: /v1/proxy
       response: data.items
       pagination: cursor
+    - id: proxy_agent_connections
+      method: GET
+      path: /v1/proxy/{proxy_agent_id}/connections
+      response: data.items
+      pagination: cursor
+      path_params: [proxy_agent_id]
     - id: hybrid_deployment_agents
       method: GET
       path: /v1/hybrid-deployment-agents
+      response: data.items
+      pagination: cursor
+    - id: public_connector_types
+      method: GET
+      path: /public/connector-types
       response: data.items
       pagination: cursor
     - id: connector_metadata
@@ -179,6 +250,16 @@ provider_api:
       path: /v1/transformations
       response: data.items
       pagination: cursor
+    - id: transformation_projects
+      method: GET
+      path: /v1/transformation-projects
+      response: data.items
+      pagination: cursor
+    - id: transformation_package_metadata
+      method: GET
+      path: /v1/transformations/package-metadata
+      response: data.items
+      pagination: cursor
 runtime_families:
   - users
   - user_connections
@@ -195,14 +276,26 @@ runtime_families:
   - connections
   - connection_certificates
   - connection_fingerprints
+  - connection_schemas
+  - connection_state
+  - connector_sdk_packages
+  - destination_certificates
+  - destination_fingerprints
   - log_services
   - webhooks
+  - external_secret_managers
+  - external_secret_manager_entities
+  - external_secret_manager_assignments
   - private_links
   - proxy_agents
+  - proxy_agent_connections
   - hybrid_deployment_agents
+  - public_connector_types
   - connector_metadata
   - system_keys
   - transformations
+  - transformation_projects
+  - transformation_package_metadata
 kind_lifecycle:
   - kind: fivetran.users
     status: active
@@ -234,21 +327,45 @@ kind_lifecycle:
     status: active
   - kind: fivetran.connection_fingerprints
     status: active
+  - kind: fivetran.connection_schemas
+    status: active
+  - kind: fivetran.connection_state
+    status: active
+  - kind: fivetran.connector_sdk_packages
+    status: active
+  - kind: fivetran.destination_certificates
+    status: active
+  - kind: fivetran.destination_fingerprints
+    status: active
   - kind: fivetran.log_services
     status: active
   - kind: fivetran.webhooks
+    status: active
+  - kind: fivetran.external_secret_managers
+    status: active
+  - kind: fivetran.external_secret_manager_entities
+    status: active
+  - kind: fivetran.external_secret_manager_assignments
     status: active
   - kind: fivetran.private_links
     status: active
   - kind: fivetran.proxy_agents
     status: active
+  - kind: fivetran.proxy_agent_connections
+    status: active
   - kind: fivetran.hybrid_deployment_agents
+    status: active
+  - kind: fivetran.public_connector_types
     status: active
   - kind: fivetran.connector_metadata
     status: active
   - kind: fivetran.system_keys
     status: active
   - kind: fivetran.transformations
+    status: active
+  - kind: fivetran.transformation_projects
+    status: active
+  - kind: fivetran.transformation_package_metadata
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -294,8 +411,8 @@ coverage_contract:
         - Fans out over configured user, team, and group IDs to collect role-bearing membership edges between principals, destination groups, and connections.
     - id: pipeline_inventory
       type: entity_family
-      title: Destinations, connections, connector metadata, and transformations
-      families: [destinations, connections, connector_metadata, transformations]
+      title: Destinations, connections, connector packages, metadata, and transformations
+      families: [destinations, connections, connection_schemas, connection_state, connector_sdk_packages, public_connector_types, connector_metadata, transformations, transformation_projects, transformation_package_metadata]
       support: supported
       high_value: true
       evidence_types: [source_snapshot, configuration_state]
@@ -306,11 +423,11 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC7.1
       notes:
-        - Reads pipeline inventory, source connector metadata, destination configuration, connection status, paused state, sync cadence, and transformation records through Fivetran list APIs.
+        - Reads pipeline inventory, connection schema and state records, connector package and public connector metadata, destination configuration, paused state, sync cadence, transformation projects, quickstart package metadata, and transformation records through Fivetran APIs.
     - id: trust_and_connectivity_controls
       type: entity_family
-      title: Connection trust and private connectivity
-      families: [connection_certificates, connection_fingerprints, private_links, proxy_agents, hybrid_deployment_agents]
+      title: Connection and destination trust plus private connectivity
+      families: [connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
       support: supported
       high_value: true
       evidence_types: [configuration_state, source_snapshot]
@@ -323,7 +440,7 @@ coverage_contract:
         - framework_name: "PCI DSS v4.0.1"
           control_id: "1.2"
       notes:
-        - Collects approved connection certificates, SSH fingerprints, private links, proxy agents, and hybrid deployment agents for review of trusted endpoints and private network paths.
+        - Collects approved connection and destination certificates, SSH fingerprints, private links, proxy agents, proxy connection attachments, and hybrid deployment agents for review of trusted endpoints and private network paths.
     - id: logging_and_webhook_controls
       type: lifecycle_state
       title: Log service and webhook configuration
@@ -358,10 +475,27 @@ coverage_contract:
           control_id: CC6.1
       notes:
         - Reads system key metadata and redacts `key` and `secret` from stored raw payloads before emitting source events.
+    - id: external_secret_managers
+      type: app_entitlement
+      title: External secrets manager inventory
+      families: [external_secret_managers, external_secret_manager_entities, external_secret_manager_assignments]
+      support: supported
+      high_value: true
+      evidence_types: [credential_inventory, configuration_state]
+      control_domains: [identity_access, authorization, asset_inventory]
+      control_refs:
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: SOC 2
+          control_id: CC6.1
+      notes:
+        - Reads external secrets managers, entities that use them, and per-manager entity assignments so operators can review which Fivetran resources depend on external secret stores.
     - id: incremental_sync
       type: incremental_sync
       title: Cursor sync
-      families: [users, user_connections, user_groups, roles, teams, team_users, team_connections, team_groups, groups, group_users, group_connections, destinations, connections, connection_certificates, connection_fingerprints, log_services, webhooks, private_links, proxy_agents, hybrid_deployment_agents, connector_metadata, system_keys, transformations]
+      families: [users, user_connections, user_groups, roles, teams, team_users, team_connections, team_groups, groups, group_users, group_connections, destinations, connections, connection_certificates, connection_fingerprints, connection_schemas, connection_state, connector_sdk_packages, destination_certificates, destination_fingerprints, log_services, webhooks, external_secret_managers, external_secret_manager_entities, external_secret_manager_assignments, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents, public_connector_types, connector_metadata, system_keys, transformations, transformation_projects, transformation_package_metadata]
       support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
@@ -431,6 +565,26 @@ event_contracts:
     schema_ref: fivetran/connection_fingerprints/v1
     required_attributes: [tenant_id, source_event_id, connection_id, credential_id]
     required_payload_fields: [id]
+  - kind: fivetran.connection_schemas
+    schema_ref: fivetran/connection_schemas/v1
+    required_attributes: [tenant_id, source_event_id, connection_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.connection_state
+    schema_ref: fivetran/connection_state/v1
+    required_attributes: [tenant_id, source_event_id, connection_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.connector_sdk_packages
+    schema_ref: fivetran/connector_sdk_packages/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.destination_certificates
+    schema_ref: fivetran/destination_certificates/v1
+    required_attributes: [tenant_id, source_event_id, destination_id, credential_id]
+    required_payload_fields: [id]
+  - kind: fivetran.destination_fingerprints
+    schema_ref: fivetran/destination_fingerprints/v1
+    required_attributes: [tenant_id, source_event_id, destination_id, credential_id]
+    required_payload_fields: [id]
   - kind: fivetran.log_services
     schema_ref: fivetran/log_services/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
@@ -438,6 +592,18 @@ event_contracts:
   - kind: fivetran.webhooks
     schema_ref: fivetran/webhooks/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.external_secret_managers
+    schema_ref: fivetran/external_secret_managers/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.external_secret_manager_entities
+    schema_ref: fivetran/external_secret_manager_entities/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.external_secret_manager_assignments
+    schema_ref: fivetran/external_secret_manager_assignments/v1
+    required_attributes: [tenant_id, source_event_id, external_secret_manager_id, resource_id, resource_type]
     required_payload_fields: [id]
   - kind: fivetran.private_links
     schema_ref: fivetran/private_links/v1
@@ -447,8 +613,16 @@ event_contracts:
     schema_ref: fivetran/proxy_agents/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
     required_payload_fields: [id]
+  - kind: fivetran.proxy_agent_connections
+    schema_ref: fivetran/proxy_agent_connections/v1
+    required_attributes: [tenant_id, source_event_id, proxy_agent_id, resource_id, resource_type]
+    required_payload_fields: [id]
   - kind: fivetran.hybrid_deployment_agents
     schema_ref: fivetran/hybrid_deployment_agents/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.public_connector_types
+    schema_ref: fivetran/public_connector_types/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
     required_payload_fields: [id]
   - kind: fivetran.connector_metadata
@@ -463,3 +637,11 @@ event_contracts:
     schema_ref: fivetran/transformations/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
     required_payload_fields: [id]
+  - kind: fivetran.transformation_projects
+    schema_ref: fivetran/transformation_projects/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [id]
+  - kind: fivetran.transformation_package_metadata
+    schema_ref: fivetran/transformation_package_metadata/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+    required_payload_fields: [package_definition_id]

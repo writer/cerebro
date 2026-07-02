@@ -13,29 +13,41 @@ const (
 	DefaultBaseURLTemplate = "https://api.fivetran.com"
 	DefaultHealthPath      = "/v1/account/info"
 
-	FamilyUsers                  = "users"
-	FamilyUserConnections        = "user_connections"
-	FamilyUserGroups             = "user_groups"
-	FamilyRoles                  = "roles"
-	FamilyTeams                  = "teams"
-	FamilyTeamUsers              = "team_users"
-	FamilyTeamConnections        = "team_connections"
-	FamilyTeamGroups             = "team_groups"
-	FamilyGroups                 = "groups"
-	FamilyGroupUsers             = "group_users"
-	FamilyGroupConnections       = "group_connections"
-	FamilyDestinations           = "destinations"
-	FamilyConnections            = "connections"
-	FamilyConnectionCertificates = "connection_certificates"
-	FamilyConnectionFingerprints = "connection_fingerprints"
-	FamilyLogServices            = "log_services"
-	FamilyWebhooks               = "webhooks"
-	FamilyPrivateLinks           = "private_links"
-	FamilyProxyAgents            = "proxy_agents"
-	FamilyHybridAgents           = "hybrid_deployment_agents"
-	FamilyConnectorMetadata      = "connector_metadata"
-	FamilySystemKeys             = "system_keys"
-	FamilyTransformations        = "transformations"
+	FamilyUsers                            = "users"
+	FamilyUserConnections                  = "user_connections"
+	FamilyUserGroups                       = "user_groups"
+	FamilyRoles                            = "roles"
+	FamilyTeams                            = "teams"
+	FamilyTeamUsers                        = "team_users"
+	FamilyTeamConnections                  = "team_connections"
+	FamilyTeamGroups                       = "team_groups"
+	FamilyGroups                           = "groups"
+	FamilyGroupUsers                       = "group_users"
+	FamilyGroupConnections                 = "group_connections"
+	FamilyDestinations                     = "destinations"
+	FamilyConnections                      = "connections"
+	FamilyConnectionCertificates           = "connection_certificates"
+	FamilyConnectionFingerprints           = "connection_fingerprints"
+	FamilyConnectionSchemas                = "connection_schemas"
+	FamilyConnectionState                  = "connection_state"
+	FamilyConnectorSDKPackages             = "connector_sdk_packages"
+	FamilyDestinationCertificates          = "destination_certificates"
+	FamilyDestinationFingerprints          = "destination_fingerprints"
+	FamilyLogServices                      = "log_services"
+	FamilyWebhooks                         = "webhooks"
+	FamilyExternalSecretManagers           = "external_secret_managers"
+	FamilyExternalSecretManagerEntities    = "external_secret_manager_entities"
+	FamilyExternalSecretManagerAssignments = "external_secret_manager_assignments"
+	FamilyPrivateLinks                     = "private_links"
+	FamilyProxyAgents                      = "proxy_agents"
+	FamilyProxyAgentConnections            = "proxy_agent_connections"
+	FamilyHybridAgents                     = "hybrid_deployment_agents"
+	FamilyPublicConnectorTypes             = "public_connector_types"
+	FamilyConnectorMetadata                = "connector_metadata"
+	FamilySystemKeys                       = "system_keys"
+	FamilyTransformations                  = "transformations"
+	FamilyTransformationProjects           = "transformation_projects"
+	FamilyTransformationPackageMetadata    = "transformation_package_metadata"
 )
 
 func Families() []jsonapi.Family {
@@ -55,14 +67,26 @@ func Families() []jsonapi.Family {
 		connectionsFamily(),
 		connectionCertificatesFamily(),
 		connectionFingerprintsFamily(),
+		connectionSchemasFamily(),
+		connectionStateFamily(),
+		connectorSDKPackagesFamily(),
+		destinationCertificatesFamily(),
+		destinationFingerprintsFamily(),
 		logServicesFamily(),
 		webhooksFamily(),
+		externalSecretManagersFamily(),
+		externalSecretManagerEntitiesFamily(),
+		externalSecretManagerAssignmentsFamily(),
 		privateLinksFamily(),
 		proxyAgentsFamily(),
+		proxyAgentConnectionsFamily(),
 		hybridAgentsFamily(),
+		publicConnectorTypesFamily(),
 		connectorMetadataFamily(),
 		systemKeysFamily(),
 		transformationsFamily(),
+		transformationProjectsFamily(),
+		transformationPackageMetadataFamily(),
 	}
 }
 
@@ -195,11 +219,31 @@ func connectionsFamily() jsonapi.Family {
 }
 
 func connectionCertificatesFamily() jsonapi.Family {
-	return fivetranConnectionCredentialFamily(FamilyConnectionCertificates, "/v1/connections/{connection_id}/certificates", "certificate")
+	return fivetranScopedCredentialFamily(FamilyConnectionCertificates, "/v1/connections/{connection_id}/certificates", "connection_id", "connection", "certificate")
 }
 
 func connectionFingerprintsFamily() jsonapi.Family {
-	return fivetranConnectionCredentialFamily(FamilyConnectionFingerprints, "/v1/connections/{connection_id}/fingerprints", "fingerprint")
+	return fivetranScopedCredentialFamily(FamilyConnectionFingerprints, "/v1/connections/{connection_id}/fingerprints", "connection_id", "connection", "fingerprint")
+}
+
+func connectionSchemasFamily() jsonapi.Family {
+	return fivetranScopedAssetFamily(FamilyConnectionSchemas, "/v1/connections/{connection_id}/schemas", "connection_id", "connection_schema", "connection_schema", true)
+}
+
+func connectionStateFamily() jsonapi.Family {
+	return fivetranScopedAssetFamily(FamilyConnectionState, "/v1/connections/{connection_id}/state", "connection_id", "connection_state", "connection_state", true)
+}
+
+func connectorSDKPackagesFamily() jsonapi.Family {
+	return fivetranAssetFamily(FamilyConnectorSDKPackages, "/v1/connector-sdk/packages", "connector_sdk_package", "connector_sdk_package")
+}
+
+func destinationCertificatesFamily() jsonapi.Family {
+	return fivetranScopedCredentialFamily(FamilyDestinationCertificates, "/v1/destinations/{destination_id}/certificates", "destination_id", "destination", "certificate")
+}
+
+func destinationFingerprintsFamily() jsonapi.Family {
+	return fivetranScopedCredentialFamily(FamilyDestinationFingerprints, "/v1/destinations/{destination_id}/fingerprints", "destination_id", "destination", "fingerprint")
 }
 
 func logServicesFamily() jsonapi.Family {
@@ -210,6 +254,18 @@ func webhooksFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyWebhooks, "/v1/webhooks", "webhook", "webhook")
 }
 
+func externalSecretManagersFamily() jsonapi.Family {
+	return fivetranAssetFamily(FamilyExternalSecretManagers, "/v1/external-secrets-managers", "external_secret_manager", "external_secret_manager")
+}
+
+func externalSecretManagerEntitiesFamily() jsonapi.Family {
+	return fivetranAssetFamily(FamilyExternalSecretManagerEntities, "/v1/external-secrets-managers-entities", "external_secret_manager_entity", "external_secret_manager_entity")
+}
+
+func externalSecretManagerAssignmentsFamily() jsonapi.Family {
+	return fivetranScopedAssetFamily(FamilyExternalSecretManagerAssignments, "/v1/external-secrets-managers/{external_secret_manager_id}/entities", "external_secret_manager_id", "external_secret_manager_assignment", "external_secret_manager_assignment", false)
+}
+
 func privateLinksFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyPrivateLinks, "/v1/private-links", "private_link", "private_link")
 }
@@ -218,8 +274,16 @@ func proxyAgentsFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyProxyAgents, "/v1/proxy", "proxy_agent", "proxy_agent")
 }
 
+func proxyAgentConnectionsFamily() jsonapi.Family {
+	return fivetranScopedAssetFamily(FamilyProxyAgentConnections, "/v1/proxy/{proxy_agent_id}/connections", "proxy_agent_id", "proxy_agent_connection", "proxy_agent_connection", false)
+}
+
 func hybridAgentsFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyHybridAgents, "/v1/hybrid-deployment-agents", "hybrid_deployment_agent", "hybrid_deployment_agent")
+}
+
+func publicConnectorTypesFamily() jsonapi.Family {
+	return fivetranAssetFamily(FamilyPublicConnectorTypes, "/public/connector-types", "public_connector_type", "public_connector_type")
 }
 
 func connectorMetadataFamily() jsonapi.Family {
@@ -234,6 +298,19 @@ func systemKeysFamily() jsonapi.Family {
 
 func transformationsFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyTransformations, "/v1/transformations", "transformation", "transformation")
+}
+
+func transformationProjectsFamily() jsonapi.Family {
+	return fivetranAssetFamily(FamilyTransformationProjects, "/v1/transformation-projects", "transformation_project", "transformation_project")
+}
+
+func transformationPackageMetadataFamily() jsonapi.Family {
+	family := fivetranAssetFamily(FamilyTransformationPackageMetadata, "/v1/transformations/package-metadata", "transformation_package_metadata", "transformation_package_metadata")
+	family.IDKeys = []string{"package_definition_id", "id", "name"}
+	family.Attributes["source_event_id"] = "package_definition_id|id|name"
+	family.Attributes["resource_id"] = "package_definition_id|id|name"
+	family.Attributes["resource_name"] = "name|package_definition_id"
+	return family
 }
 
 func fivetranScopedMembershipFamily(name string, path string, scopeParam string, memberType string) jsonapi.Family {
@@ -268,52 +345,82 @@ func fivetranAssetFamily(name string, path string, schema string, resourceType s
 		Name:          name,
 		Path:          path,
 		URNKind:       "fivetran_" + name,
-		IDKeys:        []string{"id", "name", "schema", "service"},
+		IDKeys:        []string{"id", "name", "schema", "service", "package_definition_id", "entity_id", "key_id"},
 		TimestampKeys: []string{"created_at", "updated_at", "last_sync_completed_at", "last_successful_sync"},
 		Attributes: map[string]string{
-			"source_event_id": "id|name|schema|service",
-			"resource_id":     "id|name|schema|service",
-			"resource_name":   "name|schema|service|id",
-			"resource_type":   "resource_type",
-			"service":         "service",
-			"schema":          "schema",
-			"group_id":        "group_id",
-			"destination_id":  "destination_id|group_id",
-			"status":          "status.setup_state|status.sync_state|status",
-			"paused":          "paused",
-			"sync_frequency":  "sync_frequency|sync_frequency_in_minutes",
-			"schedule_type":   "schedule_type",
-			"observed_at":     "updated_at|created_at",
+			"source_event_id":            "id|name|schema|service|package_definition_id|entity_id|key_id",
+			"resource_id":                "id|name|schema|service|package_definition_id|entity_id|key_id",
+			"resource_name":              "name|schema|service|id|entity_id",
+			"resource_type":              "resource_type",
+			"entity_type":                "entity_type|type",
+			"service":                    "service",
+			"schema":                     "schema",
+			"group_id":                   "group_id",
+			"connection_id":              "connection_id",
+			"destination_id":             "destination_id|group_id",
+			"external_secret_manager_id": "external_secret_manager_id|secret_manager_id|esm_id",
+			"project_id":                 "project_id|transformation_project_id",
+			"transformation_project_id":  "transformation_project_id|project_id",
+			"proxy_agent_id":             "proxy_agent_id|agent_id",
+			"status":                     "status.setup_state|status.sync_state|status",
+			"paused":                     "paused",
+			"sync_frequency":             "sync_frequency|sync_frequency_in_minutes",
+			"schedule_type":              "schedule_type",
+			"observed_at":                "updated_at|created_at",
 		},
 		StaticAttributes: fivetranStaticAttributes(schema, "asset", resourceType),
 		Config:           fivetranFamilyConfig(jsonapi.FamilyConfig{ResourceURNKind: "fivetran_" + name}),
 	})
 }
 
-func fivetranConnectionCredentialFamily(name string, path string, credentialType string) jsonapi.Family {
+func fivetranScopedAssetFamily(name string, path string, scopeParam string, schema string, resourceType string, singleton bool) jsonapi.Family {
+	family := fivetranAssetFamily(name, path, schema, resourceType)
+	family.PathParams = []string{scopeParam}
+	family.Singleton = singleton
+	if singleton {
+		family.IDKeys = append([]string{scopeParam}, family.IDKeys...)
+	}
+	family.Attributes[scopeParam] = scopeParam
+	family.Attributes["source_event_id"] = family.Attributes["source_event_id"] + "|" + scopeParam
+	family.Attributes["resource_id"] = family.Attributes["resource_id"] + "|" + scopeParam
+	family.Config.ConfigAttributes[scopeParam] = scopeParam
+	family.Config.IdentityKeys = []string{scopeParam}
+	return family
+}
+
+func fivetranScopedCredentialFamily(name string, path string, scopeParam string, scopeResourceType string, credentialType string) jsonapi.Family {
 	return fivetranPagedFamily(jsonapi.Family{
 		Name:       name,
 		Path:       path,
-		PathParams: []string{"connection_id"},
+		PathParams: []string{scopeParam},
 		URNKind:    "fivetran_" + name,
 		IDKeys:     []string{"id", "hash", "name", "public_key"},
 		Attributes: map[string]string{
+			scopeParam:        scopeParam,
 			"connection_id":   "connection_id",
+			"destination_id":  "destination_id",
 			"credential_id":   "id|hash|name|public_key",
 			"source_event_id": "id|hash|name|public_key",
 			"resource_id":     "id|hash|name|public_key",
 			"resource_name":   "name|public_key|hash|id",
 			"resource_type":   "credential_type",
+			"scope_type":      "scope_type",
 			"hash":            "hash",
 			"public_key":      "public_key",
 		},
-		StaticAttributes: fivetranStaticAttributes(name, "credential", credentialType),
+		StaticAttributes: fivetranCredentialStaticAttributes(name, scopeResourceType, credentialType),
 		Config: fivetranFamilyConfig(jsonapi.FamilyConfig{
-			ConfigAttributes: map[string]string{"connection_id": "connection_id"},
-			IdentityKeys:     []string{"connection_id"},
+			ConfigAttributes: map[string]string{scopeParam: scopeParam},
+			IdentityKeys:     []string{scopeParam},
 			ResourceURNKind:  "fivetran_" + name,
 		}),
 	})
+}
+
+func fivetranCredentialStaticAttributes(schema string, scopeType string, credentialType string) map[string]string {
+	attributes := fivetranStaticAttributes(schema, "credential", credentialType)
+	attributes["scope_type"] = scopeType
+	return attributes
 }
 
 func fivetranPagedFamily(family jsonapi.Family) jsonapi.Family {

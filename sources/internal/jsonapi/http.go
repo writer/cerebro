@@ -508,6 +508,17 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err
 	}
+	for _, key := range []string{"data", "result", "item", "record"} {
+		value := object[key]
+		if len(value) == 0 {
+			continue
+		}
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(value, &nested); err == nil {
+			object = nested
+			break
+		}
+	}
 	if _, ok := object["id"]; !ok && strings.TrimSpace(fallbackID) != "" {
 		object["id"] = json.RawMessage(strconv.Quote(strings.TrimSpace(fallbackID)))
 	}

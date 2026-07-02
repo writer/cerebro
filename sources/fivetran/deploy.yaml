@@ -7,6 +7,9 @@ secretKeys:
   - FIVETRAN_TEAM_IDS
   - FIVETRAN_GROUP_IDS
   - FIVETRAN_CONNECTION_IDS
+  - FIVETRAN_DESTINATION_IDS
+  - FIVETRAN_EXTERNAL_SECRET_MANAGER_IDS
+  - FIVETRAN_PROXY_AGENT_IDS
 runtimes:
   - localId: users
     config: &base
@@ -84,6 +87,30 @@ runtimes:
       <<: *base
       family: connection_fingerprints
       connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connection-schemas
+    config:
+      <<: *base
+      family: connection_schemas
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connection-state
+    config:
+      <<: *base
+      family: connection_state
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connector-sdk-packages
+    config:
+      <<: *base
+      family: connector_sdk_packages
+  - localId: destination-certificates
+    config:
+      <<: *base
+      family: destination_certificates
+      destination_ids: env:FIVETRAN_DESTINATION_IDS
+  - localId: destination-fingerprints
+    config:
+      <<: *base
+      family: destination_fingerprints
+      destination_ids: env:FIVETRAN_DESTINATION_IDS
   - localId: log-services
     config:
       <<: *base
@@ -92,6 +119,19 @@ runtimes:
     config:
       <<: *base
       family: webhooks
+  - localId: external-secret-managers
+    config:
+      <<: *base
+      family: external_secret_managers
+  - localId: external-secret-manager-entities
+    config:
+      <<: *base
+      family: external_secret_manager_entities
+  - localId: external-secret-manager-assignments
+    config:
+      <<: *base
+      family: external_secret_manager_assignments
+      external_secret_manager_ids: env:FIVETRAN_EXTERNAL_SECRET_MANAGER_IDS
   - localId: private-links
     config:
       <<: *base
@@ -100,10 +140,19 @@ runtimes:
     config:
       <<: *base
       family: proxy_agents
+  - localId: proxy-agent-connections
+    config:
+      <<: *base
+      family: proxy_agent_connections
+      proxy_agent_ids: env:FIVETRAN_PROXY_AGENT_IDS
   - localId: hybrid-deployment-agents
     config:
       <<: *base
       family: hybrid_deployment_agents
+  - localId: public-connector-types
+    config:
+      <<: *base
+      family: public_connector_types
   - localId: connector-metadata
     config:
       <<: *base
@@ -116,3 +165,11 @@ runtimes:
     config:
       <<: *base
       family: transformations
+  - localId: transformation-projects
+    config:
+      <<: *base
+      family: transformation_projects
+  - localId: transformation-package-metadata
+    config:
+      <<: *base
+      family: transformation_package_metadata

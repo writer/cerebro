@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -59,6 +60,10 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 		return err
 	}
 	if param, values := fivetranPathParamValues(runtimeCfg); param != "" {
+		values, err = s.resolvePathParamValues(ctx, runtimeCfg, param, values)
+		if err != nil {
+			return err
+		}
 		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	path := fivetranapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
@@ -74,6 +79,10 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 		return nil, err
 	}
 	if param, values := fivetranPathParamValues(runtimeCfg); param != "" {
+		values, err = s.resolvePathParamValues(ctx, runtimeCfg, param, values)
+		if err != nil {
+			return nil, err
+		}
 		return s.discoverScoped(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Discover(ctx, runtimeCfg)
@@ -89,6 +98,10 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	if param, values := fivetranPathParamValues(runtimeCfg); param != "" {
+		values, err = s.resolvePathParamValues(ctx, runtimeCfg, param, values)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
 		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
 	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
@@ -110,8 +123,14 @@ func fivetranPathParamValues(cfg sourcecdk.Config) (string, []string) {
 		return "team_id", fivetranapi.ConfigListValues(cfg, "team_ids", "team_id")
 	case fivetranapi.FamilyGroupUsers, fivetranapi.FamilyGroupConnections:
 		return "group_id", fivetranapi.ConfigListValues(cfg, "group_ids", "group_id")
-	case fivetranapi.FamilyConnectionCertificates, fivetranapi.FamilyConnectionFingerprints:
+	case fivetranapi.FamilyConnectionCertificates, fivetranapi.FamilyConnectionFingerprints, fivetranapi.FamilyConnectionSchemas, fivetranapi.FamilyConnectionState:
 		return "connection_id", fivetranapi.ConfigListValues(cfg, "connection_ids", "connection_id")
+	case fivetranapi.FamilyDestinationCertificates, fivetranapi.FamilyDestinationFingerprints:
+		return "destination_id", fivetranapi.ConfigListValues(cfg, "destination_ids", "destination_id")
+	case fivetranapi.FamilyExternalSecretManagerAssignments:
+		return "external_secret_manager_id", fivetranapi.ConfigListValues(cfg, "external_secret_manager_ids", "external_secret_manager_id", "esm_ids", "esm_id")
+	case fivetranapi.FamilyProxyAgentConnections:
+		return "proxy_agent_id", fivetranapi.ConfigListValues(cfg, "proxy_agent_ids", "proxy_agent_id", "agent_ids", "agent_id")
 	default:
 		return "", nil
 	}
@@ -122,6 +141,83 @@ func (s *Source) discoverScoped(ctx context.Context, cfg sourcecdk.Config, param
 		return nil, fmt.Errorf("%w: fivetran %s requires at least one %s", sourcecdk.ErrInvalidConfig, fivetranapi.FamilyName(cfg), param)
 	}
 	return s.inner.DiscoverPathParamValues(ctx, cfg, param, values)
+}
+
+func (s *Source) resolvePathParamValues(ctx context.Context, cfg sourcecdk.Config, param string, values []string) ([]string, error) {
+	values = compactStrings(values)
+	if len(values) > 0 {
+		return values, nil
+	}
+	parentFamily, parentAttribute := fivetranParentFamilyForParam(param)
+	if parentFamily == "" || parentAttribute == "" {
+		return nil, nil
+	}
+	parentCfg := configWithValue(cfg, "family", parentFamily)
+	ids := []string{}
+	var cursor *cerebrov1.SourceCursor
+	for page := 0; page < 1000; page++ {
+		pull, err := s.inner.Read(ctx, parentCfg, cursor)
+		if err != nil {
+			return nil, fmt.Errorf("discover fivetran %s values from %s: %w", param, parentFamily, err)
+		}
+		for _, event := range pull.Events {
+			if event == nil {
+				continue
+			}
+			if value := strings.TrimSpace(event.Attributes[parentAttribute]); value != "" {
+				ids = append(ids, value)
+			}
+		}
+		if sourcecdk.CursorToken(pull.NextCursor) == "" {
+			return compactStrings(ids), nil
+		}
+		cursor = pull.NextCursor
+	}
+	return nil, fmt.Errorf("fivetran %s parent fanout exceeded page limit", param)
+}
+
+func fivetranParentFamilyForParam(param string) (string, string) {
+	switch param {
+	case "user_id":
+		return fivetranapi.FamilyUsers, "user_id"
+	case "team_id":
+		return fivetranapi.FamilyTeams, "team_id"
+	case "group_id":
+		return fivetranapi.FamilyGroups, "group_id"
+	case "connection_id":
+		return fivetranapi.FamilyConnections, "resource_id"
+	case "destination_id":
+		return fivetranapi.FamilyDestinations, "resource_id"
+	case "external_secret_manager_id":
+		return fivetranapi.FamilyExternalSecretManagers, "resource_id"
+	case "proxy_agent_id":
+		return fivetranapi.FamilyProxyAgents, "resource_id"
+	default:
+		return "", ""
+	}
+}
+
+func configWithValue(cfg sourcecdk.Config, key string, value string) sourcecdk.Config {
+	values := cfg.Values()
+	values[key] = value
+	return sourcecdk.NewConfig(values)
+}
+
+func compactStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func (s *Source) allowLoopbackForTest() {

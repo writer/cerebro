@@ -13,6 +13,22 @@ func fivetranUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	return identityUserProjections(event, fivetranIdentityProfile)
 }
 
+func fivetranAccountsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return fivetranRuntimeAssetProjections(event)
+}
+
+func fivetranRecordsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return fivetranRuntimeAssetProjections(event)
+}
+
+func fivetranPoliciesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return fivetranGenericPolicyProjections(event)
+}
+
+func fivetranAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, fivetranIdentityProfile)
+}
+
 func fivetranRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return fivetranRuntimeAssetProjections(event)
 }
@@ -69,31 +85,40 @@ func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	}
 	attributes := event.GetAttributes()
 	connectionID := strings.TrimSpace(attributes["connection_id"])
+	destinationID := strings.TrimSpace(attributes["destination_id"])
 	credentialID := firstNonEmpty(attributes["credential_id"], attributes["resource_id"], attributes["id"], attributes["hash"], attributes["public_key"])
-	connectionURN := fivetranRuntimeAssetURN(tenantID, "connection", connectionID)
+	targetType := "connection"
+	targetID := connectionID
+	if targetID == "" {
+		targetType = "destination"
+		targetID = destinationID
+	}
+	targetURN := fivetranRuntimeAssetURN(tenantID, targetType, targetID)
 	credentialURN := fivetranRuntimeAssetURN(tenantID, firstNonEmpty(attributes["resource_type"], "credential"), credentialID)
-	if connectionURN == "" || credentialURN == "" {
+	if targetURN == "" || credentialURN == "" {
 		return entities, links, nil
 	}
 	entityMap, linkMap := projectionMaps(entities, links)
 	addEntity(entityMap, &ports.ProjectedEntity{
-		URN:        connectionURN,
+		URN:        targetURN,
 		TenantID:   tenantID,
 		SourceID:   event.GetSourceId(),
-		EntityType: "runtime.fivetran.connection",
-		Label:      connectionID,
+		EntityType: fivetranEntityType(targetType),
+		Label:      targetID,
 		Attributes: compactAttributes(map[string]string{
-			"resource_id":       connectionID,
-			"resource_type":     "connection",
+			"resource_id":       targetID,
+			"resource_type":     targetType,
 			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
 		}),
 	})
-	addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), credentialURN, connectionURN, relationAssignedTo, compactAttributes(map[string]string{
+	addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), credentialURN, targetURN, relationAssignedTo, compactAttributes(map[string]string{
 		"event_id":        event.GetId(),
-		"match_type":      "fivetran_connection_credential",
+		"match_type":      "fivetran_" + targetType + "_credential",
 		"connection_id":   connectionID,
+		"destination_id":  destinationID,
 		"credential_id":   credentialID,
 		"credential_type": firstNonEmpty(attributes["resource_type"], "credential"),
+		"target_type":     targetType,
 	})))
 	outEntities, outLinks := entitiesAndLinks(entityMap, linkMap)
 	return outEntities, outLinks, nil
@@ -159,7 +184,139 @@ func fivetranRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), evidenceURN, resourceURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
 	}
+	fivetranRuntimeAssetRelationshipProjections(event, tenantID, resourceURN, resourceType, attributes, entities, links)
 	return identityProjectionResult(entities, links)
+}
+
+func fivetranGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	policyID := firstNonEmpty(attributes["policy_id"], event.GetId())
+	policyURN := projectionURN(tenantID, "policy", policyID)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        policyURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "policy",
+		Label:      firstNonEmpty(attributes["policy_name"], policyID),
+		Attributes: compactAttributes(map[string]string{
+			"policy_id":         policyID,
+			"policy_severity":   strings.TrimSpace(attributes["policy_severity"]),
+			"policy_status":     strings.TrimSpace(attributes["policy_status"]),
+			"policy_type":       strings.TrimSpace(attributes["policy_type"]),
+			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+		}),
+	})
+	if evidenceID := strings.TrimSpace(attributes["evidence_id"]); evidenceID != "" {
+		evidenceURN := projectionURN(tenantID, "runtime_evidence", evidenceID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        evidenceURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "runtime_evidence",
+			Label:      evidenceID,
+			Attributes: compactAttributes(map[string]string{
+				"evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"]),
+				"evidence_cas_uri":    strings.TrimSpace(attributes["evidence_cas_uri"]),
+				"evidence_id":         evidenceID,
+			}),
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), policyURN, evidenceURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func fivetranRuntimeAssetRelationshipProjections(event *cerebrov1.EventEnvelope, tenantID string, resourceURN string, resourceType string, attributes map[string]string, entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) {
+	groupID := strings.TrimSpace(attributes["group_id"])
+	if groupID != "" && normalizeCloudType(resourceType) != "group" {
+		groupURN := fivetranPrincipalOrAssetURN(tenantID, "group", groupID)
+		addFivetranMembershipEntity(entities, tenantID, event.GetSourceId(), groupURN, "group", groupID, firstNonEmpty(attributes["group_name"], groupID), attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, groupURN, relationBelongsTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_asset_group")))
+	}
+	destinationID := strings.TrimSpace(attributes["destination_id"])
+	if destinationID != "" && normalizeCloudType(resourceType) != "destination" {
+		destinationURN := fivetranRuntimeAssetURN(tenantID, "destination", destinationID)
+		addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), destinationURN, "destination", destinationID, attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, destinationURN, relationBelongsTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_asset_destination")))
+	}
+	connectionID := strings.TrimSpace(attributes["connection_id"])
+	if connectionID != "" && normalizeCloudType(resourceType) != "connection" {
+		connectionURN := fivetranRuntimeAssetURN(tenantID, "connection", connectionID)
+		addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), connectionURN, "connection", connectionID, attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, connectionURN, relationBelongsTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_asset_connection")))
+	}
+	proxyAgentID := strings.TrimSpace(attributes["proxy_agent_id"])
+	if proxyAgentID != "" && normalizeCloudType(resourceType) != "proxy_agent" {
+		proxyURN := fivetranRuntimeAssetURN(tenantID, "proxy_agent", proxyAgentID)
+		addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), proxyURN, "proxy_agent", proxyAgentID, attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, proxyURN, relationBelongsTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_asset_proxy_agent")))
+		if connectionID == "" {
+			connectionID = firstNonEmpty(attributes["resource_id"], attributes["id"])
+		}
+		if connectionID != "" && normalizeCloudType(resourceType) == "proxy_agent_connection" {
+			connectionURN := fivetranRuntimeAssetURN(tenantID, "connection", connectionID)
+			addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), connectionURN, "connection", connectionID, attributes)
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), connectionURN, proxyURN, relationAttachedTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_proxy_connection")))
+		}
+	}
+	projectID := firstNonEmpty(attributes["project_id"], attributes["transformation_project_id"])
+	if projectID != "" && normalizeCloudType(resourceType) != "transformation_project" {
+		projectURN := fivetranRuntimeAssetURN(tenantID, "transformation_project", projectID)
+		addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), projectURN, "transformation_project", projectID, attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, projectURN, relationBelongsTo, fivetranAssetRelationAttributes(event, attributes, "fivetran_transformation_project")))
+	}
+	externalSecretManagerID := strings.TrimSpace(attributes["external_secret_manager_id"])
+	if externalSecretManagerID != "" && normalizeCloudType(resourceType) != "external_secret_manager" {
+		managerURN := fivetranRuntimeAssetURN(tenantID, "external_secret_manager", externalSecretManagerID)
+		addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), managerURN, "external_secret_manager", externalSecretManagerID, attributes)
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, managerURN, relationDependsOn, fivetranAssetRelationAttributes(event, attributes, "fivetran_external_secret_manager_usage")))
+		usingType := normalizeCloudType(firstNonEmpty(attributes["entity_type"], attributes["entity_resource_type"]))
+		usingID := firstNonEmpty(attributes["connection_id"], attributes["destination_id"], attributes["entity_id"], attributes["resource_id"])
+		if (usingType == "connection" || usingType == "destination") && usingID != "" {
+			usingURN := fivetranRuntimeAssetURN(tenantID, usingType, usingID)
+			addFivetranRuntimeAssetReference(entities, tenantID, event.GetSourceId(), usingURN, usingType, usingID, attributes)
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), usingURN, managerURN, relationDependsOn, fivetranAssetRelationAttributes(event, attributes, "fivetran_external_secret_manager_resource")))
+		}
+	}
+}
+
+func addFivetranRuntimeAssetReference(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, urn string, resourceType string, id string, eventAttributes map[string]string) {
+	if urn == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: fivetranEntityType(resourceType),
+		Label:      firstNonEmpty(eventAttributes[resourceType+"_name"], eventAttributes["resource_name"], id),
+		Attributes: compactAttributes(map[string]string{
+			"resource_id":       id,
+			"resource_type":     resourceType,
+			"source_runtime_id": strings.TrimSpace(eventAttributes[ports.EventAttributeSourceRuntimeID]),
+			"source_system":     "fivetran",
+		}),
+	})
+}
+
+func fivetranAssetRelationAttributes(event *cerebrov1.EventEnvelope, attributes map[string]string, matchType string) map[string]string {
+	return compactAttributes(map[string]string{
+		"connection_id":              strings.TrimSpace(attributes["connection_id"]),
+		"destination_id":             strings.TrimSpace(attributes["destination_id"]),
+		"event_id":                   event.GetId(),
+		"external_secret_manager_id": strings.TrimSpace(attributes["external_secret_manager_id"]),
+		"group_id":                   strings.TrimSpace(attributes["group_id"]),
+		"match_type":                 matchType,
+		"project_id":                 firstNonEmpty(attributes["project_id"], attributes["transformation_project_id"]),
+		"proxy_agent_id":             strings.TrimSpace(attributes["proxy_agent_id"]),
+		"source_kind":                strings.TrimSpace(event.GetKind()),
+		"source_system":              "fivetran",
+	})
 }
 
 func fivetranMembershipScope(event *cerebrov1.EventEnvelope, attributes map[string]string) (string, string) {

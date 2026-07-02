@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -86,6 +85,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 		config     map[string]string
 		queryKey   string
 		queryValue string
+		singleton  bool
 	}{
 		{
 			name:      "users",
@@ -148,6 +148,84 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "connection-1",
 		},
 		{
+			name:      "connection certificates",
+			family:    fivetranapi.FamilyConnectionCertificates,
+			path:      "/v1/connections/connection-1/certificates",
+			accept:    "application/json",
+			item:      map[string]any{"id": "cert-1", "name": "Warehouse TLS certificate", "hash": "sha256:8f7f3d2c"},
+			kind:      "fivetran.connection_certificates",
+			attrKey:   "credential_id",
+			attrValue: "cert-1",
+			config:    map[string]string{"connection_ids": "connection-1"},
+		},
+		{
+			name:      "connection fingerprints",
+			family:    fivetranapi.FamilyConnectionFingerprints,
+			path:      "/v1/connections/connection-1/fingerprints",
+			accept:    "application/json",
+			item:      map[string]any{"id": "fingerprint-1", "hash": "sha256:78a9"},
+			kind:      "fivetran.connection_fingerprints",
+			attrKey:   "credential_id",
+			attrValue: "fingerprint-1",
+			config:    map[string]string{"connection_ids": "connection-1"},
+		},
+		{
+			name:      "connection schemas",
+			family:    fivetranapi.FamilyConnectionSchemas,
+			path:      "/v1/connections/connection-1/schemas",
+			accept:    "application/json",
+			item:      map[string]any{"schema_change_handling": "ALLOW_ALL"},
+			kind:      "fivetran.connection_schemas",
+			attrKey:   "connection_id",
+			attrValue: "connection-1",
+			config:    map[string]string{"connection_ids": "connection-1"},
+			singleton: true,
+		},
+		{
+			name:      "connection state",
+			family:    fivetranapi.FamilyConnectionState,
+			path:      "/v1/connections/connection-1/state",
+			accept:    "application/json",
+			item:      map[string]any{"status": "connected"},
+			kind:      "fivetran.connection_state",
+			attrKey:   "connection_id",
+			attrValue: "connection-1",
+			config:    map[string]string{"connection_ids": "connection-1"},
+			singleton: true,
+		},
+		{
+			name:      "connector sdk packages",
+			family:    fivetranapi.FamilyConnectorSDKPackages,
+			path:      "/v1/connector-sdk/packages",
+			accept:    "application/json",
+			item:      map[string]any{"id": "package-1", "name": "custom connector package", "status": "ready"},
+			kind:      "fivetran.connector_sdk_packages",
+			attrKey:   "resource_id",
+			attrValue: "package-1",
+		},
+		{
+			name:      "destination certificates",
+			family:    fivetranapi.FamilyDestinationCertificates,
+			path:      "/v1/destinations/destination-1/certificates",
+			accept:    "application/json",
+			item:      map[string]any{"id": "dest-cert-1", "name": "Destination TLS certificate", "hash": "sha256:1234"},
+			kind:      "fivetran.destination_certificates",
+			attrKey:   "credential_id",
+			attrValue: "dest-cert-1",
+			config:    map[string]string{"destination_ids": "destination-1"},
+		},
+		{
+			name:      "destination fingerprints",
+			family:    fivetranapi.FamilyDestinationFingerprints,
+			path:      "/v1/destinations/destination-1/fingerprints",
+			accept:    "application/json",
+			item:      map[string]any{"id": "dest-fingerprint-1", "hash": "sha256:5678"},
+			kind:      "fivetran.destination_fingerprints",
+			attrKey:   "credential_id",
+			attrValue: "dest-fingerprint-1",
+			config:    map[string]string{"destination_ids": "destination-1"},
+		},
+		{
 			name:      "log services",
 			family:    fivetranapi.FamilyLogServices,
 			path:      "/v1/external-logging",
@@ -166,6 +244,37 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			kind:      "fivetran.webhooks",
 			attrKey:   "resource_id",
 			attrValue: "webhook-1",
+		},
+		{
+			name:      "external secret managers",
+			family:    fivetranapi.FamilyExternalSecretManagers,
+			path:      "/v1/external-secrets-managers",
+			accept:    "application/json",
+			item:      map[string]any{"id": "esm-1", "name": "Vault production", "status": "connected"},
+			kind:      "fivetran.external_secret_managers",
+			attrKey:   "resource_id",
+			attrValue: "esm-1",
+		},
+		{
+			name:      "external secret manager entities",
+			family:    fivetranapi.FamilyExternalSecretManagerEntities,
+			path:      "/v1/external-secrets-managers-entities",
+			accept:    "application/json",
+			item:      map[string]any{"id": "esm-entity-1", "name": "Salesforce connection", "secret_manager_id": "esm-1"},
+			kind:      "fivetran.external_secret_manager_entities",
+			attrKey:   "resource_id",
+			attrValue: "esm-entity-1",
+		},
+		{
+			name:      "external secret manager assignments",
+			family:    fivetranapi.FamilyExternalSecretManagerAssignments,
+			path:      "/v1/external-secrets-managers/esm-1/entities",
+			accept:    "application/json",
+			item:      map[string]any{"id": "connection-1", "name": "Salesforce connection"},
+			kind:      "fivetran.external_secret_manager_assignments",
+			attrKey:   "external_secret_manager_id",
+			attrValue: "esm-1",
+			config:    map[string]string{"external_secret_manager_ids": "esm-1"},
 		},
 		{
 			name:      "private links",
@@ -188,6 +297,17 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "proxy-1",
 		},
 		{
+			name:      "proxy agent connections",
+			family:    fivetranapi.FamilyProxyAgentConnections,
+			path:      "/v1/proxy/proxy-1/connections",
+			accept:    "application/json",
+			item:      map[string]any{"id": "connection-1", "name": "Salesforce connection"},
+			kind:      "fivetran.proxy_agent_connections",
+			attrKey:   "proxy_agent_id",
+			attrValue: "proxy-1",
+			config:    map[string]string{"proxy_agent_ids": "proxy-1"},
+		},
+		{
 			name:      "hybrid deployment agents",
 			family:    fivetranapi.FamilyHybridAgents,
 			path:      "/v1/hybrid-deployment-agents",
@@ -196,6 +316,16 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			kind:      "fivetran.hybrid_deployment_agents",
 			attrKey:   "resource_id",
 			attrValue: "hybrid-1",
+		},
+		{
+			name:      "public connector types",
+			family:    fivetranapi.FamilyPublicConnectorTypes,
+			path:      "/public/connector-types",
+			accept:    "application/json",
+			item:      map[string]any{"id": "postgres", "service": "postgres", "name": "PostgreSQL"},
+			kind:      "fivetran.public_connector_types",
+			attrKey:   "resource_id",
+			attrValue: "postgres",
 		},
 		{
 			name:      "connector metadata",
@@ -227,6 +357,26 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrKey:   "resource_id",
 			attrValue: "transformation-1",
 		},
+		{
+			name:      "transformation projects",
+			family:    fivetranapi.FamilyTransformationProjects,
+			path:      "/v1/transformation-projects",
+			accept:    "application/json",
+			item:      map[string]any{"id": "project-1", "name": "dbt production"},
+			kind:      "fivetran.transformation_projects",
+			attrKey:   "resource_id",
+			attrValue: "project-1",
+		},
+		{
+			name:      "transformation package metadata",
+			family:    fivetranapi.FamilyTransformationPackageMetadata,
+			path:      "/v1/transformations/package-metadata",
+			accept:    "application/json",
+			item:      map[string]any{"package_definition_id": "package-definition-1", "name": "Quickstart package"},
+			kind:      "fivetran.transformation_package_metadata",
+			attrKey:   "resource_id",
+			attrValue: "package-definition-1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -244,6 +394,10 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 					t.Fatalf("%s query = %q, want %q", tt.queryKey, r.URL.Query().Get(tt.queryKey), tt.queryValue)
 				}
 				w.Header().Set("Content-Type", "application/json")
+				if tt.singleton {
+					_ = json.NewEncoder(w).Encode(map[string]any{"code": "Success", "data": tt.item})
+					return
+				}
 				_ = json.NewEncoder(w).Encode(fivetranList(tt.item, ""))
 			}))
 			defer server.Close()
@@ -321,13 +475,75 @@ func TestSourceReadsScopedMembershipsWithFanout(t *testing.T) {
 	}
 }
 
-func TestSourceDiscoverScopedMembershipsRequiresIDs(t *testing.T) {
+func TestSourceAutoFansOutScopedFamiliesFromParentInventory(t *testing.T) {
 	source := newTestSource(t)
-	_, err := source.Discover(context.Background(), fivetranConfig("https://api.fivetran.com", map[string]string{
-		"family": fivetranapi.FamilyGroupUsers,
+	requestedPaths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireFivetranHeaders(t, r, "application/json")
+		requestedPaths = append(requestedPaths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/groups":
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+				"id":   "group-1",
+				"name": "Warehouse",
+			}, ""))
+		case "/v1/groups/group-1/users":
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+				"id":    "user-1",
+				"email": "user@example.test",
+				"role":  "Destination Reviewer",
+			}, ""))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
 	}))
-	if !errors.Is(err, sourcecdk.ErrInvalidConfig) {
-		t.Fatalf("Discover() error = %v, want invalid config", err)
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), fivetranConfig(server.URL, map[string]string{
+		"family":   fivetranapi.FamilyGroupUsers,
+		"per_page": "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["group_id"] != "group-1" || attrs["member_id"] != "user-1" {
+		t.Fatalf("attributes = %#v, want discovered group membership", attrs)
+	}
+	if strings.Join(requestedPaths, ",") != "/v1/groups,/v1/groups/group-1/users" {
+		t.Fatalf("requested paths = %#v, want parent inventory then scoped read", requestedPaths)
+	}
+}
+
+func TestSourceDiscoverAutoFansOutScopedFamilies(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireFivetranHeaders(t, r, "application/json")
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/groups":
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{"id": "group-1", "name": "Warehouse"}, ""))
+		case "/v1/groups/group-1/users":
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{"id": "user-1", "email": "user@example.test"}, ""))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	urns, err := source.Discover(context.Background(), fivetranConfig(server.URL, map[string]string{
+		"family":   fivetranapi.FamilyGroupUsers,
+		"per_page": "2",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || !strings.Contains(urns[0].String(), "user-1") {
+		t.Fatalf("URNs = %#v, want discovered scoped user", urns)
 	}
 }
 
@@ -372,14 +588,26 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 		fivetranapi.FamilyConnections,
 		fivetranapi.FamilyConnectionCertificates,
 		fivetranapi.FamilyConnectionFingerprints,
+		fivetranapi.FamilyConnectionSchemas,
+		fivetranapi.FamilyConnectionState,
+		fivetranapi.FamilyConnectorSDKPackages,
+		fivetranapi.FamilyDestinationCertificates,
+		fivetranapi.FamilyDestinationFingerprints,
 		fivetranapi.FamilyLogServices,
 		fivetranapi.FamilyWebhooks,
+		fivetranapi.FamilyExternalSecretManagers,
+		fivetranapi.FamilyExternalSecretManagerEntities,
+		fivetranapi.FamilyExternalSecretManagerAssignments,
 		fivetranapi.FamilyPrivateLinks,
 		fivetranapi.FamilyProxyAgents,
+		fivetranapi.FamilyProxyAgentConnections,
 		fivetranapi.FamilyHybridAgents,
+		fivetranapi.FamilyPublicConnectorTypes,
 		fivetranapi.FamilyConnectorMetadata,
 		fivetranapi.FamilySystemKeys,
 		fivetranapi.FamilyTransformations,
+		fivetranapi.FamilyTransformationProjects,
+		fivetranapi.FamilyTransformationPackageMetadata,
 	} {
 		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
 			"family":    family,

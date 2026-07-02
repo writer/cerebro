@@ -233,10 +233,11 @@ func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
 
 func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyConfig {
 	out := jsonapi.FamilyConfig{
-		StaticQuery:   cloneStringMap(resource.StaticQuery),
-		StaticHeaders: cloneStringMap(resource.StaticHeaders),
-		ConfigQuery:   cloneStringMap(resource.ConfigQuery),
-		Method:        strings.ToUpper(strings.TrimSpace(resource.Method)),
+		StaticQuery:       cloneStringMap(resource.StaticQuery),
+		StaticHeaders:     cloneStringMap(resource.StaticHeaders),
+		ConfigQuery:       cloneStringMap(resource.ConfigQuery),
+		RedactPayloadKeys: sensitivePayloadKeys(resource.SensitivePayloadPaths),
+		Method:            strings.ToUpper(strings.TrimSpace(resource.Method)),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
@@ -246,6 +247,17 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	}
 	return out
+}
+
+func sensitivePayloadKeys(paths []string) []string {
+	keys := make([]string, 0, len(paths))
+	for _, path := range paths {
+		key := cursorJSONPathKey(path)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
