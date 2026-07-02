@@ -90,6 +90,14 @@ func TestCatalogDeclaresVerifiedTailscaleProviderAPI(t *testing.T) {
 }
 
 func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
+	catalogPayload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogPayload)
+	if err != nil {
+		t.Fatalf("load catalog: %v", err)
+	}
 	aclResponse := map[string]any{
 		"groups":    map[string]any{"group:eng": []string{"alice@writer.com", "bob@writer.com"}},
 		"tagOwners": map[string]any{"tag:prod": []string{"group:eng"}},
@@ -190,6 +198,9 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 				if got := event.Attributes[key]; got != value {
 					t.Fatalf("attribute %q = %q, want %q", key, got, value)
 				}
+			}
+			if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, catalog.EventContracts); err != nil {
+				t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v", err)
 			}
 		})
 	}

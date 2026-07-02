@@ -22,7 +22,6 @@
     "payload": {
       "addrs": ["192.0.2.20", "fd7a:115c:a1e0::20"],
       "comment": "Production API",
-      "id": "svc:api",
       "name": "svc:api",
       "ports": ["443"],
       "tags": ["tag:prod"]

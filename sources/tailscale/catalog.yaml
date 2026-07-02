@@ -349,7 +349,7 @@ event_contracts:
     required_attributes:
       - service_id
     required_payload_fields:
-      - id
+      - name
   - kind: tailscale.grant
     schema_ref: tailscale/grant/v1
     required_attributes:
