@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fivetran-private_links-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.private_links",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/private_links/v1",
+    "payload": {
+      "id": "private-link-1",
+      "name": "Snowflake PrivateLink",
+      "status": "connected",
+      "region": "AWS_US_EAST_1",
+      "family": "private_links",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/private_links/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "private-link-1",
+      "external_id": "private-link-1",
+      "family": "private_links",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "private_links",
+      "record_class": "asset",
+      "resource_type": "private_link",
+      "resource_id": "private-link-1",
+      "resource_name": "Snowflake PrivateLink",
+      "resource_urn": "urn:cerebro:tenant:fivetran_private_links:private-link-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "status": "connected"
+    }
+  }
+]

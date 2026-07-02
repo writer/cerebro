@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fivetran-hybrid_deployment_agents-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.hybrid_deployment_agents",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/hybrid_deployment_agents/v1",
+    "payload": {
+      "id": "hybrid-agent-1",
+      "name": "Hybrid deployment east",
+      "status": "active",
+      "family": "hybrid_deployment_agents",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/hybrid_deployment_agents/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "hybrid-agent-1",
+      "external_id": "hybrid-agent-1",
+      "family": "hybrid_deployment_agents",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "hybrid_deployment_agents",
+      "record_class": "asset",
+      "resource_type": "hybrid_deployment_agent",
+      "resource_id": "hybrid-agent-1",
+      "resource_name": "Hybrid deployment east",
+      "resource_urn": "urn:cerebro:tenant:fivetran_hybrid_deployment_agents:hybrid-agent-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "status": "active"
+    }
+  }
+]

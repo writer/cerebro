@@ -54,7 +54,13 @@ type RuntimeProviderAPIDepth struct {
 	HasContract           bool     `json:"has_contract,omitempty"`
 	HasMapping            bool     `json:"has_mapping,omitempty"`
 	HasRuntimeTransport   bool     `json:"has_runtime_transport,omitempty"`
+	Status                string   `json:"status,omitempty"`
 	Transport             string   `json:"transport,omitempty"`
+	Auth                  string   `json:"auth,omitempty"`
+	BaseURL               string   `json:"base_url,omitempty"`
+	Endpoint              string   `json:"endpoint,omitempty"`
+	References            []string `json:"references,omitempty"`
+	MappedFamilies        []string `json:"mapped_families,omitempty"`
 	MissingFamilyMappings []string `json:"missing_family_mappings,omitempty"`
 }
 
@@ -151,9 +157,15 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.RequiredProjectorKinds = projectorKindsFromCatalog(catalog)
 		depth.HasEventContracts = len(catalog.EventContracts) > 0
 		depth.HasCoverageContract = catalog.CoverageContract != nil
+		depth.ProviderAPI.Status = strings.TrimSpace(catalog.ProviderAPI.Status)
 		depth.ProviderAPI.Transport = strings.TrimSpace(catalog.ProviderAPI.Transport)
+		depth.ProviderAPI.Auth = strings.TrimSpace(catalog.ProviderAPI.Auth)
+		depth.ProviderAPI.BaseURL = strings.TrimSpace(catalog.ProviderAPI.BaseURL)
+		depth.ProviderAPI.Endpoint = strings.TrimSpace(catalog.ProviderAPI.Endpoint)
+		depth.ProviderAPI.References = normalizedList(catalog.ProviderAPI.References)
 		depth.ProviderAPI.HasContract = hasProviderAPIContract(catalog.ProviderAPI)
-		depth.ProviderAPI.MissingFamilyMappings = missingValues(depth.RuntimeFamilies, providerAPIFamilies(catalog.ProviderAPI))
+		depth.ProviderAPI.MappedFamilies = providerAPIFamilies(catalog.ProviderAPI)
+		depth.ProviderAPI.MissingFamilyMappings = missingValues(depth.RuntimeFamilies, depth.ProviderAPI.MappedFamilies)
 		depth.ProviderAPI.HasMapping = depth.ProviderAPI.HasContract && len(depth.ProviderAPI.MissingFamilyMappings) == 0
 	}
 	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
@@ -183,6 +195,8 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 	sort.Strings(depth.RequiredProjectorKinds)
 	sort.Strings(depth.ProjectedKinds)
 	sort.Strings(depth.MissingProjectorKinds)
+	sort.Strings(depth.ProviderAPI.References)
+	sort.Strings(depth.ProviderAPI.MappedFamilies)
 	sort.Strings(depth.ProviderAPI.MissingFamilyMappings)
 	sort.Strings(depth.Missing)
 	return depth, nil
@@ -392,12 +406,12 @@ func sourceKindsFromProjectorTest(content string) map[string][]string {
 			if !ok {
 				return true
 			}
-			switch key.Name {
-			case "SourceId":
+			switch strings.ToLower(key.Name) {
+			case "sourceid":
 				if sourceIDLooksStable(value) {
 					eventSources[value] = struct{}{}
 				}
-			case "Kind":
+			case "kind":
 				if sourceID, ok := sourceIDFromEventKindLiteral(value); ok {
 					if kindSources[sourceID] == nil {
 						kindSources[sourceID] = map[string]struct{}{}

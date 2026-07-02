@@ -1,78 +1,55 @@
 [
   {
+    "id": "increase-digital-wallet-token-event-1",
+    "tenant_id": "tenant",
+    "source_id": "increase",
+    "kind": "increase.digital_wallet_token",
+    "occurred_at": "2020-01-31T23:59:59Z",
+    "schema_ref": "increase/digital_wallet_token/v1",
+    "payload": {
+      "card_id": "card_oubs0hwk5rn6knuecxg2",
+      "cardholder": {
+        "name": "John Smith"
+      },
+      "created_at": "2020-01-31T23:59:59Z",
+      "decline": null,
+      "device": {
+        "device_type": "mobile_phone",
+        "identifier": "04393EADF4149002225811273840459271E36516DA4875FF",
+        "ip_address": "192.0.2.4",
+        "name": "My Work Phone"
+      },
+      "dynamic_primary_account_number": null,
+      "id": "digital_wallet_token_izi62go3h51p369jrie0",
+      "status": "active",
+      "token_requestor": "apple_pay",
+      "type": "digital_wallet_token",
+      "updates": [
+        {
+          "status": "inactive",
+          "timestamp": "2020-01-31T23:59:59Z"
+        }
+      ]
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/digital_wallet_tokens",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-increase-digital_wallet_token-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-increase-digital_wallet_token-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/increase/digital_wallet_token/source-increase-digital_wallet_token-1",
-      "external_id": "source-increase-digital_wallet_token-1",
+      "external_id": "digital_wallet_token_izi62go3h51p369jrie0",
       "family": "digital_wallet_token",
-      "id": "source-increase-digital_wallet_token-1",
-      "name": "Increase Digital Wallet Token Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "increase",
       "record_class": "secret",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-increase-digital_wallet_token-1",
-      "resource_name": "Increase Digital Wallet Token Fixture",
-      "resource_type": "digital_wallet_token",
-      "resource_urn": "urn:cerebro:tenant:increase_digital_wallet_token:source-increase-digital_wallet_token-1",
       "schema": "digital_wallet_token",
-      "secret_created_at": "2026-06-01T00:00:00Z",
-      "secret_id": "source-increase-digital_wallet_token-1",
-      "secret_last_rotated_at": "2026-06-01T00:00:00Z",
-      "secret_name": "Increase Digital Wallet Token Fixture",
-      "secret_rotation_enabled": "true",
-      "secret_status": "open",
-      "secret_type": "digital_wallet_token",
-      "source_event_id": "source-increase-digital_wallet_token-1",
+      "source_event_id": "digital_wallet_token_izi62go3h51p369jrie0",
       "source_provider": "increase",
       "source_system": "increase",
-      "tenant_id": "tenant"
-    },
-    "id": "source-increase-digital_wallet_token-event-1",
-    "kind": "increase.digital_wallet_token",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/digital_wallet_tokens",
-      "card_id": "Increase Digital Wallet Token Fixture",
-      "created_at": "2026-06-01T00:00:00Z",
-      "digital_wallet_token": "digital_wallet_token",
-      "event_id": "source-increase-digital_wallet_token-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-increase-digital_wallet_token-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-increase-digital_wallet_token-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/increase/digital_wallet_token/source-increase-digital_wallet_token-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/increase/digital_wallet_token/source-increase-digital_wallet_token-1",
-      "family": "digital_wallet_token",
-      "id": "source-increase-digital_wallet_token-1",
-      "name": "Increase Digital Wallet Token Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "secret",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-increase-digital_wallet_token-1",
-      "resource_type": "digital_wallet_token",
-      "resource_urn": "urn:cerebro:tenant:increase_digital_wallet_token:source-increase-digital_wallet_token-1",
-      "schema_ref": "increase/digital_wallet_token/v1",
-      "secret_id": "source-increase-digital_wallet_token-1",
-      "secret_last_rotated_at": "2026-06-01T00:00:00Z",
-      "secret_name": "Increase Digital Wallet Token Fixture",
-      "secret_rotation_enabled": "true",
-      "secret_status": "open",
-      "source_id": "increase",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "increase/digital_wallet_token/v1",
-    "source_id": "increase",
-    "tenant_id": "tenant"
+      "created_at": "2020-01-31T23:59:59Z",
+      "status": "active",
+      "resource_id": "digital_wallet_token_izi62go3h51p369jrie0",
+      "resource_urn": "urn:cerebro:tenant:increase_digital_wallet_token:digital_wallet_token_izi62go3h51p369jrie0",
+      "secret_created_at": "2020-01-31T23:59:59Z",
+      "secret_id": "digital_wallet_token_izi62go3h51p369jrie0",
+      "secret_name": "card_oubs0hwk5rn6knuecxg2",
+      "secret_status": "active",
+      "secret_type": "digital_wallet_token"
+    }
   }
 ]

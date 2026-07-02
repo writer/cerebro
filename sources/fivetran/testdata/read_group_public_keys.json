@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fivetran-group_public_keys-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.group_public_keys",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/group_public_keys/v1",
+    "payload": {
+      "public_key": "ssh-rsa AAAATEST fivetran",
+      "group_id": "group-1",
+      "family": "group_public_keys",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/group_public_keys/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "ssh-rsa AAAATEST fivetran",
+      "external_id": "ssh-rsa AAAATEST fivetran",
+      "family": "group_public_keys",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "group_public_keys",
+      "record_class": "credential",
+      "resource_type": "public_key",
+      "resource_id": "ssh-rsa AAAATEST fivetran",
+      "resource_name": "group-1",
+      "resource_urn": "urn:cerebro:tenant:fivetran_group_public_keys:ssh-rsa%20AAAATEST%20fivetran",
+      "group_id": "group-1",
+      "credential_id": "ssh-rsa AAAATEST fivetran",
+      "public_key": "ssh-rsa AAAATEST fivetran",
+      "scope_type": "group"
+    }
+  }
+]

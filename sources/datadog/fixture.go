@@ -41,10 +41,8 @@ func NewFixture() (sourcecdk.Source, error) {
 }
 
 func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
-	if strings.TrimSpace(sourcecdk.ConfigValue(cfg, "tenant_id")) == "" {
-		return fmt.Errorf("tenant_id is required")
-	}
-	return nil
+	_, err := resolveFixtureFamily(cfg)
+	return err
 }
 
 func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {

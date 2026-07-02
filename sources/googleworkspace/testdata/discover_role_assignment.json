@@ -1,9 +1,3 @@
 [
-  {
-    "roleAssignmentId": "ra-1",
-    "roleId": "super-admin",
-    "assignedTo": "1001",
-    "assigneeType": "USER",
-    "scopeType": "CUSTOMER"
-  }
+  "urn:cerebro:writer.com:google_workspace_role_assignment:ra-1"
 ]

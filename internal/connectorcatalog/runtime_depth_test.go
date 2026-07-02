@@ -63,6 +63,9 @@ func TestProjectGitHubAudit(t *testing.T) {
 	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping || !depth.ProviderAPI.HasRuntimeTransport || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
 		t.Fatalf("runtime depth flags = %#v, want all reference-runtime flags", depth)
 	}
+	if depth.ProviderAPI.BaseURL != "https://api.github.com" || !containsString(depth.ProviderAPI.References, "https://docs.github.com/rest") || !containsString(depth.ProviderAPI.MappedFamilies, "repository") {
+		t.Fatalf("provider API details = %#v", depth.ProviderAPI)
+	}
 	if got := depth.PackagePath; got != "sources/github" {
 		t.Fatalf("package path = %q, want sources/github", got)
 	}
@@ -248,6 +251,34 @@ func TestProjectGRCAsset(t *testing.T) {
 	}
 	if _, ok := kinds["github"]; ok {
 		t.Fatalf("source kinds = %#v, did not expect foreign graph entity kind", kinds)
+	}
+}
+
+func TestSourceKindsFromProjectorTestFindsTableDrivenKinds(t *testing.T) {
+	kinds := sourceKindsFromProjectorTest(`package sourceprojection
+
+import cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+
+func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
+	cases := []struct {
+		name string
+		kind string
+	}{
+		{name: "users", kind: "fivetran.users"},
+		{name: "connections", kind: "fivetran.connections"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			_ = &cerebrov1.EventEnvelope{SourceId: "fivetran", Kind: tt.kind}
+		})
+	}
+}
+`)
+
+	for _, want := range []string{"fivetran.users", "fivetran.connections"} {
+		if !containsString(kinds["fivetran"], want) {
+			t.Fatalf("source kinds = %#v, want %s", kinds, want)
+		}
 	}
 }
 

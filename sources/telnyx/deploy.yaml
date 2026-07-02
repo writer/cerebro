@@ -1,15 +1,102 @@
 sourceId: telnyx
 secretKeys:
-  - TELNYX_SIM_CARD_ID
   - TELNYX_TOKEN
+  - TELNYX_SIM_CARD_ID
 runtimes:
-  - localId: call-event
+  - localId: billing-groups
     config:
-      sim_card_id: env:TELNYX_SIM_CARD_ID
-      family: call_event
+      family: billing_group
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /call_events
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: call-control-applications
+    config:
+      family: call_control_application
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: call-events
+    config:
+      family: call_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: credential-connections
+    config:
+      family: credential_connection
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: detail-records-reports
+    config:
+      family: detail_records_report
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: managed-accounts
+    config:
+      family: managed_account
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: notification-channels
+    config:
+      family: notification_channel
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: notification-events
+    config:
+      family: notification_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: notification-event-conditions
+    config:
+      family: notification_event_condition
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: sim-card-groups
+    config:
+      family: sim_card_group
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: sim-card-group-actions
+    config:
+      family: sim_card_group_action
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:TELNYX_TOKEN
+  - localId: wireless-connectivity-logs
+    config:
+      family: wireless_connectivity_log
+      sim_card_id: env:TELNYX_SIM_CARD_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
       per_page: "100"
       token: env:TELNYX_TOKEN

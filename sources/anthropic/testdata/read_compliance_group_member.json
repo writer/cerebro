@@ -1,64 +1,26 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/compliance/groups/{group_id}/members",
-      "created_at": "2026-06-01T00:00:00Z",
-      "display_name": "Anthropic Compliance Group Member Fixture",
-      "email": "email@anthropic.example.test",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_group_member/source-anthropic-compliance_group_member-1",
-      "external_id": "source-anthropic-compliance_group_member-1",
-      "family": "compliance_group_member",
-      "group_id": "group-id-source-anthropic-compliance_group_member-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "provider": "anthropic",
-      "resource_id": "source-anthropic-compliance_group_member-1",
-      "resource_name": "Anthropic Compliance Group Member Fixture",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_group_member:source-anthropic-compliance_group_member-1",
-      "source_event_id": "source-anthropic-compliance_group_member-1",
-      "source_product": "anthropic",
-      "source_provider": "anthropic",
-      "source_system": "anthropic",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "user-id-source-anthropic-compliance_group_member-1"
-    },
-    "id": "source-anthropic-compliance_group_member-event-1",
+    "id": "anthropic-compliance_group_member-event-1",
     "kind": "anthropic.compliance_group_member",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/compliance/groups/{group_id}/members",
+      "id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+      "group_id": "grp_security_reviewers",
+      "user_id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+      "email": "ada@example.com",
       "created_at": "2026-06-01T00:00:00Z",
-      "display_name": "Anthropic Compliance Group Member Fixture",
-      "email": "email@anthropic.example.test",
-      "event_id": "source-anthropic-compliance_group_member-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/anthropic/compliance_group_member/source-anthropic-compliance_group_member-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_group_member/source-anthropic-compliance_group_member-1",
-      "family": "compliance_group_member",
-      "group_id": "group-id-source-anthropic-compliance_group_member-1",
-      "id": "source-anthropic-compliance_group_member-1",
-      "name": "Anthropic Compliance Group Member Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "source-anthropic-compliance_group_member-1",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_group_member:source-anthropic-compliance_group_member-1",
-      "schema_ref": "anthropic/compliance_group_member/v1",
-      "source_id": "anthropic",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "user-id-source-anthropic-compliance_group_member-1"
+      "updated_at": "2026-06-01T01:00:00Z"
     },
     "schema_ref": "anthropic/compliance_group_member/v1",
     "source_id": "anthropic",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "anthropic",
+      "group_id": "grp_security_reviewers",
+      "user_id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+      "email": "ada@example.com",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T01:00:00Z"
+    }
   }
 ]

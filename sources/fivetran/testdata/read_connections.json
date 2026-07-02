@@ -1,0 +1,48 @@
+[
+  {
+    "id": "fivetran-connections-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/connections/v1",
+    "payload": {
+      "id": "connection-1",
+      "service": "postgres",
+      "name": "Postgres customer sync",
+      "schema": "customers",
+      "group_id": "group-1",
+      "paused": false,
+      "sync_frequency": 60,
+      "status": {
+        "sync_state": "connected"
+      },
+      "family": "connections",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/connections/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "connection-1",
+      "external_id": "connection-1",
+      "family": "connections",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "customers",
+      "record_class": "asset",
+      "resource_type": "connection",
+      "resource_id": "connection-1",
+      "resource_name": "Postgres customer sync",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connections:connection-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "service": "postgres",
+      "group_id": "group-1",
+      "status": "connected",
+      "paused": "false",
+      "sync_frequency": "60"
+    }
+  }
+]

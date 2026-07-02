@@ -109,6 +109,7 @@ type Definition struct {
 	ConfigFields     []Field          `json:"config_fields,omitempty"`
 	Auth             AuthSpec         `json:"auth"`
 	Transport        *TransportSpec   `json:"transport,omitempty"`
+	ProviderAPI      *ProviderAPISpec `json:"provider_api,omitempty" yaml:"provider_api,omitempty"`
 	Ingest           IngestSpec       `json:"ingest,omitempty"`
 	ResourceFamilies []ResourceFamily `json:"resource_families,omitempty"`
 	ScopeOptions     []ScopeOption    `json:"scope_options,omitempty"`
@@ -171,6 +172,27 @@ type TransportSpec struct {
 	Body         map[string]any    `json:"body,omitempty"`
 	Verification *VerificationSpec `json:"verification,omitempty"`
 	Retry        *RetrySpec        `json:"retry,omitempty"`
+}
+
+// ProviderAPISpec records the provider-owned API source that backs a generated
+// or promoted connector definition.
+type ProviderAPISpec struct {
+	Status     string                  `json:"status,omitempty" yaml:"status,omitempty"`
+	Transport  string                  `json:"transport,omitempty" yaml:"transport,omitempty"`
+	Auth       string                  `json:"auth,omitempty" yaml:"auth,omitempty"`
+	BaseURL    string                  `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	Endpoint   string                  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	References []string                `json:"references,omitempty" yaml:"references,omitempty"`
+	Families   []ProviderAPIFamilySpec `json:"families,omitempty" yaml:"families,omitempty"`
+}
+
+// ProviderAPIFamilySpec maps one runtime family to a documented provider API
+// path or operation.
+type ProviderAPIFamilySpec struct {
+	ID        string `json:"id,omitempty" yaml:"id,omitempty"`
+	Method    string `json:"method,omitempty" yaml:"method,omitempty"`
+	Path      string `json:"path,omitempty" yaml:"path,omitempty"`
+	Operation string `json:"operation,omitempty" yaml:"operation,omitempty"`
 }
 
 // VerificationSpec describes the connection check request.
@@ -294,6 +316,7 @@ type ResourceFamily struct {
 	EventKind             string                  `json:"event_kind,omitempty"`
 	Event                 EventMappingSpec        `json:"event,omitempty"`
 	StaticQuery           map[string]string       `json:"static_query,omitempty"`
+	StaticHeaders         map[string]string       `json:"static_headers,omitempty"`
 	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
@@ -429,6 +452,7 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.TokenParams = normalizeStringMap(definition.Auth.TokenParams)
 	definition.Auth.RefreshParams = normalizeStringMap(definition.Auth.RefreshParams)
 	definition.Transport = normalizeTransportSpec(definition.Transport)
+	definition.ProviderAPI = normalizeProviderAPISpec(definition.ProviderAPI)
 	definition.Ingest = normalizeIngestSpec(definition.Ingest)
 	definition.ConfigFields = normalizeFields(definition.ConfigFields)
 	definition.Auth.CredentialFields = normalizeFields(definition.Auth.CredentialFields)
@@ -846,6 +870,7 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 			}
 		}
 	}
+	validateFamilyConfigMap(family.ID, "static_headers", family.StaticHeaders, add)
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
 			add(blocking("pagination_"+family.ID, "Pagination", "Pagination type must be none, cursor, page, offset, link, or next_url."))
@@ -1129,6 +1154,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		}
 		family.Event = normalizeEventMapping(legacyEventKind, family.Event)
 		family.StaticQuery = normalizeStringMap(family.StaticQuery)
+		family.StaticHeaders = normalizeStringMap(family.StaticHeaders)
 		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
@@ -1168,6 +1194,50 @@ func normalizeTransportSpec(transport *TransportSpec) *TransportSpec {
 		retry.RetryAfterHeader = strings.TrimSpace(retry.RetryAfterHeader)
 		next.Retry = &retry
 	}
+	return &next
+}
+
+func normalizeProviderAPISpec(api *ProviderAPISpec) *ProviderAPISpec {
+	if api == nil {
+		return nil
+	}
+	next := *api
+	next.Status = strings.TrimSpace(next.Status)
+	next.Transport = strings.TrimSpace(next.Transport)
+	next.Auth = strings.TrimSpace(next.Auth)
+	next.BaseURL = strings.TrimSpace(next.BaseURL)
+	next.Endpoint = strings.TrimSpace(next.Endpoint)
+	next.References = normalizeStringList(next.References)
+	families := make([]ProviderAPIFamilySpec, 0, len(next.Families))
+	seen := map[string]struct{}{}
+	for _, family := range next.Families {
+		family.ID = normalizeIdentifier(family.ID)
+		family.Method = strings.ToUpper(strings.TrimSpace(family.Method))
+		family.Path = strings.TrimSpace(family.Path)
+		family.Operation = strings.TrimSpace(family.Operation)
+		if family.ID == "" {
+			continue
+		}
+		key := family.ID + "\x00" + family.Method + "\x00" + family.Path + "\x00" + family.Operation
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		families = append(families, family)
+	}
+	sort.SliceStable(families, func(i int, j int) bool {
+		if families[i].ID != families[j].ID {
+			return families[i].ID < families[j].ID
+		}
+		if families[i].Method != families[j].Method {
+			return families[i].Method < families[j].Method
+		}
+		if families[i].Path != families[j].Path {
+			return families[i].Path < families[j].Path
+		}
+		return families[i].Operation < families[j].Operation
+	})
+	next.Families = families
 	return &next
 }
 

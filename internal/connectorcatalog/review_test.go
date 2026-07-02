@@ -126,6 +126,41 @@ func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
 	}
 }
 
+func TestProviderAPISearchQueriesPreservePriorityOrder(t *testing.T) {
+	entry := Entry{
+		Definition: reviewDefinition("example_api", "Example API", nil),
+	}
+	queries := providerAPISearchQueries(entry, SourceReview{SourceID: "example_api"}, []string{"users", "roles"})
+	if len(queries) == 0 {
+		t.Fatal("queries = empty")
+	}
+	wantFirst := "gh search code 'Example API openapi' --filename openapi.yaml --limit 20"
+	if queries[0] != wantFirst {
+		t.Fatalf("first query = %q, want %q; queries = %#v", queries[0], wantFirst, queries)
+	}
+}
+
+func TestProviderAPISearchQueriesTruncateFamilyHintsWithoutOverflowText(t *testing.T) {
+	entry := Entry{
+		Definition: reviewDefinition("example_api", "Example API", nil),
+	}
+	queries := providerAPISearchQueries(entry, SourceReview{SourceID: "example_api"}, []string{"users", "groups", "roles", "teams", "audit", "repos"})
+	var webSearch string
+	for _, query := range queries {
+		if strings.HasPrefix(query, "web search: ") {
+			webSearch = query
+			break
+		}
+	}
+	want := "web search: Example API API reference users groups roles teams"
+	if webSearch != want {
+		t.Fatalf("web search query = %q, want %q; queries = %#v", webSearch, want, queries)
+	}
+	if strings.Contains(webSearch, "more") {
+		t.Fatalf("web search query included overflow text: %q", webSearch)
+	}
+}
+
 func TestReviewAnalysisDisambiguatesOverlappingCleanupQuestions(t *testing.T) {
 	analysis := Analysis{
 		Summary: Summary{Total: 2, Generateable: 2},
@@ -278,6 +313,19 @@ func TestReviewAnalysisBuildsFidelityQueue(t *testing.T) {
 	}
 }
 
+func TestFamilyHasCollectionShapeAcceptsMapRecords(t *testing.T) {
+	family := connectordefinitions.ResourceFamily{
+		ID:   "columns",
+		Path: "/v1/connections/{connection_id}/columns",
+		Read: &connectordefinitions.ResourceReadSpec{
+			MapRecords: map[string]string{"data.columns": "config"},
+		},
+	}
+	if !familyHasCollectionShape(family) {
+		t.Fatal("familyHasCollectionShape() = false, want true for map_records")
+	}
+}
+
 func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	analysis := Analysis{
 		Summary: Summary{Total: 3, Generateable: 3},
@@ -321,7 +369,12 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 				HasContract:         true,
 				HasMapping:          true,
 				HasRuntimeTransport: true,
+				Status:              "verified",
 				Transport:           "rest",
+				Auth:                "github_app",
+				BaseURL:             "https://api.github.com",
+				References:          []string{"https://docs.github.com/rest"},
+				MappedFamilies:      []string{"audit"},
 			},
 			RuntimeFamilies: []string{"audit"},
 		}),
@@ -338,7 +391,6 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 			HasCoverageContract:     true,
 			ProviderAPI: RuntimeProviderAPIDepth{
 				HasContract:         true,
-				HasMapping:          true,
 				HasRuntimeTransport: true,
 				Transport:           "rest",
 			},
@@ -372,6 +424,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if _, ok := runtimeDepthFor(report, "generated"); !ok {
 		t.Fatalf("runtime depth queue = %#v, want generated source", report.RuntimeDepthQueue)
 	}
+	if _, ok := apiDiscoveryFor(report, "generated"); !ok {
+		t.Fatalf("api discovery queue = %#v, want generated source", report.APIDiscoveryQueue)
+	}
 	candidate, ok := runtimeDepthFor(report, "catalog_only")
 	if !ok {
 		t.Fatalf("runtime depth queue = %#v, want catalog_only source", report.RuntimeDepthQueue)
@@ -381,6 +436,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	}
 	if !hasQuestion(report, "catalog_only", "runtime_depth") {
 		t.Fatalf("questions = %#v, want runtime_depth question", report.Questions)
+	}
+	if !hasQuestion(report, "catalog_only", "provider_api_discovery") {
+		t.Fatalf("questions = %#v, want provider_api_discovery question", report.Questions)
 	}
 	if !hasQueue(report, "runtime_depth", "generated") {
 		t.Fatalf("promotion queues = %#v, want generated in runtime_depth queue", report.PromotionQueues)
@@ -491,6 +549,15 @@ func runtimeDepthFor(report ReviewReport, sourceID string) (RuntimeDepthCandidat
 		}
 	}
 	return RuntimeDepthCandidate{}, false
+}
+
+func apiDiscoveryFor(report ReviewReport, sourceID string) (APIDiscoveryCandidate, bool) {
+	for _, candidate := range report.APIDiscoveryQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return APIDiscoveryCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {

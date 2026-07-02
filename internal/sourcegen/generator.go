@@ -90,6 +90,7 @@ type normalizedRequest struct {
 	OAuthScopes       []string
 	OAuthTokenParams  map[string]string
 	OAuthTokenMethod  string
+	ProviderAPI       *connectordefinitions.ProviderAPISpec
 	EnvPrefix         string
 	PackageName       string
 	DefaultFamily     string
@@ -289,6 +290,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		OAuthScopes:       append([]string(nil), definition.Auth.Scopes...),
 		OAuthTokenParams:  cloneStringMap(definition.Auth.TokenParams),
 		OAuthTokenMethod:  strings.TrimSpace(definition.Auth.TokenRequestAuthMethod),
+		ProviderAPI:       cloneProviderAPI(definition.ProviderAPI),
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 		BaseURLTemplate:   transportBaseURL(definition.Transport),
@@ -562,6 +564,16 @@ func mergeStringMaps(first map[string]string, second map[string]string) map[stri
 		merged[key] = value
 	}
 	return merged
+}
+
+func cloneProviderAPI(api *connectordefinitions.ProviderAPISpec) *connectordefinitions.ProviderAPISpec {
+	if api == nil {
+		return nil
+	}
+	cloned := *api
+	cloned.References = append([]string(nil), api.References...)
+	cloned.Families = append([]connectordefinitions.ProviderAPIFamilySpec(nil), api.Families...)
+	return &cloned
 }
 
 func normalizeIdentifiers(label string, values []string) ([]string, error) {
@@ -955,6 +967,9 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "id: %s\n", request.SourceID)
 	fmt.Fprintf(&b, "name: %s\n", yamlString(request.Name))
 	fmt.Fprintf(&b, "description: %s\n", yamlString(request.Description))
+	if request.ProviderAPI != nil {
+		renderProviderAPI(&b, request.ProviderAPI)
+	}
 	fmt.Fprintf(&b, "emitted_kinds:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
@@ -1005,6 +1020,51 @@ func renderCatalog(request normalizedRequest) string {
 		}
 	}
 	return b.String()
+}
+
+func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPISpec) {
+	fmt.Fprintf(b, "provider_api:\n")
+	if strings.TrimSpace(api.Status) != "" {
+		fmt.Fprintf(b, "  status: %s\n", yamlString(api.Status))
+	}
+	if strings.TrimSpace(api.Transport) != "" {
+		fmt.Fprintf(b, "  transport: %s\n", yamlString(api.Transport))
+	}
+	if strings.TrimSpace(api.Auth) != "" {
+		fmt.Fprintf(b, "  auth: %s\n", yamlString(api.Auth))
+	}
+	if strings.TrimSpace(api.BaseURL) != "" {
+		fmt.Fprintf(b, "  base_url: %s\n", yamlString(api.BaseURL))
+	}
+	if strings.TrimSpace(api.Endpoint) != "" {
+		fmt.Fprintf(b, "  endpoint: %s\n", yamlString(api.Endpoint))
+	}
+	if len(api.References) > 0 {
+		fmt.Fprintf(b, "  references:\n")
+		for _, ref := range api.References {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.Families) > 0 {
+		fmt.Fprintf(b, "  families:\n")
+		for _, family := range api.Families {
+			if strings.TrimSpace(family.ID) == "" {
+				continue
+			}
+			fmt.Fprintf(b, "    - id: %s\n", family.ID)
+			if strings.TrimSpace(family.Method) != "" {
+				fmt.Fprintf(b, "      method: %s\n", yamlString(family.Method))
+			}
+			if strings.TrimSpace(family.Path) != "" {
+				fmt.Fprintf(b, "      path: %s\n", yamlString(family.Path))
+			}
+			if strings.TrimSpace(family.Operation) != "" {
+				fmt.Fprintf(b, "      operation: %s\n", yamlString(family.Operation))
+			}
+		}
+	}
 }
 
 func renderDeploy(request normalizedRequest) string {
@@ -1222,9 +1282,6 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t{\n")
 		fmt.Fprintf(&b, "\t\t\t\tName: %s,\n", family.ConstName)
 		fmt.Fprintf(&b, "\t\t\t\tPath: %s,\n", strconv.Quote(family.Path))
-		if strings.TrimSpace(family.Method) != "" {
-			fmt.Fprintf(&b, "\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
-		}
 		fmt.Fprintf(&b, "\t\t\t\tURNKind: %s,\n", strconv.Quote(family.URNKind))
 		fmt.Fprintf(&b, "\t\t\t\tIDKeys: []string{%s},\n", quotedStrings(idKeysForFamily(family)))
 		if strings.TrimSpace(family.CursorParam) != "" {
@@ -1251,8 +1308,11 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
-		if len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
+		if strings.TrimSpace(family.Method) != "" || len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
+			if strings.TrimSpace(family.Method) != "" {
+				fmt.Fprintf(&b, "\t\t\t\t\tMethod: %s,\n", strconv.Quote(family.Method))
+			}
 			if len(family.Config.StaticQuery) != 0 {
 				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))
 			}

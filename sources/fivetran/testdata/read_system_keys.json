@@ -1,0 +1,41 @@
+[
+  {
+    "id": "fivetran-system_keys-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.system_keys",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/system_keys/v1",
+    "payload": {
+      "id": "system-key-1",
+      "name": "Automation key",
+      "status": "active",
+      "created_at": "2026-06-01T00:00:00Z",
+      "redacted_fields": [
+        "key",
+        "secret"
+      ],
+      "family": "system_keys",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/system_keys/v1",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "system-key-1",
+      "external_id": "system-key-1",
+      "family": "system_keys",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "system_keys",
+      "record_class": "asset",
+      "resource_type": "system_key",
+      "resource_id": "system-key-1",
+      "resource_name": "Automation key",
+      "resource_urn": "urn:cerebro:tenant:fivetran_system_keys:system-key-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "status": "active"
+    }
+  }
+]
