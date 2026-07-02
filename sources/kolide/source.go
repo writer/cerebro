@@ -2,6 +2,7 @@ package kolide
 
 import (
 	"context"
+	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -27,10 +28,7 @@ func New() (*Source, error) {
 		TokenScheme:     "Bearer",
 		StaticHeaders:   map[string]string{"X-Kolide-Api-Version": defaultAPIVersion},
 		RecordFilters: map[string]jsonapi.RecordFilter{
-			familyVulnerability: jsonapi.RecordFilterAnyPrefix(
-				[]string{"cve_id", "value.cve_id", "value.cve", "issue_value", "ghsa_id", "value.ghsa_id"},
-				"CVE-", "GHSA-",
-			),
+			familyVulnerability: vulnerabilityRecordFilter,
 		},
 		Families: families(),
 	})
@@ -67,4 +65,29 @@ func (s *Source) allowLoopbackForTest() {
 	if s != nil && s.inner != nil {
 		s.inner.AllowLoopbackBaseURL = true
 	}
+}
+
+var vulnerabilityIdentifierFilter = jsonapi.RecordFilterAnyPrefix(
+	[]string{"cve_id", "value.cve_id", "value.cve", "issue_value", "ghsa_id", "value.ghsa_id"},
+	"CVE-", "GHSA-",
+)
+
+func vulnerabilityRecordFilter(values map[string]any) bool {
+	if vulnerabilityIdentifierFilter(values) {
+		return true
+	}
+	return nonEmptyStringAt(values, "advisory_id") || nonEmptyStringAt(values, "value.advisory_id")
+}
+
+func nonEmptyStringAt(values map[string]any, path string) bool {
+	current := any(values)
+	for _, part := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current = object[part]
+	}
+	value, ok := current.(string)
+	return ok && strings.TrimSpace(value) != ""
 }

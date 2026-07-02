@@ -758,6 +758,19 @@ func TestReadVulnerabilityFamilyFiltersComplianceIssues(t *testing.T) {
 						"severity":          "high",
 					},
 				},
+				{
+					"id":          "issue-vuln-2",
+					"issue_key":   "advisory",
+					"issue_value": "KOLIDE-2026-0002",
+					"title":       "Vendor advisory affects installed package",
+					"value": map[string]any{
+						"advisory_id":       "KOLIDE-2026-0002",
+						"package_name":      "kolide-agent",
+						"installed_version": "1.2.3",
+						"fixed_version":     "1.2.4",
+						"severity":          "medium",
+					},
+				},
 			},
 		})
 	}))
@@ -778,15 +791,17 @@ func TestReadVulnerabilityFamilyFiltersComplianceIssues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:kolide_vulnerability:issue-vuln-1" {
-		t.Fatalf("URNs = %#v, want only vulnerability issue URN", urns)
+	if len(urns) != 2 ||
+		urns[0].String() != "urn:cerebro:writer:kolide_vulnerability:issue-vuln-1" ||
+		urns[1].String() != "urn:cerebro:writer:kolide_vulnerability:issue-vuln-2" {
+		t.Fatalf("URNs = %#v, want only vulnerability issue URNs", urns)
 	}
 	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("len(Events) = %d, want only vulnerability issue", len(pull.Events))
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want only vulnerability issues", len(pull.Events))
 	}
 	attrs := pull.Events[0].Attributes
 	if attrs["vulnerability_id"] != "issue-vuln-1" || attrs["cve_id"] != "CVE-2026-0001" {
@@ -794,6 +809,13 @@ func TestReadVulnerabilityFamilyFiltersComplianceIssues(t *testing.T) {
 	}
 	if attrs["package_name"] != "openssl" || attrs["fixed_version"] != "3.0.2" {
 		t.Fatalf("attrs = %#v, want package fix details from vulnerability value", attrs)
+	}
+	attrs = pull.Events[1].Attributes
+	if attrs["vulnerability_id"] != "issue-vuln-2" || attrs["advisory_id"] != "KOLIDE-2026-0002" {
+		t.Fatalf("attrs = %#v, want advisory vulnerability attributes", attrs)
+	}
+	if attrs["package_name"] != "kolide-agent" || attrs["fixed_version"] != "1.2.4" {
+		t.Fatalf("attrs = %#v, want advisory package fix details", attrs)
 	}
 }
 
