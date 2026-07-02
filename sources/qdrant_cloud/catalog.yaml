@@ -48,8 +48,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud account list records from GET /api/account/v1/accounts, including account owner, company, and privilege metadata.
     - id: account_members
       type: entity_family
       title: "Account Members"
@@ -57,9 +62,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud account member records from GET /api/account/v1/accounts/{account_id}/members, including user status and account ownership.
     - id: clusters
       type: deployment_state
       title: "Clusters"
@@ -67,9 +77,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [change_management]
-      control_domains: [secure_delivery]
+      control_domains: [asset_inventory, secure_delivery]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC8.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud cluster records from GET /api/cluster/v1/accounts/{account_id}/clusters, including cloud region, endpoint, version, and phase.
     - id: database_api_keys
       type: entity_family
       title: "Database Api Keys"
@@ -77,9 +92,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud database API key records from GET /api/cluster/auth/v2/accounts/{account_id}/database-api-keys, including cluster scope and access rules.
     - id: backups
       type: entity_family
       title: "Backups"
@@ -87,9 +107,12 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, availability_resilience]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.13
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud backup records from GET /api/cluster/backup/v1/accounts/{account_id}/backups, including backup status, duration, retention, and source cluster.
     - id: backup_restores
       type: deployment_state
       title: "Backup Restores"
@@ -97,9 +120,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [change_management]
-      control_domains: [secure_delivery]
+      control_domains: [availability_resilience, secure_delivery]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.13
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud backup restore records from GET /api/cluster/backup/v1/accounts/{account_id}/backup_restores, including restore status, backup ID, and target cluster.
     - id: backup_schedules
       type: lifecycle_state
       title: "Backup Schedules"
@@ -107,9 +135,12 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
+      control_domains: [availability_resilience, security_operations]
+      control_refs:
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.13
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud backup schedule records from GET /api/cluster/backup/v1/accounts/{account_id}/backup_schedules, including cron schedule, retention, and schedule status.
     - id: roles
       type: entity_family
       title: "Roles"
@@ -117,9 +148,14 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps Qdrant Cloud IAM role records from GET /api/iam/v1/accounts/{account_id}/roles, including role type and permissions.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -144,7 +180,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - account_member.id
+      - accountMember.id
   - kind: qdrant_cloud.clusters
     schema_ref: qdrant_cloud/clusters/v1
     required_attributes:
@@ -152,6 +188,7 @@ event_contracts:
       - source_event_id
       - deployment_id
       - deployment_name
+      - deployment_status
     required_payload_fields:
       - id
   - kind: qdrant_cloud.database_api_keys
@@ -189,6 +226,7 @@ event_contracts:
       - source_event_id
       - policy_id
       - policy_name
+      - policy_status
     required_payload_fields:
       - id
   - kind: qdrant_cloud.roles
