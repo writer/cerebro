@@ -344,8 +344,8 @@ jobs:
       - name: Dispatch release deployment request
         shell: bash
         env:
-          GH_TOKEN: ${{ env.CEREBRO_INFRA_PROMOTION_TOKEN }}
-          INFRA_REPOSITORY: ${{ env.CEREBRO_INFRA_REPOSITORY }}
+          GITHUB_CEREBRO_INFRA_PROMOTION_TOKEN: ${{ secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
+          GITHUB_CEREBRO_INFRA_REPOSITORY: ${{ secrets.CEREBRO_INFRA_REPOSITORY }}
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           IMAGE_DIGEST: ${{ needs.ghcr-publish.outputs.digest }}
           SOURCE_REPOSITORY: ${{ github.repository }}
@@ -353,6 +353,9 @@ jobs:
           APPLY_MODE: ${{ matrix.apply_mode }}
         run: |
           set -euo pipefail
+          GH_TOKEN="${CEREBRO_INFRA_PROMOTION_TOKEN:-${GITHUB_CEREBRO_INFRA_PROMOTION_TOKEN:-}}"
+          INFRA_REPOSITORY="${CEREBRO_INFRA_REPOSITORY:-${GITHUB_CEREBRO_INFRA_REPOSITORY:-}}"
+          export GH_TOKEN
           if [ -z "${GH_TOKEN}" ]; then
             echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping ${TARGET_ENVIRONMENT} deploy dispatch for ${RELEASE_TAG}"
             exit 0
