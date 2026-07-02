@@ -143,7 +143,7 @@ func snykAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	actorURN := identityUserURN(tenantID, "snyk", actorID, actorEmail)
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["project_id"], attributes["group_id"])
 	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
-	resourceURNKind := snykInventoryURNKind(resourceType)
+	resourceURNKind := snykAuditResourceURNKind(event, resourceType)
 	resourceURN := ""
 	if resourceURNKind != "" {
 		resourceURN = projectionURN(tenantID, resourceURNKind, resourceID)
@@ -180,6 +180,23 @@ func snykAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func snykAuditResourceURNKind(event *cerebrov1.EventEnvelope, resourceType string) string {
+	if urnKind := snykInventoryURNKind(resourceType); urnKind != "" {
+		return urnKind
+	}
+	switch normalizeIdentifier(resourceType) {
+	case "membership", "group_membership", "org_membership":
+		attributes := event.GetAttributes()
+		if strings.TrimSpace(attributes["group_id"]) != "" || normalizeIdentifier(event.GetKind()) == "snyk_group_audit_logs" {
+			return "snyk_groups"
+		}
+		if strings.TrimSpace(attributes["org_id"]) != "" {
+			return "snyk_orgs"
+		}
+	}
+	return ""
 }
 
 func snykInventoryURNKind(resourceType string) string {

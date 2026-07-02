@@ -136,6 +136,64 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 	}
 }
 
+func TestSnykAuditProjectionLinksMembershipEventsToScope(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		kind             string
+		resourceID       string
+		attributes       map[string]string
+		wantResourceType string
+		wantURNKind      string
+	}{
+		{
+			name:       "group membership",
+			kind:       "snyk.group_audit_logs",
+			resourceID: "group-1",
+			attributes: map[string]string{
+				"group_id":      "group-1",
+				"resource_type": "membership",
+				"event_type":    "group.member.add",
+			},
+			wantResourceType: "snyk.groups",
+			wantURNKind:      "snyk_groups",
+		},
+		{
+			name:       "org membership",
+			kind:       "snyk.audit_logs",
+			resourceID: "org-1",
+			attributes: map[string]string{
+				"org_id":        "org-1",
+				"resource_type": "membership",
+				"event_type":    "org.member.add",
+			},
+			wantResourceType: "snyk.orgs",
+			wantURNKind:      "snyk_orgs",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			attributes := map[string]string{
+				"actor_id":    "user-1",
+				"actor_email": "alice@example.test",
+				"resource_id": tt.resourceID,
+			}
+			for key, value := range tt.attributes {
+				attributes[key] = value
+			}
+			event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: tt.kind, Attributes: attributes}
+			entities, links, err := snykAuditLogsProjections(event)
+			if err != nil {
+				t.Fatalf("projection error = %v", err)
+			}
+			if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, tt.wantResourceType) {
+				t.Fatalf("expected audit actor and %s entities; entities=%#v", tt.wantResourceType, entities)
+			}
+			if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", tt.wantURNKind, tt.resourceID)) {
+				t.Fatalf("expected acted_on link to %s; links=%#v", tt.wantURNKind, links)
+			}
+		})
+	}
+}
+
 func TestSnykAuditProjectionSkipsUnmappedResourceTypes(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{
 		Id:       "event-1",
