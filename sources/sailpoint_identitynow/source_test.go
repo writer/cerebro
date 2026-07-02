@@ -226,6 +226,22 @@ func TestSourceRejectsTokenFallbackTenantHostInjection(t *testing.T) {
 	}
 }
 
+func TestSourceAcceptsManagedFedRAMPBaseURLHost(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  "https://acme.api.identitynow-fed.com/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyIdentities,
+	})
+	if _, err := source.runtimeConfig(context.Background(), cfg); err != nil {
+		t.Fatalf("runtimeConfig() error = %v", err)
+	}
+}
+
 func TestSourceUsesFamilyDefaultPageSizeAndHonorsOverride(t *testing.T) {
 	source, err := New()
 	if err != nil {

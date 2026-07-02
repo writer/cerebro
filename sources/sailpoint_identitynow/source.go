@@ -222,8 +222,10 @@ func validateManagedBaseURLHost(raw string, allowLoopback bool) error {
 	if allowLoopback && sourcehttp.IsLoopbackHost(host) {
 		return nil
 	}
-	if host == "api.identitynow.com" || strings.HasSuffix(host, ".api.identitynow.com") {
-		return nil
+	for _, suffix := range []string{"api.identitynow.com", "api.identitynow-fed.com"} {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return nil
+		}
 	}
 	return fmt.Errorf("%w: %s base_url host is not allowed", sourcecdk.ErrInvalidConfig, sourceID)
 }
