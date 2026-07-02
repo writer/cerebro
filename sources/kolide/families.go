@@ -14,7 +14,7 @@ func families() []jsonapi.Family {
 			URNKind:        "kolide_device",
 			IDKeys:         []string{"id", "device_id", "hardware_uuid", "uuid", "serial", "serial_number", "hardware.serial"},
 			TimestampKeys: []string{
-				"last_seen_at", "last_authenticated_at", "registered_at", "updated_at", "last_seen", "last_check_in", "lastCheckIn",
+				"updated_at", "last_seen_at", "last_authenticated_at", "registered_at", "last_seen", "last_check_in", "lastCheckIn",
 			},
 			Attributes: map[string]string{
 				"device_id":             "id|device_id",
@@ -152,7 +152,7 @@ func families() []jsonapi.Family {
 			URNKind:        "kolide_user_device",
 			IDKeys:         []string{"id", "device_id", "hardware_uuid", "uuid", "serial", "serial_number"},
 			TimestampKeys: []string{
-				"last_seen_at", "last_authenticated_at", "registered_at", "updated_at", "last_check_in",
+				"updated_at", "last_seen_at", "last_authenticated_at", "registered_at", "last_check_in",
 			},
 			Attributes: map[string]string{
 				"device_id":             "id|device_id",

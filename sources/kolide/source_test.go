@@ -482,6 +482,61 @@ func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 	}
 }
 
+func TestReadDeviceFamiliesPreserveUpdatedAtOccurredAtPrecedence(t *testing.T) {
+	for _, tt := range []struct {
+		family string
+		kind   string
+	}{
+		{family: familyDevice, kind: "kolide.device"},
+		{family: familyUserDevice, kind: "kolide.user_device"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/devices" {
+					t.Errorf("request path = %q, want /devices", r.URL.Path)
+					http.Error(w, "unexpected path", http.StatusInternalServerError)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data": []map[string]any{{
+						"id":                    "device-1",
+						"updated_at":            "2026-05-01T12:00:00Z",
+						"last_seen_at":          "2026-05-30T08:30:00Z",
+						"last_authenticated_at": "2026-05-29T17:05:00Z",
+						"registered_at":         "2026-05-01T12:00:00Z",
+					}},
+				})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "writer",
+				"base_url":  server.URL,
+				"token":     "kolide-token",
+				"family":    tt.family,
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("Kind = %q, want %s", got, tt.kind)
+			}
+			want := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+			if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(want) {
+				t.Fatalf("OccurredAt = %s, want updated_at %s", got, want)
+			}
+		})
+	}
+}
+
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/packages" {
