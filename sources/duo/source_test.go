@@ -17,6 +17,11 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
+const (
+	testDuoIntegrationKey = "DIXXXXXXXXXXXXXXXXXX"
+	testDuoSecretKey      = "deadbeefsecret"
+)
+
 func TestNewLoadsCatalog(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -171,9 +176,9 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 					t.Fatalf("request path = %q, want %s", got, tt.path)
 				}
 				if tt.authV5 {
-					assertDuoHMACV5Auth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+					assertDuoHMACV5Auth(t, r)
 				} else {
-					assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+					assertDuoHMACAuth(t, r)
 				}
 				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
@@ -184,7 +189,7 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			config := map[string]string{"base_url": server.URL, "client_id": "DIXXXXXXXXXXXXXXXXXX", "client_secret": "deadbeefsecret", "family": tt.family, "tenant_id": "writer"}
+			config := map[string]string{"base_url": server.URL, "client_id": testDuoIntegrationKey, "client_secret": testDuoSecretKey, "family": tt.family, "tenant_id": "writer"}
 			for key, value := range tt.config {
 				config[key] = value
 			}
@@ -218,7 +223,7 @@ func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
 			t.Fatalf("request path = %q, want /admin/v1/users", got)
 		}
-		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		assertDuoHMACAuth(t, r)
 		_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": []map[string]any{{
 			"user_id": "user-1", "username": "alice", "status": "active",
 		}}})
@@ -232,8 +237,8 @@ func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
 	source.inner.AllowLoopbackBaseURL = true
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"base_url":      server.URL + "/admin/v1",
-		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
-		"client_secret": "deadbeefsecret",
+		"client_id":     testDuoIntegrationKey,
+		"client_secret": testDuoSecretKey,
 		"family":        "user",
 		"tenant_id":     "writer",
 	}), nil)
@@ -252,7 +257,7 @@ func TestReadDuoInventoryUsesOffsetPagination(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
 			t.Fatalf("request path = %q, want /admin/v1/users", got)
 		}
-		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		assertDuoHMACAuth(t, r)
 		if got := r.URL.Query().Get("limit"); got != "1" {
 			t.Fatalf("limit = %q, want 1", got)
 		}
@@ -282,8 +287,8 @@ func TestReadDuoInventoryUsesOffsetPagination(t *testing.T) {
 	source.inner.AllowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url":      server.URL,
-		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
-		"client_secret": "deadbeefsecret",
+		"client_id":     testDuoIntegrationKey,
+		"client_secret": testDuoSecretKey,
 		"family":        "user",
 		"per_page":      "1",
 		"tenant_id":     "writer",
@@ -320,7 +325,7 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v2/logs/authentication" {
 			t.Fatalf("request path = %q, want /admin/v2/logs/authentication", got)
 		}
-		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		assertDuoHMACAuth(t, r)
 		switch requests {
 		case 1:
 			if got := r.URL.Query().Get("next_offset"); got != "" {
@@ -355,8 +360,8 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 	source.inner.AllowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url":      server.URL,
-		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
-		"client_secret": "deadbeefsecret",
+		"client_id":     testDuoIntegrationKey,
+		"client_secret": testDuoSecretKey,
 		"family":        "authentication_log",
 		"tenant_id":     "writer",
 	})
@@ -382,7 +387,7 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 	}
 }
 
-func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, secretKey string) {
+func assertDuoHMACAuth(t *testing.T, r *http.Request) {
 	t.Helper()
 	date := r.Header.Get("Date")
 	if date == "" {
@@ -400,8 +405,8 @@ func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, sec
 	if !ok {
 		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
 	}
-	if username != integrationKey {
-		t.Fatalf("Duo integration key = %q, want %q", username, integrationKey)
+	if username != testDuoIntegrationKey {
+		t.Fatalf("Duo integration key = %q, want %q", username, testDuoIntegrationKey)
 	}
 	canonical := strings.Join([]string{
 		date,
@@ -410,14 +415,14 @@ func assertDuoHMACAuth(t *testing.T, r *http.Request, integrationKey string, sec
 		r.URL.EscapedPath(),
 		r.URL.Query().Encode(),
 	}, "\n")
-	mac := hmac.New(sha1.New, []byte(secretKey))
+	mac := hmac.New(sha1.New, []byte(testDuoSecretKey))
 	_, _ = mac.Write([]byte(canonical))
 	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
 		t.Fatalf("Duo HMAC signature = %q, want %q", signature, want)
 	}
 }
 
-func assertDuoHMACV5Auth(t *testing.T, r *http.Request, integrationKey string, secretKey string) {
+func assertDuoHMACV5Auth(t *testing.T, r *http.Request) {
 	t.Helper()
 	date := r.Header.Get("Date")
 	if date == "" {
@@ -435,8 +440,8 @@ func assertDuoHMACV5Auth(t *testing.T, r *http.Request, integrationKey string, s
 	if !ok {
 		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
 	}
-	if username != integrationKey {
-		t.Fatalf("Duo integration key = %q, want %q", username, integrationKey)
+	if username != testDuoIntegrationKey {
+		t.Fatalf("Duo integration key = %q, want %q", username, testDuoIntegrationKey)
 	}
 	canonical := strings.Join([]string{
 		date,
@@ -447,7 +452,7 @@ func assertDuoHMACV5Auth(t *testing.T, r *http.Request, integrationKey string, s
 		sha512Hex(""),
 		sha512Hex(""),
 	}, "\n")
-	mac := hmac.New(sha512.New, []byte(secretKey))
+	mac := hmac.New(sha512.New, []byte(testDuoSecretKey))
 	_, _ = mac.Write([]byte(canonical))
 	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
 		t.Fatalf("Duo HMAC v5 signature = %q, want %q", signature, want)
