@@ -1597,6 +1597,7 @@ func TestConnectorCatalogDefaultViewReturnsFullPayload(t *testing.T) {
 	var payload struct {
 		CredentialTransport json.RawMessage              `json:"credential_transport"`
 		View                string                       `json:"view"`
+		Page                *connectorLibraryPage        `json:"page"`
 		Connectors          []map[string]json.RawMessage `json:"connectors"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -1604,6 +1605,9 @@ func TestConnectorCatalogDefaultViewReturnsFullPayload(t *testing.T) {
 	}
 	if payload.View != connectorLibraryViewFull {
 		t.Fatalf("view = %q, want full", payload.View)
+	}
+	if payload.Page != nil {
+		t.Fatalf("page = %#v, want omitted for unpaged default full response", payload.Page)
 	}
 	if len(payload.CredentialTransport) == 0 {
 		t.Fatal("credential_transport missing from default connector catalog response")
@@ -1661,6 +1665,7 @@ func TestConnectorCatalogSummaryViewOmitsSetupPayloads(t *testing.T) {
 	var payload struct {
 		View             string                       `json:"view"`
 		Counts           connectorLibraryCounts       `json:"counts"`
+		Page             *connectorLibraryPage        `json:"page"`
 		Connectors       []map[string]json.RawMessage `json:"connectors"`
 		CredentialStores []json.RawMessage            `json:"credential_stores"`
 	}
@@ -1672,6 +1677,12 @@ func TestConnectorCatalogSummaryViewOmitsSetupPayloads(t *testing.T) {
 	}
 	if payload.Counts.Total == 0 || len(payload.Connectors) == 0 {
 		t.Fatalf("summary response missing connectors/counts: counts=%#v connectors=%d", payload.Counts, len(payload.Connectors))
+	}
+	if payload.Page != nil {
+		t.Fatalf("page = %#v, want omitted for unpaged summary response", payload.Page)
+	}
+	if len(payload.Connectors) != payload.Counts.Total {
+		t.Fatalf("summary connectors = %d, want counts total %d", len(payload.Connectors), payload.Counts.Total)
 	}
 	if len(payload.CredentialStores) != 0 {
 		t.Fatalf("credential_stores = %#v, want omitted from summary view", payload.CredentialStores)
@@ -1724,6 +1735,105 @@ func TestConnectorCatalogSummaryViewOmitsSetupPayloads(t *testing.T) {
 	}
 	if awsSummary.IntegrationLevel == "" || awsSummary.IntegrationScore == 0 || awsSummary.EmittedKindCount == 0 {
 		t.Fatalf("aws integration summary = %#v, want compact depth counts", awsSummary)
+	}
+}
+
+func TestConnectorCatalogPagination(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	type pagedConnectorCatalog struct {
+		View       string                  `json:"view"`
+		Counts     connectorLibraryCounts  `json:"counts"`
+		Page       *connectorLibraryPage   `json:"page"`
+		Connectors []connectorCatalogEntry `json:"connectors"`
+	}
+	decodePage := func(path string) pagedConnectorCatalog {
+		t.Helper()
+		resp, err := server.Client().Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		defer closeResponseBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200", path, resp.StatusCode)
+		}
+		var payload pagedConnectorCatalog
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode %s response: %v", path, err)
+		}
+		if payload.Page == nil {
+			t.Fatalf("GET %s missing page metadata", path)
+		}
+		return payload
+	}
+
+	first := decodePage("/connectors?view=summary&limit=200")
+	if first.View != connectorLibraryViewSummary {
+		t.Fatalf("first view = %q, want summary", first.View)
+	}
+	if got := len(first.Connectors); got != connectorLibraryPageMaxLimit {
+		t.Fatalf("first page connectors = %d, want %d", got, connectorLibraryPageMaxLimit)
+	}
+	if first.Page.Total != first.Counts.Total || first.Page.Returned != connectorLibraryPageMaxLimit || !first.Page.HasMore || first.Page.NextCursor != "200" {
+		t.Fatalf("first page metadata = %#v counts=%#v", first.Page, first.Counts)
+	}
+
+	second := decodePage("/connectors?view=summary&limit=200&cursor=" + first.Page.NextCursor)
+	if got := len(second.Connectors); got != connectorLibraryPageMaxLimit {
+		t.Fatalf("second page connectors = %d, want %d", got, connectorLibraryPageMaxLimit)
+	}
+	if second.Page.Total != first.Page.Total || second.Page.Returned != connectorLibraryPageMaxLimit || !second.Page.HasMore || second.Page.NextCursor != "400" {
+		t.Fatalf("second page metadata = %#v first=%#v", second.Page, first.Page)
+	}
+	if len(first.Connectors) == 0 || len(second.Connectors) == 0 {
+		t.Fatalf("pagination returned empty page: first=%d second=%d", len(first.Connectors), len(second.Connectors))
+	}
+	if first.Connectors[0].SourceID == second.Connectors[0].SourceID {
+		t.Fatalf("pagination did not advance: first=%q second=%q", first.Connectors[0].SourceID, second.Connectors[0].SourceID)
+	}
+
+	full := decodePage("/connectors?limit=500")
+	if full.View != connectorLibraryViewFull {
+		t.Fatalf("full view = %q, want full", full.View)
+	}
+	if full.Page.Limit != connectorLibraryPageMaxLimit || len(full.Connectors) != connectorLibraryPageMaxLimit {
+		t.Fatalf("full page = %#v connectors=%d, want max-page clamp", full.Page, len(full.Connectors))
+	}
+}
+
+func TestConnectorCatalogRejectsInvalidPagination(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, query := range []string{"limit=0", "limit=abc", "cursor=-1", "cursor=abc"} {
+		resp, err := server.Client().Get(server.URL + "/connectors?" + query)
+		if err != nil {
+			t.Fatalf("GET /connectors?%s error = %v", query, err)
+		}
+		defer closeResponseBody(t, resp)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("GET /connectors?%s status = %d, want 400", query, resp.StatusCode)
+		}
 	}
 }
 
