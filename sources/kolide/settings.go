@@ -11,9 +11,10 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID       = "kolide"
-	defaultBaseURL = "https://api.kolide.com"
-	defaultFamily  = familyDevice
+	sourceID          = "kolide"
+	defaultBaseURL    = "https://api.kolide.com"
+	defaultAPIVersion = "2026-04-07"
+	defaultFamily     = familyDevice
 
 	familyCheck         = "check"
 	familyDevice        = "device"
