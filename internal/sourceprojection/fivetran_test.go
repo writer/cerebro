@@ -176,6 +176,31 @@ func TestFivetranLegacyAssetsKeepGenericRuntimeURNs(t *testing.T) {
 	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:runtime_fivetran_record:record-1")
 }
 
+func TestFivetranLegacyPolicyEvidenceUsesDottedRuntimeEntityType(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "policy-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.policies",
+		Attributes: map[string]string{
+			"evidence_id": "evidence-1",
+			"policy_id":   "policy-1",
+			"policy_name": "Access policy",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	policyURN := "urn:cerebro:writer:policy:policy-1"
+	evidenceURN := "urn:cerebro:writer:runtime_evidence:evidence-1"
+	assertProjectedEntityType(t, state, policyURN, "policy")
+	assertProjectedEntityType(t, state, evidenceURN, "runtime.evidence")
+	assertProjectedLink(t, state, policyURN, relationHasEvidence, evidenceURN)
+}
+
 func TestFivetranMembershipEdgesUseStandaloneEntityURNs(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

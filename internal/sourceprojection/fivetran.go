@@ -306,7 +306,7 @@ func fivetranGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 			URN:        evidenceURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "runtime_evidence",
+			EntityType: "runtime.evidence",
 			Label:      evidenceID,
 			Attributes: compactAttributes(map[string]string{
 				"evidence_cas_digest": strings.TrimSpace(attributes["evidence_cas_digest"]),
