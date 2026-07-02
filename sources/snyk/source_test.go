@@ -354,7 +354,7 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 				if got := r.Method; got != http.MethodGet {
 					t.Fatalf("method = %q, want GET", got)
 				}
-				assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, tt.pageParam, "100", tt.wantQuery)
+				assertSnykQuery(t, r.URL.Query(), tt.pageParam, tt.wantQuery)
 				w.Header().Set("Content-Type", "application/json")
 				response := map[string]any{"data": []map[string]any{tt.record}}
 				if tt.wrapItems {
@@ -417,7 +417,7 @@ func TestAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/orgs/org-1/audit_logs/search" {
 			t.Fatalf("path = %q, want audit log search", got)
 		}
-		assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, "size", "100", nil)
+		assertSnykQuery(t, r.URL.Query(), "size", nil)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": []map[string]any{
 			{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "project"}},
@@ -456,6 +456,116 @@ func TestAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 	}
 }
 
+func TestRuntimeReadsGroupScopedFamiliesAcrossConfiguredGroupIDs(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		if got := r.Header.Get("Authorization"); got != "Token test-token" {
+			t.Fatalf("Authorization = %q, want Token test-token", got)
+		}
+		assertSnykQuery(t, r.URL.Query(), "", nil)
+		groupID := ""
+		switch r.URL.EscapedPath() {
+		case "/groups/group-a/memberships":
+			groupID = "group-a"
+		case "/groups/group-b/memberships":
+			groupID = "group-b"
+		default:
+			t.Fatalf("path = %q, want configured group scope", r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
+			"id": "membership-" + groupID,
+			"relationships": map[string]any{
+				"user": map[string]any{"data": map[string]string{"id": "user-" + groupID, "type": "user"}},
+				"role": map[string]any{"data": map[string]string{"id": "collaborator"}},
+			},
+		}}})
+	}))
+	defer server.Close()
+
+	events := readAllSnykEvents(t, source, sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyGroupMemberships,
+		"group_ids": "group-a, group-b",
+		"tenant_id": "tenant",
+		"token":     "test-token",
+	}))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want one event per configured group", len(events))
+	}
+	for idx, wantGroupID := range []string{"group-a", "group-b"} {
+		if got := events[idx].Attributes["group_id"]; got != wantGroupID {
+			t.Fatalf("event %d group_id = %q, want %q", idx, got, wantGroupID)
+		}
+	}
+	wantRequests := []string{"/groups/group-a/memberships", "/groups/group-b/memberships"}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
+func TestRuntimeReadsAssetScopedFamiliesAcrossConfiguredAssetIDs(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	requests := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		if got := r.Header.Get("Authorization"); got != "Token test-token" {
+			t.Fatalf("Authorization = %q, want Token test-token", got)
+		}
+		assertSnykQuery(t, r.URL.Query(), "", nil)
+		assetID := ""
+		switch r.URL.EscapedPath() {
+		case "/orgs/org-1/inventory/assets/asset-a/relationships/targets":
+			assetID = "asset-a"
+		case "/orgs/org-1/inventory/assets/asset-b/relationships/targets":
+			assetID = "asset-b"
+		default:
+			t.Fatalf("path = %q, want configured asset scope", r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
+			"id":         "target-" + assetID,
+			"type":       "target",
+			"attributes": map[string]any{"display_name": "repo-" + assetID},
+		}}})
+	}))
+	defer server.Close()
+
+	events := readAllSnykEvents(t, source, sourcecdk.NewConfig(map[string]string{
+		"asset_ids": "asset-a, asset-b",
+		"base_url":  server.URL,
+		"family":    familyAssetTargets,
+		"org_id":    "org-1",
+		"tenant_id": "tenant",
+		"token":     "test-token",
+	}))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want one event per configured asset", len(events))
+	}
+	for idx, wantAssetID := range []string{"asset-a", "asset-b"} {
+		if got := events[idx].Attributes["asset_id"]; got != wantAssetID {
+			t.Fatalf("event %d asset_id = %q, want %q", idx, got, wantAssetID)
+		}
+	}
+	wantRequests := []string{
+		"/orgs/org-1/inventory/assets/asset-a/relationships/targets",
+		"/orgs/org-1/inventory/assets/asset-b/relationships/targets",
+	}
+	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
 func TestGroupAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -469,7 +579,7 @@ func TestGroupAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/groups/group-1/audit_logs/search" {
 			t.Fatalf("path = %q, want group audit log search", got)
 		}
-		assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, "size", "100", nil)
+		assertSnykQuery(t, r.URL.Query(), "size", nil)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": []map[string]any{
 			{"created": "2026-06-01T00:00:00Z", "event": "group.member.add", "group_id": "group-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "membership"}},
@@ -592,16 +702,35 @@ func TestNewFixtureReplaysSnykFamilies(t *testing.T) {
 	})
 }
 
-func assertSnykQuery(t *testing.T, query url.Values, wantVersion string, pageParam string, wantPageSize string, want map[string]string) {
+func readAllSnykEvents(t *testing.T, source *Source, cfg sourcecdk.Config) []*cerebrov1.EventEnvelope {
 	t.Helper()
-	if got := query.Get("version"); got != wantVersion {
-		t.Fatalf("version = %q, want %q", got, wantVersion)
+	events := []*cerebrov1.EventEnvelope{}
+	var cursor *cerebrov1.SourceCursor
+	for page := 0; page < 10; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(page %d) error = %v", page, err)
+		}
+		events = append(events, pull.Events...)
+		if pull.NextCursor == nil {
+			return events
+		}
+		cursor = pull.NextCursor
+	}
+	t.Fatal("Read() returned too many cursor pages")
+	return nil
+}
+
+func assertSnykQuery(t *testing.T, query url.Values, pageParam string, want map[string]string) {
+	t.Helper()
+	if got := query.Get("version"); got != defaultAPIVersion {
+		t.Fatalf("version = %q, want %q", got, defaultAPIVersion)
 	}
 	if pageParam == "" {
 		pageParam = "limit"
 	}
-	if got := query.Get(pageParam); got != wantPageSize {
-		t.Fatalf("%s = %q, want %q", pageParam, got, wantPageSize)
+	if got := query.Get(pageParam); got != "100" {
+		t.Fatalf("%s = %q, want 100", pageParam, got)
 	}
 	for key, value := range want {
 		if got := query.Get(key); got != value {
