@@ -319,9 +319,11 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/inventory/assets/asset-1/relationships/projects",
 			record: map[string]any{"id": "project-1", "type": "project", "attributes": map[string]any{"name": "Checkout API", "project_type": "sast", "target_id": "target-1", "risk_score": 890}},
 			wantAttrs: map[string]string{
-				"org_id":     "org-1",
-				"asset_id":   "asset-1",
-				"project_id": "project-1",
+				"external_id":     "project-1",
+				"source_event_id": "asset-1-project-1",
+				"org_id":          "org-1",
+				"asset_id":        "asset-1",
+				"project_id":      "project-1",
 			},
 			config: map[string]string{"asset_ids": "asset-1"},
 		},
@@ -331,9 +333,11 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/inventory/assets/asset-1/relationships/targets",
 			record: map[string]any{"id": "target-1", "type": "target", "attributes": map[string]any{"display_name": "writer/cerebro", "target_origin": "github", "imported_at": "2026-06-01T00:00:00Z"}},
 			wantAttrs: map[string]string{
-				"org_id":    "org-1",
-				"asset_id":  "asset-1",
-				"target_id": "target-1",
+				"external_id":     "target-1",
+				"source_event_id": "asset-1-target-1",
+				"org_id":          "org-1",
+				"asset_id":        "asset-1",
+				"target_id":       "target-1",
 			},
 			config: map[string]string{"asset_ids": "asset-1"},
 		},
@@ -563,6 +567,85 @@ func TestRuntimeReadsAssetScopedFamiliesAcrossConfiguredAssetIDs(t *testing.T) {
 	}
 	if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
 		t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+	}
+}
+
+func TestRuntimeDiscoversAssetScopedRelationshipURNsPerAsset(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		family       string
+		relationship string
+		recordID     string
+		recordType   string
+	}{
+		{
+			name:         "projects",
+			family:       familyAssetProjects,
+			relationship: "projects",
+			recordID:     "project-shared",
+			recordType:   "project",
+		},
+		{
+			name:         "targets",
+			family:       familyAssetTargets,
+			relationship: "targets",
+			recordID:     "target-shared",
+			recordType:   "target",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			requests := []string{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.URL.EscapedPath())
+				if got := r.Header.Get("Authorization"); got != "Token test-token" {
+					t.Fatalf("Authorization = %q, want Token test-token", got)
+				}
+				assertSnykQuery(t, r.URL.Query(), "", nil)
+				switch r.URL.EscapedPath() {
+				case "/orgs/org-1/inventory/assets/asset-a/relationships/" + tc.relationship,
+					"/orgs/org-1/inventory/assets/asset-b/relationships/" + tc.relationship:
+				default:
+					t.Fatalf("path = %q, want configured asset relationship scope", r.URL.EscapedPath())
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
+					"id":         tc.recordID,
+					"type":       tc.recordType,
+					"attributes": map[string]any{"display_name": tc.recordID, "name": tc.recordID},
+				}}})
+			}))
+			defer server.Close()
+
+			urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"asset_ids": "asset-a, asset-b",
+				"base_url":  server.URL,
+				"family":    tc.family,
+				"org_id":    "org-1",
+				"tenant_id": "tenant",
+				"token":     "test-token",
+			}))
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if len(urns) != 2 {
+				t.Fatalf("URNs = %#v, want one relationship URN per asset", urns)
+			}
+			if urns[0] == urns[1] {
+				t.Fatalf("relationship URNs collapsed across assets: %#v", urns)
+			}
+			wantRequests := []string{
+				"/orgs/org-1/inventory/assets/asset-a/relationships/" + tc.relationship,
+				"/orgs/org-1/inventory/assets/asset-b/relationships/" + tc.relationship,
+			}
+			if strings.Join(requests, "\n") != strings.Join(wantRequests, "\n") {
+				t.Fatalf("requests = %#v, want %#v", requests, wantRequests)
+			}
+		})
 	}
 }
 

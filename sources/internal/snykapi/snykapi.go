@@ -580,10 +580,11 @@ func snykAssetProjectsFamily() jsonapi.Family {
 		IDKeys:     []string{"id"},
 		ListKeys:   []string{"data"},
 		Attributes: map[string]string{
+			"external_id":     "id",
 			"org_id":          orgIDConfig,
 			"asset_id":        assetIDConfig,
 			"project_id":      "id",
-			"source_event_id": "id",
+			"source_event_id": "_record_id",
 			"resource_id":     "id",
 			"resource_name":   "attributes.name|name",
 			"resource_type":   "type",
@@ -592,6 +593,7 @@ func snykAssetProjectsFamily() jsonapi.Family {
 	})
 	family.Config.IdentityKeys = []string{assetIDConfig}
 	family.Config.ResourceURNKind = "snyk_projects"
+	family.Config.IDTemplate = "${asset_id}-${id}"
 	return family
 }
 
@@ -604,10 +606,11 @@ func snykAssetTargetsFamily() jsonapi.Family {
 		IDKeys:     []string{"id"},
 		ListKeys:   []string{"data"},
 		Attributes: map[string]string{
+			"external_id":     "id",
 			"org_id":          orgIDConfig,
 			"asset_id":        assetIDConfig,
 			"target_id":       "id",
-			"source_event_id": "id",
+			"source_event_id": "_record_id",
 			"resource_id":     "id",
 			"resource_name":   "attributes.display_name|attributes.name|name",
 			"resource_type":   "type",
@@ -616,6 +619,7 @@ func snykAssetTargetsFamily() jsonapi.Family {
 	})
 	family.Config.IdentityKeys = []string{assetIDConfig}
 	family.Config.ResourceURNKind = "snyk_targets"
+	family.Config.IDTemplate = "${asset_id}-${id}"
 	return family
 }
 
