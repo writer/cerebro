@@ -38,7 +38,6 @@ type Family struct {
 	Singleton             bool
 	RequireID             bool
 	IncrementalWatermark  bool
-	Method                string
 }
 
 // FamilyConfig groups request and event bindings that are derived from family
@@ -57,6 +56,7 @@ type FamilyConfig struct {
 	OffsetKeys         []string
 	LimitKeys          []string
 	LastItemCursorKeys []string
+	Method             string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

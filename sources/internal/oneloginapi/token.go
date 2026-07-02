@@ -118,7 +118,8 @@ func normalizeTokenURL(raw string, allowLoopback bool) (string, error) {
 	if parsed == nil || parsed.Hostname() == "" {
 		return "", fmt.Errorf("%s token_url must include a host", SourceID)
 	}
-	if parsed.Scheme != "https" && !(allowLoopback && parsed.Scheme == "http" && sourcehttp.IsLoopbackHost(parsed.Hostname())) {
+	loopbackHTTP := allowLoopback && parsed.Scheme == "http" && sourcehttp.IsLoopbackHost(parsed.Hostname())
+	if parsed.Scheme != "https" && !loopbackHTTP {
 		return "", fmt.Errorf("%s token_url must use https", SourceID)
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
@@ -155,7 +156,10 @@ func exchangeToken(ctx context.Context, tokenURL string, clientID string, client
 		return "", time.Time{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", time.Time{}, fmt.Errorf("%s token endpoint returned HTTP %d", SourceID, resp.StatusCode)
+		return "", time.Time{}, &sourcecdk.HTTPStatusError{
+			Code:    resp.StatusCode,
+			Message: fmt.Sprintf("%s token endpoint returned HTTP %d", SourceID, resp.StatusCode),
+		}
 	}
 	var payload struct {
 		AccessToken string `json:"access_token"`

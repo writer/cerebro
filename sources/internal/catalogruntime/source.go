@@ -168,7 +168,6 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		MapRecords:            cloneStringMap(read.MapRecords),
 		Singleton:             read.Singleton || resource.Singleton,
 		IncrementalWatermark:  resource.Incremental != nil && strings.TrimSpace(resource.Incremental.State) == "high_watermark",
-		Method:                method,
 	}, nil
 }
 
@@ -234,6 +233,7 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 	out := jsonapi.FamilyConfig{
 		StaticQuery: cloneStringMap(resource.StaticQuery),
 		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+		Method:      strings.ToUpper(strings.TrimSpace(resource.Method)),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)

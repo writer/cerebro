@@ -675,7 +675,7 @@ func TestReadUsesFamilyMethod(t *testing.T) {
 	source := newCustomTestSource(t, server.URL, Family{
 		Name:    "device",
 		Path:    "/devices/search",
-		Method:  http.MethodPost,
+		Config:  FamilyConfig{Method: http.MethodPost},
 		URNKind: "test_device",
 		IDKeys:  []string{"id"},
 	})

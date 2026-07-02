@@ -89,7 +89,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
 	}
-	resolved.familyMethod = strings.TrimSpace(family.Method)
+	resolved.familyMethod = strings.TrimSpace(family.Config.Method)
 	if s.options.RequireTenantID && resolved.tenantID == "" {
 		return resolved, fmt.Errorf("%s tenant_id is required", s.options.SourceID)
 	}

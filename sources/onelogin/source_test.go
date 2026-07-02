@@ -222,7 +222,7 @@ func TestSourceProviderUnavailable(t *testing.T) {
 	if err == nil {
 		t.Fatal("Check() error = nil, want provider unavailable error")
 	}
-	if !strings.Contains(err.Error(), "HTTP 503") {
+	if !sourcecdk.IsHTTPStatus(err, http.StatusServiceUnavailable) {
 		t.Fatalf("Check() error = %v, want HTTP 503", err)
 	}
 }
