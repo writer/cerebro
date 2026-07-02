@@ -192,12 +192,14 @@ func snykInventoryURNKind(resourceType string) string {
 		return "snyk_projects"
 	case "target":
 		return "snyk_targets"
-	case "asset":
+	case "asset", "resource":
 		return "snyk_assets"
 	case "collection":
 		return "snyk_collections"
 	case "cloud_environment", "environment":
 		return "snyk_cloud_environments"
+	case "cloud_resource":
+		return "snyk_cloud_resources"
 	case "cloud_scan", "scan":
 		return "snyk_cloud_scans"
 	default:

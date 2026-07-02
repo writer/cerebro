@@ -117,6 +117,7 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 		{name: "asset", resourceID: "asset-1", resourceType: "asset", wantResourceType: "snyk.assets", wantURNKind: "snyk_assets"},
 		{name: "collection", resourceID: "collection-1", resourceType: "collection", wantResourceType: "snyk.collections", wantURNKind: "snyk_collections"},
 		{name: "cloud environment", resourceID: "environment-1", resourceType: "cloud_environment", wantResourceType: "snyk.cloud_environments", wantURNKind: "snyk_cloud_environments"},
+		{name: "cloud resource", resourceID: "resource-1", resourceType: "cloud_resource", wantResourceType: "snyk.cloud_resources", wantURNKind: "snyk_cloud_resources"},
 		{name: "cloud scan", resourceID: "scan-1", resourceType: "cloud_scan", wantResourceType: "snyk.cloud_scans", wantURNKind: "snyk_cloud_scans"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
