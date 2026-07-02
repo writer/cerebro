@@ -1580,7 +1580,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
 	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n")
 	if usesDuoHMACAuth(request) {
-		fmt.Fprintf(&b, "\t\tduoSignatureLength int\n")
+		fmt.Fprintf(&b, "\t\tauthHeaderName string\n\t\tauthHeaderValue string\n\t\tduoSignatureLength int\n")
 	}
 	fmt.Fprintf(&b, "\t\tresponseBody json.RawMessage\n\t}{\n")
 	for _, family := range request.Families {
@@ -1590,6 +1590,9 @@ func renderSourceTestGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\tkind: %s,\n", strconv.Quote(family.EventKind))
 		fmt.Fprintf(&b, "\t\t\texpectedAttributes: map[string]string{%s},\n", renderedAttributeMap(sourceTestExpectedAttributes(request, family)))
 		if usesDuoHMACAuth(request) {
+			authHeaderName, authHeaderValue := sourceTestExpectedAuthHeader(request, family)
+			fmt.Fprintf(&b, "\t\t\tauthHeaderName: %s,\n", strconv.Quote(authHeaderName))
+			fmt.Fprintf(&b, "\t\t\tauthHeaderValue: %s,\n", strconv.Quote(authHeaderValue))
 			fmt.Fprintf(&b, "\t\t\tduoSignatureLength: %d,\n", duoHMACSignatureLength(firstNonEmptyString(family.AuthModel, request.AuthModel)))
 		}
 		fmt.Fprintf(&b, "\t\t\tresponseBody: json.RawMessage(`%s`),\n", sourceTestResponseBody(request, family))
@@ -1638,6 +1641,9 @@ func renderSourceTestGo(request normalizedRequest) string {
 	if request.OAuth == nil && usesDuoHMACAuth(request) {
 		emitCfgValue("client_id", strconv.Quote("DIXXXXXXXXXXXXXXXXXX"))
 		emitCfgValue("client_secret", strconv.Quote("deadbeefsecret"))
+	}
+	for _, key := range request.CredentialKeys {
+		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
 	}
 	for _, key := range request.ConfigKeys {
 		emitCfgValue(key, strconv.Quote(testConfigValue(key)))
@@ -1784,9 +1790,34 @@ func generatedTestAuthHeader(request normalizedRequest) (string, string) {
 	return header, scheme + " test-token"
 }
 
+func sourceTestExpectedAuthHeader(request normalizedRequest, family familyData) (string, string) {
+	authModel := firstNonEmptyString(family.AuthModel, request.AuthModel)
+	switch authModel {
+	case AuthModelBearerToken:
+		return "Authorization", "Bearer test-token"
+	case AuthModelBasic:
+		return "Authorization", "Basic test-token"
+	case AuthModelOAuthAuthorizationCode, AuthModelOAuthClientCredentials, AuthModelJWT, AuthModelTwoStep:
+		return "Authorization", "Bearer test-token"
+	case AuthModelDuoHMAC, AuthModelDuoHMACV5:
+		return "Authorization", ""
+	case AuthModelAPIKey, AuthModelAPIToken:
+		header := firstNonEmptyString(request.TokenHeader, "Authorization")
+		scheme := firstNonEmptyString(request.TokenScheme, "Token")
+		if strings.EqualFold(header, "Authorization") {
+			return header, scheme + " test-token"
+		}
+		return header, "test-token"
+	case AuthModelSignature:
+		return "Authorization", firstNonEmptyString(request.TokenScheme, "Signature") + " test-token"
+	default:
+		return generatedTestAuthHeader(request)
+	}
+}
+
 func generatedTestAuthAssertion(request normalizedRequest) string {
 	if usesDuoHMACAuth(request) {
-		return fmt.Sprintf("\t\twantSignatureLength := %d\n\t\tfor _, tc := range familyCases {\n\t\t\tif r.URL.Path == tc.path && tc.duoSignatureLength != 0 {\n\t\t\t\twantSignatureLength = tc.duoSignatureLength\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\tif wantSignatureLength == 0 {\n%s\t\t} else {\n\t\t\tdecodedAuth, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get(\"Authorization\"), \"Basic \"))\n\t\t\tif err != nil {\n\t\t\t\tt.Fatalf(\"decode Authorization: %%v\", err)\n\t\t\t}\n\t\t\tusername, signature, ok := strings.Cut(string(decodedAuth), \":\")\n\t\t\tif !ok {\n\t\t\t\tt.Fatalf(\"Authorization payload = %%q\", decodedAuth)\n\t\t\t}\n\t\t\tif username != \"DIXXXXXXXXXXXXXXXXXX\" {\n\t\t\t\tt.Fatalf(\"Duo integration key = %%q\", username)\n\t\t\t}\n\t\t\tif len(signature) != wantSignatureLength {\n\t\t\t\tt.Fatalf(\"Duo signature length = %%d, want %%d\", len(signature), wantSignatureLength)\n\t\t\t}\n\t\t}\n", duoHMACSignatureLength(request.AuthModel), indentGeneratedAuthAssertion(generatedSourceTestAuthAssertion(request), "\t"))
+		return fmt.Sprintf("\t\twantSignatureLength := %d\n\t\texpectedAuthHeaderName := \"Authorization\"\n\t\texpectedAuthHeaderValue := \"\"\n\t\tfor _, tc := range familyCases {\n\t\t\tif r.URL.Path == tc.path {\n\t\t\t\twantSignatureLength = tc.duoSignatureLength\n\t\t\t\texpectedAuthHeaderName = tc.authHeaderName\n\t\t\t\texpectedAuthHeaderValue = tc.authHeaderValue\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\tif wantSignatureLength == 0 {\n\t\t\tif r.Header.Get(expectedAuthHeaderName) != expectedAuthHeaderValue {\n\t\t\t\thttp.Error(w, expectedAuthHeaderName+\" mismatch\", http.StatusUnauthorized)\n\t\t\t\treturn\n\t\t\t}\n\t\t} else {\n\t\t\tdecodedAuth, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get(\"Authorization\"), \"Basic \"))\n\t\t\tif err != nil {\n\t\t\t\tt.Fatalf(\"decode Authorization: %%v\", err)\n\t\t\t}\n\t\t\tusername, signature, ok := strings.Cut(string(decodedAuth), \":\")\n\t\t\tif !ok {\n\t\t\t\tt.Fatalf(\"Authorization payload = %%q\", decodedAuth)\n\t\t\t}\n\t\t\tif username != \"DIXXXXXXXXXXXXXXXXXX\" {\n\t\t\t\tt.Fatalf(\"Duo integration key = %%q\", username)\n\t\t\t}\n\t\t\tif len(signature) != wantSignatureLength {\n\t\t\t\tt.Fatalf(\"Duo signature length = %%d, want %%d\", len(signature), wantSignatureLength)\n\t\t\t}\n\t\t}\n", duoHMACSignatureLength(request.AuthModel))
 	}
 	return generatedSourceTestAuthAssertion(request)
 }
@@ -1797,17 +1828,6 @@ func generatedSourceTestAuthAssertion(request normalizedRequest) string {
 		return fmt.Sprintf("\t\tif r.Header.Get(%s) != %s {\n\t\t\thttp.Error(w, %s+\" mismatch\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote(value), strconv.Quote(header))
 	}
 	return fmt.Sprintf("\t\tauth := r.Header.Get(%s)\n\t\tif !strings.HasPrefix(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing SigV4 prefix\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n\t\tif !strings.Contains(auth, %s) {\n\t\t\thttp.Error(w, %s+\" missing credential scope\", http.StatusUnauthorized)\n\t\t\treturn\n\t\t}\n", strconv.Quote(header), strconv.Quote("AWS4-HMAC-SHA256 "), strconv.Quote(header), strconv.Quote("Credential=test-access-key/"), strconv.Quote(header))
-}
-
-func indentGeneratedAuthAssertion(assertion string, extraIndent string) string {
-	lines := strings.SplitAfter(assertion, "\n")
-	for i, line := range lines {
-		if line == "" {
-			continue
-		}
-		lines[i] = extraIndent + line
-	}
-	return strings.Join(lines, "")
 }
 
 func usesDuoHMACAuth(request normalizedRequest) bool {
