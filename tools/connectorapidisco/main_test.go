@@ -47,6 +47,31 @@ func TestAPIsGuruSuggestionsPreferSourceIDConfidence(t *testing.T) {
 	}
 }
 
+func TestAPIsGuruSuggestionsFallbackWhenPreferredVersionMissing(t *testing.T) {
+	var registry apisGuruRegistry
+	if err := json.Unmarshal([]byte(`{
+		"acmecloud:v1": {
+			"preferred": "missing",
+			"versions": {
+				"v1": {
+					"info": {"title": "Acme Cloud"},
+					"swaggerUrl": "https://example.test/acme-cloud.json"
+				}
+			}
+		}
+	}`), &registry); err != nil {
+		t.Fatalf("unmarshal registry: %v", err)
+	}
+
+	suggestions := apisGuruSuggestions(registry, connectorcatalog.APIDiscoveryCandidate{SourceID: "acme_cloud"})
+	if len(suggestions) != 1 {
+		t.Fatalf("suggestions = %#v, want one fallback suggestion", suggestions)
+	}
+	if suggestions[0].Title != "Acme Cloud" || suggestions[0].SpecURL != "https://example.test/acme-cloud.json" {
+		t.Fatalf("suggestion = %#v, want populated fallback version", suggestions[0])
+	}
+}
+
 func TestNormalizedTokenRemovesNonAlphanumericCharacters(t *testing.T) {
 	if got := normalizedToken(" _Acme-Cloud_ "); got != "acmecloud" {
 		t.Fatalf("normalizedToken() = %q, want acmecloud", got)

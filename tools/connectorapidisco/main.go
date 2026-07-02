@@ -143,7 +143,17 @@ func apisGuruSuggestions(registry apisGuruRegistry, candidate connectorcatalog.A
 	display := normalizedToken(candidate.DisplayName)
 	suggestions := []APIsGuruSuggestion{}
 	for key, api := range registry {
-		version := api.Versions[api.Preferred]
+		version, ok := api.Versions[api.Preferred]
+		if !ok {
+			for _, candidateVersion := range api.Versions {
+				version = candidateVersion
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
 		keyRoot := normalizedToken(apiKeyRoot(key))
 		title := normalizedToken(version.Info.Title)
 		provider := normalizedToken(version.Info.XProviderName)

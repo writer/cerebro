@@ -73,6 +73,29 @@ func TestAuth0ResourceServerProjection(t *testing.T) {
 	}
 }
 
+func TestAuth0ResourceServerProjectionUsesAudienceFallbackConsistently(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.resource_servers", Attributes: map[string]string{"api_id": "api-1", "audience": "https://api.example.test", "resource_id": "resource-server-1", "scopes": "read:reports"}}
+	entities, links, err := auth0ResourceServersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	wantAPIURN := projectionURN("tenant", "auth0_api", "https://api.example.test")
+	wantEntitlementURN := auth0APIEntitlementURN("tenant", "https://api.example.test", "read:reports")
+	entityURNs := map[string]struct{}{}
+	for _, entity := range entities {
+		entityURNs[entity.URN] = struct{}{}
+	}
+	if _, ok := entityURNs[wantAPIURN]; !ok {
+		t.Fatalf("missing API entity %q; entities=%#v", wantAPIURN, entities)
+	}
+	if _, ok := entityURNs[wantEntitlementURN]; !ok {
+		t.Fatalf("missing entitlement entity %q; entities=%#v", wantEntitlementURN, entities)
+	}
+	if !projectedLinksContain(links, wantAPIURN, relationGrantsEntitlement, wantEntitlementURN) {
+		t.Fatalf("missing API grants entitlement link %s -> %s; links=%#v", wantAPIURN, wantEntitlementURN, links)
+	}
+}
+
 func TestAuth0ScopeValuesParseRuntimeObjectStream(t *testing.T) {
 	got := auth0ScopeValues(`{"value":"read:reports","description":"Read, reports"},{"value":"write:reports","description":"Write reports"}`)
 	if joined := strings.Join(got, ","); joined != "read:reports,write:reports" {

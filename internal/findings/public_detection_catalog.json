@@ -8992,7 +8992,7 @@
         {
           "source_id": "zuora",
           "dimension_id": "email",
-          "dimension_type": "entity_family",
+          "dimension_type": "audit_event",
           "support_level": "partial",
           "high_value": true,
           "families": [

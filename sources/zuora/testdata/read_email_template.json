@@ -14,7 +14,7 @@
       "schema": "email_template",
       "source_event_id": "6e569e1e05f040eda51a927b140c0ac2",
       "source_system": "zuora",
-      "status": "true",
+      "status": "active",
       "tenant_id": "tenant",
       "user_id": "6e569e1e05f040eda51a927b140c0ac2"
     },

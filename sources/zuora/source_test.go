@@ -145,7 +145,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"active":         true,
 				"isHtml":         true,
 			}}},
-			wantAttributes: map[string]string{"name": "Account Edit Email", "observed_at": "2026-06-02T07:36:19.798Z", "record_class": "asset", "resource_type": "email_template", "user_id": "6e569e1e05f040eda51a927b140c0ac2"},
+			wantAttributes: map[string]string{"name": "Account Edit Email", "observed_at": "2026-06-02T07:36:19.798Z", "record_class": "asset", "resource_type": "email_template", "status": "active", "user_id": "6e569e1e05f040eda51a927b140c0ac2"},
 			wantPayloadKey: "emailSubject",
 			wantOccurredAt: "2026-06-02T07:36:19.798Z",
 		},
@@ -280,7 +280,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 					},
 				}},
 			},
-			wantAttributes: map[string]string{"name": "Example Billing", "resource_type": "CreditCard"},
+			wantAttributes: map[string]string{"name": "Example Billing", "record_class": "asset", "resource_type": "payment_method"},
 			wantPayloadKey: "accountHolderInfo",
 		},
 	}

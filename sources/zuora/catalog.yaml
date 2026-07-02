@@ -139,7 +139,7 @@ coverage_contract:
       notes:
         - Maps the official List all accounting periods response under `accountingPeriods`, including period dates, status, fiscal year, fiscal quarter, trial-balance status, and report file IDs.
     - id: email
-      type: entity_family
+      type: audit_event
       title: "Email"
       families: [email]
       support: partial

@@ -134,8 +134,9 @@ func auth0ResourceServersProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	apiURN := addAuth0APIEntity(entities, tenantID, event.GetSourceId(), attributes)
+	apiIdentifier := firstNonEmpty(attributes["api_identifier"], attributes["audience"], attributes["api_id"], attributes["resource_id"])
 	for _, scope := range auth0ScopeValues(firstNonEmpty(attributes["scopes"], attributes["scope"])) {
-		entitlementURN := auth0APIEntitlementURN(tenantID, firstNonEmpty(attributes["api_identifier"], attributes["resource_id"], attributes["audience"]), scope)
+		entitlementURN := auth0APIEntitlementURN(tenantID, apiIdentifier, scope)
 		if entitlementURN == "" {
 			continue
 		}

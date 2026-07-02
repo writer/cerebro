@@ -161,8 +161,22 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 			message: catalogIssue.Message,
 		})
 	}
+	var runtimeInventory connectorcatalog.RuntimeDepthInventory
+	runtimeInventoryLoaded := false
+	loadRuntimeInventory := func() (connectorcatalog.RuntimeDepthInventory, error) {
+		if runtimeInventoryLoaded {
+			return runtimeInventory, nil
+		}
+		inventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		if err != nil {
+			return connectorcatalog.RuntimeDepthInventory{}, err
+		}
+		runtimeInventory = inventory
+		runtimeInventoryLoaded = true
+		return runtimeInventory, nil
+	}
 	if options.requireSourcegenReady {
-		runtimeInventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		runtimeInventory, err := loadRuntimeInventory()
 		if err != nil {
 			return nil, err
 		}
@@ -184,7 +198,7 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 		}
 	}
 	if options.runtimeDepthBudgetEnabled {
-		runtimeInventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		runtimeInventory, err := loadRuntimeInventory()
 		if err != nil {
 			return nil, fmt.Errorf("discover runtime depth: %w", err)
 		}
