@@ -121,7 +121,7 @@ func slackFamilies() []jsonapi.Family {
 func slackTeamFamily() jsonapi.Family {
 	return slackPagedFamily(jsonapi.Family{
 		Name:     familyTeam,
-		Method:   http.MethodPost,
+		Config:   jsonapi.FamilyConfig{Method: http.MethodPost},
 		Path:     "/auth.teams.list",
 		URNKind:  "slack_team",
 		IDKeys:   []string{"id", "team_id"},

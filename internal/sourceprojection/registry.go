@@ -4179,9 +4179,24 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"omni_analytics.users":        omniAnalyticsUsersProjections,
 
 	// onelogin generated projectors (sourcegen promotion)
-	"onelogin.audit_events": oneloginAuditEventsProjections,
-	"onelogin.groups":       oneloginGroupsProjections,
-	"onelogin.users":        oneloginUsersProjections,
+	"onelogin.app_rules":            oneloginAppRulesProjections,
+	"onelogin.app_users":            oneloginAppUsersProjections,
+	"onelogin.apps":                 oneloginAppsProjections,
+	"onelogin.audit_events":         oneloginAuditEventsProjections,
+	"onelogin.delegated_privileges": oneloginDelegatedPrivilegesProjections,
+	"onelogin.groups":               oneloginGroupsProjections,
+	"onelogin.mappings":             oneloginMappingsProjections,
+	"onelogin.mfa_devices":          oneloginMFADevicesProjections,
+	"onelogin.privilege_roles":      oneloginPrivilegeRolesProjections,
+	"onelogin.privilege_users":      oneloginPrivilegeUsersProjections,
+	"onelogin.privileges":           oneloginPrivilegesProjections,
+	"onelogin.role_admins":          oneloginRoleAdminsProjections,
+	"onelogin.role_apps":            oneloginRoleAppsProjections,
+	"onelogin.role_users":           oneloginRoleUsersProjections,
+	"onelogin.roles":                oneloginRolesProjections,
+	"onelogin.user_apps":            oneloginUserAppsProjections,
+	"onelogin.user_privileges":      oneloginUserPrivilegesProjections,
+	"onelogin.users":                oneloginUsersProjections,
 
 	// onepassword_business generated projectors (sourcegen promotion)
 	"onepassword_business.audit_events": onepasswordBusinessAuditEventsProjections,

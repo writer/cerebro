@@ -24,6 +24,10 @@ func NewFixture() (sourcecdk.Source, error) {
 		if err != nil {
 			return nil, err
 		}
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
+		if err != nil {
+			return nil, err
+		}
 		settings := settings{
 			family:      family,
 			domain:      "writer.com",
@@ -33,7 +37,6 @@ func NewFixture() (sourcecdk.Source, error) {
 			application: "admin",
 			perPage:     1,
 		}
-		urns := []sourcecdk.URN{}
 		events := []*cerebrov1.EventEnvelope{}
 		for _, record := range records {
 			event, err := sourceEvent(settings, record)
@@ -41,10 +44,6 @@ func NewFixture() (sourcecdk.Source, error) {
 				return nil, err
 			}
 			events = append(events, event)
-			urn, err := discoverURN(settings, record)
-			if err == nil && urn != "" {
-				urns = append(urns, urn)
-			}
 		}
 		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
 	}

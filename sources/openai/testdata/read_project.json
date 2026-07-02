@@ -1,63 +1,27 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/organization/projects",
-      "archived_at": "2026-06-01T00:00:00Z",
-      "created_at": "2026-06-01T00:00:00Z",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/openai/project/source-openai-project-1",
-      "external_id": "source-openai-project-1",
-      "external_key_id": "external-key-id-source-openai-project-1",
-      "family": "project",
-      "name": "Openai Project Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "project_id": "project-id-source-openai-project-1",
-      "provider": "openai",
-      "resource_id": "source-openai-project-1",
-      "resource_name": "Openai Project Fixture",
-      "resource_type": "project",
-      "resource_urn": "urn:cerebro:tenant:openai_project:source-openai-project-1",
-      "source_event_id": "source-openai-project-1",
-      "source_product": "openai",
-      "source_provider": "openai",
-      "source_system": "openai",
-      "status": "open",
-      "tenant_id": "tenant"
-    },
-    "id": "source-openai-project-event-1",
+    "id": "openai-project-event-1",
     "kind": "openai.project",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/organization/projects",
-      "archived_at": "2026-06-01T00:00:00Z",
-      "created_at": "2026-06-01T00:00:00Z",
-      "event_id": "source-openai-project-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/openai/project/source-openai-project-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/openai/project/source-openai-project-1",
-      "external_key_id": "external-key-id-source-openai-project-1",
-      "family": "project",
-      "id": "project-id-source-openai-project-1",
-      "name": "Openai Project Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "resource_id": "source-openai-project-1",
-      "resource_type": "project",
-      "resource_urn": "urn:cerebro:tenant:openai_project:source-openai-project-1",
-      "schema_ref": "openai/project/v1",
-      "source_id": "openai",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "id": "proj_prod_01",
+      "object": "organization.project",
+      "name": "Production",
+      "status": "active",
+      "created_at": 1780272000,
+      "archived_at": null,
+      "external_key_id": "ext_key_prod_01"
     },
     "schema_ref": "openai/project/v1",
     "source_id": "openai",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "openai",
+      "project_id": "proj_prod_01",
+      "name": "Production",
+      "status": "active",
+      "created_at": "1780272000",
+      "external_key_id": "ext_key_prod_01"
+    }
   }
 ]

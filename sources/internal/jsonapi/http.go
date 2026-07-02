@@ -82,6 +82,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		next = cursorFromLastItem(family, items, pageSize)
 	}
 	if next == "" && !responseDone {
+		next = headerCursor(family, headers)
+		responseCursorKnown = responseCursorKnown || next != ""
+	}
+	if next == "" && !responseDone {
 		next = linkHeaderCursor(family, headers)
 		responseCursorKnown = responseCursorKnown || next != ""
 	}
@@ -375,10 +379,12 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		return []json.RawMessage{item}, next, responseCursorKnown, nil
 	}
 	for _, key := range responseListKeys(family) {
-		if value, ok := object[key]; ok {
-			if err := json.Unmarshal(value, &items); err == nil {
-				return items, next, responseCursorKnown, nil
-			}
+		value, ok := rawMessageAtPath(object, key)
+		if !ok {
+			continue
+		}
+		if err := json.Unmarshal(value, &items); err == nil {
+			return items, next, responseCursorKnown, nil
 		}
 	}
 	for objectKey, valueKey := range family.MapRecords {
@@ -436,6 +442,38 @@ func responseListKeys(family Family) []string {
 	compact := strings.ReplaceAll(normalized, "_", "")
 	keys = append(keys, "data", "items", "results", "records", normalized, normalized+"s", compact, compact+"s")
 	return keys
+}
+
+func rawMessageAtPath(object map[string]json.RawMessage, path string) (json.RawMessage, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false
+	}
+	if !strings.Contains(path, ".") {
+		value, ok := object[path]
+		return value, ok
+	}
+	parts := strings.Split(path, ".")
+	current := object
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, false
+		}
+		raw, ok := current[part]
+		if !ok {
+			return nil, false
+		}
+		if i == len(parts)-1 {
+			return raw, true
+		}
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &nested); err != nil {
+			return nil, false
+		}
+		current = nested
+	}
+	return nil, false
 }
 
 func recordsFromObjectMap(raw json.RawMessage, valueKey string) ([]json.RawMessage, error) {
@@ -615,6 +653,19 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 		}
 		if value := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); value != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func headerCursor(family Family, headers http.Header) string {
+	for _, headerName := range family.NextCursorHeaders {
+		headerName = strings.TrimSpace(headerName)
+		if headerName == "" {
+			continue
+		}
+		if value := strings.TrimSpace(headers.Get(headerName)); value != "" {
+			return responseCursorValue(family, value)
 		}
 	}
 	return ""
@@ -1296,6 +1347,12 @@ func valueAtParts(current any, parts []string) (any, bool) {
 		return current, true
 	}
 	if list, ok := current.([]any); ok {
+		if len(parts) == 1 && parts[0] == "__count" {
+			return len(list), true
+		}
+		if len(parts) > 1 && parts[len(parts)-1] == "__sum" {
+			return sumListValues(list, parts[:len(parts)-1])
+		}
 		if index, err := strconv.Atoi(parts[0]); err == nil {
 			if index < 0 || index >= len(list) {
 				return nil, false
@@ -1329,6 +1386,56 @@ func valueAtParts(current any, parts []string) (any, bool) {
 		}
 	}
 	return nil, false
+}
+
+func sumListValues(list []any, parts []string) (any, bool) {
+	var intTotal int64
+	var floatTotal float64
+	allInt := true
+	found := false
+	for _, item := range list {
+		value, ok := valueAtParts(item, parts)
+		if !ok {
+			continue
+		}
+		for _, scalar := range scalarValues(value) {
+			text := valueString(scalar)
+			if text == "" {
+				continue
+			}
+			if parsed, err := strconv.ParseInt(text, 10, 64); err == nil {
+				intTotal += parsed
+				floatTotal += float64(parsed)
+				found = true
+				continue
+			}
+			parsed, err := strconv.ParseFloat(text, 64)
+			if err != nil {
+				continue
+			}
+			floatTotal += parsed
+			allInt = false
+			found = true
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	if allInt {
+		return intTotal, true
+	}
+	return floatTotal, true
+}
+
+func scalarValues(value any) []any {
+	if list, ok := value.([]any); ok {
+		values := make([]any, 0, len(list))
+		for _, item := range list {
+			values = append(values, scalarValues(item)...)
+		}
+		return values
+	}
+	return []any{value}
 }
 
 func valueString(value any) string {

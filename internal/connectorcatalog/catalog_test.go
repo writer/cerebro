@@ -281,6 +281,79 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 	}
 }
 
+func TestBuiltinOneLoginCatalogUsesVerifiedProviderAPI(t *testing.T) {
+	analysis, err := BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime() error = %v; issues = %#v", err, analysis.Issues)
+	}
+	var onelogin *Entry
+	for index := range analysis.Entries {
+		if analysis.Entries[index].Definition.SourceID == "onelogin" {
+			onelogin = &analysis.Entries[index]
+			break
+		}
+	}
+	if onelogin == nil {
+		t.Fatal("onelogin connector catalog entry not found")
+	}
+	definition := onelogin.Definition
+	if definition.Auth.TokenURL != "https://${config.subdomain}.onelogin.com/auth/oauth2/v2/token" {
+		t.Fatalf("token URL = %q, want OneLogin OAuth v2 token URL", definition.Auth.TokenURL)
+	}
+	if definition.Transport == nil || definition.Transport.BaseURL != "https://${config.subdomain}.onelogin.com" {
+		t.Fatalf("base URL = %#v, want subdomain OneLogin API base URL", definition.Transport)
+	}
+	wantPaths := map[string]string{
+		"users":        "/api/2/users",
+		"groups":       "/api/1/groups",
+		"roles":        "/api/2/roles",
+		"apps":         "/api/2/apps",
+		"audit_events": "/api/1/events",
+		"privileges":   "/api/1/privileges",
+		"mappings":     "/api/2/mappings",
+		"mfa_devices":  "/api/2/mfa/users/${config.user_id}/devices",
+		"role_users":   "/api/2/roles/${config.role_id}/users",
+		"role_admins":  "/api/2/roles/${config.role_id}/admins",
+		"app_users":    "/api/2/apps/${config.app_id}/users",
+		"app_rules":    "/api/2/apps/${config.app_id}/rules",
+	}
+	if len(definition.ResourceFamilies) != len(wantPaths) {
+		t.Fatalf("resource families = %d, want %d", len(definition.ResourceFamilies), len(wantPaths))
+	}
+	gotPaths := map[string]string{}
+	dimensions := map[string]connectordefinitions.CoverageDimensionSpec{}
+	for _, family := range definition.ResourceFamilies {
+		gotPaths[family.ID] = family.Path
+		if strings.HasPrefix(strings.TrimSpace(family.Path), "/v1/") {
+			t.Fatalf("family %s uses stale path %q", family.ID, family.Path)
+		}
+		for _, dimension := range family.Coverage {
+			dimensions[dimension.ID] = dimension
+		}
+	}
+	for familyID, wantPath := range wantPaths {
+		if gotPaths[familyID] != wantPath {
+			t.Fatalf("family %s path = %q, want %q", familyID, gotPaths[familyID], wantPath)
+		}
+	}
+	for _, dimensionID := range []string{"privileges", "mfa_devices", "role_users", "role_admins", "app_users", "app_rules"} {
+		dimension, ok := dimensions[dimensionID]
+		if !ok {
+			t.Fatalf("coverage dimension %q not found; got %#v", dimensionID, dimensions)
+		}
+		foundSourceCDKNote := false
+		for _, note := range dimension.Notes {
+			if strings.Contains(note, "promoted Source CDK adapter") {
+				foundSourceCDKNote = true
+				break
+			}
+		}
+		if !foundSourceCDKNote {
+			t.Fatalf("coverage dimension %q notes = %#v, want promoted Source CDK adapter note", dimensionID, dimension.Notes)
+		}
+	}
+}
+
 func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	analysis, err := BuiltinRuntime()
 	if err != nil {

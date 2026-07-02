@@ -234,7 +234,7 @@ func setTokenHeader(req *http.Request, header string, scheme string, token strin
 			return nil
 		}
 		separator := " "
-		if strings.HasSuffix(scheme, "=") {
+		if strings.HasSuffix(scheme, "=") || strings.HasSuffix(scheme, ":") {
 			separator = ""
 		}
 		req.Header.Set(header, scheme+separator+token)

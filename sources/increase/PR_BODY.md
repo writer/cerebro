@@ -1,16 +1,11 @@
 ## Summary
 
-- Adds the `increase` Source Runtime SDK scaffold.
-- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.
+- Replaces generated Increase read and discover fixtures with inert provider-shaped payloads from the official Increase OpenAPI examples.
+- Adds every-family replay coverage, provider-unavailable behavior coverage, and runtime deploy entries for each Increase family.
+- Updates Increase coverage notes, control references, and documented unsupported incremental watermark behavior.
 
-## Generated runtime contract
+## Validation
 
-- Source type: `json_api`
-- Auth model: `bearer_token`
-- Health endpoint: `/source-runtimes/health?source_id=increase`
-- Freshness: `24h0m0s`
-
-## Tests
-
-- `go test ./sources/increase ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/increase -count=1`
+- `make catalog-check sourcegen-check`
+- `go run ./tools/sourcefidelity -json-out /tmp/increase-fidelity.json`
