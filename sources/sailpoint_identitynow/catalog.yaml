@@ -271,7 +271,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [access_review, identity_configuration]
-      control_domains: [identity_access, privileged_access]
+      control_domains: [identity_access, authorization]
       control_refs: *identity_controls
     - id: identity_access_assignments
       type: relationship
@@ -280,7 +280,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [access_review, source_snapshot]
-      control_domains: [identity_access, privileged_access]
+      control_domains: [identity_access, authorization]
       control_refs: *identity_controls
     - id: certification_reviews
       type: audit_event
@@ -289,7 +289,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [access_review, approval_record]
-      control_domains: [identity_access, governance_risk]
+      control_domains: [identity_access, access_review]
       control_refs: *identity_controls
     - id: access_request_operations
       type: audit_event
@@ -307,7 +307,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [credential_inventory]
-      control_domains: [secrets_management, privileged_access]
+      control_domains: [identity_access, authorization]
       control_refs:
         - framework_name: "CIS Controls v8"
           control_id: "6"
@@ -324,7 +324,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [identity_access, governance_risk]
+      control_domains: [identity_access, change_management]
       control_refs: *identity_controls
 event_contracts:
   - kind: sailpoint_identitynow.identities
