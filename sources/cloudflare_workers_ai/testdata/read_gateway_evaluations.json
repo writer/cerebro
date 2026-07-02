@@ -13,6 +13,7 @@
       "resource_id": "evaluation-1",
       "resource_name": "Sensitive data policy",
       "resource_type": "gateway_evaluation",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_workers_ai_gateway_evaluations:evaluation-1",
       "schema": "gateway_evaluations",
       "source_event_id": "evaluation-1",
       "source_provider": "cloudflare_workers_ai",
