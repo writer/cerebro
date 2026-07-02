@@ -41,6 +41,8 @@ const (
 	connectorStoreEnvironmentManaged  = "environment_managed"
 	connectorActivityDefaultLimit     = 500
 	connectorActivityMaxLimit         = 500
+	connectorLibraryPageDefaultLimit  = 200
+	connectorLibraryPageMaxLimit      = 200
 
 	connectorAuthMethodEncryptedSubmission = "encrypted_submission"
 	connectorAuthMethodAWSSSOProfile       = "aws_sso_profile"
@@ -148,6 +150,7 @@ type connectorLibraryResponse struct {
 	Counts              connectorLibraryCounts  `json:"counts"`
 	GeneratedAt         string                  `json:"generated_at"`
 	View                string                  `json:"view"`
+	Page                *connectorLibraryPage   `json:"page,omitempty"`
 	TenantID            string                  `json:"tenant_id,omitempty"`
 	RuntimeStore        string                  `json:"runtime_store"`
 	CatalogVersion      string                  `json:"catalog_version,omitempty"`
@@ -161,10 +164,18 @@ type connectorLibrarySummaryResponse struct {
 	Counts              connectorLibraryCounts         `json:"counts"`
 	GeneratedAt         string                         `json:"generated_at"`
 	View                string                         `json:"view"`
+	Page                *connectorLibraryPage          `json:"page,omitempty"`
 	TenantID            string                         `json:"tenant_id,omitempty"`
 	RuntimeStore        string                         `json:"runtime_store"`
 	CatalogVersion      string                         `json:"catalog_version,omitempty"`
 	CatalogSourceCommit string                         `json:"catalog_source_commit,omitempty"`
+}
+type connectorLibraryPage struct {
+	Total      int    `json:"total"`
+	Returned   int    `json:"returned"`
+	Limit      int    `json:"limit"`
+	HasMore    bool   `json:"has_more"`
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 type connectorCatalogSummaryEntry struct {
 	SourceID               string   `json:"source_id"`
@@ -551,7 +562,13 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
+	pagination, err := connectorLibraryPaginationFromRequest(r)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	response := a.connectorLibrary(r, tenantID)
+	response.Connectors, response.Page = pageConnectorLibraryEntries(response.Connectors, pagination)
 	if view == connectorLibraryViewSummary {
 		writeJSON(w, http.StatusOK, summarizeConnectorLibrary(response))
 		return
@@ -581,6 +598,7 @@ func summarizeConnectorLibrary(response connectorLibraryResponse) connectorLibra
 		Counts:              response.Counts,
 		GeneratedAt:         response.GeneratedAt,
 		View:                connectorLibraryViewSummary,
+		Page:                response.Page,
 		TenantID:            response.TenantID,
 		RuntimeStore:        response.RuntimeStore,
 		CatalogVersion:      response.CatalogVersion,
@@ -590,6 +608,75 @@ func summarizeConnectorLibrary(response connectorLibraryResponse) connectorLibra
 		summary.Connectors = append(summary.Connectors, summarizeConnectorCatalogEntry(entry))
 	}
 	return summary
+}
+
+type connectorLibraryPagination struct {
+	paged bool
+	start int
+	limit int
+}
+
+func connectorLibraryPaginationFromRequest(r *http.Request) (connectorLibraryPagination, error) {
+	pagination := connectorLibraryPagination{}
+	if r == nil || r.URL == nil {
+		return pagination, nil
+	}
+	query := r.URL.Query()
+	limitValue := strings.TrimSpace(query.Get("limit"))
+	cursorValue := strings.TrimSpace(query.Get("cursor"))
+	if limitValue != "" || cursorValue != "" {
+		pagination.paged = true
+		if pagination.limit == 0 {
+			pagination.limit = connectorLibraryPageDefaultLimit
+		}
+	}
+	if limitValue != "" {
+		parsed, err := strconv.Atoi(limitValue)
+		if err != nil || parsed < 1 {
+			return connectorLibraryPagination{}, fmt.Errorf("%w: connector catalog limit must be at least 1", connectorcredentials.ErrInvalidRequest)
+		}
+		if parsed > connectorLibraryPageMaxLimit {
+			parsed = connectorLibraryPageMaxLimit
+		}
+		pagination.limit = parsed
+	}
+	if cursorValue != "" {
+		parsed, err := strconv.Atoi(cursorValue)
+		if err != nil || parsed < 0 {
+			return connectorLibraryPagination{}, fmt.Errorf("%w: connector catalog cursor must be a non-negative offset", connectorcredentials.ErrInvalidRequest)
+		}
+		pagination.start = parsed
+	}
+	return pagination, nil
+}
+
+func pageConnectorLibraryEntries(entries []connectorCatalogEntry, pagination connectorLibraryPagination) ([]connectorCatalogEntry, *connectorLibraryPage) {
+	if !pagination.paged {
+		return entries, nil
+	}
+	total := len(entries)
+	start := pagination.start
+	if start > total {
+		start = total
+	}
+	limit := pagination.limit
+	if limit <= 0 || limit > connectorLibraryPageMaxLimit {
+		limit = connectorLibraryPageMaxLimit
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	page := &connectorLibraryPage{
+		Total:    total,
+		Returned: end - start,
+		Limit:    limit,
+	}
+	if end < total {
+		page.HasMore = true
+		page.NextCursor = strconv.Itoa(end)
+	}
+	return entries[start:end], page
 }
 
 func summarizeConnectorCatalogEntry(entry connectorCatalogEntry) connectorCatalogSummaryEntry {
@@ -766,8 +853,13 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		}
 		entries = append(entries, entry)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	sort.SliceStable(entries, func(i, j int) bool {
+		leftName := strings.ToLower(entries[i].Name)
+		rightName := strings.ToLower(entries[j].Name)
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return entries[i].SourceID < entries[j].SourceID
 	})
 	return connectorLibraryResponse{
 		Connectors:          entries,
