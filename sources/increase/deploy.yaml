@@ -2,11 +2,110 @@ sourceId: increase
 secretKeys:
   - INCREASE_TOKEN
 runtimes:
+  - localId: account
+    config:
+      family: account
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: account-number
+    config:
+      family: account_number
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /account_numbers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: account-statement
+    config:
+      family: account_statement
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /account_statements
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: account-transfer
+    config:
+      family: account_transfer
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /account_transfers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: ach-prenotification
+    config:
+      family: ach_prenotification
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /ach_prenotifications
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: ach-transfer
+    config:
+      family: ach_transfer
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /ach_transfers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: card
+    config:
+      family: card
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /cards
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: digital-wallet-token
+    config:
+      family: digital_wallet_token
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /digital_wallet_tokens
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
   - localId: event
     config:
       family: event
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /events
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: event-subscription
+    config:
+      family: event_subscription
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /event_subscriptions
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: external-account
+    config:
+      family: external_account
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /external_accounts
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:INCREASE_TOKEN
+  - localId: oauth-connection
+    config:
+      family: oauth_connection
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /oauth_connections
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

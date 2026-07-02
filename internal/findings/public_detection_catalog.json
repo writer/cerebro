@@ -82591,6 +82591,28 @@
               "control_id": "CC7.3"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -116922,6 +116944,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -117082,6 +117126,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -117246,6 +117312,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -117406,6 +117494,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -117570,6 +117680,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -117730,6 +117862,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -117894,6 +118048,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -118054,6 +118230,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -118218,6 +118416,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -118380,6 +118600,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -118540,6 +118782,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -118809,6 +119073,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -118971,6 +119257,28 @@
               "control_id": "CC8.1"
             }
           ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            }
+          ]
         }
       ]
     },
@@ -119131,6 +119439,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC8.1"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
             }
           ]
         }
@@ -263911,6 +264241,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "increase",
+          "dimension_id": "event",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "event"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         }
