@@ -13,7 +13,7 @@
       "project_id": "project-1"
     },
     "attributes": {
-      "external_id": "2026-06-01T00:00:00Z-org.project.create",
+      "external_id": "2026-06-01T00:00:00Z-org.project.create-user-1-project-1",
       "family": "audit_logs",
       "org_id": "org-1",
       "project_id": "project-1",
@@ -23,7 +23,7 @@
       "record_class": "audit_event",
       "resource_id": "project-1",
       "resource_type": "project",
-      "source_event_id": "2026-06-01T00:00:00Z-org.project.create",
+      "source_event_id": "2026-06-01T00:00:00Z-org.project.create-user-1-project-1",
       "source_provider": "snyk"
     }
   }

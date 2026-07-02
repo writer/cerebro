@@ -12,7 +12,7 @@
       "group_id": "group-1"
     },
     "attributes": {
-      "external_id": "2026-06-01T00:00:00Z-group.member.add",
+      "external_id": "2026-06-01T00:00:00Z-group.member.add-user-1-group-1",
       "family": "group_audit_logs",
       "group_id": "group-1",
       "event_type": "group.member.add",
@@ -21,7 +21,7 @@
       "record_class": "audit_event",
       "resource_id": "group-1",
       "resource_type": "membership",
-      "source_event_id": "2026-06-01T00:00:00Z-group.member.add",
+      "source_event_id": "2026-06-01T00:00:00Z-group.member.add-user-1-group-1",
       "source_provider": "snyk"
     }
   }
