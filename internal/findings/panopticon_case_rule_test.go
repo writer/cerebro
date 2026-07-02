@@ -191,6 +191,75 @@ func TestPanopticonCuratedCaseFindingCorrelatesEvidenceCASAndReopens(t *testing.
 	}
 }
 
+func TestPanopticonCuratedCaseFindingIncludesProjectedAffectedResources(t *testing.T) {
+	rule := newPanopticonCuratedCaseRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-panopticon-case", SourceId: "panopticon", TenantId: "writer", Config: map[string]string{"family": "case"}}
+	loadBalancerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/50dc6c495c0c9188"
+	bucketARN := "arn:aws:s3:::audit-logs-prod"
+	payload, err := json.Marshal(map[string]interface{}{
+		"case_id":  "case-affected-resources",
+		"status":   "investigating",
+		"title":    "Cloud policy resources",
+		"severity": "high",
+		"alerts": []map[string]interface{}{
+			{
+				"alert_id": "panther-alert-1",
+				"rule_id":  "AWS.ELBv2.SSLPolicy",
+				"source":   "Panther",
+				"resources": []map[string]interface{}{
+					{
+						"resourceId":   loadBalancerARN,
+						"resourceType": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+						"resourceName": "orders-alb",
+						"accountId":    "123456789012",
+						"region":       "us-east-1",
+					},
+				},
+			},
+		},
+		"affectedResources": []string{bucketARN},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	event := &cerebrov1.EventEnvelope{
+		Id:         "panopticon-case-affected-resources",
+		TenantId:   "writer",
+		SourceId:   "panopticon",
+		Kind:       "panopticon.case",
+		SchemaRef:  "panopticon/case/v1",
+		OccurredAt: timestamppb.New(identityTrajectoryBaseTime),
+		Payload:    payload,
+		Attributes: map[string]string{
+			"case_id":    "case-affected-resources",
+			"status":     "investigating",
+			"title":      "Cloud policy resources",
+			"severity":   "high",
+			"runtime_id": "writer-panopticon-case",
+		},
+	}
+
+	findings, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(open) error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("Evaluate(open) returned %d findings, want 1", len(findings))
+	}
+	finding := findings[0]
+	caseURN := "urn:cerebro:writer:panopticon_case:case-affected-resources"
+	loadBalancerURN := "urn:cerebro:writer:aws_elbv2_load_balancer:" + loadBalancerARN
+	bucketURN := "urn:cerebro:writer:aws_s3_bucket:audit-logs-prod"
+	for _, want := range []string{caseURN, loadBalancerURN, bucketURN} {
+		if !containsTrimmed(finding.ResourceURNs, want) {
+			t.Fatalf("ResourceURNs = %#v, want %q", finding.ResourceURNs, want)
+		}
+	}
+	if got := finding.Attributes["primary_resource_urn"]; got != caseURN {
+		t.Fatalf("primary_resource_urn = %q, want %q", got, caseURN)
+	}
+}
+
 func panopticonCaseEventWithEvidence(id string, caseID string, status string, _ string) *cerebrov1.EventEnvelope {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"case_id": caseID,

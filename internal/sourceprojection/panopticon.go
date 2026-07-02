@@ -19,6 +19,8 @@ var (
 	panopticonURLPattern              = regexp.MustCompile(`https?://[^\s)"']+`)
 )
 
+const maxPanopticonResourceObjects = 128
+
 var panopticonAssetAttributeKeys = []string{
 	"account_id",
 	"agent_id",
@@ -96,6 +98,58 @@ var panopticonAssetAttributeKeys = []string{
 	"vpc",
 	"vpc_id",
 	"zone",
+}
+
+var panopticonAssetObjectKeys = []string{
+	"assets",
+	"affected_assets",
+	"hosts",
+	"endpoints",
+}
+
+var panopticonResourceObjectKeys = []string{
+	"resources",
+	"affected_resources",
+	"affected_resource",
+	"impacted_resources",
+	"matched_resources",
+	"failed_resources",
+	"violating_resources",
+	"policy_resources",
+	"resource_results",
+	"target_resources",
+	"targets",
+	"entities",
+	"resource",
+	"target",
+	"entity",
+}
+
+var panopticonResourceContextKeys = []string{
+	"alert",
+	"alerts",
+	"linked_alerts",
+	"source_alerts",
+	"upstream_alerts",
+	"related_alerts",
+	"alert_context",
+	"p_alert_context",
+	"panther_alert_context",
+	"event",
+	"events",
+	"finding",
+	"findings",
+	"log",
+	"logs",
+	"policy",
+	"policy_scan",
+	"detail",
+	"details",
+	"context",
+	"metadata",
+	"data",
+	"result",
+	"results",
 }
 
 var panopticonAlertProjectionKeys = []string{
@@ -435,7 +489,7 @@ func panopticonAddAssets(entities map[string]*ports.ProjectedEntity, tenantID st
 			urns = append(urns, urn)
 		}
 	}
-	for _, asset := range panopticonObjects(payload, "assets", "affected_assets", "hosts", "endpoints") {
+	for _, asset := range panopticonResourceObjects(payload) {
 		urn := panopticonAddAssetEntity(entities, tenantID, sourceID, eventID, panopticonAssetAttributesFromObject(asset))
 		if urn == "" {
 			continue
@@ -608,7 +662,7 @@ func panopticonAddAssetContextAnchors(entities map[string]*ports.ProjectedEntity
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, nil, "panopticon_asset_context")
 		panopticonAddAssetStitching(entities, links, tenantID, sourceID, event, assetURN, assetAttrs)
 	}
-	for _, asset := range panopticonObjects(payload, "assets", "affected_assets", "hosts", "endpoints") {
+	for _, asset := range panopticonResourceObjects(payload) {
 		assetAttrs := panopticonAssetAttributesFromObject(asset)
 		assetURN := panopticonAddAssetEntity(entities, tenantID, sourceID, event.GetId(), assetAttrs)
 		panopticonAddContextAnchors(entities, links, tenantID, sourceID, event, assetURN, relationRepresents, assetAttrs, asset, "panopticon_asset_context")
@@ -639,6 +693,30 @@ func panopticonAssetAttributesFromObject(object map[string]any) map[string]strin
 			out[key] = value
 		}
 	}
+	if out["resource_arn"] == "" {
+		out["resource_arn"] = panopticonString(object, "resource_arn", "resourceArn", "arn", "ARN")
+	}
+	if out["resource_id"] == "" {
+		out["resource_id"] = panopticonString(object, "resource_id", "resourceId", "resourceID", "ResourceID", "resource_arn", "resourceArn", "arn", "ARN")
+	}
+	if out["resource_type"] == "" {
+		out["resource_type"] = panopticonString(object, "resource_type", "resourceType", "ResourceType", "asset_type", "type", "Type", "kind", "Kind")
+	}
+	if out["resource_provider"] == "" {
+		out["resource_provider"] = panopticonString(object, "resource_provider", "resourceProvider", "cloud_provider", "cloudProvider", "provider", "Provider", "source_provider", "sourceProvider")
+	}
+	if out["resource_name"] == "" {
+		out["resource_name"] = panopticonString(object, "resource_name", "resourceName", "ResourceName", "load_balancer_name", "loadBalancerName", "name", "Name", "display_name", "displayName")
+	}
+	if out["region"] == "" {
+		out["region"] = panopticonString(object, "region", "aws_region", "awsRegion", "Region")
+	}
+	if out["account_id"] == "" {
+		out["account_id"] = panopticonString(object, "account_id", "accountId", "AccountId", "accountID", "aws_account_id", "awsAccountId", "AWSAccountId", "domain")
+	}
+	if out["aws_account_id"] == "" {
+		out["aws_account_id"] = out["account_id"]
+	}
 	if out["asset_type"] == "" {
 		out["asset_type"] = firstNonEmpty(out["type"], out["resource_type"], out["endpoint_type"])
 	}
@@ -648,7 +726,90 @@ func panopticonAssetAttributesFromObject(object map[string]any) map[string]strin
 	if out["asset_id"] == "" && out["id"] != "" {
 		out["asset_id"] = out["id"]
 	}
+	if out["asset_id"] == "" {
+		out["asset_id"] = firstNonEmpty(out["resource_id"], out["resource_arn"], out["resource_urn"], out["name"])
+	}
 	return out
+}
+
+func panopticonResourceObjects(payload map[string]any) []map[string]any {
+	if len(payload) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var objects []map[string]any
+	panopticonCollectResourceObjects(&objects, seen, payload, 0)
+	return objects
+}
+
+func panopticonCollectResourceObjects(objects *[]map[string]any, seen map[string]struct{}, payload map[string]any, depth int) {
+	if len(payload) == 0 || depth > 4 || len(*objects) >= maxPanopticonResourceObjects {
+		return
+	}
+	panopticonAppendObjectsForKeys(objects, seen, payload, false, panopticonAssetObjectKeys...)
+	panopticonAppendObjectsForKeys(objects, seen, payload, true, panopticonResourceObjectKeys...)
+	for _, context := range panopticonObjectsForKeys(payload, false, panopticonResourceContextKeys...) {
+		if panopticonLooksLikeResourceObject(context) {
+			panopticonAppendResourceObject(objects, seen, context)
+		}
+		panopticonCollectResourceObjects(objects, seen, context, depth+1)
+		if len(*objects) >= maxPanopticonResourceObjects {
+			return
+		}
+	}
+}
+
+func panopticonAppendObjectsForKeys(objects *[]map[string]any, seen map[string]struct{}, payload map[string]any, scalarAsResource bool, keys ...string) {
+	for _, object := range panopticonObjectsForKeys(payload, scalarAsResource, keys...) {
+		if !scalarAsResource || panopticonLooksLikeResourceObject(object) {
+			panopticonAppendResourceObject(objects, seen, object)
+		}
+		if len(*objects) >= maxPanopticonResourceObjects {
+			return
+		}
+	}
+}
+
+func panopticonAppendResourceObject(objects *[]map[string]any, seen map[string]struct{}, object map[string]any) {
+	if len(object) == 0 || len(*objects) >= maxPanopticonResourceObjects {
+		return
+	}
+	signature := panopticonResourceObjectSignature(object)
+	if signature != "" {
+		if _, ok := seen[signature]; ok {
+			return
+		}
+		seen[signature] = struct{}{}
+	}
+	*objects = append(*objects, object)
+}
+
+func panopticonResourceObjectSignature(object map[string]any) string {
+	attrs := panopticonAssetAttributesFromObject(object)
+	return firstNonEmpty(
+		attrs["resource_urn"],
+		attrs["resource_arn"],
+		attrs["resource_id"],
+		attrs["asset_id"],
+		attrs["id"],
+		attrs["name"],
+	)
+}
+
+func panopticonLooksLikeResourceObject(object map[string]any) bool {
+	if len(object) == 0 {
+		return false
+	}
+	attrs := panopticonAssetAttributesFromObject(object)
+	return firstNonEmpty(
+		attrs["resource_urn"],
+		attrs["resource_arn"],
+		attrs["resource_id"],
+		attrs["asset_id"],
+		attrs["id"],
+		attrs["hostname"],
+		attrs["name"],
+	) != ""
 }
 
 func panopticonAddAssetStitching(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, assetURN string, attrs map[string]string) {
@@ -871,6 +1032,15 @@ func panopticonAssetProvider(attrs map[string]string) string {
 	case "aws", "azure", "gcp", "sentinelone", "kolide", "kandji":
 		return provider
 	}
+	resourceID := firstNonEmpty(firstAttribute(attrs, "resource_arn"), firstAttribute(attrs, "resource_id"), firstAttribute(attrs, "arn"))
+	switch {
+	case strings.HasPrefix(resourceID, "arn:aws:"):
+		return "aws"
+	case strings.HasPrefix(strings.ToLower(resourceID), "/subscriptions/"):
+		return "azure"
+	case strings.HasPrefix(resourceID, "//") || strings.HasPrefix(resourceID, "projects/") || strings.Contains(strings.ToLower(resourceID), "googleapis.com/"):
+		return "gcp"
+	}
 	assetType := normalizeIdentifier(firstAttribute(attrs, "asset_type", "type", "resource_type", "endpoint_type"))
 	switch {
 	case strings.HasPrefix(assetType, "sentinelone") || strings.HasPrefix(assetType, "sentinel_one"):
@@ -939,6 +1109,9 @@ func panopticonNormalizeAWSResourceID(attrs map[string]string, value string) str
 		return value
 	}
 	resource := parts[5]
+	if resourceType == "s3_bucket" && parts[2] == "s3" {
+		return strings.TrimSpace(resource)
+	}
 	for _, prefix := range panopticonAWSBareIDResourcePrefixes(resourceType) {
 		for _, separator := range []string{"/", ":"} {
 			if after, ok := strings.CutPrefix(resource, prefix+separator); ok && strings.TrimSpace(after) != "" {
@@ -974,10 +1147,32 @@ func panopticonCloudResourceTypeAlias(provider string, value string) string {
 		switch normalized {
 		case "aws_ec2_instance", "aws__ec2__instance", "server":
 			return "ec2_instance"
+		case "aws__ec2__securitygroup", "aws_ec2_security_group":
+			return "security_group"
+		case "aws__ec2__networkinterface", "aws_ec2_network_interface":
+			return "network_interface"
+		case "aws__ec2__subnet", "aws_ec2_subnet":
+			return "subnet"
+		case "aws__ec2__vpc", "aws_ec2_vpc":
+			return "vpc"
+		case "aws__elasticloadbalancingv2__loadbalancer", "aws_elasticloadbalancingv2_load_balancer", "aws_elbv2_load_balancer":
+			return "elbv2_load_balancer"
+		case "aws__elasticloadbalancingv2__listener", "aws_elasticloadbalancingv2_listener", "aws_elbv2_listener":
+			return "elbv2_listener"
+		case "aws__elasticloadbalancingv2__targetgroup", "aws_elasticloadbalancingv2_target_group", "aws_elbv2_target_group":
+			return "elbv2_target_group"
 		case "aws_s3_bucket":
+			return "s3_bucket"
+		case "aws__s3__bucket":
 			return "s3_bucket"
 		case "aws_lambda_function":
 			return "lambda_function"
+		case "aws__lambda__function":
+			return "lambda_function"
+		case "aws__dynamodb__table":
+			return "dynamodb_table"
+		case "aws__rds__dbinstance", "aws_rds_db_instance":
+			return "rds_instance"
 		}
 	case "azure":
 		switch normalized {
@@ -1060,6 +1255,12 @@ func panopticonAWSARNResourceTypeAlias(service string, resourceKind string) stri
 		return "ecs_task"
 	case "ecs:task_definition":
 		return "ecs_task_definition"
+	case "elasticloadbalancing:loadbalancer":
+		return "elbv2_load_balancer"
+	case "elasticloadbalancing:listener":
+		return "elbv2_listener"
+	case "elasticloadbalancing:targetgroup":
+		return "elbv2_target_group"
 	case "elasticache:cluster":
 		return "elasticache_cluster"
 	case "kinesis:stream":
@@ -1226,6 +1427,7 @@ func panopticonAllowedCanonicalAssetKind(kind string) bool {
 		"aws_elasticache_cluster",
 		"aws_elasticache_replication_group",
 		"aws_elasticache_subnet_group",
+		"aws_elbv2_load_balancer",
 		"aws_elbv2_listener",
 		"aws_elbv2_target_group",
 		"aws_eventbridge_archive",
@@ -1858,29 +2060,84 @@ func panopticonAnchorAttributes(event *cerebrov1.EventEnvelope, matchType string
 }
 
 func panopticonObjects(payload map[string]any, keys ...string) []map[string]any {
+	return panopticonObjectsForKeys(payload, false, keys...)
+}
+
+func panopticonObjectsForKeys(payload map[string]any, scalarAsResource bool, keys ...string) []map[string]any {
 	if len(payload) == 0 {
 		return nil
 	}
-	var objects []map[string]any
+	wanted := make(map[string]struct{}, len(keys))
 	for _, key := range keys {
-		value, ok := payload[key]
-		if !ok {
-			continue
+		if normalized := panopticonObjectKey(key); normalized != "" {
+			wanted[normalized] = struct{}{}
 		}
+	}
+	var objects []map[string]any
+	seenPayloadKeys := map[string]struct{}{}
+	appendObjects := func(value any) {
 		switch typed := value.(type) {
 		case []any:
 			for _, item := range typed {
 				if object := panopticonMap(item); len(object) != 0 {
 					objects = append(objects, object)
+					continue
+				}
+				if scalarAsResource {
+					if object := panopticonScalarResourceObject(item); len(object) != 0 {
+						objects = append(objects, object)
+					}
 				}
 			}
 		case []map[string]any:
 			objects = append(objects, typed...)
 		case map[string]any:
 			objects = append(objects, typed)
+		case []string:
+			if scalarAsResource {
+				for _, item := range typed {
+					if object := panopticonScalarResourceObject(item); len(object) != 0 {
+						objects = append(objects, object)
+					}
+				}
+			}
+		default:
+			if scalarAsResource {
+				if object := panopticonScalarResourceObject(typed); len(object) != 0 {
+					objects = append(objects, object)
+				}
+			}
 		}
 	}
+	for _, key := range keys {
+		value, ok := payload[key]
+		if !ok {
+			continue
+		}
+		seenPayloadKeys[key] = struct{}{}
+		appendObjects(value)
+	}
+	for key, value := range payload {
+		if _, ok := seenPayloadKeys[key]; ok {
+			continue
+		}
+		if _, ok := wanted[panopticonObjectKey(key)]; !ok {
+			continue
+		}
+		appendObjects(value)
+	}
 	return objects
+}
+
+func panopticonScalarResourceObject(value any) map[string]any {
+	if scalar := panopticonScalarString(value); scalar != "" {
+		object := map[string]any{"resource_id": scalar}
+		if strings.HasPrefix(scalar, "arn:aws:") {
+			object["resource_arn"] = scalar
+		}
+		return object
+	}
+	return nil
 }
 
 func panopticonCaseAlertAttributes(attrs map[string]string, payload map[string]any) []map[string]string {
@@ -1990,7 +2247,46 @@ func panopticonString(values map[string]any, keys ...string) string {
 			return value
 		}
 	}
+	wanted := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		if normalized := panopticonObjectKey(key); normalized != "" {
+			wanted[normalized] = struct{}{}
+		}
+	}
+	for key, value := range values {
+		if _, ok := wanted[panopticonObjectKey(key)]; !ok {
+			continue
+		}
+		if scalar := panopticonScalarString(value); scalar != "" {
+			return scalar
+		}
+	}
 	return ""
+}
+
+func panopticonObjectKey(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, ".", "")
+	return normalized
+}
+
+func panopticonScalarString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return strings.TrimSpace(strconv.FormatFloat(typed, 'f', -1, 64))
+	case int:
+		return strings.TrimSpace(strconv.Itoa(typed))
+	case int64:
+		return strings.TrimSpace(strconv.FormatInt(typed, 10))
+	case bool:
+		return strconv.FormatBool(typed)
+	default:
+		return ""
+	}
 }
 
 func panopticonHasValue(values map[string]any, key string) bool {

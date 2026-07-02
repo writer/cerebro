@@ -714,6 +714,79 @@ func TestProjectPanopticonAssetsStitchToCanonicalProviderAssets(t *testing.T) {
 	assertProjectedStitchLinkAttribute(t, state, "urn:cerebro:writer:panopticon_asset:asset-aws", "urn:cerebro:writer:aws_apprunner_service:arn:aws:apprunner:us-east-1:123456789012:service/api/0f2d1e", "confidence", "0.99")
 }
 
+func TestProjectPanopticonCaseExtractsNestedAffectedResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	loadBalancerARN := "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/50dc6c495c0c9188"
+	tableARN := "arn:aws:dynamodb:us-east-1:123456789012:table/customer-events"
+	bucketARN := "arn:aws:s3:::audit-logs-prod"
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "panopticon-case-event-affected-resources",
+		TenantId: "writer",
+		SourceId: "panopticon",
+		Kind:     "panopticon.case",
+		Attributes: map[string]string{
+			"case_id": "case-affected-resources",
+			"status":  "investigating",
+			"title":   "Cloud policy resources",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"case_id": "case-affected-resources",
+			"status":  "investigating",
+			"title":   "Cloud policy resources",
+			"alerts": []map[string]any{
+				{
+					"alert_id": "panther-alert-1",
+					"rule_id":  "AWS.ELBv2.SSLPolicy",
+					"source":   "Panther",
+					"resourceResults": []map[string]any{
+						{
+							"resourceId":   loadBalancerARN,
+							"resourceType": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+							"resourceName": "orders-alb",
+							"accountId":    "123456789012",
+							"region":       "us-east-1",
+						},
+						{
+							"ResourceID":   tableARN,
+							"ResourceType": "AWS::DynamoDB::Table",
+							"ResourceName": "customer-events",
+							"AccountId":    "123456789012",
+							"Region":       "us-east-1",
+						},
+					},
+				},
+			},
+			"affectedResources": []string{bucketARN},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project(case) error = %v", err)
+	}
+
+	loadBalancerURN := "urn:cerebro:writer:aws_elbv2_load_balancer:" + loadBalancerARN
+	tableURN := "urn:cerebro:writer:aws_dynamodb_table:" + tableARN
+	bucketURN := "urn:cerebro:writer:aws_s3_bucket:audit-logs-prod"
+
+	assertProjectedEntityType(t, state, loadBalancerURN, "aws.elbv2.load.balancer")
+	assertProjectedEntityType(t, state, tableURN, "aws.dynamodb.table")
+	assertProjectedEntityType(t, state, bucketURN, "aws.s3.bucket")
+	if got := state.entities[loadBalancerURN].Attributes["resource_name"]; got != "orders-alb" {
+		t.Fatalf("load balancer resource_name = %q, want orders-alb", got)
+	}
+	if got := state.entities[loadBalancerURN].Attributes["region"]; got != "us-east-1" {
+		t.Fatalf("load balancer region = %q, want us-east-1", got)
+	}
+	if got := state.entities[loadBalancerURN].Attributes["account_id"]; got != "123456789012" {
+		t.Fatalf("load balancer account_id = %q, want 123456789012", got)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:"+loadBalancerARN, relationRepresents, loadBalancerURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:"+tableARN, relationRepresents, tableURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:panopticon_asset:"+bucketARN, relationRepresents, bucketURN)
+	assertProjectedLink(t, state, loadBalancerURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+}
+
 func TestProjectPanopticonAssetStitchingRejectsWeakAndCrossTenantMatches(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
