@@ -27,3 +27,25 @@ func RecordFilterAnyPrefix(paths []string, prefixes ...string) RecordFilter {
 		return false
 	}
 }
+
+// RecordFilterAnyPrefixOrNonEmpty matches records with a prefixed identifier or an explicit non-empty field.
+func RecordFilterAnyPrefixOrNonEmpty(prefixPaths []string, nonEmptyPaths []string, prefixes ...string) RecordFilter {
+	prefixFilter := RecordFilterAnyPrefix(prefixPaths, prefixes...)
+	normalizedNonEmptyPaths := make([]string, 0, len(nonEmptyPaths))
+	for _, path := range nonEmptyPaths {
+		if trimmed := strings.TrimSpace(path); trimmed != "" {
+			normalizedNonEmptyPaths = append(normalizedNonEmptyPaths, trimmed)
+		}
+	}
+	return func(values map[string]any) bool {
+		if prefixFilter(values) {
+			return true
+		}
+		for _, path := range normalizedNonEmptyPaths {
+			if strings.TrimSpace(valueString(valueAt(values, path))) != "" {
+				return true
+			}
+		}
+		return false
+	}
+}
