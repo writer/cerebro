@@ -682,7 +682,15 @@ func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"user_id":        "auth0|user-1",
+			"name":           "User One",
+			"email":          "user@example.test",
+			"email_verified": true,
+			"blocked":        false,
+			"created_at":     "2026-05-01T00:00:00Z",
+			"updated_at":     "2026-06-01T00:00:00Z",
+		}})
 	}))
 	defer server.Close()
 
@@ -707,6 +715,49 @@ func TestReadWithCheckpointUsesIncrementalWatermark(t *testing.T) {
 	}
 	if second.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {
 		t.Fatalf("second short circuit = %q, want %q", second.ShortCircuitReason, sourcecdk.PullShortCircuitReasonWatermarkReached)
+	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "test-token", "expires_in": 600})
+			return
+		}
+		if r.URL.Path != "/users" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"statusCode": http.StatusServiceUnavailable,
+			"error":      "Service Unavailable",
+			"message":    "tenant service temporarily unavailable",
+		})
+	}))
+	defer server.Close()
+
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "tenant",
+		"base_url":      server.URL,
+		"family":        auth0api.DefaultFamily,
+		"token_url":     server.URL + "/oauth/token",
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+		"domain":        "tenant.auth0.com",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "auth0 API returned 503") || !strings.Contains(got, "tenant service temporarily unavailable") {
+		t.Fatalf("Read() error = %q, want provider status and message", got)
 	}
 }
 
