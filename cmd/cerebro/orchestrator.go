@@ -101,7 +101,7 @@ type orchestratorJobMetadata struct {
 
 func runOrchestrator(args []string) error {
 	if len(args) == 0 || args[0] != "run" {
-		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [phase_timeout=15m] [graph_timeout=45m] [interval=30s] [iterations=N|forever]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [runtime_ids=<runtime-id>,<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [phase_timeout=15m] [graph_timeout=45m] [interval=30s] [iterations=N|forever]", os.Args[0]))
 	}
 	options, err := parseOrchestratorOptions(args[1:])
 	if err != nil {
@@ -152,6 +152,8 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 		switch key {
 		case "runtime_id":
 			options.Filter.RuntimeID = strings.TrimSpace(value)
+		case "runtime_ids":
+			options.Filter.RuntimeIDs = splitCSV(value)
 		case "tenant_id":
 			options.Filter.TenantID = strings.TrimSpace(value)
 		case "source_id":
@@ -270,6 +272,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		telemetryField("job.status", "running"),
 		telemetryField("job.started_at_unix_ms", jobMeta.StartedAt.UnixMilli()),
 		telemetryField("runtime_id", options.Filter.RuntimeID),
+		telemetryField("runtime_ids", strings.Join(options.Filter.RuntimeIDs, ",")),
 		telemetryField("source_runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
 		telemetryField("source_id", options.Filter.SourceID),
@@ -493,6 +496,7 @@ func runOrchestratorIteration(
 	ctx, span := telemetry.Start(ctx, "orchestrator.iteration", telemetry.Attrs(
 		telemetryField("iteration", iteration),
 		telemetryField("runtime_id", options.Filter.RuntimeID),
+		telemetryField("runtime_ids", strings.Join(options.Filter.RuntimeIDs, ",")),
 		telemetryField("tenant_id", options.Filter.TenantID),
 		telemetryField("source_id", options.Filter.SourceID),
 		telemetryField("limit", options.Filter.Limit),
