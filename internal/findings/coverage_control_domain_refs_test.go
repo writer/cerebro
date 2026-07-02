@@ -764,6 +764,130 @@ func TestSourceCoverageAuditPreservationDoesNotDisplaceLifecycleRefs(t *testing.
 	}
 }
 
+func TestSourceCoveragePartialAuditDoesNotDisplaceSupportedEntityRefs(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "serverless-unauthenticated-invocation",
+		Name:        "Public Serverless Invocation",
+		Description: "Publicly exposed serverless with high privileges can be invoked by unauthenticated users.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"serverless", "public", "authentication"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := make([]sourcecdk.CoverageContract, 0, maxPublicDetectionSourceCoverageRefs+1)
+	for i := 0; i < maxPublicDetectionSourceCoverageRefs-1; i++ {
+		contracts = append(contracts, sourcecdk.CoverageContract{
+			SourceID: "source" + strconv.Itoa(i),
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "users",
+				Type:      "entity_family",
+				Families:  []string{"user"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
+			}},
+		})
+	}
+	contracts = append(contracts,
+		sourcecdk.CoverageContract{
+			SourceID: "pagerduty",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "users",
+				Type:      "entity_family",
+				Families:  []string{"user"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
+			}},
+		},
+		sourcecdk.CoverageContract{
+			SourceID: "github",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "organization_authentication_policy",
+				Type:      "audit_event",
+				Families:  []string{"auth_control", "mfa"},
+				Support:   sourcecdk.CoverageSupportPartial,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		},
+	)
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != maxPublicDetectionSourceCoverageRefs {
+		t.Fatalf("len(SourceCoverageRefs) = %d, want capped set %d", len(refs), maxPublicDetectionSourceCoverageRefs)
+	}
+	if !sourceCoverageRefsContain(refs, "pagerduty", "users") {
+		t.Fatalf("SourceCoverageRefs omitted supported pagerduty/users under partial audit pressure: %#v", refs)
+	}
+	if sourceCoverageRefsContain(refs, "github", "organization_authentication_policy") {
+		t.Fatalf("SourceCoverageRefs displaced supported entity coverage with partial audit ref: %#v", refs)
+	}
+}
+
+func TestSourceCoveragePartialAuditRequiresSourceMatch(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "k8s-ingress-public",
+		Name:        "Kubernetes Ingress Exposes Sensitive Service",
+		Description: "Ingress resource exposes a service to the internet without authentication or with sensitive paths.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"authentication", "kubernetes", "network-exposure"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{
+		{
+			SourceID: "pagerduty",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "services",
+				Type:      "entity_family",
+				Families:  []string{"service"},
+				Support:   sourcecdk.CoverageSupportSupported,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.1",
+				}},
+			}},
+		},
+		{
+			SourceID: "github",
+			Dimensions: []sourcecdk.CoverageDimension{{
+				ID:        "organization_authentication_policy",
+				Type:      "audit_event",
+				Families:  []string{"auth_control", "authentication", "mfa"},
+				Support:   sourcecdk.CoverageSupportPartial,
+				HighValue: true,
+				ControlRefs: []sourcecdk.CoverageControlRef{{
+					FrameworkName: "SOC 2",
+					ControlID:     "CC6.6",
+				}},
+			}},
+		},
+	}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if !sourceCoverageRefsContain(refs, "pagerduty", "services") {
+		t.Fatalf("SourceCoverageRefs omitted supported pagerduty/services: %#v", refs)
+	}
+	if sourceCoverageRefsContain(refs, "github", "organization_authentication_policy") {
+		t.Fatalf("SourceCoverageRefs attached partial github audit ref without a source match: %#v", refs)
+	}
+}
+
 func sourceCoverageRefsContain(refs []SourceCoverageRef, sourceID string, dimensionID string) bool {
 	for _, ref := range refs {
 		if ref.SourceID == sourceID && ref.DimensionID == dimensionID {

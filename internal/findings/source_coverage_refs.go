@@ -64,6 +64,9 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
 			effectiveSourceMatched := sourceMatched || genericIdentityCoverageMatchesDetection(sourceID, dimension, sourceMatchRequired, identityProviderNamed, genericIdentityCoverageAllowed, dimensionMatched)
+			if !effectiveSourceMatched && strings.TrimSpace(dimension.Type) == "audit_event" && sourceCoverageSupportRank(dimension.Support) < sourceCoverageSupportRank(sourcecdk.CoverageSupportSupported) {
+				continue
+			}
 			coverageRefs := dimension.ControlRefs
 			// Domain-derived control coverage is credited only within the
 			// detection's own (or explicitly named) source and only when the
@@ -257,6 +260,9 @@ func preserveSourceCoverageDimensionType(refs []SourceCoverageRef, candidates []
 	}
 	for _, candidate := range candidates {
 		if strings.TrimSpace(candidate.ref.DimensionType) != dimensionType {
+			continue
+		}
+		if dimensionType == "audit_event" && candidate.supportRank < sourceCoverageSupportRank(sourcecdk.CoverageSupportSupported) {
 			continue
 		}
 		candidateKey := sourceCoverageRefKey(candidate.ref)
