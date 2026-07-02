@@ -391,8 +391,8 @@ var identityProviderCoverageAliases = map[string][]string{
 
 func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {
 	sourceID := normalizeCoverageText(coverageSourceID)
-	aliases, ok := identityProviderCoverageAliases[sourceID]
-	if !ok {
+	aliases := identityProviderCoverageAliasesForSource(sourceID)
+	if len(aliases) == 0 {
 		return false
 	}
 	if coverageTextContainsAny(searchText, aliases) {
@@ -402,8 +402,43 @@ func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText
 		if provider == sourceID {
 			continue
 		}
+		if coverageAliasSetsOverlap(aliases, providerAliases) {
+			continue
+		}
 		if coverageTextContainsAny(searchText, providerAliases) {
 			return true
+		}
+	}
+	return false
+}
+
+func identityProviderCoverageAliasesForSource(sourceID string) []string {
+	sourceID = normalizeCoverageText(sourceID)
+	aliases := append([]string(nil), identityProviderCoverageAliases[sourceID]...)
+	if len(aliases) == 0 {
+		return nil
+	}
+	for provider, providerAliases := range identityProviderCoverageAliases {
+		if provider == sourceID {
+			continue
+		}
+		if coverageAliasSetsOverlap(aliases, providerAliases) {
+			aliases = append(aliases, providerAliases...)
+		}
+	}
+	return uniqueSortedStrings(aliases)
+}
+
+func coverageAliasSetsOverlap(left []string, right []string) bool {
+	for _, leftAlias := range left {
+		leftToken := normalizeCoverageText(leftAlias)
+		if leftToken == "" {
+			continue
+		}
+		for _, rightAlias := range right {
+			if leftToken == normalizeCoverageText(rightAlias) {
+				return true
+			}
 		}
 	}
 	return false
@@ -769,7 +804,7 @@ func sourceCoverageAliases(sourceID string, includeIdentityAliases bool) []strin
 	normalized := normalizeCoverageText(sourceID)
 	aliases = append(aliases, cloudProviderCoverageAliases[normalized]...)
 	if includeIdentityAliases {
-		aliases = append(aliases, identityProviderCoverageAliases[normalized]...)
+		aliases = append(aliases, identityProviderCoverageAliasesForSource(normalized)...)
 	}
 	return uniqueSortedStrings(aliases)
 }

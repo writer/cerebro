@@ -968,6 +968,75 @@ func TestPolicySourceCoverageAllowsAzureForNamedEntraFinding(t *testing.T) {
 	}
 }
 
+func TestPolicySourceCoverageAllowsAliasEquivalentIdentitySource(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-azure-active-no-employee-record",
+		Name:        "Azure Active Accounts Without Employee Record",
+		Description: "Flags failed query-result evidence for azure user lifecycle evidence.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"azure", "identity", "active-account"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "microsoft_entra_id",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "user",
+			Type:          "entity_family",
+			Families:      []string{"active_account", "azure_user", "user"},
+			Support:       sourcecdk.CoverageSupportSupported,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.1",
+			}},
+		}},
+	}}
+
+	refs := sourceCoverageRefsForDetection(detection, contracts)
+	if len(refs) != 1 || refs[0].SourceID != "microsoft_entra_id" || refs[0].DimensionID != "user" {
+		t.Fatalf("SourceCoverageRefs = %#v, want microsoft_entra_id/user for alias-equivalent Azure coverage", refs)
+	}
+}
+
+func TestPolicySourceCoverageRejectsDifferentNamedIdentitySource(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "identity-okta-active-no-employee-record",
+		Name:        "Okta Active Accounts Without Employee Record",
+		Description: "Flags failed query-result evidence for okta user lifecycle evidence.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"okta", "identity", "active-account"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "identity_governance",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "microsoft_entra_id",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:            "user",
+			Type:          "entity_family",
+			Families:      []string{"active_account", "user"},
+			Support:       sourcecdk.CoverageSupportSupported,
+			EvidenceTypes: []string{"identity_configuration"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "SOC 2",
+				ControlID:     "CC6.1",
+			}},
+		}},
+	}}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no microsoft_entra_id coverage for named Okta finding", refs)
+	}
+}
+
 func TestPolicySourceCoverageDoesNotUseIdentityAliasesOutsideIdentityNamespace(t *testing.T) {
 	detection := PublicDetection{
 		ID:          "audit-entra-control-change",
