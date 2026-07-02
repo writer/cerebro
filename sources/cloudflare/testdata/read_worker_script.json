@@ -1,1 +1,52 @@
-[{"id":"cloudflare-worker-script-api","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.worker_script","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/worker_script/v1","payload":{"id":"api","created_on":"2026-06-01T00:00:00Z","bindings":[{"name":"CACHE","type":"kv_namespace"}]},"attributes":{"account_id":"acct-1","script_id":"api","created_on":"2026-06-01T00:00:00Z","bindings":"[{\"name\":\"CACHE\",\"type\":\"kv_namespace\"}]","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "account_id": "account-1",
+      "bindings": "{\"name\":\"SESSION_STORE\",\"namespace_id\":\"kv-session\",\"type\":\"kv_namespace\"}",
+      "compatibility_date": "2026-05-01",
+      "created_on": "2026-05-15T00:00:00Z",
+      "external_id": "edge-auth",
+      "family": "worker_script",
+      "modified_on": "2026-06-01T00:00:00Z",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "placement": "{\"mode\":\"smart\"}",
+      "resource_id": "edge-auth",
+      "resource_name": "edge-auth",
+      "resource_type": "worker_script",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_worker_script:edge-auth",
+      "script_id": "edge-auth",
+      "source_event_id": "edge-auth",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "tags": "production",
+      "tenant_id": "tenant"
+    },
+    "id": "cloudflare-worker_script-event-1",
+    "kind": "cloudflare.worker_script",
+    "occurred_at": "2026-05-15T00:00:00Z",
+    "payload": {
+      "id": "edge-auth",
+      "created_on": "2026-05-15T00:00:00Z",
+      "modified_on": "2026-06-01T00:00:00Z",
+      "compatibility_date": "2026-05-01",
+      "tags": [
+        "production"
+      ],
+      "bindings": [
+        {
+          "name": "SESSION_STORE",
+          "type": "kv_namespace",
+          "namespace_id": "kv-session"
+        }
+      ],
+      "placement": {
+        "mode": "smart"
+      }
+    },
+    "schema_ref": "cloudflare/worker_script/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]

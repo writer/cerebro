@@ -1,1 +1,3 @@
-["urn:cerebro:writer:cloudflare_worker_script:acct-1%7Capi"]
+[
+  "urn:cerebro:tenant:cloudflare_worker_script:edge-auth"
+]

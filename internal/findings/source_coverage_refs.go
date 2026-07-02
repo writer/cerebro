@@ -78,6 +78,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 				continue
 			}
 			matchedControls := appendUniqueMatchedCoverageRefs(nil, matches)
+			lifecycleStateMatched := lifecycleStateCoverageMatchesDetection(detection.ID, searchText, dimension)
 			ref := SourceCoverageRef{
 				SourceID:           sourceID,
 				DimensionID:        strings.TrimSpace(dimension.ID),
@@ -91,7 +92,7 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 			}
 			candidates = append(candidates, sourceCoverageCandidate{
 				ref:                ref,
-				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, dimension, len(matchedControls)),
+				score:              sourceCoverageCandidateScore(effectiveSourceMatched, dimensionMatched, evidenceMatched, exactControlMatch, lifecycleStateMatched, dimension, len(matchedControls)),
 				exactControlMatch:  exactControlMatch,
 				dimensionMatched:   dimensionMatched,
 				evidenceMatched:    evidenceMatched,
@@ -180,13 +181,16 @@ func pruneSourceOnlyCoverageCandidates(candidates []sourceCoverageCandidate) []s
 	return pruned
 }
 
-func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
+func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evidenceMatched bool, exactControlMatch bool, lifecycleStateMatched bool, dimension sourcecdk.CoverageDimension, matchedControls int) int {
 	score := 0
 	if sourceMatched {
 		score += 10
 	}
 	if dimensionMatched {
 		score += 8
+	}
+	if lifecycleStateMatched {
+		score += 4
 	}
 	if evidenceMatched {
 		score += 4
@@ -207,6 +211,28 @@ func sourceCoverageCandidateScore(sourceMatched bool, dimensionMatched bool, evi
 		matchedControls = 3
 	}
 	return score + matchedControls
+}
+
+func lifecycleStateCoverageMatchesDetection(detectionID string, searchText string, dimension sourcecdk.CoverageDimension) bool {
+	if normalizeCoverageText(dimension.Type) != "lifecycle_state" {
+		return false
+	}
+	if normalizeCoverageText(detectionID) != normalizeCoverageText(grcInactiveIdentityActiveAccessRuleID) {
+		return false
+	}
+	for _, token := range []string{
+		"deactivated",
+		"deprovisioned",
+		"inactive",
+		"offboarding",
+		"suspended",
+		"terminated",
+	} {
+		if coverageTextContains(searchText, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceCoverageSupportRank(support string) int {

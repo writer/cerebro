@@ -4,11 +4,66 @@ secretKeys:
   - CLOUDFLARE_WORKERS_AI_GATEWAY_ID
   - CLOUDFLARE_WORKERS_AI_TOKEN
 runtimes:
+  - localId: ai-gateways
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: ai_gateways
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN
+  - localId: gateway-evaluations
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: gateway_evaluations
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN
+  - localId: gateway-logs
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: gateway_logs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN
+  - localId: gateway-provider-configs
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: gateway_provider_configs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN
   - localId: model-catalog
     config:
       account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
       gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
       family: model_catalog
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /accounts/${config.account_id}/ai/models/search
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:CLOUDFLARE_WORKERS_AI_TOKEN
+  - localId: vectorize-indexes
+    config:
+      account_id: env:CLOUDFLARE_WORKERS_AI_ACCOUNT_ID
+      gateway_id: env:CLOUDFLARE_WORKERS_AI_GATEWAY_ID
+      family: vectorize_indexes
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /accounts/${config.account_id}/ai/models/search
       expected_cadence_seconds: "86400"

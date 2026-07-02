@@ -1,1 +1,43 @@
-[{"id":"cloudflare-load-balancer-lb-1","tenant_id":"writer","source_id":"cloudflare","kind":"cloudflare.load_balancer","occurred_at":"2026-06-14T00:00:00Z","schema_ref":"cloudflare/load_balancer/v1","payload":{"id":"lb-1","name":"www.example.com","fallback_pool":"pool-1","default_pools":["pool-2"],"enabled":true},"attributes":{"zone_id":"zone-1","load_balancer_id":"lb-1","name":"www.example.com","fallback_pool":"pool-1","default_pools":"pool-2","enabled":"true","source_product":"cloudflare"}}]
+[
+  {
+    "attributes": {
+      "default_pools": "pool-1",
+      "enabled": "true",
+      "external_id": "lb-1",
+      "fallback_pool": "pool-1",
+      "family": "load_balancer",
+      "load_balancer_id": "lb-1",
+      "name": "www-lb",
+      "proxied": "true",
+      "resource_id": "lb-1",
+      "resource_name": "www-lb",
+      "resource_type": "load_balancer",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer:lb-1",
+      "source_event_id": "lb-1",
+      "source_product": "cloudflare",
+      "provider": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "steering_policy": "dynamic_latency",
+      "tenant_id": "tenant",
+      "zone_id": "zone-1"
+    },
+    "id": "cloudflare-load_balancer-event-1",
+    "kind": "cloudflare.load_balancer",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "lb-1",
+      "name": "www-lb",
+      "fallback_pool": "pool-1",
+      "default_pools": [
+        "pool-1"
+      ],
+      "enabled": true,
+      "proxied": true,
+      "steering_policy": "dynamic_latency"
+    },
+    "schema_ref": "cloudflare/load_balancer/v1",
+    "source_id": "cloudflare",
+    "tenant_id": "tenant"
+  }
+]
