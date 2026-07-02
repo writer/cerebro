@@ -78,7 +78,8 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)
 	}
-	if rawAuthModel := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "auth_model")); rawAuthModel != "" {
+	rawAuthModel := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "auth_model"))
+	if rawAuthModel != "" {
 		authModel := normalizedAuthModel(rawAuthModel)
 		if !authModelAllowed(authModel, s.options.ConfigurableAuthModels) {
 			return resolved, fmt.Errorf("%s auth_model %q is not supported", s.options.SourceID, rawAuthModel)
@@ -88,6 +89,11 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	family, ok := familyByName(s.options, resolved.family)
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
+	}
+	if rawAuthModel == "" {
+		if familyAuthModel := normalizedAuthModel(family.Config.AuthModel); familyAuthModel != "" {
+			resolved.authModel = familyAuthModel
+		}
 	}
 	resolved.familyMethod = strings.TrimSpace(family.Config.Method)
 	if s.options.RequireTenantID && resolved.tenantID == "" {

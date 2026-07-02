@@ -2572,7 +2572,8 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -193301,6 +193302,37 @@
           ]
         },
         {
+          "source_id": "duo",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "access_review",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "mfa_posture",
           "dimension_type": "app_entitlement",
@@ -195756,9 +195788,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -195849,6 +195886,47 @@
           "framework_name": "PCI DSS v4.0.1",
           "control_id": "8.1.3"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "duo",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "access_review",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "6"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        }
       ]
     },
     {
@@ -195920,9 +195998,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196000,31 +196083,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196102,31 +196168,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196204,9 +196253,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196284,31 +196338,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196386,31 +196423,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196488,9 +196508,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196510,53 +196535,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196634,9 +196620,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196714,9 +196705,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196794,9 +196790,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196874,31 +196875,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196976,9 +196960,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -196998,53 +196987,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "groups",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "groups"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "duo_security",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "users"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -197122,9 +197072,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -197202,9 +197157,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -197282,9 +197242,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -197362,9 +197327,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -197442,9 +197412,14 @@
             "source_snapshot"
           ],
           "control_domains": [
-            "asset_inventory"
+            "access_review",
+            "identity_access"
           ],
           "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.17"
+            },
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -232424,6 +232399,41 @@
           ],
           "control_domains": [
             "asset_inventory",
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "5"
+            },
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "NIST 800-53 r5",
+              "control_id": "AC-2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "duo",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "access_review",
             "identity_access"
           ],
           "matched_control_refs": [

@@ -204,6 +204,17 @@ control_domains:
     - { framework_name: "CIS Controls v8", control_id: "1" }
     - { framework_name: "ISO 27001:2022", control_id: "A.7.9" }
     - { framework_name: "ISO 27001:2022", control_id: "A.8.1" }
+  device_posture:
+    - { framework_name: "SOC 2", control_id: "CC6.7" }
+    - { framework_name: "SOC 2", control_id: "CC6.8" }
+    - { framework_name: "NIST 800-53 r5", control_id: "AC-19" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-8" }
+    - { framework_name: "NIST 800-53 r5", control_id: "SI-3" }
+    - { framework_name: "CIS Controls v8", control_id: "1" }
+    - { framework_name: "CIS Controls v8", control_id: "10" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.7.9" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.1" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.8.7" }
   secure_delivery:
     - { framework_name: "SOC 2", control_id: "CC8.1" }
     - { framework_name: "NIST 800-53 r5", control_id: "CM-3" }

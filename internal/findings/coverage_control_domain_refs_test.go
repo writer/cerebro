@@ -28,6 +28,7 @@ func TestCoverageControlDomainRefsLoad(t *testing.T) {
 		{domain: "identity_access", framework: "SOC 2", control: "CC6.1"},
 		{domain: "authorization", framework: "NIST 800-53 r5", control: "AC-3"},
 		{domain: "change_management", framework: "SOC 2", control: "CC8.1"},
+		{domain: "device_posture", framework: "NIST 800-53 r5", control: "SI-3"},
 	} {
 		refs := controlRefsForControlDomains([]string{tc.domain})
 		if len(refs) == 0 {
