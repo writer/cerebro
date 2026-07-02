@@ -79,7 +79,7 @@ func cloudflareEventAttributes(family jsonapi.Family) map[string]string {
 	attrs := map[string]string{
 		"observed_at":     "modified_on|updated_at|updatedAt|last_updated|lastUpdated|created_on|created_at|when|timestamp",
 		"resource_id":     "id",
-		"resource_name":   "name|display_name|domain|user.name|action.type",
+		"resource_name":   "name|display_name|domain|user.name|action.type|id",
 		"source_event_id": "id",
 	}
 	for key, value := range family.Attributes {
