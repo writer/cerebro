@@ -64,9 +64,9 @@ entries:
           path: /identities
           projection:
             fields:
-              display_name: name|displayName
-              email: email|attributes.email
-              status: lifecycleState.stateName|lifecycle_state|status
+              display_name: name|attributes.displayName
+              email: emailAddress|attributes.email|email
+              status: identityStatus|processingState|attributes.cloudStatus
               user_id: id
             template: identity_user
           record_selector: $[*]
@@ -182,7 +182,7 @@ entries:
               policy_id: id
               policy_name: name
               policy_status: enabled|requestable
-              policy_type: type
+              policy_type: access_profile
             template: policy
           record_selector: $[*]
         - coverage:
@@ -221,7 +221,7 @@ entries:
               policy_id: id
               policy_name: name
               policy_status: enabled|requestable
-              policy_type: type
+              policy_type: role
             template: policy
           record_selector: $[*]
         - coverage:
@@ -299,7 +299,7 @@ entries:
               policy_id: id
               policy_name: name
               policy_status: status|priority
-              policy_type: type
+              policy_type: identity_profile
             template: policy
           record_selector: $[*]
         - coverage:
@@ -376,7 +376,7 @@ entries:
               policy_id: id
               policy_name: name
               policy_status: phase|status
-              policy_type: type
+              policy_type: certification
             template: policy
           record_selector: $[*]
         - coverage:
@@ -453,11 +453,11 @@ entries:
           path: /account-activities
           projection:
             fields:
-              actor_id: requester.id|requesterId|identityId
-              actor_name: requester.name|requesterName|identityName
+              actor_id: requesterIdentitySummary.id
+              actor_name: requesterIdentitySummary.name
               event_type: action|type|operation
-              resource_id: target.id|targetId|id
-              resource_name: target.name|targetName|name
+              resource_id: targetIdentitySummary.id
+              resource_name: targetIdentitySummary.name
               resource_type: account_activity
             template: audit_event
           record_selector: $[*]

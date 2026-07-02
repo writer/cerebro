@@ -206,10 +206,14 @@ func sailpointIdentitynowCertificationAccessReviewItemsProjections(event *cerebr
 	}
 	if accessID := strings.TrimSpace(attrs["access_id"]); accessID != "" {
 		accessType := strings.ToUpper(strings.TrimSpace(attrs["access_type"]))
-		accessKind := "entitlement"
-		accessEntityType := "sailpoint_identitynow.entitlement"
-		accessIDKey := "entitlement_id"
+		accessKind := ""
+		accessEntityType := ""
+		accessIDKey := ""
 		switch accessType {
+		case "ENTITLEMENT":
+			accessKind = "entitlement"
+			accessEntityType = "sailpoint_identitynow.entitlement"
+			accessIDKey = "entitlement_id"
 		case "ACCESS_PROFILE":
 			accessKind = "access_profile"
 			accessEntityType = "sailpoint_identitynow.access_profile"
@@ -219,10 +223,12 @@ func sailpointIdentitynowCertificationAccessReviewItemsProjections(event *cerebr
 			accessEntityType = "sailpoint_identitynow.role"
 			accessIDKey = "role_id"
 		}
-		accessURN := projectionURN(tenantID, "sailpoint_identitynow_"+accessKind, accessID)
-		accessAttrs := map[string]string{accessIDKey: accessID, "access_id": accessID, "access_type": accessType}
-		addEntity(entities, &ports.ProjectedEntity{URN: accessURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: accessEntityType, Label: firstNonEmpty(attrs["access_name"], accessID), Attributes: accessAttrs})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), itemURN, accessURN, relationObservedOn, identityEventLinkAttributes(event)))
+		if accessKind != "" {
+			accessURN := projectionURN(tenantID, "sailpoint_identitynow_"+accessKind, accessID)
+			accessAttrs := map[string]string{accessIDKey: accessID, "access_id": accessID, "access_type": accessType}
+			addEntity(entities, &ports.ProjectedEntity{URN: accessURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: accessEntityType, Label: firstNonEmpty(attrs["access_name"], accessID), Attributes: accessAttrs})
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), itemURN, accessURN, relationObservedOn, identityEventLinkAttributes(event)))
+		}
 	}
 	return identityProjectionResult(entities, links)
 }

@@ -84,7 +84,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 			return err
 		}
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
+	if err := s.checkHealth(ctx, healthCheckConfig(runtimeCfg)); err != nil {
 		return err
 	}
 	if fanout, ok := fanoutFor(runtimeCfg); ok {
@@ -166,6 +166,12 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
 	return s.inner.CheckPath(ctx, cfg, path, nil)
+}
+
+func healthCheckConfig(cfg sourcecdk.Config) sourcecdk.Config {
+	values := cfg.Values()
+	values["family"] = defaultFamily
+	return sourcecdk.NewConfig(values)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {

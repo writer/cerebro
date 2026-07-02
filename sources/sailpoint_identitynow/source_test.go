@@ -164,6 +164,9 @@ func TestSourceFanoutReadsRoleAssignedIdentities(t *testing.T) {
 	if got := first.Events[0].Attributes["role_id"]; got != "role-a" {
 		t.Fatalf("role_id = %q, want role-a", got)
 	}
+	if got := first.Events[0].Attributes["subject_type"]; got != "user" {
+		t.Fatalf("subject_type = %q, want user", got)
+	}
 	if got := first.Events[0].Attributes["role_name"]; got != "" {
 		t.Fatalf("role_name = %q, want empty because scoped endpoint does not return the parent role name", got)
 	}
@@ -182,6 +185,44 @@ func TestSourceFanoutReadsRoleAssignedIdentities(t *testing.T) {
 	}
 	if got := second.Events[0].Attributes["role_name"]; got != "" {
 		t.Fatalf("second role_name = %q, want empty because scoped endpoint does not return the parent role name", got)
+	}
+}
+
+func TestSourceCheckFanoutFamilyUsesHealthProbeBeforeScopedCheck(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/v2025/identities", "/v2025/roles/role-a/assigned-identities":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL + "/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyRoleAssignedIdentities,
+		"role_ids":  "role-a,role-b",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if len(paths) != 2 || paths[0] != "/v2025/identities" || paths[1] != "/v2025/roles/role-a/assigned-identities" {
+		t.Fatalf("paths = %v, want health probe followed by scoped family check", paths)
 	}
 }
 
@@ -379,6 +420,50 @@ func TestSourceCheckKeepsSmallProbeForDefaultPageSizeFamilies(t *testing.T) {
 	}
 }
 
+func TestSourceRolesEmitStaticPolicyAttributes(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if r.URL.Path != "/v2025/roles" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id":      "role-1",
+			"name":    "Access Reviewer",
+			"enabled": true,
+		}})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL + "/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyRoles,
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["policy_type"]; got != "role" {
+		t.Fatalf("policy_type = %q, want role", got)
+	}
+	if got := pull.Events[0].Attributes["role_type"]; got != "role" {
+		t.Fatalf("role_type = %q, want role", got)
+	}
+}
+
 func TestSourcePersonalAccessTokensUsesOffsetPagination(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -424,6 +509,12 @@ func TestSourcePersonalAccessTokensUsesOffsetPagination(t *testing.T) {
 	}
 	if len(first.Events) != 50 {
 		t.Fatalf("events = %d, want 50", len(first.Events))
+	}
+	if got := first.Events[0].Attributes["credential_type"]; got != "personal_access_token" {
+		t.Fatalf("credential_type = %q, want personal_access_token", got)
+	}
+	if got := first.Events[0].Attributes["subject_type"]; got != "user" {
+		t.Fatalf("subject_type = %q, want user", got)
 	}
 	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "50" {
 		t.Fatalf("NextCursor = %#v, want offset 50", first.NextCursor)

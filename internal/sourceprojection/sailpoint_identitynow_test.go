@@ -195,6 +195,29 @@ func TestSailpointIdentitynowCertificationReviewProjectionUsesAccessType(t *test
 	}
 }
 
+func TestSailpointIdentitynowCertificationReviewProjectionSkipsUnknownAccessType(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.certification_access_review_items", map[string]string{
+		"review_item_id":   "review-item-1",
+		"certification_id": "certification-1",
+		"identity_id":      "identity-1",
+		"access_id":        "access-1",
+		"access_name":      "Payroll Access",
+		"access_type":      "UNKNOWN",
+	})
+	entities, links, err := sailpointIdentitynowCertificationAccessReviewItemsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	for _, entityType := range []string{"sailpoint_identitynow.entitlement", "sailpoint_identitynow.access_profile", "sailpoint_identitynow.role"} {
+		if sailpointHasEntityType(entities, entityType) {
+			t.Fatalf("created access entity type %q for unknown access_type: %#v", entityType, entities)
+		}
+	}
+	if len(entities) != 3 || len(links) != 2 {
+		t.Fatalf("entities/links = %d/%d, want review item, certification, identity, and no access entity", len(entities), len(links))
+	}
+}
+
 func sailpointHasEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
 	for _, entity := range entities {
 		if entity.EntityType == entityType {

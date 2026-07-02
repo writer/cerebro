@@ -112,7 +112,7 @@ func Families() []jsonapi.Family {
 			"created_at":      "created",
 			"observed_at":     "modified|created",
 		}, "identity_user"),
-		paged(FamilyAccounts, "/accounts", "sailpoint_identitynow_accounts", []string{"id", "nativeIdentity", "uuid"}, []string{"modified", "created"}, map[string]string{
+		withStaticAttributes(paged(FamilyAccounts, "/accounts", "sailpoint_identitynow_accounts", []string{"id", "nativeIdentity", "uuid"}, []string{"modified", "created"}, map[string]string{
 			"account_id":          "id",
 			"native_identity":     "nativeIdentity",
 			"uuid":                "uuid",
@@ -122,7 +122,6 @@ func Families() []jsonapi.Family {
 			"source_name":         "sourceName",
 			"resource_id":         "id",
 			"resource_name":       "name|nativeIdentity|attributes.displayName",
-			"resource_type":       "account",
 			"resource_owner_id":   "identityId|identity.id",
 			"resource_owner_name": "identity.name",
 			"status":              "identityState|cloudLifecycleState",
@@ -134,7 +133,7 @@ func Families() []jsonapi.Family {
 			"has_entitlements":    "hasEntitlements",
 			"created_at":          "created",
 			"observed_at":         "modified|created",
-		}, "identity_account"),
+		}, "identity_account"), map[string]string{"resource_type": "account"}),
 		scopedPaged(FamilyAccountEntitlements, "/accounts/{account_id}/entitlements", "sailpoint_identitynow_account_entitlements", []string{"id", "name"}, []string{"modified", "created"}, []string{"account_id"}, map[string]string{
 			"account_id":        "account_id",
 			"entitlement_id":    "id",
@@ -148,12 +147,11 @@ func Families() []jsonapi.Family {
 			"created_at":        "created",
 			"observed_at":       "modified|created",
 		}, "account_entitlement"),
-		paged(FamilySources, "/sources", "sailpoint_identitynow_sources", []string{"id", "name"}, []string{"modified", "created", "since"}, map[string]string{
+		withStaticAttributes(paged(FamilySources, "/sources", "sailpoint_identitynow_sources", []string{"id", "name"}, []string{"modified", "created", "since"}, map[string]string{
 			"app_id":          "id",
 			"app_name":        "name",
 			"resource_id":     "id",
 			"resource_name":   "name",
-			"resource_type":   "source",
 			"source_id":       "id",
 			"source_name":     "name",
 			"source_type":     "type",
@@ -167,7 +165,7 @@ func Families() []jsonapi.Family {
 			"owner_name":      "owner.name",
 			"created_at":      "created",
 			"observed_at":     "modified|since|created",
-		}, "identity_source"),
+		}, "identity_source"), map[string]string{"resource_type": "source"}),
 		scopedUnpaged(FamilySourceSchemas, "/sources/{source_id}/schemas", "sailpoint_identitynow_source_schemas", []string{"id", "name"}, []string{"modified", "created"}, []string{"source_id"}, map[string]string{
 			"source_id":              "source_id",
 			"schema_id":              "id",
@@ -192,30 +190,27 @@ func Families() []jsonapi.Family {
 			"authoritative": "isAuthoritative",
 			"cluster":       "isCluster",
 		}, "source_health"),
-		withIDTemplate(scopedUnpaged(FamilySourceProvisioningPolicies, "/sources/{source_id}/provisioning-policies", "sailpoint_identitynow_source_provisioning_policies", []string{"id", "usageType", "name"}, []string{}, []string{"source_id"}, map[string]string{
+		withStaticAttributes(withIDTemplate(scopedUnpaged(FamilySourceProvisioningPolicies, "/sources/{source_id}/provisioning-policies", "sailpoint_identitynow_source_provisioning_policies", []string{"id", "usageType", "name"}, []string{}, []string{"source_id"}, map[string]string{
 			"source_id":          "source_id",
 			"policy_id":          "_record_id|usageType|name",
 			"policy_name":        "name",
 			"policy_description": "description",
-			"policy_type":        "provisioning_policy",
 			"usage_type":         "usageType",
 			"field_names":        "fields.name",
-		}, "policy"), "${source_id}-${usageType}"),
-		withIDTemplate(scopedUnpaged(FamilySourceSchedules, "/sources/{source_id}/schedules", "sailpoint_identitynow_source_schedules", []string{"type", "cronExpression"}, []string{}, []string{"source_id"}, map[string]string{
+		}, "policy"), "${source_id}-${usageType}"), map[string]string{"policy_type": "provisioning_policy"}),
+		withStaticAttributes(withIDTemplate(scopedUnpaged(FamilySourceSchedules, "/sources/{source_id}/schedules", "sailpoint_identitynow_source_schedules", []string{"type", "cronExpression"}, []string{}, []string{"source_id"}, map[string]string{
 			"source_id":       "source_id",
 			"schedule_id":     "_record_id|type",
 			"schedule_type":   "type",
 			"cron_expression": "cronExpression",
 			"policy_id":       "_record_id|type",
 			"policy_name":     "type",
-			"policy_type":     "source_schedule",
-		}, "policy"), "${source_id}-${type}"),
-		paged(FamilyAccessProfiles, "/access-profiles", "sailpoint_identitynow_access_profiles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
+		}, "policy"), "${source_id}-${type}"), map[string]string{"policy_type": "source_schedule"}),
+		withStaticAttributes(paged(FamilyAccessProfiles, "/access-profiles", "sailpoint_identitynow_access_profiles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"access_profile_id":   "id",
 			"access_profile_name": "name",
 			"policy_id":           "id",
 			"policy_name":         "name",
-			"policy_type":         "access_profile",
 			"policy_status":       "enabled",
 			"description":         "description",
 			"source_id":           "source.id",
@@ -226,7 +221,7 @@ func Families() []jsonapi.Family {
 			"requestable":         "requestable",
 			"created_at":          "created",
 			"observed_at":         "modified|created",
-		}, "access_profile"),
+		}, "access_profile"), map[string]string{"policy_type": "access_profile"}),
 		scopedPaged(FamilyAccessProfileEntitlements, "/access-profiles/{access_profile_id}/entitlements", "sailpoint_identitynow_access_profile_entitlements", []string{"id", "name"}, []string{"modified", "created"}, []string{"access_profile_id"}, map[string]string{
 			"access_profile_id": "access_profile_id",
 			"entitlement_id":    "id",
@@ -239,13 +234,11 @@ func Families() []jsonapi.Family {
 			"created_at":        "created",
 			"observed_at":       "modified|created",
 		}, "access_profile_entitlement"),
-		paged50(FamilyRoles, "/roles", "sailpoint_identitynow_roles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
+		withStaticAttributes(paged50(FamilyRoles, "/roles", "sailpoint_identitynow_roles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"role_id":       "id",
 			"role_name":     "name",
-			"role_type":     "role",
 			"policy_id":     "id",
 			"policy_name":   "name",
-			"policy_type":   "role",
 			"policy_status": "enabled",
 			"description":   "description",
 			"owner_id":      "owner.id",
@@ -255,17 +248,16 @@ func Families() []jsonapi.Family {
 			"privileged":    "privilegeLevel",
 			"created_at":    "created",
 			"observed_at":   "modified|created",
-		}, "role"),
-		scopedPaged(FamilyRoleAssignedIdentities, "/roles/{role_id}/assigned-identities", "sailpoint_identitynow_role_assigned_identities", []string{"id", "email", "name"}, []string{}, []string{"role_id"}, map[string]string{
+		}, "role"), map[string]string{"role_type": "role", "policy_type": "role"}),
+		withStaticAttributes(scopedPaged(FamilyRoleAssignedIdentities, "/roles/{role_id}/assigned-identities", "sailpoint_identitynow_role_assigned_identities", []string{"id", "email", "name"}, []string{}, []string{"role_id"}, map[string]string{
 			"role_id":           "role_id",
 			"subject_id":        "id",
 			"subject_name":      "name|aliasName",
 			"subject_email":     "email",
-			"subject_type":      "user",
 			"email":             "email",
 			"user_id":           "id",
 			"assignment_source": "roleAssignmentSource",
-		}, "role_assignment"),
+		}, "role_assignment"), map[string]string{"subject_type": "user"}),
 		scopedPaged50(FamilyRoleEntitlements, "/roles/{role_id}/entitlements", "sailpoint_identitynow_role_entitlements", []string{"id", "name"}, []string{"modified", "created"}, []string{"role_id"}, map[string]string{
 			"role_id":           "role_id",
 			"entitlement_id":    "id",
@@ -277,19 +269,18 @@ func Families() []jsonapi.Family {
 			"created_at":        "created",
 			"observed_at":       "modified|created",
 		}, "role_entitlement"),
-		scopedPaged50(FamilyRoleDimensions, "/roles/{role_id}/dimensions", "sailpoint_identitynow_role_dimensions", []string{"id", "name"}, []string{"modified", "created"}, []string{"role_id"}, map[string]string{
+		withStaticAttributes(scopedPaged50(FamilyRoleDimensions, "/roles/{role_id}/dimensions", "sailpoint_identitynow_role_dimensions", []string{"id", "name"}, []string{"modified", "created"}, []string{"role_id"}, map[string]string{
 			"role_id":        "role_id",
 			"dimension_id":   "id",
 			"dimension_name": "name",
 			"policy_id":      "id",
 			"policy_name":    "name",
-			"policy_type":    "role_dimension",
 			"owner_id":       "owner.id",
 			"owner_name":     "owner.name",
 			"parent_id":      "parentId",
 			"created_at":     "created",
 			"observed_at":    "modified|created",
-		}, "role_dimension"),
+		}, "role_dimension"), map[string]string{"policy_type": "role_dimension"}),
 		paged(FamilyEntitlements, "/entitlements", "sailpoint_identitynow_entitlements", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"entitlement_id":    "id",
 			"entitlement_name":  "name",
@@ -305,35 +296,31 @@ func Families() []jsonapi.Family {
 			"created_at":        "created",
 			"observed_at":       "modified|created",
 		}, "entitlement"),
-		scopedPaged(FamilyIdentityEntitlements, "/entitlements/identities/{identity_id}/entitlements", "sailpoint_identitynow_identity_entitlements", []string{"objectRef.id", "objectRef.name", "id"}, []string{}, []string{"identity_id"}, map[string]string{
+		withStaticAttributes(scopedPaged(FamilyIdentityEntitlements, "/entitlements/identities/{identity_id}/entitlements", "sailpoint_identitynow_identity_entitlements", []string{"objectRef.id", "objectRef.name", "id"}, []string{}, []string{"identity_id"}, map[string]string{
 			"identity_id":      "identity_id",
 			"subject_id":       "identity_id",
-			"subject_type":     "user",
 			"entitlement_id":   "objectRef.id|id",
 			"entitlement_name": "objectRef.name|name",
 			"entitlement_type": "objectRef.type|type",
 			"tags":             "tags",
-		}, "identity_entitlement"),
-		scopedUnpaged(FamilyIdentityRoleAssignments, "/identities/{identity_id}/role-assignments", "sailpoint_identitynow_identity_role_assignments", []string{"id", "role.id", "role.name"}, []string{"addedDate", "startDate"}, []string{"identity_id"}, map[string]string{
+		}, "identity_entitlement"), map[string]string{"subject_type": "user"}),
+		withStaticAttributes(scopedUnpaged(FamilyIdentityRoleAssignments, "/identities/{identity_id}/role-assignments", "sailpoint_identitynow_identity_role_assignments", []string{"id", "role.id", "role.name"}, []string{"addedDate", "startDate"}, []string{"identity_id"}, map[string]string{
 			"identity_id":         "identity_id",
 			"subject_id":          "identity_id",
-			"subject_type":        "user",
 			"role_assignment_id":  "id",
 			"role_id":             "role.id",
 			"role_name":           "role.name",
-			"role_type":           "role",
 			"assignment_source":   "assignmentSource",
 			"assigned_dimensions": "assignedDimensions.name|assignedDimensions.id",
 			"start_date":          "startDate",
 			"remove_date":         "removeDate",
 			"added_date":          "addedDate",
-		}, "role_assignment"),
-		paged(FamilyIdentityProfiles, "/identity-profiles", "sailpoint_identitynow_identity_profiles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
+		}, "role_assignment"), map[string]string{"subject_type": "user", "role_type": "role"}),
+		withStaticAttributes(paged(FamilyIdentityProfiles, "/identity-profiles", "sailpoint_identitynow_identity_profiles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"identity_profile_id":   "id",
 			"identity_profile_name": "name",
 			"policy_id":             "id",
 			"policy_name":           "name",
-			"policy_type":           "identity_profile",
 			"description":           "description",
 			"owner_id":              "owner.id",
 			"owner_name":            "owner.name",
@@ -342,21 +329,20 @@ func Families() []jsonapi.Family {
 			"identity_count":        "identityCount",
 			"created_at":            "created",
 			"observed_at":           "modified|created",
-		}, "identity_profile"),
-		scopedPaged(FamilyLifecycleStates, "/identity-profiles/{identity_profile_id}/lifecycle-states", "sailpoint_identitynow_lifecycle_states", []string{"id", "name", "technicalName"}, []string{"modified", "created"}, []string{"identity_profile_id"}, map[string]string{
+		}, "identity_profile"), map[string]string{"policy_type": "identity_profile"}),
+		withStaticAttributes(scopedPaged(FamilyLifecycleStates, "/identity-profiles/{identity_profile_id}/lifecycle-states", "sailpoint_identitynow_lifecycle_states", []string{"id", "name", "technicalName"}, []string{"modified", "created"}, []string{"identity_profile_id"}, map[string]string{
 			"identity_profile_id": "identity_profile_id",
 			"lifecycle_state_id":  "id",
 			"lifecycle_state":     "technicalName|name",
 			"policy_id":           "id",
 			"policy_name":         "name|technicalName",
-			"policy_type":         "lifecycle_state",
 			"enabled":             "enabled",
 			"identity_count":      "identityCount",
 			"identity_state":      "identityState",
 			"access_profile_ids":  "accessProfileIds",
 			"created_at":          "created",
 			"observed_at":         "modified|created",
-		}, "lifecycle_state"),
+		}, "lifecycle_state"), map[string]string{"policy_type": "lifecycle_state"}),
 		paged(FamilyWorkgroups, "/workgroups", "sailpoint_identitynow_workgroups", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"group_id":         "id",
 			"group_name":       "name",
@@ -369,7 +355,7 @@ func Families() []jsonapi.Family {
 			"created_at":       "created",
 			"observed_at":      "modified|created",
 		}, "governance_group"),
-		scopedPaged50(FamilyWorkgroupMembers, "/workgroups/{workgroup_id}/members", "sailpoint_identitynow_workgroup_members", []string{"id", "email", "name"}, []string{}, []string{"workgroup_id"}, map[string]string{
+		withStaticAttributes(scopedPaged50(FamilyWorkgroupMembers, "/workgroups/{workgroup_id}/members", "sailpoint_identitynow_workgroup_members", []string{"id", "email", "name"}, []string{}, []string{"workgroup_id"}, map[string]string{
 			"group_id":      "workgroup_id",
 			"member_id":     "id",
 			"member_name":   "name",
@@ -380,21 +366,19 @@ func Families() []jsonapi.Family {
 			"subject_id":    "id",
 			"subject_name":  "name",
 			"subject_email": "email",
-			"subject_type":  "user",
-		}, "governance_group_member"),
-		paged(FamilyCampaigns, "/campaigns", "sailpoint_identitynow_campaigns", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
+		}, "governance_group_member"), map[string]string{"subject_type": "user"}),
+		withStaticAttributes(paged(FamilyCampaigns, "/campaigns", "sailpoint_identitynow_campaigns", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"campaign_id":   "id",
 			"campaign_name": "name",
 			"policy_id":     "id",
 			"policy_name":   "name",
-			"policy_type":   "certification_campaign",
 			"campaign_type": "type",
 			"status":        "status",
 			"description":   "description",
 			"deadline":      "deadline",
 			"created_at":    "created",
 			"observed_at":   "modified|created",
-		}, "certification_campaign"),
+		}, "certification_campaign"), map[string]string{"policy_type": "certification_campaign"}),
 		paged(FamilyCertifications, "/certifications", "sailpoint_identitynow_certifications", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"certification_id":   "id",
 			"certification_name": "name",
@@ -436,7 +420,7 @@ func Families() []jsonapi.Family {
 			"created_at":         "created",
 			"observed_at":        "modified|created",
 		}, "access_request_status"),
-		paged(FamilyAccountActivities, "/account-activities", "sailpoint_identitynow_account_activities", []string{"id", "name"}, []string{"modified", "created", "completed"}, map[string]string{
+		withStaticAttributes(paged(FamilyAccountActivities, "/account-activities", "sailpoint_identitynow_account_activities", []string{"id", "name"}, []string{"modified", "created", "completed"}, map[string]string{
 			"activity_id":   "id",
 			"activity_name": "name",
 			"activity_type": "type",
@@ -446,18 +430,15 @@ func Families() []jsonapi.Family {
 			"actor_name":    "requesterIdentitySummary.name",
 			"resource_id":   "targetIdentitySummary.id",
 			"resource_name": "targetIdentitySummary.name",
-			"resource_type": "identity",
 			"event_type":    "type",
 			"created_at":    "created",
 			"observed_at":   "modified|completed|created",
-		}, "account_activity"),
-		paged50(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created", "expirationDate"}, map[string]string{
+		}, "account_activity"), map[string]string{"resource_type": "identity"}),
+		withStaticAttributes(paged50(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created", "expirationDate"}, map[string]string{
 			"credential_id":                 "id",
-			"credential_type":               "personal_access_token",
 			"credential_name":               "name",
 			"subject_id":                    "owner.id",
 			"subject_name":                  "owner.name",
-			"subject_type":                  "user",
 			"scope":                         "scope",
 			"last_used_at":                  "lastUsed",
 			"expires_at":                    "expirationDate",
@@ -466,20 +447,19 @@ func Families() []jsonapi.Family {
 			"access_token_validity_seconds": "accessTokenValiditySeconds",
 			"created_at":                    "created",
 			"observed_at":                   "lastUsed|created",
-		}, "credential"),
-		paged(FamilySegments, "/segments", "sailpoint_identitynow_segments", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
+		}, "credential"), map[string]string{"credential_type": "personal_access_token", "subject_type": "user"}),
+		withStaticAttributes(paged(FamilySegments, "/segments", "sailpoint_identitynow_segments", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"segment_id":   "id",
 			"segment_name": "name",
 			"policy_id":    "id",
 			"policy_name":  "name",
-			"policy_type":  "segment",
 			"description":  "description",
 			"active":       "active",
 			"owner_id":     "owner.id",
 			"owner_name":   "owner.name",
 			"created_at":   "created",
 			"observed_at":  "modified|created",
-		}, "segment"),
+		}, "segment"), map[string]string{"policy_type": "segment"}),
 	}
 }
 
@@ -530,6 +510,14 @@ func scopedSingleton(name, path, urnKind string, idKeys, timestampKeys, pathPara
 
 func withIDTemplate(family jsonapi.Family, idTemplate string) jsonapi.Family {
 	family.Config.IDTemplate = idTemplate
+	return family
+}
+
+func withStaticAttributes(family jsonapi.Family, attrs map[string]string) jsonapi.Family {
+	for key := range attrs {
+		delete(family.Attributes, key)
+	}
+	jsonapi.MergeStaticAttributes(&family, attrs)
 	return family
 }
 
