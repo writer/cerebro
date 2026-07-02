@@ -27,6 +27,16 @@ func TestSourceSpec(t *testing.T) {
 	}
 }
 
+func TestSourceSpecNilSafe(t *testing.T) {
+	var source *Source
+	if got := source.Spec(); got != nil {
+		t.Fatalf("nil Source Spec() = %#v, want nil", got)
+	}
+	if got := (&Source{}).Spec(); got != nil {
+		t.Fatalf("zero Source Spec() = %#v, want nil", got)
+	}
+}
+
 func TestDefaultBaseURLUsesCurrentAPI(t *testing.T) {
 	if strings.Contains(defaultBaseURL, "/api/v0") {
 		t.Fatalf("defaultBaseURL = %q, want non-deprecated Kolide API", defaultBaseURL)
