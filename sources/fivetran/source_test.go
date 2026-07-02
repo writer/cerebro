@@ -27,19 +27,12 @@ func TestSourceCheckAndReadUsers(t *testing.T) {
 				t.Fatalf("limit = %q, want 1 for check or 2 for read", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code":    "Success",
-				"message": "Users retrieved successfully",
-				"data": map[string]any{
-					"items": []map[string]any{{
-						"id":         "user-1",
-						"email":      "user@example.test",
-						"name":       "User One",
-						"created_at": "2026-06-01T00:00:00Z",
-					}},
-					"next_cursor": "cursor-2",
-				},
-			})
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+				"id":         "user-1",
+				"email":      "user@example.test",
+				"name":       "User One",
+				"created_at": "2026-06-01T00:00:00Z",
+			}, "cursor-2"))
 		default:
 			t.Fatalf("unexpected path = %q", r.URL.Path)
 		}
