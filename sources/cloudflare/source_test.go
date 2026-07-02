@@ -342,6 +342,11 @@ func TestReadCloudflareCoverageAttributes(t *testing.T) {
 			if got := pull.Events[0].Attributes[tt.attr]; !strings.Contains(got, tt.contains) {
 				t.Fatalf("%s = %q, want to contain %q", tt.attr, got, tt.contains)
 			}
+			if tt.family == "worker_script" {
+				if got := pull.Events[0].Attributes["resource_name"]; got != "worker-1" {
+					t.Fatalf("resource_name = %q, want worker-1", got)
+				}
+			}
 		})
 	}
 }
