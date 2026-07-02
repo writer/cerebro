@@ -67,6 +67,68 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	}
 }
 
+func TestReadUsageCompletionMapsNestedResults(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/organization/usage/completions" {
+			t.Errorf("request path = %q, want /organization/usage/completions", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":           "usage_completion_2026_06_01",
+				"object":       "organization.usage.bucket",
+				"start_time":   1780272000,
+				"end_time":     1780358400,
+				"bucket_width": "1d",
+				"project_id":   "proj_prod_01",
+				"user_id":      "user_admin_01",
+				"api_key_id":   "key_live_01",
+				"model":        "gpt-4o-mini",
+				"results": []map[string]any{{
+					"input_tokens":       1200,
+					"output_tokens":      300,
+					"num_model_requests": 10,
+				}, {
+					"input_tokens":       340,
+					"output_tokens":      40,
+					"num_model_requests": 8,
+				}},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"api_key":   "admin-key",
+		"base_url":  server.URL,
+		"family":    "usage_completion",
+		"tenant_id": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"result_count":       "2",
+		"input_tokens":       "1540",
+		"output_tokens":      "340",
+		"num_model_requests": "18",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+}
+
 func TestReadEmitsRequiredInventoryKindIdentifiers(t *testing.T) {
 	cases := []struct {
 		family      string

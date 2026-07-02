@@ -61,6 +61,15 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["resource_id"]; got != "amazon.titan-text-express-v1" {
 		t.Fatalf("resource_id = %q, want amazon.titan-text-express-v1", got)
 	}
+	for attr, want := range map[string]string{
+		"source_event_id": "amazon.titan-text-express-v1",
+		"resource_urn":    "urn:cerebro:tenant:aws_bedrock_foundation_models:amazon.titan-text-express-v1",
+		"resource_type":   "foundation_model",
+	} {
+		if got := event.Attributes[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {

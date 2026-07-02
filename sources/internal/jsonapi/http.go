@@ -1296,6 +1296,29 @@ func valueAtParts(current any, parts []string) (any, bool) {
 		return current, true
 	}
 	if list, ok := current.([]any); ok {
+		if len(parts) == 1 && parts[0] == "__count" {
+			return len(list), true
+		}
+		if len(parts) > 1 && parts[len(parts)-1] == "__sum" {
+			var total float64
+			found := false
+			for _, item := range list {
+				value, ok := valueAtParts(item, parts[:len(parts)-1])
+				if !ok {
+					continue
+				}
+				number, err := strconv.ParseFloat(valueString(value), 64)
+				if err != nil {
+					continue
+				}
+				total += number
+				found = true
+			}
+			if !found {
+				return nil, false
+			}
+			return strconv.FormatFloat(total, 'f', -1, 64), true
+		}
 		if index, err := strconv.Atoi(parts[0]); err == nil {
 			if index < 0 || index >= len(list) {
 				return nil, false
