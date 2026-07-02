@@ -493,6 +493,8 @@ entries:
           name_field: service
           pagination: *fivetran_cursor_pagination
           path: /v1/destinations
+          static_headers: &fivetran_v2_headers
+            Accept: application/json;version=2
           projection: &fivetran_asset_projection
             fields:
               destination_id: id|group_id
@@ -529,6 +531,7 @@ entries:
           name_field: service
           pagination: *fivetran_cursor_pagination
           path: /v1/connections
+          static_headers: *fivetran_v2_headers
           projection: *fivetran_asset_projection
           record_selector: $.data.items[*]
         - coverage:

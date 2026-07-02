@@ -620,6 +620,57 @@ func TestSourceDefinitionUsesFamilyConfigQuery(t *testing.T) {
 	}
 }
 
+func TestSourceDefinitionUsesFamilyStaticHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept"); got != "application/json;version=2" {
+			t.Fatalf("Accept = %q, want Fivetran v2 header", got)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "dest-1", "service": "snowflake"}})
+	}))
+	defer server.Close()
+
+	source, err := NewDefinition(connectordefinitions.Definition{
+		ID:          "tenant-fivetran",
+		TenantID:    "tenant",
+		SourceID:    "fivetran",
+		DisplayName: "Fivetran",
+		Auth:        connectordefinitions.AuthSpec{Model: "basic"},
+		Transport: &connectordefinitions.TransportSpec{
+			BaseURL: server.URL,
+			Headers: map[string]string{
+				"Accept": "application/json",
+			},
+		},
+		ResourceFamilies: []connectordefinitions.ResourceFamily{{
+			ID:             "destinations",
+			Path:           "/v1/destinations",
+			RecordSelector: "$[*]",
+			IDField:        "id",
+			StaticHeaders: map[string]string{
+				"Accept": "application/json;version=2",
+			},
+			Event:      connectordefinitions.EventMappingSpec{Kind: "fivetran.destinations", SchemaRef: "fivetran/destinations/v1"},
+			Projection: &connectordefinitions.ProjectionSpec{Template: "asset"},
+			Coverage:   []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "supported"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDefinition() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"username":  "key",
+		"password":  "secret",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "fivetran.destinations" {
+		t.Fatalf("events = %#v, want fivetran.destinations event", pull.Events)
+	}
+}
+
 func TestSourceDefinitionUsesFamilyIdentityKeys(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/sessions" {

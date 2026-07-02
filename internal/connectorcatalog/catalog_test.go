@@ -533,6 +533,22 @@ func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {
 	}
 }
 
+func TestBuiltinFivetranV2FamiliesCarryAcceptHeader(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	for _, familyID := range []string{"destinations", "connections"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.StaticHeaders["Accept"] != "application/json;version=2" {
+			t.Fatalf("%s static_headers = %#v, want Fivetran v2 Accept header", familyID, family.StaticHeaders)
+		}
+	}
+}
+
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {

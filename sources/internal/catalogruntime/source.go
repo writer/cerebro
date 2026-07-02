@@ -233,9 +233,10 @@ func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
 
 func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyConfig {
 	out := jsonapi.FamilyConfig{
-		StaticQuery: cloneStringMap(resource.StaticQuery),
-		ConfigQuery: cloneStringMap(resource.ConfigQuery),
-		Method:      strings.ToUpper(strings.TrimSpace(resource.Method)),
+		StaticQuery:   cloneStringMap(resource.StaticQuery),
+		StaticHeaders: cloneStringMap(resource.StaticHeaders),
+		ConfigQuery:   cloneStringMap(resource.ConfigQuery),
+		Method:        strings.ToUpper(strings.TrimSpace(resource.Method)),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
