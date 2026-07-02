@@ -206,11 +206,13 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/orgs/org-1/audit_logs/search",
 			record: map[string]any{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "project"}},
 			wantAttrs: map[string]string{
-				"org_id":        "org-1",
-				"event_type":    "org.project.create",
-				"actor_id":      "user-1",
-				"actor_email":   "alice@example.test",
-				"resource_type": "project",
+				"org_id":          "org-1",
+				"event_type":      "org.project.create",
+				"external_id":     "2026-06-01T00:00:00Z-org.project.create",
+				"source_event_id": "2026-06-01T00:00:00Z-org.project.create",
+				"actor_id":        "user-1",
+				"actor_email":     "alice@example.test",
+				"resource_type":   "project",
 			},
 			pageParam: "size",
 			wrapItems: true,
@@ -300,10 +302,12 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			path:   "/groups/group-1/audit_logs/search",
 			record: map[string]any{"created": "2026-06-01T00:00:00Z", "event": "group.member.add", "group_id": "group-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "membership"}},
 			wantAttrs: map[string]string{
-				"group_id":      "group-1",
-				"event_type":    "group.member.add",
-				"actor_id":      "user-1",
-				"resource_type": "membership",
+				"group_id":        "group-1",
+				"event_type":      "group.member.add",
+				"external_id":     "2026-06-01T00:00:00Z-group.member.add",
+				"source_event_id": "2026-06-01T00:00:00Z-group.member.add",
+				"actor_id":        "user-1",
+				"resource_type":   "membership",
 			},
 			config:    map[string]string{"group_ids": "group-1"},
 			pageParam: "size",
@@ -397,6 +401,58 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Token test-token" {
+			t.Fatalf("Authorization = %q, want Token test-token", got)
+		}
+		if got := r.URL.EscapedPath(); got != "/orgs/org-1/audit_logs/search" {
+			t.Fatalf("path = %q, want audit log search", got)
+		}
+		assertSnykQuery(t, r.URL.Query(), defaultAPIVersion, "size", "100", nil)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": []map[string]any{
+			{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "project"}},
+			{"created": "2026-06-01T00:00:00Z", "event": "org.project.delete", "org_id": "org-1", "project_id": "project-2", "content": map[string]any{"user_id": "user-2", "email": "bob@example.test", "type": "project"}},
+		}}})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    familyAuditLogs,
+		"org_id":    "org-1",
+		"tenant_id": "tenant",
+		"token":     "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want 2 distinct same-timestamp audit logs", len(pull.Events))
+	}
+	for idx, want := range []string{
+		"2026-06-01T00:00:00Z-org.project.create",
+		"2026-06-01T00:00:00Z-org.project.delete",
+	} {
+		attrs := pull.Events[idx].Attributes
+		if got := attrs["external_id"]; got != want {
+			t.Fatalf("event %d external_id = %q, want %q", idx, got, want)
+		}
+		if got := attrs["source_event_id"]; got != want {
+			t.Fatalf("event %d source_event_id = %q, want %q", idx, got, want)
+		}
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("same-timestamp audit logs collapsed to duplicate event id %q", pull.Events[0].Id)
 	}
 }
 

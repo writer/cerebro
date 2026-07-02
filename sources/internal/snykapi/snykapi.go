@@ -331,7 +331,7 @@ func snykAuditLogsFamily() jsonapi.Family {
 			"org_id":          "org_id|" + orgIDConfig,
 			"group_id":        "group_id",
 			"project_id":      "project_id",
-			"source_event_id": "created|event",
+			"source_event_id": "_record_id",
 			"event_type":      "event",
 			"actor_id":        "content.user_id|content.user.id|content.actor.id",
 			"actor_email":     "content.email|content.user.email|content.actor.email",
@@ -343,6 +343,8 @@ func snykAuditLogsFamily() jsonapi.Family {
 	})
 	family.CursorParam = "cursor"
 	family.PageSizeParams = []string{"size"}
+	family.Config.IDTemplate = "${created}-${event}"
+	family.Config.IdentityKeys = []string{"event", "content.user_id", "content.email", "project_id", "org_id", "group_id"}
 	return family
 }
 
@@ -522,7 +524,7 @@ func snykGroupAuditLogsFamily() jsonapi.Family {
 			"group_id":        "group_id|" + groupIDConfig,
 			"org_id":          "org_id",
 			"project_id":      "project_id",
-			"source_event_id": "created|event",
+			"source_event_id": "_record_id",
 			"event_type":      "event",
 			"actor_id":        "content.user_id|content.user.id|content.actor.id",
 			"actor_email":     "content.email|content.user.email|content.actor.email",
@@ -534,6 +536,8 @@ func snykGroupAuditLogsFamily() jsonapi.Family {
 	})
 	family.CursorParam = "cursor"
 	family.PageSizeParams = []string{"size"}
+	family.Config.IDTemplate = "${created}-${event}"
+	family.Config.IdentityKeys = []string{"event", "content.user_id", "content.email", "project_id", "org_id", "group_id"}
 	return family
 }
 
