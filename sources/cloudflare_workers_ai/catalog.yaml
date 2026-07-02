@@ -36,7 +36,9 @@ coverage_contract:
       type: entity_family
       title: "Model Catalog"
       families: [model_catalog]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
@@ -49,7 +51,9 @@ coverage_contract:
       type: deployment_state
       title: "Ai Gateways"
       families: [ai_gateways]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [change_management]
       control_domains: [secure_delivery]
@@ -62,7 +66,9 @@ coverage_contract:
       type: entity_family
       title: "Gateway Provider Configs"
       families: [gateway_provider_configs]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [identity_configuration]
       control_domains: [identity_access, data_protection]
@@ -75,7 +81,9 @@ coverage_contract:
       type: lifecycle_state
       title: "Gateway Evaluations"
       families: [gateway_evaluations]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
@@ -88,7 +96,9 @@ coverage_contract:
       type: audit_event
       title: "Gateway Logs"
       families: [gateway_logs]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
@@ -101,7 +111,9 @@ coverage_contract:
       type: entity_family
       title: "Vectorize Indexes"
       families: [vectorize_indexes]
-      support: supported
+      support: partial
+      notes:
+        - Provider field mapping review is required before certification.
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
