@@ -238,6 +238,52 @@ func TestReadGatewayEvaluationsUsesCanonicalResourceType(t *testing.T) {
 	}
 }
 
+func TestReadGatewayLogsDefaultsResourceType(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/test-account/ai-gateway/gateways/gateway-1/logs" {
+			t.Errorf("path = %q, want /accounts/test-account/ai-gateway/gateways/gateway-1/logs", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":            "gateway-log-1",
+				"event_type":    "ai_gateway.request",
+				"actor_id":      "access-user-1",
+				"resource_id":   "gateway-1",
+				"resource_name": "production-gateway",
+				"created_at":    "2026-06-01T00:00:00Z",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "test-account",
+		"base_url":   server.URL,
+		"family":     familyGatewayLogs,
+		"gateway_id": "gateway-1",
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["resource_type"]; got != "ai_gateway" {
+		t.Fatalf("resource_type = %q, want static gateway resource type", got)
+	}
+}
+
 func TestReadVectorizeIndexesDerivesRequiredAttributes(t *testing.T) {
 	source, err := New()
 	if err != nil {
