@@ -145,6 +145,8 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	if read == nil {
 		read = &connectordefinitions.ResourceReadSpec{}
 	}
+	config := familyConfig(resource)
+	config.Method = method
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -161,7 +163,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		TimestampKeys:         timestampKeys(resource),
 		Attributes:            attributePaths(resource, class),
 		StaticAttributes:      staticAttributes(sourceID, name, class),
-		Config:                familyConfig(resource),
+		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
 		ListKeys:              listKeys(resource),
