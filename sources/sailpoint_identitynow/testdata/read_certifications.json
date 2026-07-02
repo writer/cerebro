@@ -1,0 +1,51 @@
+[
+  {
+    "id": "sailpoint-certifications-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.certifications",
+    "schema_ref": "sailpoint_identitynow/certifications/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c9180835d2e5168015d32f890ca1581",
+      "name": "Finance approver certification",
+      "completed": false,
+      "created": "2026-06-01T14:05:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "due": "2026-07-15T00:00:00Z",
+      "signed": false,
+      "phase": "ACTIVE",
+      "campaign": {
+        "id": "2c9079b270a266a60170a2779fcb0007",
+        "name": "Q2 privileged access review"
+      },
+      "reviewer": {
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      }
+    },
+    "attributes": {
+      "family": "certifications",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "certifications",
+      "record_class": "certification",
+      "tenant_id": "tenant",
+      "certification_id": "2c9180835d2e5168015d32f890ca1581",
+      "certification_name": "Finance approver certification",
+      "campaign_id": "2c9079b270a266a60170a2779fcb0007",
+      "campaign_name": "Q2 privileged access review",
+      "reviewer_id": "2c91808568c529c60168cca6f90c1002",
+      "reviewer_name": "Riley Chen",
+      "completed": "false",
+      "signed": "false",
+      "phase": "ACTIVE",
+      "policy_type": "certification",
+      "policy_status": "ACTIVE",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c9180835d2e5168015d32f890ca1581",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_certifications:2c9180835d2e5168015d32f890ca1581"
+    }
+  }
+]

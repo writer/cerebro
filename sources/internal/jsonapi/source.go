@@ -55,6 +55,7 @@ type FamilyConfig struct {
 	ConfigAttributes    map[string]string
 	StaticHeaders       map[string]string
 	RedactPayloadKeys   []string
+	IDTemplate          string
 	EncodeURNID         bool
 	IdentityKeys        []string
 	IdentityResourceID  bool
@@ -68,6 +69,7 @@ type FamilyConfig struct {
 	LastItemCursorKeys  []string
 	Method              string
 	AuthModel           string
+	DefaultPageSize     int
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

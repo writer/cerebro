@@ -1,0 +1,33 @@
+[
+  {
+    "id": "sailpoint-source-schedules-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.source_schedules",
+    "schema_ref": "sailpoint_identitynow/source_schedules/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "ACCOUNT_AGGREGATION",
+      "type": "ACCOUNT_AGGREGATION",
+      "cronExpression": "0 0 2 * * ?",
+      "name": "Account aggregation schedule"
+    },
+    "attributes": {
+      "family": "source_schedules",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "source_schedules",
+      "record_class": "policy",
+      "tenant_id": "tenant",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "schedule_id": "ACCOUNT_AGGREGATION",
+      "schedule_type": "ACCOUNT_AGGREGATION",
+      "cron_expression": "0 0 2 * * ?",
+      "policy_id": "ACCOUNT_AGGREGATION",
+      "policy_type": "source_schedule",
+      "external_id": "ACCOUNT_AGGREGATION",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_source_schedules:ACCOUNT_AGGREGATION"
+    }
+  }
+]

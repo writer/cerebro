@@ -1,0 +1,44 @@
+[
+  {
+    "id": "sailpoint-workgroups-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.workgroups",
+    "schema_ref": "sailpoint_identitynow/workgroups/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c91808568c529c60168cca6f90c1313",
+      "name": "Access Review Board",
+      "description": "Reviewers for privileged access",
+      "memberCount": 7,
+      "connectionCount": 3,
+      "created": "2026-04-22T09:00:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "owner": {
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen",
+        "displayName": "Riley Chen",
+        "emailAddress": "riley.chen@example.com"
+      }
+    },
+    "attributes": {
+      "family": "workgroups",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "workgroups",
+      "record_class": "governance_group",
+      "tenant_id": "tenant",
+      "group_id": "2c91808568c529c60168cca6f90c1313",
+      "group_name": "Access Review Board",
+      "description": "Reviewers for privileged access",
+      "member_count": "7",
+      "connection_count": "3",
+      "owner_id": "2c91808568c529c60168cca6f90c1002",
+      "owner_email": "riley.chen@example.com",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c91808568c529c60168cca6f90c1313",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_workgroups:2c91808568c529c60168cca6f90c1313"
+    }
+  }
+]

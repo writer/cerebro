@@ -1,0 +1,41 @@
+[
+  {
+    "id": "sailpoint-source-provisioning-policies-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.source_provisioning_policies",
+    "schema_ref": "sailpoint_identitynow/source_provisioning_policies/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "CREATE",
+      "name": "Create account policy",
+      "description": "Provision directory accounts after onboarding approval",
+      "usageType": "CREATE",
+      "fields": [
+        {
+          "name": "sAMAccountName"
+        },
+        {
+          "name": "mail"
+        }
+      ]
+    },
+    "attributes": {
+      "family": "source_provisioning_policies",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "source_provisioning_policies",
+      "record_class": "policy",
+      "tenant_id": "tenant",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "policy_id": "CREATE",
+      "policy_name": "Create account policy",
+      "policy_type": "provisioning_policy",
+      "usage_type": "CREATE",
+      "field_names": "sAMAccountName,mail",
+      "external_id": "CREATE",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_source_provisioning_policies:CREATE"
+    }
+  }
+]

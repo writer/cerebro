@@ -1,0 +1,51 @@
+[
+  {
+    "id": "sailpoint-personal-access-tokens-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.personal_access_tokens",
+    "schema_ref": "sailpoint_identitynow/personal_access_tokens/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "pat-fixture-1",
+      "name": "Data ingestion automation",
+      "scope": [
+        "sp:scopes:all"
+      ],
+      "created": "2026-06-01T08:00:00Z",
+      "lastUsed": "2026-06-15T16:20:00Z",
+      "managed": false,
+      "accessTokenValiditySeconds": 43200,
+      "expirationDate": "2026-12-01T00:00:00Z",
+      "userAwareTokenNeverExpires": false,
+      "owner": {
+        "type": "IDENTITY",
+        "id": "2c91808568c529c60168cca6f90c1002",
+        "name": "Riley Chen"
+      }
+    },
+    "attributes": {
+      "family": "personal_access_tokens",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "personal_access_tokens",
+      "record_class": "credential",
+      "tenant_id": "tenant",
+      "credential_id": "pat-fixture-1",
+      "credential_type": "personal_access_token",
+      "credential_name": "Data ingestion automation",
+      "subject_id": "2c91808568c529c60168cca6f90c1002",
+      "subject_name": "Riley Chen",
+      "subject_type": "user",
+      "scope": "sp:scopes:all",
+      "last_used_at": "2026-06-15T16:20:00Z",
+      "expires_at": "2026-12-01T00:00:00Z",
+      "managed": "false",
+      "created_at": "2026-06-01T08:00:00Z",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "pat-fixture-1",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_personal_access_tokens:pat-fixture-1"
+    }
+  }
+]

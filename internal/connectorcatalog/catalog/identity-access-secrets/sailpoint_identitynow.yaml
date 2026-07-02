@@ -3,115 +3,201 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: client_id
+            label: OAuth client ID
+            reference_only: true
+            required: true
+          - key: client_secret
+            label: OAuth client secret
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
-        requires_references: true
+        model: oauth_client_credentials
+        scopes:
+          - sp:scopes:all
+        token_url: https://${config.tenant}.api.identitynow.com/oauth/token
       categories:
-        - saas
-        - identity_access_secrets
+        - identity
+        - access
+        - identity_governance
       config_fields:
-        - help: Tenant or regional API base URL.
-          key: base_url
-          label: API base URL
+        - help: SailPoint tenant subdomain, for example acme in acme.api.identitynow.com.
+          key: tenant
+          label: Tenant
           required: true
-      description: Collects users, groups, roles, applications, and audit events from Sailpoint Identitynow and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context.
-      display_name: Sailpoint Identitynow
+      description: Collects SailPoint Identity Security Cloud identities, accounts, sources, access profiles, roles, entitlements, identity profiles, workgroups, certifications, access request status, account activity, and personal access tokens from the v2025 REST API.
+      display_name: SailPoint Identity Security Cloud
       id: builtin-sailpoint_identitynow
       ingest:
         mode: pull
       resource_families:
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - users
+                - identity_inventory
+                - user_lifecycle
               high_value: true
-              id: users
-              support: partial
-              title: Users
+              id: identities
+              support: supported
+              title: Identities
               type: entity_family
           default_enabled: true
           event:
-            kind: sailpoint_identitynow.users
+            kind: sailpoint_identitynow.identities
             required_payload_fields:
               - id
-            schema_ref: sailpoint_identitynow/users/v1
-            urn_kind: sailpoint_identitynow_users
-          id: users
+            schema_ref: sailpoint_identitynow/identities/v1
+            urn_kind: sailpoint_identitynow_identities
+          id: identities
           id_field: id
-          label: Users
+          label: Identities
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /identities
           projection:
             fields:
-              display_name: name
-              email: email
-              status: status
+              display_name: name|attributes.displayName
+              email: emailAddress|attributes.email|email
+              status: identityStatus|processingState|attributes.cloudStatus
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - groups
+                - account_inventory
+                - account_lifecycle
               high_value: true
-              id: groups
-              support: partial
-              title: Groups
+              id: accounts
+              support: supported
+              title: Accounts
               type: entity_family
           default_enabled: true
           event:
-            kind: sailpoint_identitynow.groups
+            kind: sailpoint_identitynow.accounts
             required_payload_fields:
               - id
-            schema_ref: sailpoint_identitynow/groups/v1
-            urn_kind: sailpoint_identitynow_groups
-          id: groups
+            schema_ref: sailpoint_identitynow/accounts/v1
+            urn_kind: sailpoint_identitynow_accounts
+          id: accounts
           id_field: id
-          label: Groups
+          label: Accounts
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /accounts
           projection:
             fields:
-              group_id: id
-              group_name: name
-            template: identity_group
-          record_selector: $.data[*]
+              resource_id: id
+              resource_name: name|nativeIdentity
+              resource_type: account
+            template: asset
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - access_review
+                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
-                - roles
+                - source_inventory
+              high_value: true
+              id: sources
+              support: supported
+              title: Sources
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.sources
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/sources/v1
+            urn_kind: sailpoint_identitynow_sources
+          id: sources
+          id_field: id
+          label: Sources
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /sources
+          projection:
+            fields:
+              resource_id: id
+              resource_name: name
+              resource_type: source
+            template: asset
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - access_profile
+                - entitlement_bundle
+              high_value: true
+              id: access_profiles
+              support: supported
+              title: Access profiles
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.access_profiles
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/access_profiles/v1
+            urn_kind: sailpoint_identitynow_access_profiles
+          id: access_profiles
+          id_field: id
+          label: Access profiles
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /access-profiles
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: enabled|requestable
+              policy_type: access_profile
+            template: policy
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - role
+                - role_entitlement
               high_value: true
               id: roles
-              support: partial
+              support: supported
               title: Roles
-              type: entity_family
+              type: app_entitlement
           default_enabled: true
           event:
             kind: sailpoint_identitynow.roles
@@ -125,108 +211,310 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/roles
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /roles
           projection:
             fields:
               policy_id: id
               policy_name: name
-              policy_status: status
+              policy_status: enabled|requestable
               policy_type: role
             template: policy
-          record_selector: $.data[*]
+          record_selector: $[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
-                - source_snapshot
+                - identity_configuration
               families:
-                - applications
+                - entitlement
+                - source_entitlement
               high_value: true
-              id: applications
-              support: partial
-              title: Applications
-              type: entity_family
+              id: entitlements
+              support: supported
+              title: Entitlements
+              type: app_entitlement
           default_enabled: true
           event:
-            kind: sailpoint_identitynow.applications
+            kind: sailpoint_identitynow.entitlements
             required_payload_fields:
               - id
-            schema_ref: sailpoint_identitynow/applications/v1
-            urn_kind: sailpoint_identitynow_applications
-          id: applications
+            schema_ref: sailpoint_identitynow/entitlements/v1
+            urn_kind: sailpoint_identitynow_entitlements
+          id: entitlements
           id_field: id
-          label: Applications
+          label: Entitlements
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/applications
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /entitlements
           projection:
             fields:
-              id: id
-              name: name
-              resource_id: id
-              resource_name: name
-              resource_type: application
-            template: asset
-          record_selector: $.data[*]
+              policy_id: id
+              policy_name: name|value
+              policy_status: privileged|requestable
+              policy_type: attribute
+            template: policy
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - identity_configuration
+              families:
+                - identity_profile
+                - lifecycle_state
+              high_value: true
+              id: identity_profiles
+              support: supported
+              title: Identity profiles
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.identity_profiles
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/identity_profiles/v1
+            urn_kind: sailpoint_identitynow_identity_profiles
+          id: identity_profiles
+          id_field: id
+          label: Identity profiles
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /identity-profiles
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_type: identity_profile
+            template: policy
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+              families:
+                - workgroup
+                - reviewer_group
+              high_value: true
+              id: workgroups
+              support: supported
+              title: Workgroups
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.workgroups
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/workgroups/v1
+            urn_kind: sailpoint_identitynow_workgroups
+          id: workgroups
+          id_field: id
+          label: Workgroups
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /workgroups
+          projection:
+            fields:
+              description: description
+              group_id: id
+              group_name: name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+              families:
+                - certification
+                - access_review_campaign
+              high_value: true
+              id: certifications
+              support: supported
+              title: Certifications
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.certifications
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/certifications/v1
+            urn_kind: sailpoint_identitynow_certifications
+          id: certifications
+          id_field: id
+          label: Certifications
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /certifications
+          projection:
+            fields:
+              policy_id: id
+              policy_name: name
+              policy_status: phase|status
+              policy_type: certification
+            template: policy
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+              families:
+                - access_request
+                - request_status
+              high_value: true
+              id: access_request_status
+              support: supported
+              title: Access request status
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.access_request_status
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/access_request_status/v1
+            urn_kind: sailpoint_identitynow_access_request_status
+          id: access_request_status
+          id_field: id
+          label: Access request status
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /access-request-status
+          projection:
+            fields:
+              actor_id: requester.id|requesterId
+              actor_name: requester.name|requesterName
+              event_type: executionStatus|state|type
+              resource_id: requestedFor.id|requestedForId|id
+              resource_name: requestedFor.name|requestedForName|name
+              resource_type: user
+            template: audit_event
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
               evidence_types:
                 - logging_configuration
               families:
-                - audit_events
+                - account_activity
+                - provisioning_activity
               high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
+              id: account_activities
+              support: supported
+              title: Account activities
               type: audit_event
           default_enabled: true
           event:
-            kind: sailpoint_identitynow.audit_events
+            kind: sailpoint_identitynow.account_activities
             required_payload_fields:
               - id
-            schema_ref: sailpoint_identitynow/audit_events/v1
-            urn_kind: sailpoint_identitynow_audit_events
-          id: audit_events
+            schema_ref: sailpoint_identitynow/account_activities/v1
+            urn_kind: sailpoint_identitynow_account_activities
+          id: account_activities
           id_field: id
-          label: Audit events
+          label: Account activities
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /account-activities
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_id: requesterIdentitySummary.id
+              actor_name: requesterIdentitySummary.name
+              event_type: type
+              resource_id: targetIdentitySummary.id
+              resource_name: targetIdentitySummary.name
+              resource_type: user
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - authorization
+              evidence_types:
+                - identity_configuration
+              families:
+                - api_credentials
+                - personal_access_token
+              high_value: true
+              id: personal_access_tokens
+              support: supported
+              title: Personal access tokens
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: sailpoint_identitynow.personal_access_tokens
+            required_payload_fields:
+              - id
+            schema_ref: sailpoint_identitynow/personal_access_tokens/v1
+            urn_kind: sailpoint_identitynow_personal_access_tokens
+          id: personal_access_tokens
+          id_field: id
+          label: Personal access tokens
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 50
+            type: offset
+          path: /personal-access-tokens
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+            template: secret
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: sailpoint_identitynow
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://${config.tenant}.api.identitynow.com/v2025
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /identities

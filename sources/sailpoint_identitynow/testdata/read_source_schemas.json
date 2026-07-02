@@ -1,0 +1,49 @@
+[
+  {
+    "id": "sailpoint-source-schemas-event-1",
+    "tenant_id": "tenant",
+    "source_id": "sailpoint_identitynow",
+    "kind": "sailpoint_identitynow.source_schemas",
+    "schema_ref": "sailpoint_identitynow/source_schemas/v1",
+    "occurred_at": "2026-06-15T16:20:00Z",
+    "payload": {
+      "id": "2c9180835d191a86015d28455b4a2329",
+      "name": "account",
+      "nativeObjectType": "user",
+      "identityAttribute": "sAMAccountName",
+      "displayAttribute": "displayName",
+      "includePermissions": true,
+      "created": "2026-04-25T11:05:00Z",
+      "modified": "2026-06-15T16:20:00Z",
+      "attributes": [
+        {
+          "name": "memberOf",
+          "type": "STRING",
+          "isMultiValued": true,
+          "isEntitlement": true,
+          "isGroup": true
+        }
+      ]
+    },
+    "attributes": {
+      "family": "source_schemas",
+      "provider": "sailpoint_identitynow",
+      "source_provider": "sailpoint_identitynow",
+      "source_system": "sailpoint_identitynow",
+      "schema": "source_schemas",
+      "record_class": "source_schema",
+      "tenant_id": "tenant",
+      "source_id": "2c91808568c529c60168cca6f90c1324",
+      "schema_id": "2c9180835d191a86015d28455b4a2329",
+      "schema_name": "account",
+      "native_object_type": "user",
+      "identity_attribute": "sAMAccountName",
+      "display_attribute": "displayName",
+      "include_permissions": "true",
+      "attribute_names": "memberOf",
+      "observed_at": "2026-06-15T16:20:00Z",
+      "external_id": "2c9180835d191a86015d28455b4a2329",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_source_schemas:2c9180835d191a86015d28455b4a2329"
+    }
+  }
+]

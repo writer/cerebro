@@ -1,131 +1,413 @@
 id: sailpoint_identitynow
-name: "Sailpoint Identitynow"
-description: "Collects users, groups, roles, applications, and audit events from Sailpoint Identitynow and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context."
+name: SailPoint Identity Security Cloud
+description: Collects SailPoint Identity Security Cloud identities, accounts, sources, access profiles, roles, entitlements, certification reviews, access requests, account activity, workgroups, tokens, and segments from the provider v2025 REST API and projects identity governance state into the Cerebro graph.
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_client_credentials
+  base_url: https://{tenant}.api.identitynow.com/v2025
+  references:
+    - https://developer.sailpoint.com/docs/api/
+    - https://developer.sailpoint.com/docs/api/authentication/
+    - https://developer.sailpoint.com/docs/api/standard-collection-parameters/
+    - https://raw.githubusercontent.com/sailpoint-oss/api-specs/refs/heads/main/dereferenced/deref-sailpoint-api.v2025.yaml
+  pagination:
+    type: offset
+    limit_param: limit
+    offset_param: offset
+    total_header: X-Total-Count
+  families:
+    - id: identities
+      method: GET
+      path: /identities
+    - id: accounts
+      method: GET
+      path: /accounts
+    - id: account_entitlements
+      method: GET
+      path: /accounts/{id}/entitlements
+      requires_config: [account_ids]
+    - id: sources
+      method: GET
+      path: /sources
+    - id: source_schemas
+      method: GET
+      path: /sources/{sourceId}/schemas
+      requires_config: [source_ids]
+    - id: source_health
+      method: GET
+      path: /sources/{sourceId}/source-health
+      requires_config: [source_ids]
+    - id: source_provisioning_policies
+      method: GET
+      path: /sources/{sourceId}/provisioning-policies
+      requires_config: [source_ids]
+    - id: source_schedules
+      method: GET
+      path: /sources/{sourceId}/schedules
+      requires_config: [source_ids]
+    - id: access_profiles
+      method: GET
+      path: /access-profiles
+    - id: access_profile_entitlements
+      method: GET
+      path: /access-profiles/{id}/entitlements
+      requires_config: [access_profile_ids]
+    - id: roles
+      method: GET
+      path: /roles
+    - id: role_assigned_identities
+      method: GET
+      path: /roles/{id}/assigned-identities
+      requires_config: [role_ids]
+    - id: role_entitlements
+      method: GET
+      path: /roles/{id}/entitlements
+      requires_config: [role_ids]
+    - id: role_dimensions
+      method: GET
+      path: /roles/{roleId}/dimensions
+      requires_config: [role_ids]
+    - id: entitlements
+      method: GET
+      path: /entitlements
+    - id: identity_entitlements
+      method: GET
+      path: /entitlements/identities/{id}/entitlements
+      requires_config: [identity_ids]
+    - id: identity_role_assignments
+      method: GET
+      path: /identities/{identityId}/role-assignments
+      requires_config: [identity_ids]
+    - id: identity_profiles
+      method: GET
+      path: /identity-profiles
+    - id: lifecycle_states
+      method: GET
+      path: /identity-profiles/{identity-profile-id}/lifecycle-states
+      requires_config: [identity_profile_ids]
+    - id: workgroups
+      method: GET
+      path: /workgroups
+    - id: workgroup_members
+      method: GET
+      path: /workgroups/{workgroupId}/members
+      requires_config: [workgroup_ids]
+    - id: campaigns
+      method: GET
+      path: /campaigns
+    - id: certifications
+      method: GET
+      path: /certifications
+    - id: certification_access_review_items
+      method: GET
+      path: /certifications/{id}/access-review-items
+      requires_config: [certification_ids]
+    - id: access_request_status
+      method: GET
+      path: /access-request-status
+    - id: account_activities
+      method: GET
+      path: /account-activities
+    - id: personal_access_tokens
+      method: GET
+      path: /personal-access-tokens
+    - id: segments
+      method: GET
+      path: /segments
 emitted_kinds:
-  - sailpoint_identitynow.users
-  - sailpoint_identitynow.groups
+  - sailpoint_identitynow.identities
+  - sailpoint_identitynow.accounts
+  - sailpoint_identitynow.account_entitlements
+  - sailpoint_identitynow.sources
+  - sailpoint_identitynow.source_schemas
+  - sailpoint_identitynow.source_health
+  - sailpoint_identitynow.source_provisioning_policies
+  - sailpoint_identitynow.source_schedules
+  - sailpoint_identitynow.access_profiles
+  - sailpoint_identitynow.access_profile_entitlements
   - sailpoint_identitynow.roles
-  - sailpoint_identitynow.applications
-  - sailpoint_identitynow.audit_events
+  - sailpoint_identitynow.role_assigned_identities
+  - sailpoint_identitynow.role_entitlements
+  - sailpoint_identitynow.role_dimensions
+  - sailpoint_identitynow.entitlements
+  - sailpoint_identitynow.identity_entitlements
+  - sailpoint_identitynow.identity_role_assignments
+  - sailpoint_identitynow.identity_profiles
+  - sailpoint_identitynow.lifecycle_states
+  - sailpoint_identitynow.workgroups
+  - sailpoint_identitynow.workgroup_members
+  - sailpoint_identitynow.campaigns
+  - sailpoint_identitynow.certifications
+  - sailpoint_identitynow.certification_access_review_items
+  - sailpoint_identitynow.access_request_status
+  - sailpoint_identitynow.account_activities
+  - sailpoint_identitynow.personal_access_tokens
+  - sailpoint_identitynow.segments
 runtime_families:
-  - applications
-  - audit_events
-  - groups
+  - identities
+  - accounts
+  - account_entitlements
+  - sources
+  - source_schemas
+  - source_health
+  - source_provisioning_policies
+  - source_schedules
+  - access_profiles
+  - access_profile_entitlements
   - roles
-  - users
+  - role_assigned_identities
+  - role_entitlements
+  - role_dimensions
+  - entitlements
+  - identity_entitlements
+  - identity_role_assignments
+  - identity_profiles
+  - lifecycle_states
+  - workgroups
+  - workgroup_members
+  - campaigns
+  - certifications
+  - certification_access_review_items
+  - access_request_status
+  - account_activities
+  - personal_access_tokens
+  - segments
 kind_lifecycle:
-  - kind: sailpoint_identitynow.users
+  - kind: sailpoint_identitynow.identities
     status: active
-  - kind: sailpoint_identitynow.groups
+  - kind: sailpoint_identitynow.accounts
+    status: active
+  - kind: sailpoint_identitynow.account_entitlements
+    status: active
+  - kind: sailpoint_identitynow.sources
+    status: active
+  - kind: sailpoint_identitynow.source_schemas
+    status: active
+  - kind: sailpoint_identitynow.source_health
+    status: active
+  - kind: sailpoint_identitynow.source_provisioning_policies
+    status: active
+  - kind: sailpoint_identitynow.source_schedules
+    status: active
+  - kind: sailpoint_identitynow.access_profiles
+    status: active
+  - kind: sailpoint_identitynow.access_profile_entitlements
     status: active
   - kind: sailpoint_identitynow.roles
     status: active
-  - kind: sailpoint_identitynow.applications
+  - kind: sailpoint_identitynow.role_assigned_identities
     status: active
-  - kind: sailpoint_identitynow.audit_events
+  - kind: sailpoint_identitynow.role_entitlements
+    status: active
+  - kind: sailpoint_identitynow.role_dimensions
+    status: active
+  - kind: sailpoint_identitynow.entitlements
+    status: active
+  - kind: sailpoint_identitynow.identity_entitlements
+    status: active
+  - kind: sailpoint_identitynow.identity_role_assignments
+    status: active
+  - kind: sailpoint_identitynow.identity_profiles
+    status: active
+  - kind: sailpoint_identitynow.lifecycle_states
+    status: active
+  - kind: sailpoint_identitynow.workgroups
+    status: active
+  - kind: sailpoint_identitynow.workgroup_members
+    status: active
+  - kind: sailpoint_identitynow.campaigns
+    status: active
+  - kind: sailpoint_identitynow.certifications
+    status: active
+  - kind: sailpoint_identitynow.certification_access_review_items
+    status: active
+  - kind: sailpoint_identitynow.access_request_status
+    status: active
+  - kind: sailpoint_identitynow.account_activities
+    status: active
+  - kind: sailpoint_identitynow.personal_access_tokens
+    status: active
+  - kind: sailpoint_identitynow.segments
     status: active
 coverage_contract:
-  owner_domain: source_runtime
+  owner_domain: identity_governance
   authority_domain: sailpoint_identitynow
   dimensions:
-    - id: users
+    - id: identity_inventory
       type: entity_family
-      title: "Users"
-      families: [users]
-      support: partial
+      title: Identity inventory
+      families: [identities, accounts]
+      support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: groups
+      evidence_types: [source_snapshot, identity_configuration]
+      control_domains: [asset_inventory, identity_access]
+      control_refs: &identity_controls
+        - framework_name: "CIS Controls v8"
+          control_id: "5"
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+    - id: source_inventory
       type: entity_family
-      title: "Groups"
-      families: [groups]
-      support: partial
+      title: Managed sources and connectors
+      families: [sources, source_schemas, source_health, source_provisioning_policies, source_schedules]
+      support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: roles
+      evidence_types: [configuration_state, source_snapshot]
+      control_domains: [asset_inventory, change_management]
+      control_refs: *identity_controls
+    - id: access_model
+      type: relationship
+      title: Roles, access profiles, and entitlements
+      families: [roles, role_dimensions, role_entitlements, access_profiles, access_profile_entitlements, entitlements]
+      support: supported
+      high_value: true
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access, authorization]
+      control_refs: *identity_controls
+    - id: identity_access_assignments
+      type: relationship
+      title: Identity and account access assignments
+      families: [identity_role_assignments, identity_entitlements, role_assigned_identities, account_entitlements, workgroups, workgroup_members]
+      support: supported
+      high_value: true
+      evidence_types: [access_review, source_snapshot]
+      control_domains: [identity_access, authorization]
+      control_refs: *identity_controls
+    - id: certification_reviews
+      type: audit_event
+      title: Certification campaigns and review items
+      families: [campaigns, certifications, certification_access_review_items]
+      support: supported
+      high_value: true
+      evidence_types: [access_review, approval_record]
+      control_domains: [identity_access, access_review]
+      control_refs: *identity_controls
+    - id: access_request_operations
+      type: audit_event
+      title: Access requests and account activities
+      families: [access_request_status, account_activities]
+      support: supported
+      high_value: true
+      evidence_types: [audit_event, approval_record]
+      control_domains: [identity_access, logging_monitoring]
+      control_refs: *identity_controls
+    - id: api_credentials
+      type: app_entitlement
+      title: Personal access tokens
+      families: [personal_access_tokens]
+      support: supported
+      high_value: true
+      evidence_types: [credential_inventory]
+      control_domains: [identity_access, authorization]
+      control_refs:
+        - framework_name: "CIS Controls v8"
+          control_id: "6"
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-5
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-6
+    - id: segmentation_policy
       type: lifecycle_state
-      title: "Roles"
-      families: [roles]
-      support: partial
+      title: Segments and lifecycle policy state
+      families: [segments, identity_profiles, lifecycle_states]
+      support: supported
       high_value: true
       evidence_types: [configuration_state]
-      control_domains: [security_operations]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: applications
-      type: entity_family
-      title: "Applications"
-      families: [applications]
-      support: partial
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: audit_events
-      type: audit_event
-      title: "Audit Events"
-      families: [audit_events]
-      support: partial
-      high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
-      notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: incremental_sync
-      type: incremental_sync
-      title: Incremental cursor sync
-      support: planned
-      evidence_types: [source_sync_status]
-      control_domains: [source_operations]
+      control_domains: [identity_access, change_management]
+      control_refs: *identity_controls
 event_contracts:
-  - kind: sailpoint_identitynow.users
-    schema_ref: sailpoint_identitynow/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
-  - kind: sailpoint_identitynow.groups
-    schema_ref: sailpoint_identitynow/groups/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
-    required_payload_fields:
-      - id
+  - kind: sailpoint_identitynow.identities
+    schema_ref: sailpoint_identitynow/identities/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.accounts
+    schema_ref: sailpoint_identitynow/accounts/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.account_entitlements
+    schema_ref: sailpoint_identitynow/account_entitlements/v1
+    required_attributes: [family, account_id]
+  - kind: sailpoint_identitynow.sources
+    schema_ref: sailpoint_identitynow/sources/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.source_schemas
+    schema_ref: sailpoint_identitynow/source_schemas/v1
+    required_attributes: [family, source_id]
+  - kind: sailpoint_identitynow.source_health
+    schema_ref: sailpoint_identitynow/source_health/v1
+    required_attributes: [family, source_id]
+  - kind: sailpoint_identitynow.source_provisioning_policies
+    schema_ref: sailpoint_identitynow/source_provisioning_policies/v1
+    required_attributes: [family, source_id]
+  - kind: sailpoint_identitynow.source_schedules
+    schema_ref: sailpoint_identitynow/source_schedules/v1
+    required_attributes: [family, source_id]
+  - kind: sailpoint_identitynow.access_profiles
+    schema_ref: sailpoint_identitynow/access_profiles/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.access_profile_entitlements
+    schema_ref: sailpoint_identitynow/access_profile_entitlements/v1
+    required_attributes: [family, access_profile_id]
   - kind: sailpoint_identitynow.roles
     schema_ref: sailpoint_identitynow/roles/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - policy_id
-      - policy_name
-    required_payload_fields:
-      - id
-  - kind: sailpoint_identitynow.applications
-    schema_ref: sailpoint_identitynow/applications/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - resource_urn
-      - resource_type
-      - resource_id
-    required_payload_fields:
-      - id
-  - kind: sailpoint_identitynow.audit_events
-    schema_ref: sailpoint_identitynow/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.role_assigned_identities
+    schema_ref: sailpoint_identitynow/role_assigned_identities/v1
+    required_attributes: [family, role_id]
+  - kind: sailpoint_identitynow.role_entitlements
+    schema_ref: sailpoint_identitynow/role_entitlements/v1
+    required_attributes: [family, role_id]
+  - kind: sailpoint_identitynow.role_dimensions
+    schema_ref: sailpoint_identitynow/role_dimensions/v1
+    required_attributes: [family, role_id]
+  - kind: sailpoint_identitynow.entitlements
+    schema_ref: sailpoint_identitynow/entitlements/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.identity_entitlements
+    schema_ref: sailpoint_identitynow/identity_entitlements/v1
+    required_attributes: [family, identity_id]
+  - kind: sailpoint_identitynow.identity_role_assignments
+    schema_ref: sailpoint_identitynow/identity_role_assignments/v1
+    required_attributes: [family, identity_id]
+  - kind: sailpoint_identitynow.identity_profiles
+    schema_ref: sailpoint_identitynow/identity_profiles/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.lifecycle_states
+    schema_ref: sailpoint_identitynow/lifecycle_states/v1
+    required_attributes: [family, identity_profile_id]
+  - kind: sailpoint_identitynow.workgroups
+    schema_ref: sailpoint_identitynow/workgroups/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.workgroup_members
+    schema_ref: sailpoint_identitynow/workgroup_members/v1
+    required_attributes: [family, workgroup_id]
+  - kind: sailpoint_identitynow.campaigns
+    schema_ref: sailpoint_identitynow/campaigns/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.certifications
+    schema_ref: sailpoint_identitynow/certifications/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.certification_access_review_items
+    schema_ref: sailpoint_identitynow/certification_access_review_items/v1
+    required_attributes: [family, certification_id]
+  - kind: sailpoint_identitynow.access_request_status
+    schema_ref: sailpoint_identitynow/access_request_status/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.account_activities
+    schema_ref: sailpoint_identitynow/account_activities/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.personal_access_tokens
+    schema_ref: sailpoint_identitynow/personal_access_tokens/v1
+    required_attributes: [family]
+  - kind: sailpoint_identitynow.segments
+    schema_ref: sailpoint_identitynow/segments/v1
+    required_attributes: [family]

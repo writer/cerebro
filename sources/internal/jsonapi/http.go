@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,9 @@ type record struct {
 const responseCursorDone = "__jsonapi_response_cursor_done__"
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
+	if !settings.perPageConfigured && family.Config.DefaultPageSize > 0 && pageSize >= family.Config.DefaultPageSize {
+		pageSize = family.Config.DefaultPageSize
+	}
 	query := url.Values{}
 	for key, value := range family.Config.StaticQuery {
 		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
@@ -864,14 +868,45 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	if err := decoder.Decode(&values); err != nil {
 		return record{}, fmt.Errorf("decode record: %w", err)
 	}
-	id, idEncoded := firstValueStringInfo(values, family.IDKeys...)
+	id := recordTemplateValue(values, family.Config.IDTemplate)
+	idEncoded := false
+	if id == "" {
+		id, idEncoded = firstValueStringInfo(values, family.IDKeys...)
+	}
 	if id == "" {
 		if family.RequireID {
 			return record{}, fmt.Errorf("%s id is required", family.Name)
 		}
 		id = stableID(string(raw))
 	}
+	values["_record_id"] = id
 	return record{Raw: cloneRaw(raw), Values: values, ID: id, IDEncoded: idEncoded, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
+}
+
+var recordTemplatePattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+func recordTemplateValue(values map[string]any, template string) string {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return ""
+	}
+	missing := false
+	out := recordTemplatePattern.ReplaceAllStringFunc(template, func(match string) string {
+		parts := recordTemplatePattern.FindStringSubmatch(match)
+		if len(parts) != 2 {
+			missing = true
+			return ""
+		}
+		value := firstValueString(values, strings.TrimSpace(parts[1]))
+		if value == "" {
+			missing = true
+		}
+		return value
+	})
+	if missing || strings.Contains(out, "${") {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -937,6 +972,7 @@ func mergedRecord(family Family, original record, raw json.RawMessage) (record, 
 	for key, value := range detailValues {
 		merged[key] = value
 	}
+	delete(merged, "_record_id")
 	mergedRaw, err := json.Marshal(merged)
 	if err != nil {
 		return record{}, fmt.Errorf("marshal merged detail record: %w", err)

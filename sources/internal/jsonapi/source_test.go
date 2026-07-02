@@ -62,6 +62,29 @@ func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
 	}
 }
 
+func TestRecordFromRawUsesIDTemplate(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate:   "${source_id}-${event}",
+			IdentityKeys: []string{"source_id"},
+		},
+	}, json.RawMessage(`{"source_id":"source-1","created":"2026-06-01T00:00:00Z","event":"org.project.create"}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	if record.ID != "source-1-org.project.create" {
+		t.Fatalf("record.ID = %q, want templated ID", record.ID)
+	}
+	if got := firstValueString(record.Values, "_record_id"); got != record.ID {
+		t.Fatalf("_record_id = %q, want %q", got, record.ID)
+	}
+	if record.Identity == record.ID || !strings.HasPrefix(record.Identity, record.ID+"-") {
+		t.Fatalf("record.Identity = %q, want scoped templated identity", record.Identity)
+	}
+}
+
 func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
 	values := map[string]any{
 		"results": []any{
@@ -779,6 +802,13 @@ func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["serial_number"]; got != "SERIAL1" {
 		t.Fatalf("serial_number = %q, want detail value", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if _, ok := payload["_record_id"]; ok {
+		t.Fatalf("payload leaked _record_id: %#v", payload)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-const maxPublicDetectionSourceCoverageRefs = 12
+const maxPublicDetectionSourceCoverageRefs = 15
 
 // SourceCoverageRef links a public detection back to source coverage dimensions
 // that can supply evidence for the detection's mapped controls.
@@ -375,22 +375,24 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 }
 
 var identityProviderCoverageAliases = map[string][]string{
-	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"duo":                {"duo", "duo_security"},
-	"github":             {"github", "github_org", "github_organization"},
-	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
-	"jumpcloud":          {"jumpcloud", "jump_cloud"},
-	"microsoft_365":      {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
-	"microsoft_entra":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"microsoft_entra_id": {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"okta":               {"okta"},
-	"tailscale":          {"tailscale", "tailnet"},
+	"azure":                 {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"duo":                   {"duo", "duo_security"},
+	"duo_security":          {"duo", "duo_security"},
+	"github":                {"github", "github_org", "github_organization"},
+	"google_workspace":      {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
+	"jumpcloud":             {"jumpcloud", "jump_cloud"},
+	"microsoft_365":         {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
+	"microsoft_entra":       {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"microsoft_entra_id":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"okta":                  {"okta"},
+	"sailpoint_identitynow": {"sailpoint_identitynow", "identitynow", "identity_now", "identity_security_cloud"},
+	"tailscale":             {"tailscale", "tailnet"},
 }
 
 func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {
 	sourceID := normalizeCoverageText(coverageSourceID)
-	aliases, ok := identityProviderCoverageAliases[sourceID]
-	if !ok {
+	aliases := identityProviderCoverageAliasesForSource(sourceID)
+	if len(aliases) == 0 {
 		return false
 	}
 	if coverageTextContainsAny(searchText, aliases) {
@@ -400,8 +402,43 @@ func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText
 		if provider == sourceID {
 			continue
 		}
+		if coverageAliasSetsOverlap(aliases, providerAliases) {
+			continue
+		}
 		if coverageTextContainsAny(searchText, providerAliases) {
 			return true
+		}
+	}
+	return false
+}
+
+func identityProviderCoverageAliasesForSource(sourceID string) []string {
+	sourceID = normalizeCoverageText(sourceID)
+	aliases := append([]string(nil), identityProviderCoverageAliases[sourceID]...)
+	if len(aliases) == 0 {
+		return nil
+	}
+	for provider, providerAliases := range identityProviderCoverageAliases {
+		if provider == sourceID {
+			continue
+		}
+		if coverageAliasSetsOverlap(aliases, providerAliases) {
+			aliases = append(aliases, providerAliases...)
+		}
+	}
+	return uniqueSortedStrings(aliases)
+}
+
+func coverageAliasSetsOverlap(left []string, right []string) bool {
+	for _, leftAlias := range left {
+		leftToken := normalizeCoverageText(leftAlias)
+		if leftToken == "" {
+			continue
+		}
+		for _, rightAlias := range right {
+			if leftToken == normalizeCoverageText(rightAlias) {
+				return true
+			}
 		}
 	}
 	return false
@@ -767,7 +804,7 @@ func sourceCoverageAliases(sourceID string, includeIdentityAliases bool) []strin
 	normalized := normalizeCoverageText(sourceID)
 	aliases = append(aliases, cloudProviderCoverageAliases[normalized]...)
 	if includeIdentityAliases {
-		aliases = append(aliases, identityProviderCoverageAliases[normalized]...)
+		aliases = append(aliases, identityProviderCoverageAliasesForSource(normalized)...)
 	}
 	return uniqueSortedStrings(aliases)
 }

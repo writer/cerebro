@@ -1,7 +1,6 @@
 {
-  "adapter_health_path": "/v1/me",
-  "auth_model": "bearer_token",
-  "evidence_cas_reference_kind": "sailpoint_identitynow.evidence_cas_reference",
+  "adapter_health_path": "/identities",
+  "auth_model": "oauth_client_credentials",
   "expected_cadence_seconds": 86400,
   "failure_modes": [
     "api_error",
@@ -10,6 +9,12 @@
     "schema_drift"
   ],
   "health_endpoint": "/source-runtimes/health?source_id=sailpoint_identitynow",
+  "provider_api": {
+    "base_url": "https://{tenant}.api.identitynow.com/v2025",
+    "pagination": "offset",
+    "status": "verified",
+    "transport": "rest"
+  },
   "receipt_kind": "source_health.receipt",
   "source_id": "sailpoint_identitynow",
   "source_type": "json_api",
