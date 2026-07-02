@@ -4564,6 +4564,25 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+  - source_id: cloudflare_zero_trust
+    name: Cloudflare Zero Trust
+    purpose: Declare source-backed Cloudflare Zero Trust identity evidence lanes.
+    dimensions:
+      - dimension_id: users
+        dimension_type: app_entitlement
+        support_level: supported
+        high_value: true
+        families:
+          - users
+        evidence_types:
+          - identity_configuration
+        control_domains:
+          - identity_access
+        control_refs:
+          - framework: SOC 2
+            control_id: CC6.2
+          - framework: ISO 27001:2022
+            control_id: A.5.18
   - source_id: cosmo
     name: Cosmo
     purpose: Declare source-backed Cosmo asset_inventory evidence lanes.
