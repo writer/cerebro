@@ -22,6 +22,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 		wantAttributes map[string]string
 		wantPayloadKey string
 		wantOccurredAt string
+		wantEvents     int
 	}{
 		{
 			name:   "event trigger",
@@ -233,9 +234,17 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"eventType":               "Revenue Distributed",
 				"eventNumber":             "REV-EVT-0001",
 				"subscriptionNumber":      "A-S00000003",
+			}, {
+				"accountingPeriodEndDate": "2026-07-31",
+				"amount":                  1300.00,
+				"currency":                "USD",
+				"eventType":               "Revenue Distributed",
+				"eventNumber":             "REV-EVT-0001",
+				"subscriptionNumber":      "A-S00000003",
 			}}},
-			wantAttributes: map[string]string{"source_event_id": "REV-EVT-0001", "event_type": "Revenue Distributed", "resource_id": "REV-EVT-0001"},
+			wantAttributes: map[string]string{"source_event_id": "REV-EVT-0001-2026-06-30", "event_type": "Revenue Distributed", "resource_id": "REV-EVT-0001"},
 			wantPayloadKey: "eventNumber",
+			wantEvents:     2,
 		},
 		{
 			name:   "revenue schedule",
@@ -249,9 +258,17 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"eventType":             "Revenue Schedule Updated",
 				"revenueScheduleNumber": "RS-0001",
 				"subscriptionNumber":    "A-S00000003",
+			}, {
+				"accountId":             "2c92c0f86c99b4eb016cae1ee3017290",
+				"amount":                1350.00,
+				"currency":              "USD",
+				"eventType":             "Revenue Schedule Updated",
+				"revenueScheduleNumber": "RS-0001",
+				"subscriptionNumber":    "A-S00000003",
 			}}},
-			wantAttributes: map[string]string{"source_event_id": "RS-0001", "event_type": "Revenue Schedule Updated", "resource_id": "RS-0001"},
+			wantAttributes: map[string]string{"source_event_id": "RS-0001-2c92c0f86c99b4eb016cae1ee301728f", "event_type": "Revenue Schedule Updated", "resource_id": "RS-0001"},
 			wantPayloadKey: "revenueScheduleNumber",
+			wantEvents:     2,
 		},
 		{
 			name:   "account payment method",
@@ -319,8 +336,21 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
 			}
-			if len(pull.Events) != 1 {
-				t.Fatalf("events = %d, want 1", len(pull.Events))
+			wantEvents := tc.wantEvents
+			if wantEvents == 0 {
+				wantEvents = 1
+			}
+			if len(pull.Events) != wantEvents {
+				t.Fatalf("events = %d, want %d", len(pull.Events), wantEvents)
+			}
+			if wantEvents > 1 {
+				seen := map[string]struct{}{}
+				for _, event := range pull.Events {
+					if _, ok := seen[event.Id]; ok {
+						t.Fatalf("duplicate event id %q dropped unique provider item identity", event.Id)
+					}
+					seen[event.Id] = struct{}{}
+				}
 			}
 			event := pull.Events[0]
 			if event.Kind != tc.kind {

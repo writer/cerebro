@@ -40,6 +40,17 @@ func TestAuth0AuditProjection(t *testing.T) {
 	}
 }
 
+func TestAuth0OrganizationProjectionSkipsMissingOrgID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.organizations", Attributes: map[string]string{"display_name": "Example Org"}}
+	entities, links, err := auth0OrganizationsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("entities/links = %d/%d, want no projection without org ID; entities=%#v links=%#v", len(entities), len(links), entities, links)
+	}
+}
+
 func TestAuth0OrganizationMemberProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.organization_members", Attributes: map[string]string{"organization_id": "org-1", "member_user_id": "auth0|user-1", "member_email": "user@example.test", "member_name": "User One", "role": "role-1"}}
 	entities, links, err := auth0OrganizationMembersProjections(event)
@@ -48,6 +59,31 @@ func TestAuth0OrganizationMemberProjection(t *testing.T) {
 	}
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want organization membership projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0OrganizationMemberProjectionSkipsMissingOrgID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.organization_members", Attributes: map[string]string{"member_user_id": "auth0|user-1", "member_email": "user@example.test", "member_name": "User One"}}
+	entities, links, err := auth0OrganizationMembersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	ghostOrgURN := projectionURN("tenant", "auth0_org", "")
+	userURN := identityUserURN("tenant", "auth0", "auth0|user-1", "user@example.test")
+	entityURNs := map[string]struct{}{}
+	for _, entity := range entities {
+		entityURNs[entity.URN] = struct{}{}
+	}
+	if _, ok := entityURNs[userURN]; !ok {
+		t.Fatalf("missing member user entity %q; entities=%#v", userURN, entities)
+	}
+	if _, ok := entityURNs[ghostOrgURN]; ok {
+		t.Fatalf("projected degenerate org entity %q; entities=%#v", ghostOrgURN, entities)
+	}
+	for _, link := range links {
+		if link.FromURN == ghostOrgURN || link.ToURN == ghostOrgURN {
+			t.Fatalf("projected link to degenerate org %q; link=%#v", ghostOrgURN, link)
+		}
 	}
 }
 
@@ -62,6 +98,17 @@ func TestAuth0ApplicationProjection(t *testing.T) {
 	}
 }
 
+func TestAuth0ConnectionProjectionSkipsMissingConnectionID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.connections", Attributes: map[string]string{"connection_name": "Database", "enabled_clients": "client-1"}}
+	entities, links, err := auth0ConnectionsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("entities/links = %d/%d, want no projection without connection ID; entities=%#v links=%#v", len(entities), len(links), entities, links)
+	}
+}
+
 func TestAuth0ResourceServerProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.resource_servers", Attributes: map[string]string{"api_id": "api-1", "api_identifier": "https://api.example.test", "api_name": "Example API", "scopes": "[{\"value\":\"read:reports\"}]"}}
 	entities, links, err := auth0ResourceServersProjections(event)
@@ -70,6 +117,25 @@ func TestAuth0ResourceServerProjection(t *testing.T) {
 	}
 	if len(entities) == 0 || len(links) == 0 {
 		t.Fatalf("entities/links = %d/%d, want API scope projection", len(entities), len(links))
+	}
+}
+
+func TestAuth0ResourceServerProjectionSkipsMissingAPIID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.resource_servers", Attributes: map[string]string{"api_name": "Example API", "scopes": "read:reports"}}
+	entities, links, err := auth0ResourceServersProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	ghostAPIURN := projectionURN("tenant", "auth0_api", "")
+	for _, entity := range entities {
+		if entity.URN == ghostAPIURN {
+			t.Fatalf("projected degenerate API entity %q; entities=%#v", ghostAPIURN, entities)
+		}
+	}
+	for _, link := range links {
+		if link.FromURN == ghostAPIURN || link.ToURN == ghostAPIURN {
+			t.Fatalf("projected link to degenerate API %q; link=%#v", ghostAPIURN, link)
+		}
 	}
 }
 
@@ -93,6 +159,26 @@ func TestAuth0ResourceServerProjectionUsesAudienceFallbackConsistently(t *testin
 	}
 	if !projectedLinksContain(links, wantAPIURN, relationGrantsEntitlement, wantEntitlementURN) {
 		t.Fatalf("missing API grants entitlement link %s -> %s; links=%#v", wantAPIURN, wantEntitlementURN, links)
+	}
+}
+
+func TestAuth0RoleEntitlementProjectionDoesNotUseResourceIDFallback(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "auth0", Kind: "auth0.roles", Attributes: map[string]string{"resource_id": "role-resource-1", "group_name": "Admin Role"}}
+	entities, links, err := auth0RolesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	entityURNs := map[string]struct{}{}
+	for _, entity := range entities {
+		entityURNs[entity.URN] = struct{}{}
+	}
+	for _, link := range links {
+		if _, ok := entityURNs[link.FromURN]; !ok {
+			t.Fatalf("link source %q has no projected entity; link=%#v entities=%#v", link.FromURN, link, entities)
+		}
+		if _, ok := entityURNs[link.ToURN]; !ok {
+			t.Fatalf("link target %q has no projected entity; link=%#v entities=%#v", link.ToURN, link, entities)
+		}
 	}
 }
 

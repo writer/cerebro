@@ -37,6 +37,9 @@ func auth0OrganizationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	}
 	attributes := event.GetAttributes()
 	orgID := firstNonEmpty(attributes["organization_id"], attributes["group_id"], attributes["resource_id"])
+	if strings.TrimSpace(orgID) == "" {
+		return nil, nil, nil
+	}
 	orgURN := projectionURN(tenantID, "auth0_org", orgID)
 	if orgURN == "" {
 		return nil, nil, nil
@@ -55,11 +58,16 @@ func auth0OrganizationMembersProjections(event *cerebrov1.EventEnvelope) ([]*por
 	orgID := firstNonEmpty(attributes["organization_id"], attributes["group_id"])
 	userID := firstNonEmpty(attributes["member_user_id"], attributes["user_id"], attributes["member_id"])
 	email := firstNonEmpty(attributes["member_email"], attributes["email"])
-	orgURN := projectionURN(tenantID, "auth0_org", orgID)
+	orgURN := ""
+	if strings.TrimSpace(orgID) != "" {
+		orgURN = projectionURN(tenantID, "auth0_org", orgID)
+	}
 	userURN := identityUserURN(tenantID, auth0IdentityProfile.Provider, userID, email)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	addAuth0OrgEntity(entities, tenantID, event.GetSourceId(), orgURN, attributes)
+	if orgURN != "" {
+		addAuth0OrgEntity(entities, tenantID, event.GetSourceId(), orgURN, attributes)
+	}
 	if userURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
@@ -96,6 +104,9 @@ func auth0ConnectionsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	attributes := event.GetAttributes()
 	connectionID := firstNonEmpty(attributes["connection_id"], attributes["resource_id"], attributes["app_id"])
+	if strings.TrimSpace(connectionID) == "" {
+		return nil, nil, nil
+	}
 	connectionURN := projectionURN(tenantID, "auth0_connection", connectionID)
 	if connectionURN == "" {
 		return nil, nil, nil
@@ -181,7 +192,7 @@ func auth0RoleEntitlementProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
-	roleID := firstNonEmpty(attributes["group_id"], attributes["id"], attributes["resource_id"])
+	roleID := firstNonEmpty(attributes["group_id"], attributes["id"], attributes["group_email"], attributes["email"])
 	roleURN := identityGroupURN(tenantID, auth0IdentityProfile.Provider, roleID, attributes["group_email"])
 	if roleURN == "" {
 		return nil, nil, nil
@@ -276,6 +287,9 @@ func addAuth0OrgEntity(entities map[string]*ports.ProjectedEntity, tenantID stri
 		return
 	}
 	orgID := firstNonEmpty(attributes["organization_id"], attributes["group_id"], attributes["resource_id"])
+	if strings.TrimSpace(orgID) == "" {
+		return
+	}
 	orgAttrs := map[string]string{"display_name": strings.TrimSpace(attributes["display_name"]), "organization_id": orgID, "organization_name": strings.TrimSpace(attributes["organization_name"])}
 	trimEmptyProjectionAttributes(orgAttrs)
 	addEntity(entities, &ports.ProjectedEntity{
@@ -290,6 +304,9 @@ func addAuth0OrgEntity(entities map[string]*ports.ProjectedEntity, tenantID stri
 
 func addAuth0APIEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string) string {
 	apiID := firstNonEmpty(attributes["api_identifier"], attributes["audience"], attributes["api_id"], attributes["resource_id"])
+	if strings.TrimSpace(apiID) == "" {
+		return ""
+	}
 	apiURN := projectionURN(tenantID, "auth0_api", apiID)
 	if apiURN == "" {
 		return ""
