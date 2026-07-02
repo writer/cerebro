@@ -116,6 +116,68 @@ func TestSourceCheckAndReadUsesOAuthAndOffsetPaging(t *testing.T) {
 	}
 }
 
+func TestSourceAccessRequestStatusEmitsAuditProjectionAttributes(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if r.URL.Path != "/v2025/access-request-status" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id":              "request-item-1",
+			"accessRequestId": "access-request-1",
+			"name":            "Payroll access",
+			"requestType":     "GRANT_ACCESS",
+			"state":           "EXECUTED",
+			"requester": map[string]string{
+				"id":   "requester-1",
+				"name": "Request Owner",
+			},
+			"requestedFor": map[string]string{
+				"id":   "identity-1",
+				"name": "Jane Access",
+			},
+			"modified": "2026-06-20T12:00:00Z",
+		}})
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL + "/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyAccessRequestStatus,
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for key, want := range map[string]string{
+		"actor_id":      "requester-1",
+		"actor_name":    "Request Owner",
+		"resource_id":   "identity-1",
+		"resource_name": "Jane Access",
+		"resource_type": "identity",
+		"event_type":    "EXECUTED",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q in %#v", key, got, want, attrs)
+		}
+	}
+}
+
 func TestSourceFanoutReadsRoleAssignedIdentities(t *testing.T) {
 	source, err := New()
 	if err != nil {
