@@ -1451,6 +1451,8 @@ func TestGenerateDefinitionSupportsFamilyLevelDuoHMACAuth(t *testing.T) {
 	sourceTest := readGeneratedFile(t, outputDir, "sources/mixed_auth/source_test.go")
 	for _, want := range []string{
 		`wantSignatureLength := 0`,
+		`expectedAuthHeaderName := "Authorization"`,
+		`expectedAuthHeaderValue := "Bearer test-token"`,
 		`authHeaderValue:`,
 		`"Bearer test-token"`,
 		`duoSignatureLength: 0`,
