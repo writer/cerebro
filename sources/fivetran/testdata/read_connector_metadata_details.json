@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fivetran-connector_metadata_details-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.connector_metadata_details",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/connector_metadata_details/v1",
+    "payload": {
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "service_status": "general_availability",
+      "link_to_docs": "https://fivetran.com/docs/connectors/databases/postgresql",
+      "family": "connector_metadata_details",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/connector_metadata_details/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "postgres",
+      "external_id": "postgres",
+      "family": "connector_metadata_details",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "connector_metadata_details",
+      "record_class": "asset",
+      "resource_type": "connector_metadata_detail",
+      "resource_id": "postgres",
+      "resource_name": "PostgreSQL",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connector_metadata_details:postgres",
+      "service": "postgres",
+      "status": "general_availability"
+    }
+  }
+]

@@ -2101,6 +2101,43 @@ func TestReadObjectMapRecords(t *testing.T) {
 	}
 }
 
+func TestReadNestedObjectMapRecords(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"columns": map[string]any{
+					"EMAIL": map[string]any{"enabled": true, "hashed": false},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:       "column",
+		Path:       "/columns",
+		URNKind:    "test_column",
+		IDKeys:     []string{"id"},
+		MapRecords: map[string]string{"data.columns": "config"},
+		Attributes: map[string]string{"column_name": "id", "enabled": "config.enabled"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "column",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want nested map-derived record", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["column_name"] != "EMAIL" || attrs["enabled"] != "true" {
+		t.Fatalf("attributes = %#v, want nested map record attributes", attrs)
+	}
+}
+
 func TestReadUsesNestedIdentityFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

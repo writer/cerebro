@@ -86,6 +86,7 @@ func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	attributes := event.GetAttributes()
 	connectionID := strings.TrimSpace(attributes["connection_id"])
 	destinationID := strings.TrimSpace(attributes["destination_id"])
+	groupID := strings.TrimSpace(attributes["group_id"])
 	credentialID := firstNonEmpty(attributes["credential_id"], attributes["resource_id"], attributes["id"], attributes["hash"], attributes["public_key"])
 	targetType := "connection"
 	targetID := connectionID
@@ -93,7 +94,11 @@ func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 		targetType = "destination"
 		targetID = destinationID
 	}
-	targetURN := fivetranRuntimeAssetURN(tenantID, targetType, targetID)
+	if targetID == "" {
+		targetType = "group"
+		targetID = groupID
+	}
+	targetURN := fivetranPrincipalOrAssetURN(tenantID, targetType, targetID)
 	credentialURN := fivetranRuntimeAssetURN(tenantID, firstNonEmpty(attributes["resource_type"], "credential"), credentialID)
 	if targetURN == "" || credentialURN == "" {
 		return entities, links, nil
@@ -109,6 +114,7 @@ func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 			"resource_id":       targetID,
 			"resource_type":     targetType,
 			"source_runtime_id": strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+			"source_system":     "fivetran",
 		}),
 	})
 	addLink(linkMap, projectedLink(tenantID, event.GetSourceId(), credentialURN, targetURN, relationAssignedTo, compactAttributes(map[string]string{
@@ -116,6 +122,7 @@ func fivetranCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 		"match_type":      "fivetran_" + targetType + "_credential",
 		"connection_id":   connectionID,
 		"destination_id":  destinationID,
+		"group_id":        groupID,
 		"credential_id":   credentialID,
 		"credential_type": firstNonEmpty(attributes["resource_type"], "credential"),
 		"target_type":     targetType,
@@ -131,9 +138,9 @@ func fivetranRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	}
 	attributes := event.GetAttributes()
 	resourceType := firstNonEmpty(attributes["resource_type"], attributes["schema"], fivetranKindFamily(event), "asset")
-	resourceID := firstNonEmpty(attributes["resource_id"], attributes["external_id"], attributes["id"], attributes["name"], event.GetId())
+	resourceID := fivetranRuntimeResourceID(event, attributes, resourceType)
 	resourceURN := fivetranRuntimeAssetURN(tenantID, resourceType, resourceID)
-	if explicitURN := strings.TrimSpace(attributes["resource_urn"]); explicitURN != "" {
+	if explicitURN := strings.TrimSpace(attributes["resource_urn"]); explicitURN != "" && !fivetranUsesCompositeRuntimeID(resourceType) {
 		resourceURN = explicitURN
 	}
 	if resourceURN == "" {
@@ -186,6 +193,35 @@ func fivetranRuntimeAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 	}
 	fivetranRuntimeAssetRelationshipProjections(event, tenantID, resourceURN, resourceType, attributes, entities, links)
 	return identityProjectionResult(entities, links)
+}
+
+func fivetranRuntimeResourceID(event *cerebrov1.EventEnvelope, attributes map[string]string, resourceType string) string {
+	if fivetranUsesCompositeRuntimeID(resourceType) {
+		parts := fivetranIDParts(
+			attributes["connection_id"],
+			attributes["schema_name"],
+			attributes["table_name"],
+			firstNonEmpty(attributes["column_name"], attributes["resource_id"], attributes["external_id"], attributes["id"], attributes["name"]),
+		)
+		if len(parts) > 0 {
+			return strings.Join(parts, "/")
+		}
+	}
+	return firstNonEmpty(attributes["resource_id"], attributes["external_id"], attributes["id"], attributes["name"], event.GetId())
+}
+
+func fivetranIDParts(values ...string) []string {
+	parts := []string{}
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			parts = append(parts, value)
+		}
+	}
+	return parts
+}
+
+func fivetranUsesCompositeRuntimeID(resourceType string) bool {
+	return normalizeCloudType(resourceType) == "connection_table_column"
 }
 
 func fivetranGenericPolicyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

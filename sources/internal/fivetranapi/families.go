@@ -13,6 +13,7 @@ const (
 	DefaultBaseURLTemplate = "https://api.fivetran.com"
 	DefaultHealthPath      = "/v1/account/info"
 
+	FamilyAccountInfo                      = "account_info"
 	FamilyUsers                            = "users"
 	FamilyUserConnections                  = "user_connections"
 	FamilyUserGroups                       = "user_groups"
@@ -24,15 +25,19 @@ const (
 	FamilyGroups                           = "groups"
 	FamilyGroupUsers                       = "group_users"
 	FamilyGroupConnections                 = "group_connections"
+	FamilyGroupPublicKeys                  = "group_public_keys"
+	FamilyGroupServiceAccounts             = "group_service_accounts"
 	FamilyDestinations                     = "destinations"
 	FamilyConnections                      = "connections"
 	FamilyConnectionCertificates           = "connection_certificates"
 	FamilyConnectionFingerprints           = "connection_fingerprints"
 	FamilyConnectionSchemas                = "connection_schemas"
 	FamilyConnectionState                  = "connection_state"
+	FamilyConnectionTableColumns           = "connection_table_columns"
 	FamilyConnectorSDKPackages             = "connector_sdk_packages"
 	FamilyDestinationCertificates          = "destination_certificates"
 	FamilyDestinationFingerprints          = "destination_fingerprints"
+	FamilyAccountLogService                = "account_log_service"
 	FamilyLogServices                      = "log_services"
 	FamilyWebhooks                         = "webhooks"
 	FamilyExternalSecretManagers           = "external_secret_managers"
@@ -44,14 +49,17 @@ const (
 	FamilyHybridAgents                     = "hybrid_deployment_agents"
 	FamilyPublicConnectorTypes             = "public_connector_types"
 	FamilyConnectorMetadata                = "connector_metadata"
+	FamilyConnectorMetadataDetails         = "connector_metadata_details"
 	FamilySystemKeys                       = "system_keys"
 	FamilyTransformations                  = "transformations"
 	FamilyTransformationProjects           = "transformation_projects"
 	FamilyTransformationPackageMetadata    = "transformation_package_metadata"
+	FamilyTransformationPackageDetails     = "transformation_package_details"
 )
 
 func Families() []jsonapi.Family {
 	return []jsonapi.Family{
+		accountInfoFamily(),
 		usersFamily(),
 		userConnectionsFamily(),
 		userGroupsFamily(),
@@ -63,15 +71,19 @@ func Families() []jsonapi.Family {
 		groupsFamily(),
 		groupUsersFamily(),
 		groupConnectionsFamily(),
+		groupPublicKeysFamily(),
+		groupServiceAccountsFamily(),
 		destinationsFamily(),
 		connectionsFamily(),
 		connectionCertificatesFamily(),
 		connectionFingerprintsFamily(),
 		connectionSchemasFamily(),
 		connectionStateFamily(),
+		connectionTableColumnsFamily(),
 		connectorSDKPackagesFamily(),
 		destinationCertificatesFamily(),
 		destinationFingerprintsFamily(),
+		accountLogServiceFamily(),
 		logServicesFamily(),
 		webhooksFamily(),
 		externalSecretManagersFamily(),
@@ -83,11 +95,25 @@ func Families() []jsonapi.Family {
 		hybridAgentsFamily(),
 		publicConnectorTypesFamily(),
 		connectorMetadataFamily(),
+		connectorMetadataDetailsFamily(),
 		systemKeysFamily(),
 		transformationsFamily(),
 		transformationProjectsFamily(),
 		transformationPackageMetadataFamily(),
+		transformationPackageDetailsFamily(),
 	}
+}
+
+func accountInfoFamily() jsonapi.Family {
+	family := fivetranSingletonAssetFamily(FamilyAccountInfo, "/v1/account/info", "account_info", "account")
+	family.IDKeys = []string{"account_id", "account_name"}
+	family.Attributes["account_id"] = "account_id"
+	family.Attributes["resource_id"] = "account_id"
+	family.Attributes["resource_name"] = "account_name|account_id"
+	family.Attributes["source_event_id"] = "account_id"
+	family.Attributes["system_key_id"] = "system_key_id"
+	family.Attributes["user_id"] = "user_id"
+	return family
 }
 
 func usersFamily() jsonapi.Family {
@@ -206,6 +232,34 @@ func groupConnectionsFamily() jsonapi.Family {
 	return fivetranScopedMembershipFamily(FamilyGroupConnections, "/v1/groups/{group_id}/connections", "group_id", "connection")
 }
 
+func groupPublicKeysFamily() jsonapi.Family {
+	family := fivetranScopedCredentialFamily(FamilyGroupPublicKeys, "/v1/groups/{group_id}/public-key", "group_id", "group", "public_key")
+	family.Singleton = true
+	family.DisablePageSize = true
+	family.IDKeys = []string{"public_key", "group_id"}
+	family.Attributes["group_id"] = "group_id"
+	family.Attributes["credential_id"] = "public_key|group_id"
+	family.Attributes["public_key"] = "public_key"
+	family.Attributes["resource_id"] = "public_key|group_id"
+	family.Attributes["resource_name"] = "group_id|public_key"
+	family.Attributes["source_event_id"] = "public_key|group_id"
+	return family
+}
+
+func groupServiceAccountsFamily() jsonapi.Family {
+	family := fivetranScopedCredentialFamily(FamilyGroupServiceAccounts, "/v1/groups/{group_id}/service-account", "group_id", "group", "service_account")
+	family.Singleton = true
+	family.DisablePageSize = true
+	family.IDKeys = []string{"service_account", "group_id"}
+	family.Attributes["group_id"] = "group_id"
+	family.Attributes["credential_id"] = "service_account|group_id"
+	family.Attributes["resource_id"] = "service_account|group_id"
+	family.Attributes["resource_name"] = "service_account|group_id"
+	family.Attributes["service_account"] = "service_account"
+	family.Attributes["source_event_id"] = "service_account|group_id"
+	return family
+}
+
 func destinationsFamily() jsonapi.Family {
 	family := fivetranAssetFamily(FamilyDestinations, "/v1/destinations", "destination", "destination")
 	family.Config.StaticHeaders = fivetranV2Headers()
@@ -234,6 +288,41 @@ func connectionStateFamily() jsonapi.Family {
 	return fivetranScopedAssetFamily(FamilyConnectionState, "/v1/connections/{connection_id}/state", "connection_id", "connection_state", "connection_state", true)
 }
 
+func connectionTableColumnsFamily() jsonapi.Family {
+	family := fivetranPagedFamily(jsonapi.Family{
+		Name:            FamilyConnectionTableColumns,
+		Path:            "/v1/connections/{connection_id}/schemas/{schema_name}/tables/{table_name}/columns",
+		PathParams:      []string{"connection_id", "schema_name", "table_name"},
+		URNKind:         "fivetran_connection_table_columns",
+		IDKeys:          []string{"id", "name"},
+		DisablePageSize: true,
+		MapRecords:      map[string]string{"data.columns": "config"},
+		Attributes: map[string]string{
+			"column_name":     "id|name",
+			"connection_id":   "connection_id",
+			"enabled":         "config.enabled|enabled",
+			"hashed":          "config.hashed|hashed",
+			"resource_id":     "id|name",
+			"resource_name":   "id|name",
+			"schema_name":     "schema_name",
+			"source_event_id": "id|name",
+			"status":          "config.enabled|enabled",
+			"table_name":      "table_name",
+		},
+		StaticAttributes: fivetranStaticAttributes("connection_table_columns", "asset", "connection_table_column"),
+		Config: fivetranFamilyConfig(jsonapi.FamilyConfig{
+			ConfigAttributes: map[string]string{
+				"connection_id": "connection_id",
+				"schema_name":   "schema_name",
+				"table_name":    "table_name",
+			},
+			IdentityKeys:    []string{"connection_id", "schema_name", "table_name"},
+			ResourceURNKind: "fivetran_connection_table_columns",
+		}),
+	})
+	return family
+}
+
 func connectorSDKPackagesFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyConnectorSDKPackages, "/v1/connector-sdk/packages", "connector_sdk_package", "connector_sdk_package")
 }
@@ -244,6 +333,18 @@ func destinationCertificatesFamily() jsonapi.Family {
 
 func destinationFingerprintsFamily() jsonapi.Family {
 	return fivetranScopedCredentialFamily(FamilyDestinationFingerprints, "/v1/destinations/{destination_id}/fingerprints", "destination_id", "destination", "fingerprint")
+}
+
+func accountLogServiceFamily() jsonapi.Family {
+	family := fivetranSingletonAssetFamily(FamilyAccountLogService, "/v1/external-logging/account", "account_log_service", "log_service")
+	family.IDKeys = []string{"id", "service"}
+	family.Attributes["enabled"] = "enabled"
+	family.Attributes["resource_id"] = "id|service"
+	family.Attributes["resource_name"] = "service|id"
+	family.Attributes["service"] = "service"
+	family.Attributes["source_event_id"] = "id|service"
+	family.Attributes["status"] = "enabled"
+	return family
 }
 
 func logServicesFamily() jsonapi.Family {
@@ -290,6 +391,18 @@ func connectorMetadataFamily() jsonapi.Family {
 	return fivetranAssetFamily(FamilyConnectorMetadata, "/v1/metadata/connector-types", "connector_metadata", "connector_metadata")
 }
 
+func connectorMetadataDetailsFamily() jsonapi.Family {
+	family := fivetranScopedAssetFamily(FamilyConnectorMetadataDetails, "/v1/metadata/connector-types/{service}", "service", "connector_metadata_detail", "connector_metadata_detail", true)
+	family.DisablePageSize = true
+	family.IDKeys = []string{"id", "service", "name"}
+	family.Attributes["resource_id"] = "id|service|name"
+	family.Attributes["resource_name"] = "name|service|id"
+	family.Attributes["service"] = "service|id"
+	family.Attributes["source_event_id"] = "id|service|name"
+	family.Attributes["status"] = "service_status|status"
+	return family
+}
+
 func systemKeysFamily() jsonapi.Family {
 	family := fivetranAssetFamily(FamilySystemKeys, "/v1/system-keys", "system_key", "system_key")
 	family.Config.RedactPayloadKeys = []string{"key", "secret"}
@@ -310,6 +423,25 @@ func transformationPackageMetadataFamily() jsonapi.Family {
 	family.Attributes["source_event_id"] = "package_definition_id|id|name"
 	family.Attributes["resource_id"] = "package_definition_id|id|name"
 	family.Attributes["resource_name"] = "name|package_definition_id"
+	return family
+}
+
+func transformationPackageDetailsFamily() jsonapi.Family {
+	family := fivetranScopedAssetFamily(FamilyTransformationPackageDetails, "/v1/transformations/package-metadata/{package_definition_id}", "package_definition_id", "transformation_package_detail", "transformation_package_detail", true)
+	family.DisablePageSize = true
+	family.IDKeys = []string{"package_definition_id", "id", "name"}
+	family.Attributes["package_definition_id"] = "package_definition_id|id"
+	family.Attributes["resource_id"] = "package_definition_id|id|name"
+	family.Attributes["resource_name"] = "name|package_definition_id|id"
+	family.Attributes["source_event_id"] = "package_definition_id|id|name"
+	family.Attributes["status"] = "version|status"
+	return family
+}
+
+func fivetranSingletonAssetFamily(name string, path string, schema string, resourceType string) jsonapi.Family {
+	family := fivetranAssetFamily(name, path, schema, resourceType)
+	family.Singleton = true
+	family.DisablePageSize = true
 	return family
 }
 

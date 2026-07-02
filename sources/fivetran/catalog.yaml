@@ -1,7 +1,8 @@
 id: fivetran
 name: "Fivetran"
-description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secrets manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for connection schema and state routes, applies v2 Accept headers only to connection and destination list routes, redacts system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
+description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secrets manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for account, group credential, connection schema, connection state, log service, connector metadata, and transformation package detail routes, expands nested object maps for connection table columns, applies v2 Accept headers only to connection and destination list routes, redacts system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, schema columns, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
 emitted_kinds:
+  - fivetran.account_info
   - fivetran.users
   - fivetran.user_connections
   - fivetran.user_groups
@@ -13,15 +14,19 @@ emitted_kinds:
   - fivetran.groups
   - fivetran.group_users
   - fivetran.group_connections
+  - fivetran.group_public_keys
+  - fivetran.group_service_accounts
   - fivetran.destinations
   - fivetran.connections
   - fivetran.connection_certificates
   - fivetran.connection_fingerprints
   - fivetran.connection_schemas
   - fivetran.connection_state
+  - fivetran.connection_table_columns
   - fivetran.connector_sdk_packages
   - fivetran.destination_certificates
   - fivetran.destination_fingerprints
+  - fivetran.account_log_service
   - fivetran.log_services
   - fivetran.webhooks
   - fivetran.external_secret_managers
@@ -33,10 +38,12 @@ emitted_kinds:
   - fivetran.hybrid_deployment_agents
   - fivetran.public_connector_types
   - fivetran.connector_metadata
+  - fivetran.connector_metadata_details
   - fivetran.system_keys
   - fivetran.transformations
   - fivetran.transformation_projects
   - fivetran.transformation_package_metadata
+  - fivetran.transformation_package_details
 provider_api:
   status: verified
   transport: rest
@@ -67,6 +74,10 @@ provider_api:
     response_cursor: data.next_cursor
     response_items: data.items
   families:
+    - id: account_info
+      method: GET
+      path: /v1/account/info
+      response: data
     - id: users
       method: GET
       path: /v1/users
@@ -129,6 +140,16 @@ provider_api:
       response: data.items
       pagination: cursor
       path_params: [group_id]
+    - id: group_public_keys
+      method: GET
+      path: /v1/groups/{group_id}/public-key
+      response: data
+      path_params: [group_id]
+    - id: group_service_accounts
+      method: GET
+      path: /v1/groups/{group_id}/service-account
+      response: data
+      path_params: [group_id]
     - id: destinations
       method: GET
       path: /v1/destinations
@@ -165,6 +186,11 @@ provider_api:
       path: /v1/connections/{connection_id}/state
       response: data
       path_params: [connection_id]
+    - id: connection_table_columns
+      method: GET
+      path: /v1/connections/{connection_id}/schemas/{schema_name}/tables/{table_name}/columns
+      response: data.columns
+      path_params: [connection_id, schema_name, table_name]
     - id: connector_sdk_packages
       method: GET
       path: /v1/connector-sdk/packages
@@ -182,6 +208,10 @@ provider_api:
       response: data.items
       pagination: cursor
       path_params: [destination_id]
+    - id: account_log_service
+      method: GET
+      path: /v1/external-logging/account
+      response: data
     - id: log_services
       method: GET
       path: /v1/external-logging
@@ -239,6 +269,11 @@ provider_api:
       path: /v1/metadata/connector-types
       response: data.items
       pagination: cursor
+    - id: connector_metadata_details
+      method: GET
+      path: /v1/metadata/connector-types/{service}
+      response: data
+      path_params: [service]
     - id: system_keys
       method: GET
       path: /v1/system-keys
@@ -260,7 +295,13 @@ provider_api:
       path: /v1/transformations/package-metadata
       response: data.items
       pagination: cursor
+    - id: transformation_package_details
+      method: GET
+      path: /v1/transformations/package-metadata/{package_definition_id}
+      response: data
+      path_params: [package_definition_id]
 runtime_families:
+  - account_info
   - users
   - user_connections
   - user_groups
@@ -272,15 +313,19 @@ runtime_families:
   - groups
   - group_users
   - group_connections
+  - group_public_keys
+  - group_service_accounts
   - destinations
   - connections
   - connection_certificates
   - connection_fingerprints
   - connection_schemas
   - connection_state
+  - connection_table_columns
   - connector_sdk_packages
   - destination_certificates
   - destination_fingerprints
+  - account_log_service
   - log_services
   - webhooks
   - external_secret_managers
@@ -292,11 +337,15 @@ runtime_families:
   - hybrid_deployment_agents
   - public_connector_types
   - connector_metadata
+  - connector_metadata_details
   - system_keys
   - transformations
   - transformation_projects
   - transformation_package_metadata
+  - transformation_package_details
 kind_lifecycle:
+  - kind: fivetran.account_info
+    status: active
   - kind: fivetran.users
     status: active
   - kind: fivetran.user_connections
@@ -319,6 +368,10 @@ kind_lifecycle:
     status: active
   - kind: fivetran.group_connections
     status: active
+  - kind: fivetran.group_public_keys
+    status: active
+  - kind: fivetran.group_service_accounts
+    status: active
   - kind: fivetran.destinations
     status: active
   - kind: fivetran.connections
@@ -331,11 +384,15 @@ kind_lifecycle:
     status: active
   - kind: fivetran.connection_state
     status: active
+  - kind: fivetran.connection_table_columns
+    status: active
   - kind: fivetran.connector_sdk_packages
     status: active
   - kind: fivetran.destination_certificates
     status: active
   - kind: fivetran.destination_fingerprints
+    status: active
+  - kind: fivetran.account_log_service
     status: active
   - kind: fivetran.log_services
     status: active
@@ -359,6 +416,8 @@ kind_lifecycle:
     status: active
   - kind: fivetran.connector_metadata
     status: active
+  - kind: fivetran.connector_metadata_details
+    status: active
   - kind: fivetran.system_keys
     status: active
   - kind: fivetran.transformations
@@ -366,6 +425,8 @@ kind_lifecycle:
   - kind: fivetran.transformation_projects
     status: active
   - kind: fivetran.transformation_package_metadata
+    status: active
+  - kind: fivetran.transformation_package_details
     status: active
 coverage_contract:
   owner_domain: source_runtime
@@ -389,7 +450,22 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC6.2
       notes:
-        - Reads account users, roles, teams, and destination groups from first-class Fivetran API routes and preserves IDs, emails, role names, team names, group names, and provider status fields for access review.
+        - Reads account users, roles, teams, and destination groups from first-class Fivetran API routes and preserves API-key principal IDs, emails, role names, team names, group names, and provider status fields for access review.
+    - id: account_profile
+      type: entity_family
+      title: Account profile
+      families: [account_info]
+      support: supported
+      high_value: false
+      evidence_types: [identity_configuration, source_snapshot]
+      control_domains: [identity_access, asset_inventory]
+      control_refs:
+        - framework_name: "NIST 800-53 r5"
+          control_id: CM-8
+        - framework_name: SOC 2
+          control_id: CC7.1
+      notes:
+        - Reads account identity and system-key owner metadata from the account info endpoint so account-scoped records can retain tenant and API principal context.
     - id: account_membership_edges
       type: relationship
       title: User, team, group, and connection memberships
@@ -412,7 +488,7 @@ coverage_contract:
     - id: pipeline_inventory
       type: entity_family
       title: Destinations, connections, connector packages, metadata, and transformations
-      families: [destinations, connections, connection_schemas, connection_state, connector_sdk_packages, public_connector_types, connector_metadata, transformations, transformation_projects, transformation_package_metadata]
+      families: [destinations, connections, connection_schemas, connection_state, connection_table_columns, connector_sdk_packages, public_connector_types, connector_metadata, connector_metadata_details, transformations, transformation_projects, transformation_package_metadata, transformation_package_details]
       support: supported
       high_value: true
       evidence_types: [source_snapshot, configuration_state]
@@ -423,11 +499,11 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC7.1
       notes:
-        - Reads pipeline inventory, connection schema and state records, connector package and public connector metadata, destination configuration, paused state, sync cadence, transformation projects, quickstart package metadata, and transformation records through Fivetran APIs.
+        - Reads pipeline inventory, connection schema and state records, per-table column configuration, connector package and public connector metadata details, destination configuration, paused state, sync cadence, transformation projects, quickstart package lists and detail records, and transformation records through Fivetran APIs.
     - id: trust_and_connectivity_controls
       type: entity_family
       title: Connection and destination trust plus private connectivity
-      families: [connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
+      families: [group_public_keys, group_service_accounts, connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
       support: supported
       high_value: true
       evidence_types: [configuration_state, source_snapshot]
@@ -440,11 +516,11 @@ coverage_contract:
         - framework_name: "PCI DSS v4.0.1"
           control_id: "1.2"
       notes:
-        - Collects approved connection and destination certificates, SSH fingerprints, private links, proxy agents, proxy connection attachments, and hybrid deployment agents for review of trusted endpoints and private network paths.
+        - Collects group SSH keys and service accounts, approved connection and destination certificates, SSH fingerprints, private links, proxy agents, proxy connection attachments, and hybrid deployment agents for review of trusted endpoints and private network paths.
     - id: logging_and_webhook_controls
       type: lifecycle_state
       title: Log service and webhook configuration
-      families: [log_services, webhooks]
+      families: [account_log_service, log_services, webhooks]
       support: supported
       high_value: true
       evidence_types: [logging_configuration, configuration_state]
@@ -457,7 +533,7 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC7.2
       notes:
-        - Reads external logging services and webhook subscriptions so teams can review whether Fivetran events and sync outcomes are routed to operational systems.
+        - Reads account log service configuration, external logging services, and webhook subscriptions so teams can review whether Fivetran events and sync outcomes are routed to operational systems.
     - id: api_credentials
       type: app_entitlement
       title: System key inventory
@@ -495,7 +571,7 @@ coverage_contract:
     - id: incremental_sync
       type: incremental_sync
       title: Cursor sync
-      families: [users, user_connections, user_groups, roles, teams, team_users, team_connections, team_groups, groups, group_users, group_connections, destinations, connections, connection_certificates, connection_fingerprints, connection_schemas, connection_state, connector_sdk_packages, destination_certificates, destination_fingerprints, log_services, webhooks, external_secret_managers, external_secret_manager_entities, external_secret_manager_assignments, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents, public_connector_types, connector_metadata, system_keys, transformations, transformation_projects, transformation_package_metadata]
+      families: [account_info, users, user_connections, user_groups, roles, teams, team_users, team_connections, team_groups, groups, group_users, group_connections, group_public_keys, group_service_accounts, destinations, connections, connection_certificates, connection_fingerprints, connection_schemas, connection_state, connection_table_columns, connector_sdk_packages, destination_certificates, destination_fingerprints, account_log_service, log_services, webhooks, external_secret_managers, external_secret_manager_entities, external_secret_manager_assignments, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents, public_connector_types, connector_metadata, connector_metadata_details, system_keys, transformations, transformation_projects, transformation_package_metadata, transformation_package_details]
       support: supported
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
@@ -505,6 +581,10 @@ coverage_contract:
       notes:
         - Every list runtime follows Fivetran `data.next_cursor` and sends that value as the next `cursor` query parameter with bounded `limit` page sizes.
 event_contracts:
+  - kind: fivetran.account_info
+    schema_ref: fivetran/account_info/v1
+    required_attributes: [tenant_id, source_event_id, account_id, resource_id, resource_type]
+    required_payload_fields: [account_id]
   - kind: fivetran.users
     schema_ref: fivetran/users/v1
     required_attributes: [tenant_id, source_event_id, user_id]
@@ -549,6 +629,14 @@ event_contracts:
     schema_ref: fivetran/group_connections/v1
     required_attributes: [tenant_id, source_event_id, group_id, member_id]
     required_payload_fields: [id]
+  - kind: fivetran.group_public_keys
+    schema_ref: fivetran/group_public_keys/v1
+    required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+    required_payload_fields: [public_key]
+  - kind: fivetran.group_service_accounts
+    schema_ref: fivetran/group_service_accounts/v1
+    required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+    required_payload_fields: [service_account]
   - kind: fivetran.destinations
     schema_ref: fivetran/destinations/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
@@ -573,6 +661,10 @@ event_contracts:
     schema_ref: fivetran/connection_state/v1
     required_attributes: [tenant_id, source_event_id, connection_id, resource_id, resource_type]
     required_payload_fields: [id]
+  - kind: fivetran.connection_table_columns
+    schema_ref: fivetran/connection_table_columns/v1
+    required_attributes: [tenant_id, source_event_id, connection_id, schema_name, table_name, column_name, resource_id, resource_type]
+    required_payload_fields: [id]
   - kind: fivetran.connector_sdk_packages
     schema_ref: fivetran/connector_sdk_packages/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
@@ -584,6 +676,10 @@ event_contracts:
   - kind: fivetran.destination_fingerprints
     schema_ref: fivetran/destination_fingerprints/v1
     required_attributes: [tenant_id, source_event_id, destination_id, credential_id]
+    required_payload_fields: [id]
+  - kind: fivetran.account_log_service
+    schema_ref: fivetran/account_log_service/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
     required_payload_fields: [id]
   - kind: fivetran.log_services
     schema_ref: fivetran/log_services/v1
@@ -629,6 +725,10 @@ event_contracts:
     schema_ref: fivetran/connector_metadata/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
     required_payload_fields: [id]
+  - kind: fivetran.connector_metadata_details
+    schema_ref: fivetran/connector_metadata_details/v1
+    required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
+    required_payload_fields: [id]
   - kind: fivetran.system_keys
     schema_ref: fivetran/system_keys/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
@@ -645,3 +745,7 @@ event_contracts:
     schema_ref: fivetran/transformation_package_metadata/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
     required_payload_fields: [package_definition_id]
+  - kind: fivetran.transformation_package_details
+    schema_ref: fivetran/transformation_package_details/v1
+    required_attributes: [tenant_id, source_event_id, package_definition_id, resource_id, resource_type]
+    required_payload_fields: [id]

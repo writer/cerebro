@@ -386,7 +386,7 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		}
 	}
 	for objectKey, valueKey := range family.MapRecords {
-		if value, ok := object[objectKey]; ok {
+		if value, ok := rawValueAtPath(object, objectKey); ok {
 			items, err := recordsFromObjectMap(value, valueKey)
 			if err != nil {
 				return nil, "", false, err

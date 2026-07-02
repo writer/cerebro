@@ -51,12 +51,67 @@ entries:
           key: proxy_agent_ids
           label: Proxy agent IDs
           required: false
-      description: Collects Fivetran users, roles, teams, groups, memberships, destinations, connections, connection schema and state, connector package metadata, destination and connection trust material, external logging, webhooks, external secret managers, private links, proxy agents, proxy connection attachments, hybrid deployment agents, connector metadata, system keys, transformations, and transformation projects through the Fivetran REST API for access review, pipeline inventory, credential review, logging, secret-store dependency, and network trust context.
+        - help: Comma-separated connector service slugs for connector metadata detail reads.
+          key: connector_services
+          label: Connector services
+          required: false
+        - help: Comma-separated transformation package definition IDs for package detail reads.
+          key: package_definition_ids
+          label: Package definition IDs
+          required: false
+        - help: Connection ID for table-column configuration reads.
+          key: connection_id
+          label: Column connection ID
+          required: false
+        - help: Schema name for table-column configuration reads.
+          key: schema_name
+          label: Column schema name
+          required: false
+        - help: Table name for table-column configuration reads.
+          key: table_name
+          label: Column table name
+          required: false
+      description: Collects Fivetran account info, users, roles, teams, groups, memberships, group keys and service accounts, destinations, connections, connection schema, state, and table-column configuration, connector package metadata, destination and connection trust material, account logging, external logging, webhooks, external secret managers, private links, proxy agents, proxy connection attachments, hybrid deployment agents, connector metadata and details, system keys, transformations, and transformation projects through the Fivetran REST API for access review, pipeline inventory, credential review, logging, secret-store dependency, and network trust context.
       display_name: Fivetran
       id: builtin-fivetran
       ingest:
         mode: pull
       resource_families:
+        - coverage:
+            - control_domains: [identity_access, asset_inventory]
+              evidence_types: [identity_configuration, source_snapshot]
+              families: [account_info]
+              high_value: false
+              id: account_profile
+              support: supported
+              title: Account profile
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.account_info
+            required_attributes: [tenant_id, source_event_id, account_id, resource_id, resource_type]
+            required_payload_fields: [account_id]
+            schema_ref: fivetran/account_info/v1
+            urn_kind: fivetran_account_info
+          id: account_info
+          id_field: account_id
+          label: Account info
+          method: GET
+          name_field: account_name
+          path: /v1/account/info
+          projection:
+            fields:
+              account_id: account_id
+              resource_id: account_id
+              resource_name: account_name|account_id
+              resource_type: account
+              source_event_id: account_id
+              system_key_id: system_key_id
+              user_id: user_id
+            template: asset
+          read:
+            singleton: true
+            disable_page_size: true
         - coverage:
             - control_domains: [identity_access, authorization]
               evidence_types: [identity_configuration, source_snapshot]
@@ -483,6 +538,86 @@ entries:
               group_id: group_id
           record_selector: $.data.items[*]
         - coverage:
+            - control_domains: [network_security, identity_access, asset_inventory]
+              evidence_types: [configuration_state, credential_inventory]
+              families: [group_public_keys]
+              high_value: false
+              id: group_public_keys
+              support: supported
+              title: Group public keys
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.group_public_keys
+            required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+            required_payload_fields: [public_key]
+            schema_ref: fivetran/group_public_keys/v1
+            urn_kind: fivetran_group_public_keys
+          id: group_public_keys
+          id_field: public_key
+          label: Group public keys
+          method: GET
+          name_field: group_id
+          path: /v1/groups/{group_id}/public-key
+          projection:
+            fields:
+              credential_id: public_key|group_id
+              group_id: group_id
+              public_key: public_key
+              resource_id: public_key|group_id
+              resource_name: group_id|public_key
+              resource_type: public_key
+              scope_type: group
+              source_event_id: public_key|group_id
+            template: asset
+          read:
+            path_params: [group_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              group_id: group_id
+        - coverage:
+            - control_domains: [network_security, identity_access, asset_inventory]
+              evidence_types: [configuration_state, credential_inventory]
+              families: [group_service_accounts]
+              high_value: false
+              id: group_service_accounts
+              support: supported
+              title: Group service accounts
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.group_service_accounts
+            required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+            required_payload_fields: [service_account]
+            schema_ref: fivetran/group_service_accounts/v1
+            urn_kind: fivetran_group_service_accounts
+          id: group_service_accounts
+          id_field: service_account
+          label: Group service accounts
+          method: GET
+          name_field: service_account
+          path: /v1/groups/{group_id}/service-account
+          projection:
+            fields:
+              credential_id: service_account|group_id
+              group_id: group_id
+              resource_id: service_account|group_id
+              resource_name: service_account|group_id
+              resource_type: service_account
+              scope_type: group
+              service_account: service_account
+              source_event_id: service_account|group_id
+            template: asset
+          read:
+            path_params: [group_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              group_id: group_id
+        - coverage:
             - control_domains: [asset_inventory, data_governance]
               evidence_types: [source_snapshot, configuration_state]
               families: [destinations]
@@ -704,6 +839,52 @@ entries:
         - coverage:
             - control_domains: [asset_inventory, data_governance]
               evidence_types: [source_snapshot, configuration_state]
+              families: [connection_table_columns]
+              high_value: false
+              id: connection_table_columns
+              support: supported
+              title: Connection table columns
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connection_table_columns
+            required_attributes: [tenant_id, source_event_id, connection_id, schema_name, table_name, column_name, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connection_table_columns/v1
+            urn_kind: fivetran_connection_table_columns
+          id: connection_table_columns
+          id_field: id
+          label: Connection table columns
+          method: GET
+          name_field: id
+          path: /v1/connections/{connection_id}/schemas/{schema_name}/tables/{table_name}/columns
+          projection:
+            fields:
+              column_name: id|name
+              connection_id: connection_id
+              enabled: config.enabled|enabled
+              hashed: config.hashed|hashed
+              resource_id: id|name
+              resource_name: id|name
+              resource_type: connection_table_column
+              schema_name: schema_name
+              source_event_id: id|name
+              status: config.enabled|enabled
+              table_name: table_name
+            template: asset
+          read:
+            path_params: [connection_id, schema_name, table_name]
+            disable_page_size: true
+            map_records:
+              data.columns: config
+          config:
+            config_attributes:
+              connection_id: connection_id
+              schema_name: schema_name
+              table_name: table_name
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
               families: [connector_sdk_packages]
               high_value: false
               id: connector_sdk_packages
@@ -813,6 +994,41 @@ entries:
             config_attributes:
               destination_id: destination_id
           record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [logging_monitoring, change_management]
+              evidence_types: [logging_configuration, configuration_state]
+              families: [account_log_service]
+              high_value: false
+              id: account_log_service
+              support: supported
+              title: Account log service
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: fivetran.account_log_service
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
+            required_payload_fields: [id]
+            schema_ref: fivetran/account_log_service/v1
+            urn_kind: fivetran_account_log_service
+          id: account_log_service
+          id_field: id
+          label: Account log service
+          method: GET
+          name_field: service
+          path: /v1/external-logging/account
+          projection:
+            fields:
+              enabled: enabled
+              resource_id: id|service
+              resource_name: service|id
+              resource_type: log_service
+              service: service
+              source_event_id: id|service
+              status: enabled
+            template: asset
+          read:
+            singleton: true
+            disable_page_size: true
         - coverage:
             - control_domains: [logging_monitoring, change_management]
               evidence_types: [logging_configuration, configuration_state]
@@ -1192,6 +1408,44 @@ entries:
             template: asset
           record_selector: $.data.items[*]
         - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connector_metadata_details]
+              high_value: false
+              id: connector_metadata_details
+              support: supported
+              title: Connector metadata details
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connector_metadata_details
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connector_metadata_details/v1
+            urn_kind: fivetran_connector_metadata_details
+          id: connector_metadata_details
+          id_field: id
+          label: Connector metadata details
+          method: GET
+          name_field: name
+          path: /v1/metadata/connector-types/{service}
+          projection:
+            fields:
+              resource_id: id|service|name
+              resource_name: name|service|id
+              resource_type: connector_metadata_detail
+              service: service|id
+              source_event_id: id|service|name
+              status: service_status|status
+            template: asset
+          read:
+            path_params: [service]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              service: service
+        - coverage:
             - control_domains: [identity_access, authorization]
               evidence_types: [credential_inventory]
               families: [system_keys]
@@ -1323,19 +1577,57 @@ entries:
               status: status
             template: asset
           record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [transformation_package_details]
+              high_value: false
+              id: transformation_package_details
+              support: supported
+              title: Transformation package details
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.transformation_package_details
+            required_attributes: [tenant_id, source_event_id, package_definition_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/transformation_package_details/v1
+            urn_kind: fivetran_transformation_package_details
+          id: transformation_package_details
+          id_field: package_definition_id
+          label: Transformation package details
+          method: GET
+          name_field: name
+          path: /v1/transformations/package-metadata/{package_definition_id}
+          projection:
+            fields:
+              package_definition_id: package_definition_id|id
+              resource_id: package_definition_id|id|name
+              resource_name: name|package_definition_id|id
+              resource_type: transformation_package_detail
+              source_event_id: package_definition_id|id|name
+              status: version|status
+            template: asset
+          read:
+            path_params: [package_definition_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              package_definition_id: package_definition_id
       schema_version: cerebro.integration/v1
       scope_options:
         - id: account_access
           label: Account access
-          families: [users, roles, teams, groups, user_connections, user_groups, team_users, team_connections, team_groups, group_users, group_connections]
+          families: [account_info, users, roles, teams, groups, user_connections, user_groups, team_users, team_connections, team_groups, group_users, group_connections]
           default_enabled: true
         - id: pipeline_inventory
           label: Pipeline inventory
-          families: [destinations, connections, connection_schemas, connection_state, connector_sdk_packages, public_connector_types, connector_metadata, transformations, transformation_projects, transformation_package_metadata]
+          families: [destinations, connections, connection_schemas, connection_state, connection_table_columns, connector_sdk_packages, public_connector_types, connector_metadata, connector_metadata_details, transformations, transformation_projects, transformation_package_metadata, transformation_package_details]
           default_enabled: true
         - id: trust_controls
           label: Trust controls
-          families: [connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
+          families: [group_public_keys, group_service_accounts, connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
           default_enabled: true
         - id: external_secrets
           label: External secrets
@@ -1343,7 +1635,7 @@ entries:
           default_enabled: true
         - id: operations
           label: Operations
-          families: [log_services, webhooks, system_keys]
+          families: [account_log_service, log_services, webhooks, system_keys]
           default_enabled: true
       source_id: fivetran
       tenant_id: builtin_catalog

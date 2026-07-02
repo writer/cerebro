@@ -25,6 +25,7 @@ func NewFixture() (sourcecdk.Source, error) {
 	}
 	families := []sourcecdk.FixtureFamily{}
 	for _, family := range []string{
+		fivetranapi.FamilyAccountInfo,
 		fivetranapi.FamilyUsers,
 		fivetranapi.FamilyUserConnections,
 		fivetranapi.FamilyUserGroups,
@@ -36,15 +37,19 @@ func NewFixture() (sourcecdk.Source, error) {
 		fivetranapi.FamilyGroups,
 		fivetranapi.FamilyGroupUsers,
 		fivetranapi.FamilyGroupConnections,
+		fivetranapi.FamilyGroupPublicKeys,
+		fivetranapi.FamilyGroupServiceAccounts,
 		fivetranapi.FamilyDestinations,
 		fivetranapi.FamilyConnections,
 		fivetranapi.FamilyConnectionCertificates,
 		fivetranapi.FamilyConnectionFingerprints,
 		fivetranapi.FamilyConnectionSchemas,
 		fivetranapi.FamilyConnectionState,
+		fivetranapi.FamilyConnectionTableColumns,
 		fivetranapi.FamilyConnectorSDKPackages,
 		fivetranapi.FamilyDestinationCertificates,
 		fivetranapi.FamilyDestinationFingerprints,
+		fivetranapi.FamilyAccountLogService,
 		fivetranapi.FamilyLogServices,
 		fivetranapi.FamilyWebhooks,
 		fivetranapi.FamilyExternalSecretManagers,
@@ -56,10 +61,12 @@ func NewFixture() (sourcecdk.Source, error) {
 		fivetranapi.FamilyHybridAgents,
 		fivetranapi.FamilyPublicConnectorTypes,
 		fivetranapi.FamilyConnectorMetadata,
+		fivetranapi.FamilyConnectorMetadataDetails,
 		fivetranapi.FamilySystemKeys,
 		fivetranapi.FamilyTransformations,
 		fivetranapi.FamilyTransformationProjects,
 		fivetranapi.FamilyTransformationPackageMetadata,
+		fivetranapi.FamilyTransformationPackageDetails,
 	} {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
@@ -82,10 +89,8 @@ func NewFixture() (sourcecdk.Source, error) {
 }
 
 func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
-	if fixtureTenantID(cfg) == "" {
-		return fmt.Errorf("tenant_id is required")
-	}
-	return nil
+	_, err := resolveFixtureFamily(cfg)
+	return err
 }
 
 func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {

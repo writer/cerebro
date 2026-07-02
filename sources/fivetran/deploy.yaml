@@ -10,8 +10,13 @@ secretKeys:
   - FIVETRAN_DESTINATION_IDS
   - FIVETRAN_EXTERNAL_SECRET_MANAGER_IDS
   - FIVETRAN_PROXY_AGENT_IDS
+  - FIVETRAN_CONNECTOR_SERVICES
+  - FIVETRAN_PACKAGE_DEFINITION_IDS
+  - FIVETRAN_TABLE_COLUMN_CONNECTION_ID
+  - FIVETRAN_TABLE_COLUMN_SCHEMA_NAME
+  - FIVETRAN_TABLE_COLUMN_TABLE_NAME
 runtimes:
-  - localId: users
+  - localId: account-info
     config: &base
       base_url: env:FIVETRAN_BASE_URL
       username: env:FIVETRAN_API_KEY
@@ -21,6 +26,10 @@ runtimes:
       stale_after_seconds: "86400"
       per_page: "100"
       failure_modes: api_error,auth_error,rate_limit,schema_drift
+      family: account_info
+  - localId: users
+    config:
+      <<: *base
       family: users
   - localId: user-connections
     config:
@@ -69,6 +78,16 @@ runtimes:
       <<: *base
       family: group_connections
       group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: group-public-keys
+    config:
+      <<: *base
+      family: group_public_keys
+      group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: group-service-accounts
+    config:
+      <<: *base
+      family: group_service_accounts
+      group_ids: env:FIVETRAN_GROUP_IDS
   - localId: destinations
     config:
       <<: *base
@@ -97,6 +116,13 @@ runtimes:
       <<: *base
       family: connection_state
       connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connection-table-columns
+    config:
+      <<: *base
+      family: connection_table_columns
+      connection_id: env:FIVETRAN_TABLE_COLUMN_CONNECTION_ID
+      schema_name: env:FIVETRAN_TABLE_COLUMN_SCHEMA_NAME
+      table_name: env:FIVETRAN_TABLE_COLUMN_TABLE_NAME
   - localId: connector-sdk-packages
     config:
       <<: *base
@@ -111,6 +137,10 @@ runtimes:
       <<: *base
       family: destination_fingerprints
       destination_ids: env:FIVETRAN_DESTINATION_IDS
+  - localId: account-log-service
+    config:
+      <<: *base
+      family: account_log_service
   - localId: log-services
     config:
       <<: *base
@@ -157,6 +187,11 @@ runtimes:
     config:
       <<: *base
       family: connector_metadata
+  - localId: connector-metadata-details
+    config:
+      <<: *base
+      family: connector_metadata_details
+      connector_services: env:FIVETRAN_CONNECTOR_SERVICES
   - localId: system-keys
     config:
       <<: *base
@@ -173,3 +208,8 @@ runtimes:
     config:
       <<: *base
       family: transformation_package_metadata
+  - localId: transformation-package-details
+    config:
+      <<: *base
+      family: transformation_package_details
+      package_definition_ids: env:FIVETRAN_PACKAGE_DEFINITION_IDS

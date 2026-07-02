@@ -22,12 +22,7 @@ const (
 	defaultBaseURLTemplate = fivetranapi.DefaultBaseURLTemplate
 )
 
-var templateKeys = []string{"base_url"}
-
-type Source struct {
-	inner         *jsonapi.Source
-	allowLoopback bool
-}
+type Source struct{ inner *jsonapi.Source }
 
 func New() (*Source, error) {
 	spec, err := loadSpec()
@@ -47,12 +42,7 @@ func New() (*Source, error) {
 	return &Source{inner: inner}, nil
 }
 
-func (s *Source) Spec() *cerebrov1.SourceSpec {
-	if s == nil || s.inner == nil {
-		return nil
-	}
-	return s.inner.Spec()
-}
+func (s *Source) Spec() *cerebrov1.SourceSpec { return s.inner.Spec() }
 
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
@@ -108,7 +98,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, []string{"base_url"})
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -121,7 +111,7 @@ func fivetranPathParamValues(cfg sourcecdk.Config) (string, []string) {
 		return "user_id", fivetranapi.ConfigListValues(cfg, "user_ids", "user_id")
 	case fivetranapi.FamilyTeamUsers, fivetranapi.FamilyTeamConnections, fivetranapi.FamilyTeamGroups:
 		return "team_id", fivetranapi.ConfigListValues(cfg, "team_ids", "team_id")
-	case fivetranapi.FamilyGroupUsers, fivetranapi.FamilyGroupConnections:
+	case fivetranapi.FamilyGroupUsers, fivetranapi.FamilyGroupConnections, fivetranapi.FamilyGroupPublicKeys, fivetranapi.FamilyGroupServiceAccounts:
 		return "group_id", fivetranapi.ConfigListValues(cfg, "group_ids", "group_id")
 	case fivetranapi.FamilyConnectionCertificates, fivetranapi.FamilyConnectionFingerprints, fivetranapi.FamilyConnectionSchemas, fivetranapi.FamilyConnectionState:
 		return "connection_id", fivetranapi.ConfigListValues(cfg, "connection_ids", "connection_id")
@@ -131,6 +121,10 @@ func fivetranPathParamValues(cfg sourcecdk.Config) (string, []string) {
 		return "external_secret_manager_id", fivetranapi.ConfigListValues(cfg, "external_secret_manager_ids", "external_secret_manager_id", "esm_ids", "esm_id")
 	case fivetranapi.FamilyProxyAgentConnections:
 		return "proxy_agent_id", fivetranapi.ConfigListValues(cfg, "proxy_agent_ids", "proxy_agent_id", "agent_ids", "agent_id")
+	case fivetranapi.FamilyConnectorMetadataDetails:
+		return "service", fivetranapi.ConfigListValues(cfg, "connector_services", "services", "service")
+	case fivetranapi.FamilyTransformationPackageDetails:
+		return "package_definition_id", fivetranapi.ConfigListValues(cfg, "package_definition_ids", "package_definition_id")
 	default:
 		return "", nil
 	}
@@ -192,6 +186,10 @@ func fivetranParentFamilyForParam(param string) (string, string) {
 		return fivetranapi.FamilyExternalSecretManagers, "resource_id"
 	case "proxy_agent_id":
 		return fivetranapi.FamilyProxyAgents, "resource_id"
+	case "service":
+		return fivetranapi.FamilyConnectorMetadata, "service"
+	case "package_definition_id":
+		return fivetranapi.FamilyTransformationPackageMetadata, "resource_id"
 	default:
 		return "", ""
 	}
@@ -223,6 +221,5 @@ func compactStrings(values []string) []string {
 func (s *Source) allowLoopbackForTest() {
 	if s != nil && s.inner != nil {
 		s.inner.AllowLoopbackBaseURL = true
-		s.allowLoopback = true
 	}
 }

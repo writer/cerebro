@@ -79,7 +79,20 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 		queryKey   string
 		queryValue string
 		singleton  bool
+		wantLimit  string
 	}{
+		{
+			name:      "account info",
+			family:    fivetranapi.FamilyAccountInfo,
+			path:      "/v1/account/info",
+			accept:    "application/json",
+			item:      map[string]any{"account_id": "account-1", "account_name": "Primary account"},
+			kind:      "fivetran.account_info",
+			attrKey:   "resource_id",
+			attrValue: "account-1",
+			singleton: true,
+			wantLimit: "none",
+		},
 		{
 			name:      "users",
 			family:    fivetranapi.FamilyUsers,
@@ -119,6 +132,32 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			kind:      "fivetran.groups",
 			attrKey:   "group_id",
 			attrValue: "group-1",
+		},
+		{
+			name:      "group public keys",
+			family:    fivetranapi.FamilyGroupPublicKeys,
+			path:      "/v1/groups/group-1/public-key",
+			accept:    "application/json",
+			item:      map[string]any{"public_key": "ssh-rsa-test"},
+			kind:      "fivetran.group_public_keys",
+			attrKey:   "credential_id",
+			attrValue: "ssh-rsa-test",
+			config:    map[string]string{"group_ids": "group-1"},
+			singleton: true,
+			wantLimit: "none",
+		},
+		{
+			name:      "group service accounts",
+			family:    fivetranapi.FamilyGroupServiceAccounts,
+			path:      "/v1/groups/group-1/service-account",
+			accept:    "application/json",
+			item:      map[string]any{"service_account": "svc-account"},
+			kind:      "fivetran.group_service_accounts",
+			attrKey:   "credential_id",
+			attrValue: "svc-account",
+			config:    map[string]string{"group_ids": "group-1"},
+			singleton: true,
+			wantLimit: "none",
 		},
 		{
 			name:      "destinations",
@@ -217,6 +256,18 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrKey:   "credential_id",
 			attrValue: "dest-fingerprint-1",
 			config:    map[string]string{"destination_ids": "destination-1"},
+		},
+		{
+			name:      "account log service",
+			family:    fivetranapi.FamilyAccountLogService,
+			path:      "/v1/external-logging/account",
+			accept:    "application/json",
+			item:      map[string]any{"id": "log-1", "service": "datadog_log", "enabled": true},
+			kind:      "fivetran.account_log_service",
+			attrKey:   "resource_id",
+			attrValue: "log-1",
+			singleton: true,
+			wantLimit: "none",
 		},
 		{
 			name:      "log services",
@@ -331,6 +382,19 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "postgres",
 		},
 		{
+			name:      "connector metadata details",
+			family:    fivetranapi.FamilyConnectorMetadataDetails,
+			path:      "/v1/metadata/connector-types/postgres",
+			accept:    "application/json",
+			item:      map[string]any{"id": "postgres", "name": "PostgreSQL", "service_status": "general_availability"},
+			kind:      "fivetran.connector_metadata_details",
+			attrKey:   "resource_id",
+			attrValue: "postgres",
+			config:    map[string]string{"services": "postgres"},
+			singleton: true,
+			wantLimit: "none",
+		},
+		{
 			name:      "system keys",
 			family:    fivetranapi.FamilySystemKeys,
 			path:      "/v1/system-keys",
@@ -370,6 +434,19 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrKey:   "resource_id",
 			attrValue: "package-definition-1",
 		},
+		{
+			name:      "transformation package details",
+			family:    fivetranapi.FamilyTransformationPackageDetails,
+			path:      "/v1/transformations/package-metadata/package-definition-1",
+			accept:    "application/json",
+			item:      map[string]any{"id": "package-definition-1", "name": "Quickstart package", "version": "1.0.0"},
+			kind:      "fivetran.transformation_package_details",
+			attrKey:   "resource_id",
+			attrValue: "package-definition-1",
+			config:    map[string]string{"package_definition_ids": "package-definition-1"},
+			singleton: true,
+			wantLimit: "none",
+		},
 	}
 
 	for _, tt := range tests {
@@ -380,8 +457,16 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				if r.URL.Path != tt.path {
 					t.Fatalf("path = %q, want %s", r.URL.Path, tt.path)
 				}
-				if got := r.URL.Query().Get("limit"); got != "2" {
-					t.Fatalf("limit = %q, want 2", got)
+				wantLimit := tt.wantLimit
+				if wantLimit == "" {
+					wantLimit = "2"
+				}
+				if got := r.URL.Query().Get("limit"); wantLimit == "none" {
+					if got != "" {
+						t.Fatalf("limit = %q, want no limit", got)
+					}
+				} else if got != wantLimit {
+					t.Fatalf("limit = %q, want %s", got, wantLimit)
 				}
 				if tt.queryKey != "" && r.URL.Query().Get(tt.queryKey) != tt.queryValue {
 					t.Fatalf("%s query = %q, want %q", tt.queryKey, r.URL.Query().Get(tt.queryKey), tt.queryValue)
@@ -429,6 +514,50 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSourceReadsConnectionTableColumns(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireFivetranHeaders(t, r, "application/json")
+		if r.URL.Path != "/v1/connections/connection-1/schemas/public/tables/users/columns" {
+			t.Fatalf("path = %q, want table columns path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "" {
+			t.Fatalf("limit = %q, want no limit", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "Success",
+			"data": map[string]any{
+				"columns": map[string]any{
+					"EMAIL": map[string]any{"enabled": true, "hashed": false},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), fivetranConfig(server.URL, map[string]string{
+		"connection_id": "connection-1",
+		"family":        fivetranapi.FamilyConnectionTableColumns,
+		"schema_name":   "public",
+		"table_name":    "users",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "fivetran.connection_table_columns" {
+		t.Fatalf("kind = %q, want fivetran.connection_table_columns", event.Kind)
+	}
+	attrs := event.Attributes
+	if attrs["connection_id"] != "connection-1" || attrs["schema_name"] != "public" || attrs["table_name"] != "users" || attrs["column_name"] != "EMAIL" || attrs["enabled"] != "true" {
+		t.Fatalf("attributes = %#v, want table column attributes", attrs)
 	}
 }
 
@@ -566,6 +695,7 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{
+		fivetranapi.FamilyAccountInfo,
 		fivetranapi.FamilyUsers,
 		fivetranapi.FamilyUserConnections,
 		fivetranapi.FamilyUserGroups,
@@ -577,15 +707,19 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 		fivetranapi.FamilyGroups,
 		fivetranapi.FamilyGroupUsers,
 		fivetranapi.FamilyGroupConnections,
+		fivetranapi.FamilyGroupPublicKeys,
+		fivetranapi.FamilyGroupServiceAccounts,
 		fivetranapi.FamilyDestinations,
 		fivetranapi.FamilyConnections,
 		fivetranapi.FamilyConnectionCertificates,
 		fivetranapi.FamilyConnectionFingerprints,
 		fivetranapi.FamilyConnectionSchemas,
 		fivetranapi.FamilyConnectionState,
+		fivetranapi.FamilyConnectionTableColumns,
 		fivetranapi.FamilyConnectorSDKPackages,
 		fivetranapi.FamilyDestinationCertificates,
 		fivetranapi.FamilyDestinationFingerprints,
+		fivetranapi.FamilyAccountLogService,
 		fivetranapi.FamilyLogServices,
 		fivetranapi.FamilyWebhooks,
 		fivetranapi.FamilyExternalSecretManagers,
@@ -597,10 +731,12 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 		fivetranapi.FamilyHybridAgents,
 		fivetranapi.FamilyPublicConnectorTypes,
 		fivetranapi.FamilyConnectorMetadata,
+		fivetranapi.FamilyConnectorMetadataDetails,
 		fivetranapi.FamilySystemKeys,
 		fivetranapi.FamilyTransformations,
 		fivetranapi.FamilyTransformationProjects,
 		fivetranapi.FamilyTransformationPackageMetadata,
+		fivetranapi.FamilyTransformationPackageDetails,
 	} {
 		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
 			"family":    family,

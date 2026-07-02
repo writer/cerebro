@@ -16,6 +16,7 @@ func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
 		wantLinks bool
 	}{
 		{name: "users", kind: "fivetran.users", project: fivetranUsersProjections, attrs: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}},
+		{name: "account_info", kind: "fivetran.account_info", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"account_id": "account-1", "resource_id": "account-1", "resource_type": "account", "resource_name": "Primary account"}},
 		{name: "legacy_accounts", kind: "fivetran.accounts", project: fivetranAccountsProjections, attrs: map[string]string{"resource_id": "account-1", "resource_type": "account", "resource_name": "Primary account"}},
 		{name: "legacy_records", kind: "fivetran.records", project: fivetranRecordsProjections, attrs: map[string]string{"resource_id": "record-1", "resource_type": "record", "resource_name": "Runtime record"}},
 		{name: "legacy_policies", kind: "fivetran.policies", project: fivetranPoliciesProjections, attrs: map[string]string{"policy_id": "policy-1", "policy_name": "Access policy"}},
@@ -30,15 +31,19 @@ func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
 		{name: "groups", kind: "fivetran.groups", project: fivetranGroupsProjections, attrs: map[string]string{"group_id": "group-1", "group_name": "Finance"}},
 		{name: "group_users", kind: "fivetran.group_users", project: fivetranScopedMembershipProjections, attrs: map[string]string{"group_id": "group-1", "member_id": "user-1", "member_type": "user", "email": "user@example.test"}, wantLinks: true},
 		{name: "group_connections", kind: "fivetran.group_connections", project: fivetranScopedMembershipProjections, attrs: map[string]string{"group_id": "group-1", "member_id": "connection-1", "member_type": "connection"}, wantLinks: true},
+		{name: "group_public_keys", kind: "fivetran.group_public_keys", project: fivetranCredentialProjections, attrs: map[string]string{"credential_id": "ssh-rsa-test", "group_id": "group-1", "resource_id": "ssh-rsa-test", "resource_type": "public_key"}, wantLinks: true},
+		{name: "group_service_accounts", kind: "fivetran.group_service_accounts", project: fivetranCredentialProjections, attrs: map[string]string{"credential_id": "svc-account", "group_id": "group-1", "resource_id": "svc-account", "resource_type": "service_account"}, wantLinks: true},
 		{name: "destinations", kind: "fivetran.destinations", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "dest-1", "resource_type": "destination", "resource_name": "Warehouse"}},
 		{name: "connections", kind: "fivetran.connections", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "connection-1", "resource_type": "connection", "resource_name": "Salesforce"}},
 		{name: "connection_certificates", kind: "fivetran.connection_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"connection_id": "connection-1", "credential_id": "cert-1", "resource_id": "cert-1", "resource_type": "certificate"}, wantLinks: true},
 		{name: "connection_fingerprints", kind: "fivetran.connection_fingerprints", project: fivetranCredentialProjections, attrs: map[string]string{"connection_id": "connection-1", "credential_id": "fingerprint-1", "resource_id": "fingerprint-1", "resource_type": "fingerprint"}, wantLinks: true},
 		{name: "connection_schemas", kind: "fivetran.connection_schemas", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"connection_id": "connection-1", "resource_id": "connection-1", "resource_type": "connection_schema"}},
 		{name: "connection_state", kind: "fivetran.connection_state", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"connection_id": "connection-1", "resource_id": "connection-1", "resource_type": "connection_state", "status": "connected"}},
+		{name: "connection_table_columns", kind: "fivetran.connection_table_columns", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"column_name": "EMAIL", "connection_id": "connection-1", "resource_id": "EMAIL", "resource_type": "connection_table_column", "schema_name": "public", "table_name": "users"}, wantLinks: true},
 		{name: "connector_sdk_packages", kind: "fivetran.connector_sdk_packages", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "package-1", "resource_type": "connector_sdk_package", "resource_name": "Custom package"}},
 		{name: "destination_certificates", kind: "fivetran.destination_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"destination_id": "destination-1", "credential_id": "dest-cert-1", "resource_id": "dest-cert-1", "resource_type": "certificate"}, wantLinks: true},
 		{name: "destination_fingerprints", kind: "fivetran.destination_fingerprints", project: fivetranCredentialProjections, attrs: map[string]string{"destination_id": "destination-1", "credential_id": "dest-fingerprint-1", "resource_id": "dest-fingerprint-1", "resource_type": "fingerprint"}, wantLinks: true},
+		{name: "account_log_service", kind: "fivetran.account_log_service", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "log-1", "resource_type": "log_service", "resource_name": "Datadog", "status": "true"}},
 		{name: "log_services", kind: "fivetran.log_services", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "log-1", "resource_type": "log_service", "resource_name": "Datadog"}},
 		{name: "webhooks", kind: "fivetran.webhooks", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "webhook-1", "resource_type": "webhook", "resource_name": "Sync alerts"}},
 		{name: "external_secret_managers", kind: "fivetran.external_secret_managers", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "esm-1", "resource_type": "external_secret_manager", "resource_name": "Vault production"}},
@@ -50,10 +55,12 @@ func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
 		{name: "hybrid_deployment_agents", kind: "fivetran.hybrid_deployment_agents", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "hybrid-1", "resource_type": "hybrid_deployment_agent", "resource_name": "Hybrid Agent"}},
 		{name: "public_connector_types", kind: "fivetran.public_connector_types", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "postgres", "resource_type": "public_connector_type", "service": "postgres"}},
 		{name: "connector_metadata", kind: "fivetran.connector_metadata", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "postgres", "resource_type": "connector_metadata", "service": "postgres"}},
+		{name: "connector_metadata_details", kind: "fivetran.connector_metadata_details", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "postgres", "resource_type": "connector_metadata_detail", "service": "postgres", "status": "general_availability"}},
 		{name: "system_keys", kind: "fivetran.system_keys", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "key-1", "resource_type": "system_key", "resource_name": "Automation key"}},
 		{name: "transformations", kind: "fivetran.transformations", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "transformation-1", "resource_type": "transformation", "resource_name": "Normalize accounts"}},
 		{name: "transformation_projects", kind: "fivetran.transformation_projects", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "project-1", "resource_type": "transformation_project", "resource_name": "dbt production"}},
 		{name: "transformation_package_metadata", kind: "fivetran.transformation_package_metadata", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "package-definition-1", "resource_type": "transformation_package_metadata", "resource_name": "Quickstart package"}},
+		{name: "transformation_package_details", kind: "fivetran.transformation_package_details", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"package_definition_id": "package-definition-1", "resource_id": "package-definition-1", "resource_type": "transformation_package_detail", "resource_name": "Quickstart package"}},
 	}
 
 	for _, tt := range cases {
@@ -77,6 +84,7 @@ func TestFivetranRegistryContainsProviderFamilies(t *testing.T) {
 	registry := BuiltinRegistry()
 	for _, kind := range []string{
 		"fivetran.users",
+		"fivetran.account_info",
 		"fivetran.accounts",
 		"fivetran.audit_events",
 		"fivetran.policies",
@@ -91,15 +99,19 @@ func TestFivetranRegistryContainsProviderFamilies(t *testing.T) {
 		"fivetran.groups",
 		"fivetran.group_users",
 		"fivetran.group_connections",
+		"fivetran.group_public_keys",
+		"fivetran.group_service_accounts",
 		"fivetran.destinations",
 		"fivetran.connections",
 		"fivetran.connection_certificates",
 		"fivetran.connection_fingerprints",
 		"fivetran.connection_schemas",
 		"fivetran.connection_state",
+		"fivetran.connection_table_columns",
 		"fivetran.connector_sdk_packages",
 		"fivetran.destination_certificates",
 		"fivetran.destination_fingerprints",
+		"fivetran.account_log_service",
 		"fivetran.log_services",
 		"fivetran.webhooks",
 		"fivetran.external_secret_managers",
@@ -111,10 +123,12 @@ func TestFivetranRegistryContainsProviderFamilies(t *testing.T) {
 		"fivetran.hybrid_deployment_agents",
 		"fivetran.public_connector_types",
 		"fivetran.connector_metadata",
+		"fivetran.connector_metadata_details",
 		"fivetran.system_keys",
 		"fivetran.transformations",
 		"fivetran.transformation_projects",
 		"fivetran.transformation_package_metadata",
+		"fivetran.transformation_package_details",
 	} {
 		if registry.projectors[kind] == nil {
 			t.Fatalf("missing projector for %s", kind)
@@ -210,6 +224,61 @@ func TestFivetranDestinationCredentialsLinkToDestination(t *testing.T) {
 	assertProjectedEntityType(t, state, certificateURN, "runtime.fivetran.certificate")
 	assertProjectedEntityType(t, state, destinationURN, "runtime.fivetran.destination")
 	assertProjectedLink(t, state, certificateURN, relationAssignedTo, destinationURN)
+}
+
+func TestFivetranGroupCredentialsLinkToGroup(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "group-public-key-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.group_public_keys",
+		Attributes: map[string]string{
+			"credential_id": "ssh-rsa-test",
+			"group_id":      "group-1",
+			"resource_id":   "ssh-rsa-test",
+			"resource_type": "public_key",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	publicKeyURN := "urn:cerebro:writer:runtime_fivetran_public_key:ssh-rsa-test"
+	groupURN := "urn:cerebro:writer:fivetran_group:group-1"
+	assertProjectedEntityType(t, state, publicKeyURN, "runtime.fivetran.public.key")
+	assertProjectedEntityType(t, state, groupURN, "fivetran.group")
+	assertProjectedLink(t, state, publicKeyURN, relationAssignedTo, groupURN)
+}
+
+func TestFivetranTableColumnUsesCompositeRuntimeURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "column-event",
+		TenantId: "writer",
+		SourceId: "fivetran",
+		Kind:     "fivetran.connection_table_columns",
+		Attributes: map[string]string{
+			"column_name":   "EMAIL",
+			"connection_id": "connection-1",
+			"resource_id":   "EMAIL",
+			"resource_type": "connection_table_column",
+			"resource_urn":  "urn:cerebro:writer:fivetran_connection_table_columns:EMAIL",
+			"schema_name":   "public",
+			"table_name":    "users",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	columnURN := "urn:cerebro:writer:runtime_fivetran_connection_table_column:connection-1/public/users/EMAIL"
+	connectionURN := "urn:cerebro:writer:runtime_fivetran_connection:connection-1"
+	assertProjectedEntityType(t, state, columnURN, "runtime.fivetran.connection.table.column")
+	assertProjectedEntityMissing(t, state, "urn:cerebro:writer:fivetran_connection_table_columns:EMAIL")
+	assertProjectedLink(t, state, columnURN, relationBelongsTo, connectionURN)
 }
 
 func TestFivetranAssetRelationshipsProjectToGraph(t *testing.T) {
