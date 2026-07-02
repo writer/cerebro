@@ -57,7 +57,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	useNextURL := isAbsoluteHTTPURL(pageCursor)
 	if pageCursor != "" && !useNextURL {
-		query.Set(cursorParam(family), pageCursor)
+		addCursorQuery(query, family, pageCursor)
 	}
 	var body json.RawMessage
 	var headers http.Header
@@ -186,6 +186,36 @@ func cursorParam(family Family) string {
 		return param
 	}
 	return "cursor"
+}
+
+func addCursorQuery(query url.Values, family Family, cursor string) {
+	param := cursorParam(family)
+	cursor = strings.TrimSpace(cursor)
+	if param == "" || cursor == "" {
+		return
+	}
+	if !family.Config.RepeatedCursorParam {
+		query.Set(param, cursor)
+		return
+	}
+	query.Del(param)
+	for _, value := range splitRepeatedCursor(cursor) {
+		query.Add(param, value)
+	}
+}
+
+func splitRepeatedCursor(cursor string) []string {
+	parts := strings.Split(cursor, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			values = append(values, part)
+		}
+	}
+	if len(values) == 0 {
+		return []string{strings.TrimSpace(cursor)}
+	}
+	return values
 }
 
 func isAbsoluteHTTPURL(value string) bool {

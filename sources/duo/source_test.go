@@ -270,8 +270,8 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 				"metadata": map[string]any{"next_offset": []any{"1700000000001", "auth-1"}},
 			}})
 		case 2:
-			if got := r.URL.Query().Get("next_offset"); got != "1700000000001,auth-1" {
-				t.Fatalf("second next_offset = %q, want comma-joined cursor", got)
+			if got := r.URL.Query()["next_offset"]; len(got) != 2 || got[0] != "1700000000001" || got[1] != "auth-1" {
+				t.Fatalf("second next_offset = %#v, want repeated Duo cursor values", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": map[string]any{"authlogs": []map[string]any{}}})
 		default:
