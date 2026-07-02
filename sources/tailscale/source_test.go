@@ -239,6 +239,41 @@ func TestNewFixtureReplaysTailscaleFamilies(t *testing.T) {
 	})
 }
 
+func TestFixtureDiscoverURNsMatchReadResourceURNs(t *testing.T) {
+	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
+		t.Run(family, func(t *testing.T) {
+			discoverPayload, err := fixtureFS.ReadFile("testdata/discover_" + family + ".json")
+			if err != nil {
+				t.Fatalf("read discover fixture: %v", err)
+			}
+			var discoverURNs []string
+			if err := json.Unmarshal(discoverPayload, &discoverURNs); err != nil {
+				t.Fatalf("unmarshal discover fixture: %v", err)
+			}
+
+			readPayload, err := fixtureFS.ReadFile("testdata/read_" + family + ".json")
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			var readEvents []struct {
+				Attributes map[string]string `json:"attributes"`
+			}
+			if err := json.Unmarshal(readPayload, &readEvents); err != nil {
+				t.Fatalf("unmarshal read fixture: %v", err)
+			}
+			readURNs := make([]string, 0, len(readEvents))
+			for _, event := range readEvents {
+				urn := event.Attributes["resource_urn"]
+				if urn == "" {
+					t.Fatalf("read fixture event missing resource_urn: %#v", event.Attributes)
+				}
+				readURNs = append(readURNs, urn)
+			}
+			assertStringSet(t, discoverURNs, readURNs)
+		})
+	}
+}
+
 func assertStringSet(t *testing.T, got []string, want []string) {
 	t.Helper()
 	sort.Strings(got)
