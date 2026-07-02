@@ -59,6 +59,32 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["event_type"]; got != "call.hangup" {
 		t.Fatalf("event_type = %q, want call.hangup", got)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:telnyx_call_event:00000000-0000-4000-8000-000000000002" {
+		t.Fatalf("resource_urn = %q, want call leg URN", got)
+	}
+}
+
+func TestSourceDiscoverUsesCallEventRecordURN(t *testing.T) {
+	source := newTestSource(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireTelnyxAuth(t, r)
+		if r.URL.Path != "/call_events" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		writeJSON(t, w, listBody(callEventRecord()))
+	}))
+	defer server.Close()
+
+	urns, err := source.Discover(context.Background(), testConfig(server.URL, familyCallEvent))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("Discover() URNs = %d, want 1: %#v", len(urns), urns)
+	}
+	if got := urns[0].String(); got != "urn:cerebro:tenant:telnyx_call_event:00000000-0000-4000-8000-000000000002" {
+		t.Fatalf("Discover() URN = %q, want call leg URN", got)
+	}
 }
 
 func TestCallEventsDoNotDedupeSameCallLeg(t *testing.T) {
@@ -106,7 +132,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 	}{
 		{family: familyBillingGroup, path: "/billing_groups", body: listBody(billingGroupRecord()), kind: "telnyx.billing_group", attr: "group_id", want: "00000000-0000-4000-8000-000000000001", externalID: "00000000-0000-4000-8000-000000000001"},
 		{family: familyCallControlApplication, path: "/call_control_applications", body: listBody(callControlApplicationRecord()), kind: "telnyx.call_control_application", attr: "policy_name", want: "Emergency routing", externalID: "1293384261075731499"},
-		{family: familyCallEvent, path: "/call_events", body: listBody(callEventRecord()), kind: "telnyx.call_event", attr: "event_type", want: "call.hangup", externalID: "2019-03-29T11:10:19.127783Z"},
+		{family: familyCallEvent, path: "/call_events", body: listBody(callEventRecord()), kind: "telnyx.call_event", attr: "event_type", want: "call.hangup", externalID: "00000000-0000-4000-8000-000000000002"},
 		{family: familyCredentialConnection, path: "/credential_connections", body: listBody(credentialConnectionRecord()), kind: "telnyx.credential_connection", attr: "secret_name", want: "sip-edge-primary", externalID: "1293384261075731500"},
 		{family: familyDetailRecordsReport, path: "/wireless/detail_records_reports", body: listBody(detailRecordsReportRecord()), kind: "telnyx.detail_records_report", attr: "resource_type", want: "detail_records_report", externalID: "00000000-0000-4000-8000-000000000003"},
 		{family: familyManagedAccount, path: "/managed_accounts", body: listBody(managedAccountRecord()), kind: "telnyx.managed_account", attr: "email", want: "managed-account@example.com", externalID: "00000000-0000-4000-8000-000000000004"},

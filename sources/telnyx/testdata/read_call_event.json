@@ -3,7 +3,7 @@
     "attributes": {
       "actor_id": "00000000-0000-4000-8000-000000000102",
       "event_type": "call.hangup",
-      "external_id": "2019-03-29T11:10:19.127783Z",
+      "external_id": "00000000-0000-4000-8000-000000000002",
       "family": "call_event",
       "id": "00000000-0000-4000-8000-000000000002",
       "name": "call.hangup",

@@ -59,11 +59,12 @@ func New() (*Source, error) {
 				Name:             familyCallEvent,
 				Path:             "/call_events",
 				URNKind:          "telnyx_call_event",
-				IDKeys:           []string{"event_timestamp", "call_leg_id", "call_session_id", "name"},
+				IDKeys:           []string{"call_leg_id", "call_session_id", "event_timestamp", "name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"event_timestamp", "updated_at", "created_at"},
 				Attributes:       map[string]string{"actor_id": "call_session_id|call_leg_id", "event_type": "name|type", "id": "call_leg_id", "name": "name", "observed_at": "event_timestamp|updated_at|created_at", "provider_id": "call_leg_id", "resource_id": "call_leg_id", "resource_name": "name", "resource_type": "record_type|type", "source_event_id": "call_leg_id|call_session_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "call_event", "source_system": "telnyx"},
+				Config:           jsonapi.FamilyConfig{IdentityKeys: []string{"event_timestamp", "name"}},
 			},
 			{
 				Name:             familyBillingGroup,
