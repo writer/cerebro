@@ -26,8 +26,13 @@ func New() (*Source, error) {
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
 		StaticHeaders:   map[string]string{"X-Kolide-Api-Version": defaultAPIVersion},
-		RecordFilters:   map[string]jsonapi.RecordFilter{familyVulnerability: kolideVulnerabilityIssue},
-		Families:        families(),
+		RecordFilters: map[string]jsonapi.RecordFilter{
+			familyVulnerability: jsonapi.RecordFilterAnyPrefix(
+				[]string{"cve_id", "value.cve_id", "value.cve", "issue_value", "ghsa_id", "value.ghsa_id"},
+				"CVE-", "GHSA-",
+			),
+		},
+		Families: families(),
 	})
 	if err != nil {
 		return nil, err

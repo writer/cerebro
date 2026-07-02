@@ -1,11 +1,6 @@
 package kolide
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/writer/cerebro/sources/internal/jsonapi"
-)
+import "github.com/writer/cerebro/sources/internal/jsonapi"
 
 // families returns the Kolide family configurations for all supported
 // resource types (devices, checks, issues, software, user-devices,
@@ -216,66 +211,4 @@ func families() []jsonapi.Family {
 			StaticAttributes: map[string]string{"source_product": "kolide"},
 		},
 	}
-}
-
-func kolideVulnerabilityIssue(values map[string]any) bool {
-	if kolideLooksCVE(kolidePathString(values, "cve_id")) ||
-		kolideLooksCVE(kolidePathString(values, "value.cve_id")) ||
-		kolideLooksCVE(kolidePathString(values, "value.cve")) ||
-		kolideLooksCVE(kolidePathString(values, "issue_value")) {
-		return true
-	}
-	if kolideLooksGHSA(kolidePathString(values, "ghsa_id")) ||
-		kolideLooksGHSA(kolidePathString(values, "value.ghsa_id")) {
-		return true
-	}
-	advisoryID := firstNonEmpty(
-		kolidePathString(values, "advisory_id"),
-		kolidePathString(values, "value.advisory_id"),
-	)
-	if advisoryID == "" {
-		return false
-	}
-	return firstNonEmpty(
-		kolidePathString(values, "package_name"),
-		kolidePathString(values, "software.name"),
-		kolidePathString(values, "value.package_name"),
-		kolidePathString(values, "value.software.name"),
-		kolidePathString(values, "fixed_version"),
-		kolidePathString(values, "value.fixed_version"),
-		kolidePathString(values, "severity"),
-		kolidePathString(values, "value.severity"),
-	) != ""
-}
-
-func kolideLooksCVE(value string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "CVE-")
-}
-
-func kolideLooksGHSA(value string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "GHSA-")
-}
-
-func kolidePathString(values map[string]any, path string) string {
-	var current any = values
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return ""
-		}
-		current, ok = object[strings.TrimSpace(part)]
-		if !ok || current == nil {
-			return ""
-		}
-	}
-	return strings.TrimSpace(fmt.Sprint(current))
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
