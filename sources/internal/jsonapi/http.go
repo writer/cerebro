@@ -969,6 +969,7 @@ func mergedRecord(family Family, original record, raw json.RawMessage) (record, 
 		return record{}, fmt.Errorf("decode detail record: %w", err)
 	}
 	merged := cloneValues(original.Values)
+	delete(merged, "_record_id")
 	for key, value := range detailValues {
 		merged[key] = value
 	}
