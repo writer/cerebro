@@ -22,7 +22,8 @@
       "name": "docs-index",
       "dimensions": 1536,
       "metric": "cosine",
-      "description": "Production documentation embeddings"
+      "description": "Production documentation embeddings",
+      "created_at": "2026-06-01T00:00:00Z"
     },
     "schema_ref": "cloudflare_workers_ai/vectorize_indexes/v1",
     "source_id": "cloudflare_workers_ai",

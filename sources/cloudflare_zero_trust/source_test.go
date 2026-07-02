@@ -280,7 +280,7 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 			wantType: "application",
 			wantID:   "access-app-1",
 			wantName: "admin.example.com",
-			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_applications:access-app-1",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_audit_events:access-app-1",
 		},
 	}
 

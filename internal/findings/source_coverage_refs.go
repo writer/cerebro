@@ -214,7 +214,7 @@ func lifecycleStateCoverageMatchesDetection(detectionID string, searchText strin
 	if normalizeCoverageText(dimension.Type) != "lifecycle_state" {
 		return false
 	}
-	if normalizeCoverageText(detectionID) != "grc_inactive_identity_active_access" {
+	if normalizeCoverageText(detectionID) != normalizeCoverageText(grcInactiveIdentityActiveAccessRuleID) {
 		return false
 	}
 	for _, token := range []string{

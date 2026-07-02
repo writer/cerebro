@@ -2,8 +2,10 @@
   {
     "attributes": {
       "deployment_id": "gateway-1",
+      "deployment_created_at": "2026-05-01T00:00:00Z",
       "deployment_name": "production-gateway",
       "deployment_status": "active",
+      "deployment_updated_at": "2026-06-01T00:00:00Z",
       "deployment_url": "https://gateway.example.com",
       "external_id": "gateway-1",
       "family": "ai_gateways",

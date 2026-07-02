@@ -1,13 +1,17 @@
 [
   {
     "attributes": {
+      "decision": "allow",
       "external_id": "access-policy-1",
       "family": "roles",
+      "include": "[{\"group\":{\"id\":\"access-group-1\"}}]",
+      "policy_created_at": "2026-05-01T00:00:00Z",
       "policy_description": "Access policy requiring MFA group membership",
       "policy_id": "access-policy-1",
       "policy_name": "Require MFA",
       "policy_status": "active",
       "policy_type": "allow",
+      "precedence": "1",
       "record_class": "policy",
       "resource_id": "access-policy-1",
       "resource_name": "Require MFA",

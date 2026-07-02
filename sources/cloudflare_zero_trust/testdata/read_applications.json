@@ -1,16 +1,20 @@
 [
   {
     "attributes": {
+      "aud": "aud-access-app-1",
+      "domain": "admin.example.com",
       "external_id": "access-app-1",
       "family": "applications",
       "id": "access-app-1",
       "name": "Admin Console",
+      "policies": "[{\"id\":\"access-policy-1\",\"decision\":\"allow\"}]",
       "record_class": "asset",
       "resource_id": "access-app-1",
       "resource_name": "Admin Console",
       "resource_type": "application",
       "resource_urn": "urn:cerebro:tenant:cloudflare_zero_trust_applications:access-app-1",
       "schema": "applications",
+      "session_duration": "24h",
       "source_event_id": "access-app-1",
       "source_provider": "cloudflare_zero_trust",
       "source_system": "cloudflare_zero_trust",

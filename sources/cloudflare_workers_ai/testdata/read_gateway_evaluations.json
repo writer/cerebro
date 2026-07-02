@@ -4,6 +4,7 @@
       "external_id": "evaluation-1",
       "family": "gateway_evaluations",
       "provider": "cloudflare_workers_ai",
+      "policy_created_at": "2026-05-01T00:00:00Z",
       "policy_id": "evaluation-1",
       "policy_name": "Sensitive data policy",
       "policy_status": "enabled",

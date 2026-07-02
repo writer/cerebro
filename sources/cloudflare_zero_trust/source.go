@@ -116,7 +116,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"actor_email": "actor_email|user_email|email", "actor_id": "actor_id|user_id", "actor_name": "actor_name|actor.name|user.name", "app_domain": "app_domain", "app_id": "app_id|application_id", "event_type": "event_type|action|status", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "ip_address": "ip_address", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email|user_email", "resource_id": "resource_id|app_id", "resource_name": "resource_name|target_name|target.name|resource.name|app_domain", "resource_type": "resource_type|target_type|resource.type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "resource_type": "application", "schema": "audit_events", "source_system": "cloudflare_zero_trust"},
-				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_applications"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_audit_events"},
 			},
 		},
 	})

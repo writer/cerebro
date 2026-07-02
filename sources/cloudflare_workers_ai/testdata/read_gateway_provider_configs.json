@@ -9,6 +9,7 @@
       "resource_name": "openai-production",
       "resource_type": "gateway_provider_config",
       "schema": "gateway_provider_configs",
+      "secret_created_at": "2026-05-01T00:00:00Z",
       "secret_id": "provider-config-1",
       "secret_name": "openai-production",
       "secret_status": "active",
