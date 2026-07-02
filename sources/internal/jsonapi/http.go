@@ -379,12 +379,10 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		return []json.RawMessage{item}, next, responseCursorKnown, nil
 	}
 	for _, key := range responseListKeys(family) {
-		value, ok := rawMessageAtPath(object, key)
-		if !ok {
-			continue
-		}
-		if err := json.Unmarshal(value, &items); err == nil {
-			return items, next, responseCursorKnown, nil
+		if value, ok := rawValueAtPath(object, key); ok {
+			if err := json.Unmarshal(value, &items); err == nil {
+				return items, next, responseCursorKnown, nil
+			}
 		}
 	}
 	for objectKey, valueKey := range family.MapRecords {
@@ -598,34 +596,46 @@ func responseCursorValue(family Family, value string) string {
 }
 
 func rawStringAtPath(object map[string]json.RawMessage, path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
+	raw, ok := rawValueAtPath(object, path)
+	if !ok {
 		return ""
 	}
+	return rawString(raw)
+}
+
+func rawValueAtPath(object map[string]json.RawMessage, path string) (json.RawMessage, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false
+	}
 	if !strings.Contains(path, ".") {
-		return rawString(object[path])
+		raw := object[path]
+		if len(raw) == 0 {
+			return nil, false
+		}
+		return raw, true
 	}
 	parts := strings.Split(path, ".")
 	current := object
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return ""
+			return nil, false
 		}
 		raw := current[part]
 		if len(raw) == 0 {
-			return ""
+			return nil, false
 		}
 		if i == len(parts)-1 {
-			return rawString(raw)
+			return raw, true
 		}
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &nested); err != nil {
-			return ""
+			return nil, false
 		}
 		current = nested
 	}
-	return ""
+	return nil, false
 }
 
 func linkHeaderCursor(family Family, headers http.Header) string {
@@ -943,8 +953,54 @@ func eventFromRecord(sourceID string, settings settings, family Family, record r
 		Kind:       sourceID + "." + family.Name,
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  sourceID + "/" + family.Name + "/v1",
-		Payload:    cloneRaw(record.Raw),
+		Payload:    payloadForRecord(family, record.Raw),
 		Attributes: attributesFor(sourceID, settings, family, record),
+	}
+}
+
+func payloadForRecord(family Family, raw json.RawMessage) json.RawMessage {
+	if len(family.Config.RedactPayloadKeys) == 0 {
+		return cloneRaw(raw)
+	}
+	var object map[string]any
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return cloneRaw(raw)
+	}
+	for _, key := range family.Config.RedactPayloadKeys {
+		deleteObjectPath(object, key)
+	}
+	redacted, err := json.Marshal(object)
+	if err != nil {
+		return cloneRaw(raw)
+	}
+	return redacted
+}
+
+func deleteObjectPath(object map[string]any, path string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	if !strings.Contains(path, ".") {
+		delete(object, path)
+		return
+	}
+	parts := strings.Split(path, ".")
+	current := object
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+		}
+		if i == len(parts)-1 {
+			delete(current, part)
+			return
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			return
+		}
+		current = next
 	}
 }
 

@@ -47,6 +47,8 @@ type FamilyConfig struct {
 	StaticQuery        map[string]string
 	ConfigQuery        map[string]string
 	ConfigAttributes   map[string]string
+	StaticHeaders      map[string]string
+	RedactPayloadKeys  []string
 	EncodeURNID        bool
 	IdentityKeys       []string
 	OffsetCursor       bool

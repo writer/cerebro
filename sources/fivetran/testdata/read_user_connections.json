@@ -1,0 +1,44 @@
+[
+  {
+    "id": "fivetran-user_connections-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.user_connections",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/user_connections/v1",
+    "payload": {
+      "id": "connection-1",
+      "name": "Salesforce production sync",
+      "service": "salesforce",
+      "schema": "salesforce_prod",
+      "role": "owner",
+      "family": "user_connections",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/user_connections/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "user-1"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "connection-1",
+      "external_id": "connection-1",
+      "family": "user_connections",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "salesforce_prod",
+      "record_class": "identity_membership",
+      "resource_type": "connection_membership",
+      "resource_id": "connection-1",
+      "resource_name": "Salesforce production sync",
+      "resource_urn": "urn:cerebro:tenant:fivetran_user_connections:connection-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "service": "salesforce",
+      "user_id": "user-1",
+      "member_id": "connection-1",
+      "member_type": "connection",
+      "role": "owner"
+    }
+  }
+]

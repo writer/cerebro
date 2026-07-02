@@ -1,0 +1,44 @@
+[
+  {
+    "id": "fivetran-destinations-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.destinations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/destinations/v1",
+    "payload": {
+      "id": "destination-1",
+      "service": "snowflake",
+      "name": "Snowflake finance warehouse",
+      "region": "AWS_US_EAST_1",
+      "group_id": "group-1",
+      "status": {
+        "setup_state": "connected"
+      },
+      "family": "destinations",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/destinations/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "destination-1",
+      "external_id": "destination-1",
+      "family": "destinations",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "destinations",
+      "record_class": "asset",
+      "resource_type": "destination",
+      "resource_id": "destination-1",
+      "resource_name": "Snowflake finance warehouse",
+      "resource_urn": "urn:cerebro:tenant:fivetran_destinations:destination-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "service": "snowflake",
+      "group_id": "group-1",
+      "status": "connected"
+    }
+  }
+]

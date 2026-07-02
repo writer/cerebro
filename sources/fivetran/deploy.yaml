@@ -1,15 +1,118 @@
 sourceId: fivetran
 secretKeys:
+  - FIVETRAN_API_KEY
+  - FIVETRAN_API_SECRET
   - FIVETRAN_BASE_URL
-  - FIVETRAN_TOKEN
+  - FIVETRAN_USER_IDS
+  - FIVETRAN_TEAM_IDS
+  - FIVETRAN_GROUP_IDS
+  - FIVETRAN_CONNECTION_IDS
 runtimes:
   - localId: users
-    config:
+    config: &base
       base_url: env:FIVETRAN_BASE_URL
-      family: users
-      failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      username: env:FIVETRAN_API_KEY
+      password: env:FIVETRAN_API_SECRET
+      health_path: /v1/account/info
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:FIVETRAN_TOKEN
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      family: users
+  - localId: user-connections
+    config:
+      <<: *base
+      family: user_connections
+      user_ids: env:FIVETRAN_USER_IDS
+  - localId: user-groups
+    config:
+      <<: *base
+      family: user_groups
+      user_ids: env:FIVETRAN_USER_IDS
+  - localId: roles
+    config:
+      <<: *base
+      family: roles
+  - localId: teams
+    config:
+      <<: *base
+      family: teams
+  - localId: team-users
+    config:
+      <<: *base
+      family: team_users
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: team-connections
+    config:
+      <<: *base
+      family: team_connections
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: team-groups
+    config:
+      <<: *base
+      family: team_groups
+      team_ids: env:FIVETRAN_TEAM_IDS
+  - localId: groups
+    config:
+      <<: *base
+      family: groups
+  - localId: group-users
+    config:
+      <<: *base
+      family: group_users
+      group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: group-connections
+    config:
+      <<: *base
+      family: group_connections
+      group_ids: env:FIVETRAN_GROUP_IDS
+  - localId: destinations
+    config:
+      <<: *base
+      family: destinations
+  - localId: connections
+    config:
+      <<: *base
+      family: connections
+  - localId: connection-certificates
+    config:
+      <<: *base
+      family: connection_certificates
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: connection-fingerprints
+    config:
+      <<: *base
+      family: connection_fingerprints
+      connection_ids: env:FIVETRAN_CONNECTION_IDS
+  - localId: log-services
+    config:
+      <<: *base
+      family: log_services
+  - localId: webhooks
+    config:
+      <<: *base
+      family: webhooks
+  - localId: private-links
+    config:
+      <<: *base
+      family: private_links
+  - localId: proxy-agents
+    config:
+      <<: *base
+      family: proxy_agents
+  - localId: hybrid-deployment-agents
+    config:
+      <<: *base
+      family: hybrid_deployment_agents
+  - localId: connector-metadata
+    config:
+      <<: *base
+      family: connector_metadata
+  - localId: system-keys
+    config:
+      <<: *base
+      family: system_keys
+  - localId: transformations
+    config:
+      <<: *base
+      family: transformations

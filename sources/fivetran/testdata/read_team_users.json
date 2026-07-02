@@ -1,0 +1,43 @@
+[
+  {
+    "id": "fivetran-team_users-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.team_users",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/team_users/v1",
+    "payload": {
+      "id": "user-1",
+      "email": "maya.patel@example.test",
+      "name": "Maya Patel",
+      "role": "Destination Reviewer",
+      "family": "team_users",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/team_users/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "team_id": "team-1"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "user-1",
+      "external_id": "user-1",
+      "family": "team_users",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "team_users",
+      "record_class": "identity_membership",
+      "resource_type": "user_membership",
+      "resource_id": "user-1",
+      "resource_name": "Maya Patel",
+      "resource_urn": "urn:cerebro:tenant:fivetran_team_users:user-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "team_id": "team-1",
+      "member_id": "user-1",
+      "member_type": "user",
+      "role": "Destination Reviewer",
+      "email": "maya.patel@example.test"
+    }
+  }
+]

@@ -287,7 +287,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `fireworks_ai` | Fireworks Ai source | fireworks_ai.audit_logs, fireworks_ai.billing_metrics, fireworks_ai.model_deployments, fireworks_ai.service_accounts |
 | `firmalyzer` | Firmalyzer source | firmalyzer.account, firmalyzer.config_issue, firmalyzer.private_key, firmalyzer.risk |
 | `five9` | Five9 source | five9.accounts, five9.audit_events, five9.policies, five9.records, five9.users |
-| `fivetran` | Fivetran source | fivetran.accounts, fivetran.audit_events, fivetran.policies, fivetran.records, fivetran.users |
+| `fivetran` | Fivetran source | fivetran.connection_certificates, fivetran.connection_fingerprints, fivetran.connections, fivetran.connector_metadata, fivetran.destinations, fivetran.group_connections, fivetran.group_users, fivetran.groups, fivetran.hybrid_deployment_agents, fivetran.log_services, fivetran.private_links, fivetran.proxy_agents, fivetran.roles, fivetran.system_keys, fivetran.team_connections, fivetran.team_groups, fivetran.team_users, fivetran.teams, fivetran.transformations, fivetran.user_connections, fivetran.user_groups, fivetran.users, fivetran.webhooks |
 | `flagsmith_cloud` | Flagsmith Cloud source | flagsmith_cloud.audit_events, flagsmith_cloud.deployments, flagsmith_cloud.projects, flagsmith_cloud.repositories, flagsmith_cloud.users |
 | `fleetdm` | Fleetdm source | fleetdm.audit_activities, fleetdm.hosts, fleetdm.policies |
 | `forethought` | Forethought source | forethought.accounts, forethought.audit_events, forethought.policies, forethought.records, forethought.users |

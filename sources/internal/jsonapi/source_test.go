@@ -1062,6 +1062,137 @@ func TestReadUsesConfiguredNestedListKeys(t *testing.T) {
 	}
 }
 
+func TestReadAppliesFamilyStaticHeaders(t *testing.T) {
+	acceptByPath := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		acceptByPath[r.URL.Path] = r.Header.Get("Accept")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "record-1"}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New(&cerebrov1.SourceSpec{Id: "jsonapi", Name: "JSON API"}, Options{
+		SourceID:        "jsonapi",
+		DefaultFamily:   "default",
+		RequireTenantID: true,
+		AuthModel:       "bearer_token",
+		Families: []Family{
+			{Name: "default", Path: "/default", URNKind: "default_record", IDKeys: []string{"id"}},
+			{Name: "v2", Path: "/v2", URNKind: "v2_record", IDKeys: []string{"id"}, Config: FamilyConfig{StaticHeaders: map[string]string{"Accept": "application/json;version=2"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.AllowLoopbackBaseURL = true
+
+	cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "base_url": server.URL, "token": "token-1"})
+	if _, err := source.Read(context.Background(), cfg, nil); err != nil {
+		t.Fatalf("Read(default) error = %v", err)
+	}
+	cfg = sourcecdk.NewConfig(map[string]string{"tenant_id": "writer", "base_url": server.URL, "token": "token-1", "family": "v2"})
+	if _, err := source.Read(context.Background(), cfg, nil); err != nil {
+		t.Fatalf("Read(v2) error = %v", err)
+	}
+	if got := acceptByPath["/default"]; got != "application/json" {
+		t.Fatalf("default Accept = %q, want application/json", got)
+	}
+	if got := acceptByPath["/v2"]; got != "application/json;version=2" {
+		t.Fatalf("v2 Accept = %q, want application/json;version=2", got)
+	}
+}
+
+func TestReadRedactsConfiguredPayloadKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":     "key-1",
+				"name":   "automation-key",
+				"key":    "public-material",
+				"secret": "secret-material",
+				"nested": map[string]any{"secret": "nested-secret", "status": "active"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "key",
+		Path:    "/keys",
+		URNKind: "test_key",
+		IDKeys:  []string{"id"},
+		Config: FamilyConfig{
+			RedactPayloadKeys: []string{"key", "secret", "nested.secret"},
+		},
+		Attributes: map[string]string{"key_id": "id", "key_name": "name", "status": "nested.status"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if _, ok := payload["key"]; ok {
+		t.Fatalf("payload retained key: %#v", payload)
+	}
+	if _, ok := payload["secret"]; ok {
+		t.Fatalf("payload retained secret: %#v", payload)
+	}
+	nested, _ := payload["nested"].(map[string]any)
+	if _, ok := nested["secret"]; ok {
+		t.Fatalf("payload retained nested secret: %#v", payload)
+	}
+	if pull.Events[0].Attributes["status"] != "active" {
+		t.Fatalf("status attribute = %q, want active", pull.Events[0].Attributes["status"])
+	}
+}
+
+func TestReadUsesNestedConfiguredListKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"items":       []map[string]any{{"id": "U1", "name": "alice"}},
+				"next_cursor": "page-2",
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "user",
+		Path:           "/users",
+		URNKind:        "test_user",
+		IDKeys:         []string{"id"},
+		CursorParam:    "cursor",
+		NextCursorKeys: []string{"data.next_cursor"},
+		ListKeys:       []string{"data.items"},
+		Attributes:     map[string]string{"user_id": "id", "name": "name"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "user",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["user_id"] != "U1" {
+		t.Fatalf("Events = %#v, want user from nested items list", pull.Events)
+	}
+	if pull.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("NextCursor = %q, want page-2", pull.NextCursor.GetOpaque())
+	}
+}
+
 func TestReadWrapsScalarListItemsWithIDKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("channel"); got != "C1" {

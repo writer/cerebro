@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fivetran-webhooks-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.webhooks",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/webhooks/v1",
+    "payload": {
+      "id": "webhook-1",
+      "name": "Sync failure webhook",
+      "url": "https://hooks.example.test/fivetran/sync-failure",
+      "active": true,
+      "family": "webhooks",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/webhooks/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "webhook-1",
+      "external_id": "webhook-1",
+      "family": "webhooks",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "webhooks",
+      "record_class": "asset",
+      "resource_type": "webhook",
+      "resource_id": "webhook-1",
+      "resource_name": "Sync failure webhook",
+      "resource_urn": "urn:cerebro:tenant:fivetran_webhooks:webhook-1",
+      "observed_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]
