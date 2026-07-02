@@ -459,7 +459,7 @@ func TestMCPOAuthOIDCEmailRequiresVerifiedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify unverified token: %v", err)
 	}
-	if identity.Email != "" || identity.EmailVerified {
+	if email, ok := identity.VerifiedEmail(); email != "" || ok {
 		t.Fatalf("identity = %#v, want no email from unverified claim", identity)
 	}
 
@@ -476,7 +476,7 @@ func TestMCPOAuthOIDCEmailRequiresVerifiedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify verified token: %v", err)
 	}
-	if identity.Email != "user@example.com" || !identity.EmailVerified {
+	if email, ok := identity.VerifiedEmail(); email != "user@example.com" || !ok {
 		t.Fatalf("identity = %#v, want verified email", identity)
 	}
 }

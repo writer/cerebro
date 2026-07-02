@@ -318,7 +318,8 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 	if err != nil {
 		return "", err
 	}
-	if !containsAny(identity.Groups, s.cfg.Upstream.SecurityGroups) {
+	identityGroups := identity.Groups()
+	if !containsAny(identityGroups, s.cfg.Upstream.SecurityGroups) {
 		return "", oauthError("access_denied", "authenticated user is not in an authorized security group", statusForbidden)
 	}
 	entitlement, err := s.entitlementForIdentity(identity, login.ClientID, login.Scopes, login.ScopesExplicit)
@@ -331,22 +332,7 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 	}
 	now := s.now().UTC()
 	_ = s.recordIdentity(ctx, identity, entitlement, now)
-	if err := s.store.SaveAuthorizationCode(ctx, AuthorizationCode{
-		CodeHash:       HashToken(codeToken),
-		ClientID:       login.ClientID,
-		RedirectURI:    login.RedirectURI,
-		Resource:       login.Resource,
-		Subject:        authorizationCodeSubject(identity),
-		Email:          identity.Email,
-		TenantID:       entitlement.TenantID,
-		AllowedTenants: cloneStrings(entitlement.AllowedTenants),
-		Scopes:         cloneStrings(entitlement.Scopes),
-		Roles:          cloneStrings(entitlement.Roles),
-		Groups:         []string{"security"},
-		CodeChallenge:  login.CodeChallenge,
-		CreatedAt:      now,
-		ExpiresAt:      now.Add(s.cfg.CodeTTL),
-	}); err != nil {
+	if err := s.store.SaveAuthorizationCode(ctx, authorizationCodeFromLogin(login, identity, entitlement, codeToken, now, s.cfg.CodeTTL)); err != nil {
 		return "", fmt.Errorf("mcpoauth: save authorization code: %w", err)
 	}
 	redirect, err := url.Parse(login.RedirectURI)
@@ -723,8 +709,10 @@ func (s *Service) recordIdentity(ctx context.Context, identity Identity, entitle
 		if err := store.UpsertIdentityOrganization(ctx, org); err != nil {
 			return fmt.Errorf("mcpoauth: record identity organization: %w", err)
 		}
-		userID := firstNonEmpty(identity.Subject, identity.Email)
-		displayName := firstNonEmpty(identity.Name, identity.Email, identity.Subject)
+		subject := identity.PrincipalSubject()
+		email := identity.ContactEmail()
+		displayName := firstNonEmpty(identity.DisplayName(), email, subject)
+		userID := firstNonEmpty(subject, email)
 		if userID == "" || displayName == "" {
 			continue
 		}
@@ -732,14 +720,14 @@ func (s *Service) recordIdentity(ctx context.Context, identity Identity, entitle
 			UserID:       userID,
 			TenantID:     tenantID,
 			OrgID:        tenantID,
-			Subject:      strings.TrimSpace(identity.Subject),
-			Email:        strings.ToLower(strings.TrimSpace(identity.Email)),
+			Subject:      subject,
+			Email:        strings.ToLower(email),
 			DisplayName:  displayName,
 			Status:       "active",
 			Provider:     provider,
 			Source:       "mcp_oauth",
 			Roles:        cloneStrings(entitlement.Roles),
-			Groups:       cloneStrings(identity.Groups),
+			Groups:       identity.Groups(),
 			LastSeenAt:   now,
 			LastSyncedAt: now,
 		}
@@ -811,15 +799,16 @@ func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identit
 	if entitlement.ClientID != "" && entitlement.ClientID != strings.TrimSpace(clientID) {
 		return false
 	}
-	if entitlement.Subject != "" && entitlement.Subject != strings.TrimSpace(identity.Subject) {
+	if entitlement.Subject != "" && entitlement.Subject != identity.PrincipalSubject() {
 		return false
 	}
 	if entitlement.Email != "" {
-		if !identity.EmailVerified || !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
+		email, ok := identity.VerifiedEmail()
+		if !ok || !strings.EqualFold(entitlement.Email, email) {
 			return false
 		}
 	}
-	if len(entitlement.Groups) > 0 && !containsAny(identity.Groups, entitlement.Groups) {
+	if len(entitlement.Groups) > 0 && !containsAny(identity.Groups(), entitlement.Groups) {
 		return false
 	}
 	return entitlement.ClientID != "" || entitlement.Subject != "" || entitlement.Email != "" || len(entitlement.Groups) > 0
@@ -827,10 +816,29 @@ func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identit
 
 func authorizationCodeSubject(identity Identity) string {
 	// Keep legacy email-shaped grant subjects only when upstream verified the email.
-	if identity.EmailVerified {
-		return firstNonEmpty(identity.Email, identity.Subject)
+	if email, ok := identity.VerifiedEmail(); ok {
+		return firstNonEmpty(email, identity.PrincipalSubject())
 	}
-	return strings.TrimSpace(identity.Subject)
+	return identity.PrincipalSubject()
+}
+
+func authorizationCodeFromLogin(login LoginState, identity Identity, entitlement grantEntitlement, codeToken string, now time.Time, ttl time.Duration) AuthorizationCode {
+	return AuthorizationCode{
+		CodeHash:       HashToken(codeToken),
+		ClientID:       login.ClientID,
+		RedirectURI:    login.RedirectURI,
+		Resource:       login.Resource,
+		Subject:        authorizationCodeSubject(identity),
+		Email:          identity.ContactEmail(),
+		TenantID:       entitlement.TenantID,
+		AllowedTenants: cloneStrings(entitlement.AllowedTenants),
+		Scopes:         cloneStrings(entitlement.Scopes),
+		Roles:          cloneStrings(entitlement.Roles),
+		Groups:         []string{"security"},
+		CodeChallenge:  login.CodeChallenge,
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(ttl),
+	}
 }
 
 func clientGrantAllowed(client config.MCPOAuthClient, grant string) bool {

@@ -10,6 +10,7 @@ This harness keeps recent Droid findings from becoming one-off fixes. Add new sc
 | Oversized VulnDB advisory feeds | `go test ./internal/vulndb`; feed importers return `ErrVulnDBFeedTooLarge` before decoding over-limit OSV, CISA KEV, EPSS, or NVD payloads. |
 | Spoofable `X-Forwarded-For`, DPoP `htu`, and audit client IP drift | `go test ./internal/bootstrap ./internal/config`; request origin is resolved through `internal/bootstrap/request_origin.go` and configured by `CEREBRO_PUBLIC_ORIGIN`, `CEREBRO_TRUSTED_PROXY_CIDRS`, and `CEREBRO_TRUSTED_PROXY_COUNT`. |
 | Candidate promote/reject lost updates and partial lifecycle attempts | `go test ./internal/findings`; lifecycle decisions use stable IDs and recover completed concurrent CAS transitions. |
+| OAuth identity email used as authority before verification | `go test ./internal/mcpoauth ./internal/bootstrap -run 'TestEntitlementForIdentityRequiresVerifiedEmailClaim|TestAuthorizationCodeSubjectRequiresVerifiedEmail|TestMCPOAuthOIDCClientVerifiesIDToken'` plus `make check-structural`; `mcpoauth.Identity` carries only typed `VerifiedEmail` values and `noidentityemail` rejects direct identity email field reads. |
 
 Before dismissing a future scanner report as a false positive, add one of:
 
@@ -20,5 +21,6 @@ Before dismissing a future scanner report as a false positive, add one of:
 Run the focused harness locally with:
 
 ```bash
-go test ./internal/graphagent ./internal/sourcehttp ./internal/bootstrap ./internal/config ./internal/findings ./internal/vulndb ./tools/archtests
+go test ./internal/graphagent ./internal/sourcehttp ./internal/bootstrap ./internal/config ./internal/findings ./internal/vulndb ./internal/mcpoauth ./tools/archtests
+make check-structural
 ```
