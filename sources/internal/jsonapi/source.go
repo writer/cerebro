@@ -21,6 +21,7 @@ type Family struct {
 	PathParams            []string
 	CursorParam           string
 	NextCursorKeys        []string
+	NextCursorHeaders     []string
 	HasMoreKey            string
 	LinkHeader            string
 	PageFirstCursor       string
@@ -34,10 +35,13 @@ type Family struct {
 	DisablePageSize       bool
 	ListKeys              []string
 	MapRecords            map[string]string
-	Singleton             bool
-	RequireID             bool
-	IncrementalWatermark  bool
-	Method                string
+	// Singleton reads one provider object from Path. Standard response envelopes
+	// such as {"data": {...}, "code": "Success"} are unwrapped when every
+	// sibling of the record key is response metadata; provider objects that carry
+	// their own data/result/item/record fields are preserved.
+	Singleton            bool
+	RequireID            bool
+	IncrementalWatermark bool
 }
 
 // FamilyConfig groups request and event bindings that are derived from family
@@ -47,8 +51,11 @@ type FamilyConfig struct {
 	StaticQuery        map[string]string
 	ConfigQuery        map[string]string
 	ConfigAttributes   map[string]string
+	StaticHeaders      map[string]string
+	RedactPayloadKeys  []string
 	EncodeURNID        bool
 	IdentityKeys       []string
+	IdentityResourceID bool
 	OffsetCursor       bool
 	RequireDetail      bool
 	ResourceURNKind    string
@@ -56,6 +63,7 @@ type FamilyConfig struct {
 	OffsetKeys         []string
 	LimitKeys          []string
 	LastItemCursorKeys []string
+	Method             string
 }
 
 // MergeStaticAttributes adds provider-specific static event attributes while

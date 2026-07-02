@@ -1,15 +1,15 @@
 # Increase
 
-Generated Source Runtime SDK scaffold for `increase`.
+Source Runtime for Increase API cursor-list endpoints.
 
-## Runtime input
+## Runtime Input
 
 - Source type: `json_api`
 - Auth model: `bearer_token`
-- Freshness expectation: `24h0m0s`
+- Token config: `INCREASE_TOKEN`
 - Failure modes: `api_error,auth_error,rate_limit,schema_drift`
 
-## Runtime output
+## Runtime Output
 
 - Adapter package: `sources/increase`
 - Health endpoint: `/source-runtimes/health?source_id=increase`
@@ -33,5 +33,6 @@ Generated Source Runtime SDK scaffold for `increase`.
 
 ## Tests
 
-- `go test ./sources/increase ./internal/sourceprojection -count=1`
-- `make catalog-check`
+- `go test ./sources/increase -count=1`
+- `make catalog-check sourcegen-check`
+- `go run ./tools/sourcefidelity -json-out /tmp/increase-fidelity.json`

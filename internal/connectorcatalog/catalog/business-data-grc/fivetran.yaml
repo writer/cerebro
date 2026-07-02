@@ -3,44 +3,129 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: token
-            label: Bearer token
+          - key: username
+            label: API key
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+          - key: password
+            label: API secret
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
         requires_references: true
       categories:
         - saas
         - business_data_grc
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: Fivetran API base URL. Use the default unless the tenant is pinned to a regional endpoint.
           key: base_url
           label: API base URL
-          required: true
-      description: Collects users, accounts, records, policies, and audit events from Fivetran and projects them into the Cerebro graph as users, assets, policies, and audit events for owner, account, evidence, and compliance context.
+          required: false
+        - help: Comma-separated user IDs for user-scoped connection and group membership reads.
+          key: user_ids
+          label: User IDs
+          required: false
+        - help: Comma-separated team IDs for team-scoped user, connection, and group membership reads.
+          key: team_ids
+          label: Team IDs
+          required: false
+        - help: Comma-separated group IDs for group-scoped user and connection membership reads.
+          key: group_ids
+          label: Group IDs
+          required: false
+        - help: Comma-separated connection IDs for certificate and fingerprint trust reads.
+          key: connection_ids
+          label: Connection IDs
+          required: false
+        - help: Comma-separated destination IDs for destination certificate and fingerprint trust reads.
+          key: destination_ids
+          label: Destination IDs
+          required: false
+        - help: Comma-separated external secret manager IDs for per-manager assignment reads.
+          key: external_secret_manager_ids
+          label: External secret manager IDs
+          required: false
+        - help: Comma-separated proxy agent IDs for proxy connection attachment reads.
+          key: proxy_agent_ids
+          label: Proxy agent IDs
+          required: false
+        - help: Comma-separated connector service slugs for connector metadata detail reads.
+          key: connector_services
+          label: Connector services
+          required: false
+        - help: Comma-separated transformation package definition IDs for package detail reads.
+          key: package_definition_ids
+          label: Package definition IDs
+          required: false
+        - help: Connection ID for table-column configuration reads.
+          key: connection_id
+          label: Column connection ID
+          required: false
+        - help: Schema name for table-column configuration reads.
+          key: schema_name
+          label: Column schema name
+          required: false
+        - help: Table name for table-column configuration reads.
+          key: table_name
+          label: Column table name
+          required: false
+      description: Collects Fivetran account info, users, roles, teams, groups, memberships, group keys and service accounts, destinations, connections, connection schema, state, and table-column configuration, connector package metadata, destination and connection trust material, account logging, external logging, webhooks, external secret managers, private links, proxy agents, proxy connection attachments, hybrid deployment agents, connector metadata and details, system keys, transformations, and transformation projects through the Fivetran REST API for access review, pipeline inventory, credential review, logging, secret-store dependency, and network trust context.
       display_name: Fivetran
       id: builtin-fivetran
       ingest:
         mode: pull
       resource_families:
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - users
+            - control_domains: [identity_access, asset_inventory]
+              evidence_types: [identity_configuration, source_snapshot]
+              families: [account_info]
+              high_value: false
+              id: account_profile
+              support: supported
+              title: Account profile
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.account_info
+            required_attributes: [tenant_id, source_event_id, account_id, resource_id, resource_type]
+            required_payload_fields: [account_id]
+            schema_ref: fivetran/account_info/v1
+            urn_kind: fivetran_account_info
+          id: account_info
+          id_field: account_id
+          label: Account info
+          method: GET
+          name_field: account_name
+          path: /v1/account/info
+          projection:
+            fields:
+              account_id: account_id
+              resource_id: account_id
+              resource_name: account_name|account_id
+              resource_type: account
+              source_event_id: account_id
+              system_key_id: system_key_id
+              user_id: user_id
+            template: asset
+          read:
+            singleton: true
+            disable_page_size: true
+        - coverage:
+            - control_domains: [identity_access, authorization]
+              evidence_types: [identity_configuration, source_snapshot]
+              families: [users]
               high_value: true
               id: users
-              support: partial
+              support: supported
               title: Users
               type: entity_family
           default_enabled: true
           event:
             kind: fivetran.users
-            required_payload_fields:
-              - id
+            required_attributes: [tenant_id, source_event_id, user_id]
+            required_payload_fields: [id]
             schema_ref: fivetran/users/v1
             urn_kind: fivetran_users
           id: users
@@ -48,8 +133,8 @@ entries:
           label: Users
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
+          pagination: &fivetran_cursor_pagination
+            cursor_json_path: $.data.next_cursor
             cursor_param: cursor
             page_size: 100
             page_size_param: limit
@@ -57,179 +142,1524 @@ entries:
           path: /v1/users
           projection:
             fields:
-              display_name: name
+              display_name: name|given_name|email
               email: email
-              status: status
+              login: email
+              primary_email: email
+              resource_id: id
+              resource_name: name|email
+              source_event_id: id
+              status: verified|active|status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.data.items[*]
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - accounts
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [user_connections]
               high_value: true
-              id: accounts
-              support: partial
-              title: Accounts
-              type: entity_family
+              id: user_connections
+              support: supported
+              title: User connection access
+              type: relationship
           default_enabled: true
           event:
-            kind: fivetran.accounts
-            required_payload_fields:
-              - id
-            schema_ref: fivetran/accounts/v1
-            urn_kind: fivetran_accounts
-          id: accounts
+            kind: fivetran.user_connections
+            required_attributes: [tenant_id, source_event_id, user_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/user_connections/v1
+            urn_kind: fivetran_user_connections
+          id: user_connections
           id_field: id
-          label: Accounts
+          label: User connections
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/accounts
+          pagination: *fivetran_cursor_pagination
+          path: /v1/users/{user_id}/connections
           projection:
             fields:
-              id: id
-              name: name
+              member_id: id|connection_id
+              member_type: connection
+              resource_id: id|connection_id
+              resource_name: name|schema|service
+              role: role
+              source_event_id: id|connection_id
+              tenant_id: tenant_id
+              user_id: user_id
+            template: asset
+          read:
+            path_params: [user_id]
+          config:
+            config_attributes:
+              user_id: user_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [user_groups]
+              high_value: true
+              id: user_groups
+              support: supported
+              title: User group access
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.user_groups
+            required_attributes: [tenant_id, source_event_id, user_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/user_groups/v1
+            urn_kind: fivetran_user_groups
+          id: user_groups
+          id_field: id
+          label: User groups
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/users/{user_id}/groups
+          projection:
+            fields:
+              member_id: id|group_id
+              member_type: group
+              resource_id: id|group_id
+              resource_name: name
+              role: role
+              source_event_id: id|group_id
+              tenant_id: tenant_id
+              user_id: user_id
+            template: group_membership
+          read:
+            path_params: [user_id]
+          config:
+            config_attributes:
+              user_id: user_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, authorization]
+              evidence_types: [access_review, identity_configuration]
+              families: [roles]
+              high_value: true
+              id: roles
+              support: supported
+              title: Roles
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.roles
+            required_attributes: [tenant_id, source_event_id, role_id, role_name]
+            required_payload_fields: [id]
+            schema_ref: fivetran/roles/v1
+            urn_kind: fivetran_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/roles
+          projection:
+            fields:
+              description: description
               resource_id: id
               resource_name: name
-              resource_type: account
+              resource_type: role
+              role_id: id
+              role_name: name
+              scope: scope
+              source_event_id: id
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.data.items[*]
         - coverage:
-            - control_domains:
-                - data_governance
-              evidence_types:
-                - source_snapshot
-              families:
-                - records
-              high_value: true
-              id: records
-              support: partial
-              title: Records
+            - control_domains: [identity_access, access_review]
+              evidence_types: [identity_configuration, source_snapshot]
+              families: [teams]
+              high_value: false
+              id: teams
+              support: supported
+              title: Teams
               type: entity_family
           default_enabled: true
           event:
-            kind: fivetran.records
-            required_payload_fields:
-              - id
-            schema_ref: fivetran/records/v1
-            urn_kind: fivetran_records
-          id: records
+            kind: fivetran.teams
+            required_attributes: [tenant_id, source_event_id, team_id, group_name]
+            required_payload_fields: [id]
+            schema_ref: fivetran/teams/v1
+            urn_kind: fivetran_teams
+          id: teams
           id_field: id
-          label: Records
+          label: Teams
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/records
+          pagination: *fivetran_cursor_pagination
+          path: /v1/teams
           projection:
             fields:
-              id: id
-              name: name
+              description: description
+              group_id: id
+              group_name: name
               resource_id: id
               resource_name: name
-              resource_type: record
-            template: asset
-          record_selector: $.data[*]
+              source_event_id: id
+              team_id: id
+            template: identity_group
+          record_selector: $.data.items[*]
         - coverage:
-            - control_domains:
-                - configuration_management
-              evidence_types:
-                - source_snapshot
-              families:
-                - policies
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [team_users]
               high_value: true
-              id: policies
-              support: partial
-              title: Policies
+              id: team_users
+              support: supported
+              title: Team users
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.team_users
+            required_attributes: [tenant_id, source_event_id, team_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/team_users/v1
+            urn_kind: fivetran_team_users
+          id: team_users
+          id_field: id
+          label: Team users
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/teams/{team_id}/users
+          projection:
+            fields:
+              email: email
+              member_id: id|user_id|email
+              member_type: user
+              resource_id: id|user_id|email
+              resource_name: name|email
+              role: role
+              source_event_id: id|user_id|email
+              team_id: team_id
+              tenant_id: tenant_id
+            template: group_membership
+          read:
+            path_params: [team_id]
+          config:
+            config_attributes:
+              team_id: team_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [team_connections]
+              high_value: false
+              id: team_connections
+              support: supported
+              title: Team connection access
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.team_connections
+            required_attributes: [tenant_id, source_event_id, team_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/team_connections/v1
+            urn_kind: fivetran_team_connections
+          id: team_connections
+          id_field: id
+          label: Team connections
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/teams/{team_id}/connections
+          projection:
+            fields:
+              member_id: id|connection_id
+              member_type: connection
+              resource_id: id|connection_id
+              resource_name: name|schema|service
+              role: role
+              source_event_id: id|connection_id
+              team_id: team_id
+              tenant_id: tenant_id
+            template: asset
+          read:
+            path_params: [team_id]
+          config:
+            config_attributes:
+              team_id: team_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [team_groups]
+              high_value: false
+              id: team_groups
+              support: supported
+              title: Team groups
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.team_groups
+            required_attributes: [tenant_id, source_event_id, team_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/team_groups/v1
+            urn_kind: fivetran_team_groups
+          id: team_groups
+          id_field: id
+          label: Team groups
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/teams/{team_id}/groups
+          projection:
+            fields:
+              member_id: id|group_id
+              member_type: group
+              resource_id: id|group_id
+              resource_name: name
+              role: role
+              source_event_id: id|group_id
+              team_id: team_id
+              tenant_id: tenant_id
+            template: group_membership
+          read:
+            path_params: [team_id]
+          config:
+            config_attributes:
+              team_id: team_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, access_review]
+              evidence_types: [identity_configuration, source_snapshot]
+              families: [groups]
+              high_value: false
+              id: groups
+              support: supported
+              title: Groups
               type: entity_family
           default_enabled: true
           event:
-            kind: fivetran.policies
-            required_payload_fields:
-              - id
-            schema_ref: fivetran/policies/v1
-            urn_kind: fivetran_policies
-          id: policies
+            kind: fivetran.groups
+            required_attributes: [tenant_id, source_event_id, group_id, group_name]
+            required_payload_fields: [id]
+            schema_ref: fivetran/groups/v1
+            urn_kind: fivetran_groups
+          id: groups
           id_field: id
-          label: Policies
+          label: Groups
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/policies
+          pagination: *fivetran_cursor_pagination
+          path: /v1/groups
           projection:
             fields:
-              policy_id: id
-              policy_name: name
-              policy_status: status
-              policy_type: policy
-            template: policy
-          record_selector: $.data[*]
+              description: description
+              group_id: id
+              group_name: name
+              resource_id: id
+              resource_name: name
+              source_event_id: id
+            template: identity_group
+          record_selector: $.data.items[*]
         - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [group_users]
               high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
+              id: group_users
+              support: supported
+              title: Group users
+              type: relationship
           default_enabled: true
           event:
-            kind: fivetran.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: fivetran/audit_events/v1
-            urn_kind: fivetran_audit_events
-          id: audit_events
+            kind: fivetran.group_users
+            required_attributes: [tenant_id, source_event_id, group_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/group_users/v1
+            urn_kind: fivetran_group_users
+          id: group_users
           id_field: id
-          label: Audit events
+          label: Group users
           method: GET
           name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+          pagination: *fivetran_cursor_pagination
+          path: /v1/groups/{group_id}/users
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
+              email: email
+              group_id: group_id
+              member_id: id|user_id|email
+              member_type: user
+              resource_id: id|user_id|email
+              resource_name: name|email
+              role: role
+              source_event_id: id|user_id|email
+              tenant_id: tenant_id
+            template: group_membership
+          read:
+            path_params: [group_id]
+          config:
+            config_attributes:
+              group_id: group_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, access_review]
+              evidence_types: [access_review, relationship_evidence]
+              families: [group_connections]
+              high_value: false
+              id: group_connections
+              support: supported
+              title: Group connection access
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.group_connections
+            required_attributes: [tenant_id, source_event_id, group_id, member_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/group_connections/v1
+            urn_kind: fivetran_group_connections
+          id: group_connections
+          id_field: id
+          label: Group connections
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/groups/{group_id}/connections
+          projection:
+            fields:
+              group_id: group_id
+              member_id: id|connection_id
+              member_type: connection
+              resource_id: id|connection_id
+              resource_name: name|schema|service
+              role: role
+              source_event_id: id|connection_id
+              tenant_id: tenant_id
+            template: asset
+          read:
+            path_params: [group_id]
+          config:
+            config_attributes:
+              group_id: group_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, identity_access, asset_inventory]
+              evidence_types: [configuration_state, credential_inventory]
+              families: [group_public_keys]
+              high_value: false
+              id: group_public_keys
+              support: supported
+              title: Group public keys
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.group_public_keys
+            required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+            required_payload_fields: [public_key]
+            schema_ref: fivetran/group_public_keys/v1
+            urn_kind: fivetran_group_public_keys
+          id: group_public_keys
+          id_field: public_key
+          label: Group public keys
+          method: GET
+          name_field: group_id
+          path: /v1/groups/{group_id}/public-key
+          projection:
+            fields:
+              credential_id: public_key|group_id
+              group_id: group_id
+              public_key: public_key
+              resource_id: public_key|group_id
+              resource_name: group_id|public_key
+              resource_type: public_key
+              scope_type: group
+              source_event_id: public_key|group_id
+            template: asset
+          read:
+            path_params: [group_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              group_id: group_id
+        - coverage:
+            - control_domains: [network_security, identity_access, asset_inventory]
+              evidence_types: [configuration_state, credential_inventory]
+              families: [group_service_accounts]
+              high_value: false
+              id: group_service_accounts
+              support: supported
+              title: Group service accounts
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.group_service_accounts
+            required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
+            required_payload_fields: [group_id]
+            schema_ref: fivetran/group_service_accounts/v1
+            urn_kind: fivetran_group_service_accounts
+          id: group_service_accounts
+          id_field: group_id
+          label: Group service accounts
+          method: GET
+          name_field: group_id
+          path: /v1/groups/{group_id}/service-account
+          projection:
+            fields:
+              credential_id: group_id
+              group_id: group_id
+              resource_id: group_id
+              resource_name: group_id
+              resource_type: credential_type|type
+              scope_type: group
+              source_event_id: group_id
+            template: asset
+          read:
+            path_params: [group_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              group_id: group_id
+          sensitive_payload_paths:
+            - $.service_account
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [destinations]
+              high_value: false
+              id: destinations
+              support: supported
+              title: Destinations
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.destinations
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/destinations/v1
+            urn_kind: fivetran_destinations
+          id: destinations
+          id_field: id
+          label: Destinations
+          method: GET
+          name_field: service
+          pagination: *fivetran_cursor_pagination
+          path: /v1/destinations
+          static_headers: &fivetran_v2_headers
+            Accept: application/json;version=2
+          sensitive_payload_paths:
+            - $.config
+          projection: &fivetran_asset_projection
+            fields:
+              destination_id: destination_id
+              group_id: group_id
+              resource_id: id|name|schema|service
+              resource_name: name|schema|service|id
               resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              schema: schema
+              service: service
+              source_event_id: id|name|schema|service
+              status: status.setup_state|status.sync_state|status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connections]
+              high_value: true
+              id: connections
+              support: supported
+              title: Connections
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connections
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connections/v1
+            urn_kind: fivetran_connections
+          id: connections
+          id_field: id
+          label: Connections
+          method: GET
+          name_field: service
+          pagination: *fivetran_cursor_pagination
+          path: /v1/connections
+          static_headers: *fivetran_v2_headers
+          sensitive_payload_paths:
+            - $.config
+          projection: *fivetran_asset_projection
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [connection_certificates]
+              high_value: true
+              id: connection_certificates
+              support: supported
+              title: Connection certificates
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connection_certificates
+            required_attributes: [tenant_id, source_event_id, connection_id, credential_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connection_certificates/v1
+            urn_kind: fivetran_connection_certificates
+          id: connection_certificates
+          id_field: id
+          label: Connection certificates
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/connections/{connection_id}/certificates
+          projection:
+            fields:
+              connection_id: connection_id
+              credential_id: id|hash|name|public_key
+              hash: hash
+              public_key: public_key
+              resource_id: id|hash|name|public_key
+              resource_name: name|public_key|hash|id
+              resource_type: certificate
+              source_event_id: id|hash|name|public_key
+            template: asset
+          read:
+            path_params: [connection_id]
+          config:
+            config_attributes:
+              connection_id: connection_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [connection_fingerprints]
+              high_value: false
+              id: connection_fingerprints
+              support: supported
+              title: Connection fingerprints
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connection_fingerprints
+            required_attributes: [tenant_id, source_event_id, connection_id, credential_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connection_fingerprints/v1
+            urn_kind: fivetran_connection_fingerprints
+          id: connection_fingerprints
+          id_field: id
+          label: Connection fingerprints
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/connections/{connection_id}/fingerprints
+          projection:
+            fields:
+              connection_id: connection_id
+              credential_id: id|hash|name|public_key
+              hash: hash
+              public_key: public_key
+              resource_id: id|hash|name|public_key
+              resource_name: name|public_key|hash|id
+              resource_type: fingerprint
+              source_event_id: id|hash|name|public_key
+            template: asset
+          read:
+            path_params: [connection_id]
+          config:
+            config_attributes:
+              connection_id: connection_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connection_schemas]
+              high_value: false
+              id: connection_schemas
+              support: supported
+              title: Connection schemas
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connection_schemas
+            required_attributes: [tenant_id, source_event_id, connection_id, resource_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connection_schemas/v1
+            urn_kind: fivetran_connection_schemas
+          id: connection_schemas
+          id_field: connection_id
+          label: Connection schemas
+          method: GET
+          name_field: connection_id
+          path: /v1/connections/{connection_id}/schemas
+          projection:
+            fields:
+              connection_id: connection_id
+              resource_id: connection_id
+              resource_name: connection_id
+              resource_type: resource_type
+              source_event_id: connection_id
+            template: asset
+          read:
+            path_params: [connection_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              connection_id: connection_id
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connection_state]
+              high_value: false
+              id: connection_state
+              support: supported
+              title: Connection state
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: fivetran.connection_state
+            required_attributes: [tenant_id, source_event_id, connection_id, resource_id]
+            required_payload_fields: [status]
+            schema_ref: fivetran/connection_state/v1
+            urn_kind: fivetran_connection_state
+          id: connection_state
+          id_field: connection_id
+          label: Connection state
+          method: GET
+          name_field: connection_id
+          path: /v1/connections/{connection_id}/state
+          projection:
+            fields:
+              connection_id: connection_id
+              resource_id: connection_id
+              resource_name: connection_id
+              resource_type: resource_type
+              source_event_id: connection_id
+              status: status
+            template: asset
+          read:
+            path_params: [connection_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              connection_id: connection_id
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connection_table_columns]
+              high_value: false
+              id: connection_table_columns
+              support: supported
+              title: Connection table columns
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connection_table_columns
+            required_attributes: [tenant_id, source_event_id, connection_id, schema_name, table_name, column_name, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connection_table_columns/v1
+            urn_kind: fivetran_connection_table_columns
+          id: connection_table_columns
+          id_field: id
+          label: Connection table columns
+          method: GET
+          name_field: id
+          path: /v1/connections/{connection_id}/schemas/{schema_name}/tables/{table_name}/columns
+          projection:
+            fields:
+              column_name: id|name
+              connection_id: connection_id
+              enabled: config.enabled|enabled
+              hashed: config.hashed|hashed
+              resource_id: id|name
+              resource_name: id|name
+              resource_type: connection_table_column
+              schema_name: schema_name
+              source_event_id: id|name
+              status: config.enabled|enabled
+              table_name: table_name
+            template: asset
+          read:
+            path_params: [connection_id, schema_name, table_name]
+            disable_page_size: true
+            map_records:
+              data.columns: config
+          config:
+            config_attributes:
+              connection_id: connection_id
+              schema_name: schema_name
+              table_name: table_name
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connector_sdk_packages]
+              high_value: false
+              id: connector_sdk_packages
+              support: supported
+              title: Connector SDK packages
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connector_sdk_packages
+            required_attributes: [tenant_id, source_event_id, resource_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connector_sdk_packages/v1
+            urn_kind: fivetran_connector_sdk_packages
+          id: connector_sdk_packages
+          id_field: id
+          label: Connector SDK packages
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/connector-sdk/packages
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: resource_type
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [destination_certificates]
+              high_value: true
+              id: destination_certificates
+              support: supported
+              title: Destination certificates
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.destination_certificates
+            required_attributes: [tenant_id, source_event_id, destination_id, credential_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/destination_certificates/v1
+            urn_kind: fivetran_destination_certificates
+          id: destination_certificates
+          id_field: id
+          label: Destination certificates
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/destinations/{destination_id}/certificates
+          projection:
+            fields:
+              credential_id: id|hash|name|public_key
+              destination_id: destination_id
+              hash: hash
+              public_key: public_key
+              resource_id: id|hash|name|public_key
+              resource_name: name|public_key|hash|id
+              resource_type: credential_type
+              source_event_id: id|hash|name|public_key
+            template: asset
+          read:
+            path_params: [destination_id]
+          config:
+            config_attributes:
+              destination_id: destination_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [destination_fingerprints]
+              high_value: false
+              id: destination_fingerprints
+              support: supported
+              title: Destination fingerprints
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.destination_fingerprints
+            required_attributes: [tenant_id, source_event_id, destination_id, credential_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/destination_fingerprints/v1
+            urn_kind: fivetran_destination_fingerprints
+          id: destination_fingerprints
+          id_field: id
+          label: Destination fingerprints
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/destinations/{destination_id}/fingerprints
+          projection:
+            fields:
+              credential_id: id|hash|name|public_key
+              destination_id: destination_id
+              hash: hash
+              public_key: public_key
+              resource_id: id|hash|name|public_key
+              resource_name: name|public_key|hash|id
+              resource_type: credential_type
+              source_event_id: id|hash|name|public_key
+            template: asset
+          read:
+            path_params: [destination_id]
+          config:
+            config_attributes:
+              destination_id: destination_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [logging_monitoring, change_management]
+              evidence_types: [logging_configuration, configuration_state]
+              families: [account_log_service]
+              high_value: false
+              id: account_log_service
+              support: supported
+              title: Account log service
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: fivetran.account_log_service
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
+            required_payload_fields: [id]
+            schema_ref: fivetran/account_log_service/v1
+            urn_kind: fivetran_account_log_service
+          id: account_log_service
+          id_field: id
+          label: Account log service
+          method: GET
+          name_field: service
+          path: /v1/external-logging/account
+          sensitive_payload_paths:
+            - $.config
+          projection:
+            fields:
+              enabled: enabled
+              resource_id: id|service
+              resource_name: service|id
+              resource_type: log_service
+              service: service
+              source_event_id: id|service
+              status: enabled
+            template: asset
+          read:
+            singleton: true
+            disable_page_size: true
+        - coverage:
+            - control_domains: [logging_monitoring, change_management]
+              evidence_types: [logging_configuration, configuration_state]
+              families: [log_services]
+              high_value: false
+              id: log_services
+              support: supported
+              title: External logging services
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: fivetran.log_services
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/log_services/v1
+            urn_kind: fivetran_log_services
+          id: log_services
+          id_field: id
+          label: External logging services
+          method: GET
+          name_field: service
+          pagination: *fivetran_cursor_pagination
+          path: /v1/external-logging
+          sensitive_payload_paths:
+            - $.config
+          projection:
+            fields:
+              resource_id: id|name|service
+              resource_name: name|service|id
+              resource_type: log_service
+              service: service
+              source_event_id: id|name|service
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [logging_monitoring, change_management]
+              evidence_types: [logging_configuration, configuration_state]
+              families: [webhooks]
+              high_value: false
+              id: webhooks
+              support: supported
+              title: Webhooks
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            kind: fivetran.webhooks
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/webhooks/v1
+            urn_kind: fivetran_webhooks
+          id: webhooks
+          id_field: id
+          label: Webhooks
+          method: GET
+          name_field: url
+          pagination: *fivetran_cursor_pagination
+          path: /v1/webhooks
+          projection:
+            fields:
+              resource_id: id|url|name
+              resource_name: name|url|id
+              resource_type: webhook
+              source_event_id: id|url|name
+              status: active|status
+            template: asset
+          record_selector: $.data.items[*]
+          sensitive_payload_paths:
+            - $.signing_key
+        - coverage:
+            - control_domains: [identity_access, data_governance]
+              evidence_types: [credential_inventory, configuration_state, source_snapshot]
+              families: [external_secret_managers]
+              high_value: true
+              id: external_secret_managers
+              support: supported
+              title: External secret managers
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.external_secret_managers
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/external_secret_managers/v1
+            urn_kind: fivetran_external_secret_managers
+          id: external_secret_managers
+          id_field: id
+          label: External secret managers
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/external-secrets-managers
+          projection:
+            fields:
+              external_secret_manager_id: id
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: resource_type
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, data_governance]
+              evidence_types: [credential_inventory, configuration_state, source_snapshot]
+              families: [external_secret_manager_entities]
+              high_value: false
+              id: external_secret_manager_entities
+              support: supported
+              title: External secret manager entities
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.external_secret_manager_entities
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/external_secret_manager_entities/v1
+            urn_kind: fivetran_external_secret_manager_entities
+          id: external_secret_manager_entities
+          id_field: id
+          label: External secret manager entities
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/external-secrets-managers-entities
+          projection:
+            fields:
+              connection_id: connection_id
+              destination_id: destination_id
+              entity_type: entity_type|type
+              external_secret_manager_id: external_secret_manager_id|secret_manager_id|esm_id
+              resource_id: id|entity_id|connection_id|destination_id
+              resource_name: name|id|entity_id
+              resource_type: resource_type
+              source_event_id: id|entity_id|connection_id|destination_id
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [identity_access, data_governance]
+              evidence_types: [credential_inventory, configuration_state, source_snapshot]
+              families: [external_secret_manager_assignments]
+              high_value: true
+              id: external_secret_manager_assignments
+              support: supported
+              title: External secret manager assignments
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.external_secret_manager_assignments
+            required_attributes: [tenant_id, source_event_id, external_secret_manager_id, resource_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/external_secret_manager_assignments/v1
+            urn_kind: fivetran_external_secret_manager_assignments
+          id: external_secret_manager_assignments
+          id_field: id
+          label: External secret manager assignments
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/external-secrets-managers/{external_secret_manager_id}/entities
+          projection:
+            fields:
+              connection_id: connection_id
+              destination_id: destination_id
+              entity_type: entity_type|type
+              external_secret_manager_id: external_secret_manager_id
+              resource_id: id|entity_id|connection_id|destination_id
+              resource_name: name|id|entity_id
+              resource_type: resource_type
+              source_event_id: id|entity_id|connection_id|destination_id
+              status: status
+            template: asset
+          read:
+            path_params: [external_secret_manager_id]
+          config:
+            config_attributes:
+              external_secret_manager_id: external_secret_manager_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [private_links]
+              high_value: false
+              id: private_links
+              support: supported
+              title: Private links
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.private_links
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/private_links/v1
+            urn_kind: fivetran_private_links
+          id: private_links
+          id_field: id
+          label: Private links
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/private-links
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: private_link
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [proxy_agents]
+              high_value: false
+              id: proxy_agents
+              support: supported
+              title: Proxy agents
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.proxy_agents
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/proxy_agents/v1
+            urn_kind: fivetran_proxy_agents
+          id: proxy_agents
+          id_field: id
+          label: Proxy agents
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/proxy
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: proxy_agent
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [proxy_agent_connections]
+              high_value: false
+              id: proxy_agent_connections
+              support: supported
+              title: Proxy agent connections
+              type: relationship
+          default_enabled: true
+          event:
+            kind: fivetran.proxy_agent_connections
+            required_attributes: [tenant_id, source_event_id, proxy_agent_id, resource_id]
+            required_payload_fields: [id]
+            schema_ref: fivetran/proxy_agent_connections/v1
+            urn_kind: fivetran_proxy_agent_connections
+          id: proxy_agent_connections
+          id_field: id
+          label: Proxy agent connections
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/proxy/{proxy_agent_id}/connections
+          projection:
+            fields:
+              connection_id: id|connection_id
+              proxy_agent_id: proxy_agent_id
+              resource_id: id|connection_id
+              resource_name: name|schema|service|id
+              resource_type: resource_type
+              source_event_id: id|connection_id
+              status: status
+            template: asset
+          read:
+            path_params: [proxy_agent_id]
+          config:
+            config_attributes:
+              proxy_agent_id: proxy_agent_id
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [network_security, asset_inventory]
+              evidence_types: [configuration_state, source_snapshot]
+              families: [hybrid_deployment_agents]
+              high_value: false
+              id: hybrid_deployment_agents
+              support: supported
+              title: Hybrid deployment agents
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.hybrid_deployment_agents
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/hybrid_deployment_agents/v1
+            urn_kind: fivetran_hybrid_deployment_agents
+          id: hybrid_deployment_agents
+          id_field: id
+          label: Hybrid deployment agents
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/hybrid-deployment-agents
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: hybrid_deployment_agent
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot]
+              families: [public_connector_types]
+              high_value: false
+              id: public_connector_types
+              support: supported
+              title: Public connector types
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.public_connector_types
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/public_connector_types/v1
+            urn_kind: fivetran_public_connector_types
+          id: public_connector_types
+          id_field: id
+          label: Public connector types
+          method: GET
+          name_field: service
+          pagination: *fivetran_cursor_pagination
+          path: /public/connector-types
+          projection:
+            fields:
+              resource_id: id|service|name
+              resource_name: name|service|id
+              resource_type: resource_type
+              schema: schema
+              service: service
+              source_event_id: id|service|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connector_metadata]
+              high_value: false
+              id: connector_metadata
+              support: supported
+              title: Connector metadata
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connector_metadata
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connector_metadata/v1
+            urn_kind: fivetran_connector_metadata
+          id: connector_metadata
+          id_field: id
+          label: Connector metadata
+          method: GET
+          name_field: service
+          pagination: *fivetran_cursor_pagination
+          path: /v1/metadata/connector-types
+          projection:
+            fields:
+              resource_id: id|service|name
+              resource_name: name|service|id
+              resource_type: connector_metadata
+              schema: schema
+              service: service
+              source_event_id: id|service|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [connector_metadata_details]
+              high_value: false
+              id: connector_metadata_details
+              support: supported
+              title: Connector metadata details
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.connector_metadata_details
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type, service]
+            required_payload_fields: [id]
+            schema_ref: fivetran/connector_metadata_details/v1
+            urn_kind: fivetran_connector_metadata_details
+          id: connector_metadata_details
+          id_field: id
+          label: Connector metadata details
+          method: GET
+          name_field: name
+          path: /v1/metadata/connector-types/{service}
+          projection:
+            fields:
+              resource_id: id|service|name
+              resource_name: name|service|id
+              resource_type: connector_metadata_detail
+              service: service|id
+              source_event_id: id|service|name
+              status: service_status|status
+            template: asset
+          read:
+            path_params: [service]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              service: service
+        - coverage:
+            - control_domains: [identity_access, authorization]
+              evidence_types: [credential_inventory]
+              families: [system_keys]
+              high_value: true
+              id: system_keys
+              support: supported
+              title: System keys
+              type: app_entitlement
+          default_enabled: true
+          event:
+            kind: fivetran.system_keys
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/system_keys/v1
+            urn_kind: fivetran_system_keys
+          id: system_keys
+          id_field: id
+          label: System keys
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/system-keys
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: system_key
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+          sensitive_payload_paths:
+            - $.key
+            - $.secret
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [transformations]
+              high_value: false
+              id: transformations
+              support: supported
+              title: Transformations
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.transformations
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/transformations/v1
+            urn_kind: fivetran_transformations
+          id: transformations
+          id_field: id
+          label: Transformations
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/transformations
+          projection:
+            fields:
+              resource_id: id|name
+              resource_name: name|id
+              resource_type: transformation
+              source_event_id: id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [transformation_projects]
+              high_value: false
+              id: transformation_projects
+              support: supported
+              title: Transformation projects
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.transformation_projects
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/transformation_projects/v1
+            urn_kind: fivetran_transformation_projects
+          id: transformation_projects
+          id_field: id
+          label: Transformation projects
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/transformation-projects
+          projection:
+            fields:
+              project_id: id|project_id
+              resource_id: id|project_id|name
+              resource_name: name|id|project_id
+              resource_type: resource_type
+              source_event_id: id|project_id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [transformation_package_metadata]
+              high_value: false
+              id: transformation_package_metadata
+              support: supported
+              title: Transformation package metadata
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.transformation_package_metadata
+            required_attributes: [tenant_id, source_event_id, resource_id, resource_type]
+            required_payload_fields: [package_definition_id]
+            schema_ref: fivetran/transformation_package_metadata/v1
+            urn_kind: fivetran_transformation_package_metadata
+          id: transformation_package_metadata
+          id_field: package_definition_id
+          label: Transformation package metadata
+          method: GET
+          name_field: name
+          pagination: *fivetran_cursor_pagination
+          path: /v1/transformations/package-metadata
+          projection:
+            fields:
+              resource_id: package_definition_id|id|name
+              resource_name: name|package_definition_id
+              resource_type: resource_type
+              source_event_id: package_definition_id|id|name
+              status: status
+            template: asset
+          record_selector: $.data.items[*]
+        - coverage:
+            - control_domains: [asset_inventory, data_governance, change_management]
+              evidence_types: [source_snapshot, configuration_state]
+              families: [transformation_package_details]
+              high_value: false
+              id: transformation_package_details
+              support: supported
+              title: Transformation package details
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: fivetran.transformation_package_details
+            required_attributes: [tenant_id, source_event_id, package_definition_id, resource_id, resource_type]
+            required_payload_fields: [id]
+            schema_ref: fivetran/transformation_package_details/v1
+            urn_kind: fivetran_transformation_package_details
+          id: transformation_package_details
+          id_field: package_definition_id
+          label: Transformation package details
+          method: GET
+          name_field: name
+          path: /v1/transformations/package-metadata/{package_definition_id}
+          projection:
+            fields:
+              package_definition_id: package_definition_id|id
+              resource_id: package_definition_id|id|name
+              resource_name: name|package_definition_id|id
+              resource_type: transformation_package_detail
+              source_event_id: package_definition_id|id|name
+              status: version|status
+            template: asset
+          read:
+            path_params: [package_definition_id]
+            singleton: true
+            disable_page_size: true
+          config:
+            config_attributes:
+              package_definition_id: package_definition_id
       schema_version: cerebro.integration/v1
+      scope_options:
+        - id: account_access
+          label: Account access
+          families: [account_info, users, roles, teams, groups, user_connections, user_groups, team_users, team_connections, team_groups, group_users, group_connections]
+          default_enabled: true
+        - id: pipeline_inventory
+          label: Pipeline inventory
+          families: [destinations, connections, connection_schemas, connection_state, connection_table_columns, connector_sdk_packages, public_connector_types, connector_metadata, connector_metadata_details, transformations, transformation_projects, transformation_package_metadata, transformation_package_details]
+          default_enabled: true
+        - id: trust_controls
+          label: Trust controls
+          families: [group_public_keys, group_service_accounts, connection_certificates, connection_fingerprints, destination_certificates, destination_fingerprints, private_links, proxy_agents, proxy_agent_connections, hybrid_deployment_agents]
+          default_enabled: true
+        - id: external_secrets
+          label: External secrets
+          families: [external_secret_managers, external_secret_manager_entities, external_secret_manager_assignments]
+          default_enabled: true
+        - id: operations
+          label: Operations
+          families: [account_log_service, log_services, webhooks, system_keys]
+          default_enabled: true
       source_id: fivetran
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.fivetran.com
+        headers:
+          Accept: application/json
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses: [429, 500, 502, 503, 504]
         verification:
-          expect_status:
-            - 200
+          expect_status: [200]
           method: GET
-          path: /v1/me
+          path: /v1/account/info

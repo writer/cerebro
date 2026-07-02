@@ -89,7 +89,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if !ok {
 		return resolved, fmt.Errorf("%s family must be one of %s", s.options.SourceID, strings.Join(familyNames(s.options), ", "))
 	}
-	resolved.familyMethod = strings.TrimSpace(family.Method)
+	resolved.familyMethod = strings.TrimSpace(family.Config.Method)
 	if s.options.RequireTenantID && resolved.tenantID == "" {
 		return resolved, fmt.Errorf("%s tenant_id is required", s.options.SourceID)
 	}
@@ -127,7 +127,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return resolved, err
 		}
 	}
-	resolved.request.headers = headersFromConfig(cfg, s.options.ConfigHeaders)
+	resolved.request.headers = mergeStaticHeaders(family.Config.StaticHeaders, headersFromConfig(cfg, s.options.ConfigHeaders))
 	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
 		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, sourcecdk.ConfigValue(cfg, key))
 		if err != nil {
@@ -174,6 +174,31 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	resolved.request.configAttributes = attributesFromConfig(cfg, family.Config.ConfigAttributes)
 	resolved.request.query = queryFromConfig(cfg, family.Config.ConfigQuery)
 	return resolved, nil
+}
+
+func mergeStaticHeaders(static map[string]string, configured map[string]string) map[string]string {
+	if len(static) == 0 {
+		return configured
+	}
+	headers := map[string]string{}
+	for header, value := range static {
+		header = strings.TrimSpace(header)
+		value = strings.TrimSpace(value)
+		if header != "" && value != "" {
+			headers[header] = value
+		}
+	}
+	for header, value := range configured {
+		header = strings.TrimSpace(header)
+		value = strings.TrimSpace(value)
+		if header != "" && value != "" {
+			headers[header] = value
+		}
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
 }
 
 func headersFromConfig(cfg sourcecdk.Config, configHeaders map[string]string) map[string]string {

@@ -1,0 +1,40 @@
+[
+  {
+    "id": "fivetran-teams-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.teams",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/teams/v1",
+    "payload": {
+      "id": "team-1",
+      "name": "Data Platform",
+      "description": "Owns warehouse connections and sync operations.",
+      "family": "teams",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/teams/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "team-1",
+      "external_id": "team-1",
+      "family": "teams",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "teams",
+      "record_class": "identity_group",
+      "resource_type": "team",
+      "resource_id": "team-1",
+      "resource_name": "Data Platform",
+      "resource_urn": "urn:cerebro:tenant:fivetran_teams:team-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "team_id": "team-1",
+      "group_id": "team-1",
+      "group_name": "Data Platform",
+      "description": "Owns warehouse connections and sync operations."
+    }
+  }
+]

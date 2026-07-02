@@ -1,0 +1,39 @@
+[
+  {
+    "id": "fivetran-destination_fingerprints-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.destination_fingerprints",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/destination_fingerprints/v1",
+    "payload": {
+      "id": "dest-fingerprint-1",
+      "hash": "sha256:5678",
+      "destination_id": "destination-1",
+      "family": "destination_fingerprints",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/destination_fingerprints/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "dest-fingerprint-1",
+      "external_id": "dest-fingerprint-1",
+      "family": "destination_fingerprints",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "destination_fingerprints",
+      "record_class": "credential",
+      "resource_type": "fingerprint",
+      "resource_id": "dest-fingerprint-1",
+      "resource_name": "sha256:5678",
+      "resource_urn": "urn:cerebro:tenant:fivetran_destination_fingerprints:dest-fingerprint-1",
+      "destination_id": "destination-1",
+      "credential_id": "dest-fingerprint-1",
+      "hash": "sha256:5678",
+      "scope_type": "destination"
+    }
+  }
+]

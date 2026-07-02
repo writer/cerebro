@@ -257,10 +257,14 @@ entries:
         fields:
           alert_id: id
           alert_name: channel_destination
-          alert_severity: channel_destination
-          alert_status: channel_destination
+          alert_fired_at: created_at
+          alert_source: notification_profile_id
+          alert_type: channel_type_id
           id: id
           name: channel_destination
+          resource_id: id
+          resource_name: channel_destination
+          resource_type: notification_channel
         template: alert
       record_selector: "$.data[*]"
     - coverage:

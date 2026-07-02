@@ -54,16 +54,17 @@ func New() (*Source, error) {
 		AuthModel:       "bearer_token",
 		TokenHeader:     tokenHeader,
 		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
+		Families: applyTelnyxDefaults([]jsonapi.Family{
 			{
 				Name:             familyCallEvent,
 				Path:             "/call_events",
 				URNKind:          "telnyx_call_event",
-				IDKeys:           []string{"name", "event_id", "id", "uuid", "request_id"},
+				IDKeys:           []string{"call_leg_id", "call_session_id", "event_timestamp", "name"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "name", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "name", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				TimestampKeys:    []string{"event_timestamp", "updated_at", "created_at"},
+				Attributes:       map[string]string{"actor_id": "call_session_id|call_leg_id", "event_type": "name|type", "id": "call_leg_id", "name": "name", "observed_at": "event_timestamp|updated_at|created_at", "provider_id": "call_leg_id", "resource_id": "call_leg_id", "resource_name": "name", "resource_type": "record_type|type", "source_event_id": "call_leg_id|call_session_id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "call_event", "source_system": "telnyx"},
+				Config:           jsonapi.FamilyConfig{IdentityKeys: []string{"event_timestamp", "name"}},
 			},
 			{
 				Name:             familyBillingGroup,
@@ -72,18 +73,18 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"group_id": "id", "group_name": "name", "id": "id", "name": "name", "observed_at": "updated_at|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "name", "resource_type": "record_type", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "billing_group", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyCredentialConnection,
 				Path:             "/credential_connections",
 				URNKind:          "telnyx_credential_connection",
-				IDKeys:           []string{"id", "active", "secret_id", "name", "key", "sid"},
+				IDKeys:           []string{"id", "connection_name", "user_name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "active", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "secret_created_at": "created_at|created|date_created", "secret_id": "id", "secret_last_rotated_at": "secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at", "secret_name": "active", "secret_rotation_enabled": "secret_rotation_enabled|rotation_enabled|auto_rotate", "secret_status": "secret_status|status|state", "secret_type": "credential_connection", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "secret", "schema": "credential_connection", "source_system": "telnyx"},
+				Attributes:       map[string]string{"id": "id", "name": "connection_name|user_name|id", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "connection_name|user_name|id", "resource_type": "record_type", "secret_created_at": "created_at", "secret_id": "id", "secret_name": "connection_name|user_name|id", "secret_type": "record_type", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "secret", "schema": "credential_connection", "secret_status": "active", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyManagedAccount,
@@ -92,18 +93,18 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "email", "user_id", "primary_email", "login"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "email", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
+				Attributes:       map[string]string{"created_at": "created_at", "display_name": "organization_name|email", "email": "email", "id": "id", "login": "api_user|email", "name": "organization_name|email", "observed_at": "updated_at|created_at", "primary_email": "email", "provider_id": "id", "resource_id": "id", "resource_name": "organization_name|email", "resource_type": "record_type", "source_event_id": "id", "status": "status", "user_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "managed_account", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyCallControlApplication,
 				Path:             "/call_control_applications",
 				URNKind:          "telnyx_call_control_application",
-				IDKeys:           []string{"id", "active", "policy_id", "name", "key", "control_id"},
+				IDKeys:           []string{"id", "application_name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "active", "observed_at": "observed_at|updated_at|last_seen_at", "policy_created_at": "created_at|created|date_created", "policy_description": "description|summary|body", "policy_id": "id", "policy_name": "active", "policy_severity": "severity|risk|priority", "policy_status": "policy_status|status|state|enabled", "policy_type": "call_control_application", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "policy", "schema": "call_control_application", "source_system": "telnyx"},
+				Attributes:       map[string]string{"id": "id", "name": "application_name|id", "observed_at": "updated_at|created_at", "policy_created_at": "created_at", "policy_description": "webhook_event_url", "policy_id": "id", "policy_name": "application_name|id", "policy_type": "record_type", "resource_id": "id", "resource_name": "application_name|id", "resource_type": "record_type", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"policy_status": "active", "record_class": "policy", "schema": "call_control_application", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyNotificationChannel,
@@ -112,8 +113,8 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "channel_destination", "alert_id", "sid", "incident_id", "uuid"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"alert_description": "description|summary|message|body", "alert_fired_at": "fired_at|triggered_at|created_at|occurred_at|timestamp", "alert_id": "id", "alert_name": "channel_destination", "alert_resolved_at": "resolved_at|closed_at|acknowledged_at", "alert_severity": "channel_destination", "alert_source": "source|alert_source|monitor|check", "alert_status": "channel_destination", "alert_type": "alert_type|type|category|kind", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "channel_destination", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "alert", "schema": "notification_channel", "source_system": "telnyx"},
+				Attributes:       map[string]string{"alert_fired_at": "created_at", "alert_id": "id", "alert_name": "channel_destination|id", "alert_source": "notification_profile_id", "alert_type": "channel_type_id", "id": "id", "name": "channel_destination|id", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "channel_destination|id", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "alert", "resource_type": "notification_channel", "schema": "notification_channel", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyDetailRecordsReport,
@@ -122,7 +123,7 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "created_at", "urn", "resource_urn", "name"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "created_at", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "created_at", "resource_type": "detail_records_report", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"id": "id", "name": "id", "observed_at": "updated_at|created_at", "resource_id": "id", "resource_name": "id", "resource_type": "record_type|status", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "detail_records_report", "source_system": "telnyx"},
 			},
 			{
@@ -132,8 +133,8 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "notification_event", "source_system": "telnyx"},
+				Attributes:       map[string]string{"actor_id": "id", "event_type": "name|notification_category", "id": "id", "name": "name", "observed_at": "updated_at|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "name", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "audit_event", "resource_type": "notification_event", "schema": "notification_event", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyNotificationEventCondition,
@@ -142,8 +143,8 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "notification_event_condition", "source_system": "telnyx"},
+				Attributes:       map[string]string{"actor_id": "notification_event_id|id", "event_type": "name|associated_record_type", "id": "id", "name": "name", "observed_at": "updated_at|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "name", "source_event_id": "id"},
+				StaticAttributes: map[string]string{"record_class": "audit_event", "resource_type": "notification_event_condition", "schema": "notification_event_condition", "source_system": "telnyx"},
 			},
 			{
 				Name:             familyWirelessConnectivityLog,
@@ -151,8 +152,8 @@ func New() (*Source, error) {
 				URNKind:          "telnyx_wireless_connectivity_log",
 				IDKeys:           []string{"id", "apn", "event_id", "uuid", "request_id"},
 				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "apn", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				TimestampKeys:    []string{"start_time", "last_seen", "updated_at", "created_at"},
+				Attributes:       map[string]string{"actor_id": "sim_card_id", "event_type": "log_type", "id": "id", "name": "apn|log_type", "observed_at": "start_time|last_seen|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "apn|sim_card_id", "resource_type": "record_type|log_type", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "wireless_connectivity_log", "source_system": "telnyx"},
 			},
 			{
@@ -162,7 +163,7 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"group_id": "id", "group_name": "name", "id": "id", "name": "name", "observed_at": "updated_at|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "name", "resource_type": "record_type", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "sim_card_group", "source_system": "telnyx"},
 			},
 			{
@@ -172,15 +173,37 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "created_at", "group_id", "group_email", "email"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "created_at", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Attributes:       map[string]string{"group_id": "sim_card_group_id", "group_name": "type|sim_card_group_id", "id": "id", "name": "type|created_at", "observed_at": "updated_at|created_at", "provider_id": "id", "resource_id": "id", "resource_name": "type|sim_card_group_id", "resource_type": "record_type|type", "source_event_id": "id"},
 				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "sim_card_group_action", "source_system": "telnyx"},
 			},
-		},
+		}),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Source{inner: inner}, nil
+}
+
+func applyTelnyxDefaults(families []jsonapi.Family) []jsonapi.Family {
+	for idx := range families {
+		if strings.TrimSpace(families[idx].Config.ResourceURNKind) == "" {
+			families[idx].Config.ResourceURNKind = families[idx].URNKind
+		}
+		if families[idx].Config.ConfigAttributes == nil {
+			families[idx].Config.ConfigAttributes = map[string]string{}
+		}
+		families[idx].Config.ConfigAttributes["tenant_id"] = "tenant_id"
+		if len(families[idx].PageSizeParams) == 0 {
+			families[idx].PageSizeParams = []string{"page[size]"}
+		}
+		if strings.TrimSpace(families[idx].CursorParam) == "" {
+			families[idx].CursorParam = "page[number]"
+		}
+		if strings.TrimSpace(families[idx].PageFirstCursor) == "" {
+			families[idx].PageFirstCursor = "1"
+		}
+	}
+	return families
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {

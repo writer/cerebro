@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fivetran-account_log_service-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.account_log_service",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/account_log_service/v1",
+    "payload": {
+      "id": "log-1",
+      "service": "datadog_log",
+      "enabled": true,
+      "family": "account_log_service",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/account_log_service/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "log-1",
+      "external_id": "log-1",
+      "family": "account_log_service",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "account_log_service",
+      "record_class": "asset",
+      "resource_type": "log_service",
+      "resource_id": "log-1",
+      "resource_name": "datadog_log",
+      "resource_urn": "urn:cerebro:tenant:fivetran_account_log_service:log-1",
+      "enabled": "true",
+      "service": "datadog_log",
+      "status": "true"
+    }
+  }
+]
