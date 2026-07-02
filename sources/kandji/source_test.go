@@ -89,6 +89,16 @@ func TestReadDeviceFamily(t *testing.T) {
 	if event.Attributes["source_product"] != "kandji" {
 		t.Fatalf("source_product = %q, want kandji", event.Attributes["source_product"])
 	}
+	for key, want := range map[string]string{
+		"resource_id":   "device-1",
+		"resource_name": "MacBook Pro",
+		"resource_type": "device",
+		"resource_urn":  "urn:cerebro:writer:kandji_device:device-1",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
 }
 
 func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
@@ -227,6 +237,16 @@ func TestReadApplicationFamily(t *testing.T) {
 	if attrs["external_id"] != "device-1/com.apple.Safari" {
 		t.Fatalf("external_id = %q, want device-scoped bundle id", attrs["external_id"])
 	}
+	for key, want := range map[string]string{
+		"resource_id":   "device-1/com.apple.Safari",
+		"resource_name": "Safari",
+		"resource_type": "application",
+		"resource_urn":  "urn:cerebro:writer:kandji_application:device-1/com.apple.Safari",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
 }
 
 func TestReadApplicationFamilyKeepsSameBundleOnDifferentDevices(t *testing.T) {
@@ -338,6 +358,16 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	}
 	if attrs["external_id"] != "device-1/CVE-2026-0001/Safari/18.0" {
 		t.Fatalf("external_id = %q, want device-scoped CVE detection id", attrs["external_id"])
+	}
+	for key, want := range map[string]string{
+		"resource_id":   "device-1/CVE-2026-0001/Safari/18.0",
+		"resource_name": "CVE-2026-0001",
+		"resource_type": "vulnerability",
+		"resource_urn":  "urn:cerebro:writer:kandji_vulnerability:device-1/CVE-2026-0001/Safari/18.0",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
 	}
 }
 
