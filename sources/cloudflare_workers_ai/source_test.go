@@ -66,6 +66,60 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 }
 
+func TestReadAIGatewaysMapsProviderName(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/test-account/ai-gateway/gateways" {
+			t.Errorf("path = %q, want /accounts/test-account/ai-gateway/gateways", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":         "gateway-1",
+				"name":       "production-gateway",
+				"url":        "https://gateway.example.com",
+				"status":     "active",
+				"created_at": "2026-05-01T00:00:00Z",
+				"updated_at": "2026-06-01T00:00:00Z",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "test-account",
+		"base_url":   server.URL,
+		"family":     familyAiGateways,
+		"gateway_id": "gateway-1",
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"deployment_id":   "gateway-1",
+		"deployment_name": "production-gateway",
+		"resource_type":   "ai_gateway",
+		"resource_urn":    "urn:cerebro:tenant:cloudflare_workers_ai_ai_gateways:gateway-1",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+}
+
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
