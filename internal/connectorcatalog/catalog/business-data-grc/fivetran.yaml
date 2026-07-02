@@ -616,6 +616,8 @@ entries:
           config:
             config_attributes:
               group_id: group_id
+          sensitive_payload_paths:
+            - $.service_account
         - coverage:
             - control_domains: [asset_inventory, data_governance]
               evidence_types: [source_snapshot, configuration_state]
