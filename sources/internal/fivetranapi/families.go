@@ -513,6 +513,7 @@ func fivetranScopedAssetFamily(name string, path string, scopeParam string, sche
 	family.PathParams = []string{scopeParam}
 	family.Singleton = singleton
 	if singleton {
+		family.DisablePageSize = true
 		family.IDKeys = append([]string{scopeParam}, family.IDKeys...)
 	}
 	family.Attributes[scopeParam] = scopeParam

@@ -212,6 +212,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "connection-1",
 			config:    map[string]string{"connection_ids": "connection-1"},
 			singleton: true,
+			wantLimit: "none",
 		},
 		{
 			name:      "connection state",
@@ -224,6 +225,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "connection-1",
 			config:    map[string]string{"connection_ids": "connection-1"},
 			singleton: true,
+			wantLimit: "none",
 		},
 		{
 			name:      "connector sdk packages",
