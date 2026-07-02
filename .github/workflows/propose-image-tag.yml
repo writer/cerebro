@@ -178,9 +178,10 @@ jobs:
         run: |
           set -euo pipefail
           image_ref="${GHCR_IMAGE}@${IMAGE_DIGEST}"
+          release_identity="https://github.com/writer/cerebro/.github/workflows/release.yml@refs/(tags/${IMAGE_TAG}|heads/main)"
 
           cosign verify \
-            --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
+            --certificate-identity-regexp "${release_identity}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${image_ref}" > cosign-verify.json
 
@@ -234,7 +235,7 @@ jobs:
           cosign verify-blob \
             --certificate runtime-contract/cerebro-runtime-contract.json.pem \
             --signature runtime-contract/cerebro-runtime-contract.json.sig \
-            --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
+            --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/(tags/${IMAGE_TAG}|heads/main)" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             runtime-contract/cerebro-runtime-contract.json
           echo "path=runtime-contract/cerebro-runtime-contract.json" >> "$GITHUB_OUTPUT"
