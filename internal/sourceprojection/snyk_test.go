@@ -126,6 +126,34 @@ func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
 	}
 }
 
+func TestSnykAuditProjectionSkipsUnmappedResourceTypes(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "snyk",
+		Kind:     "snyk.audit_logs",
+		Attributes: map[string]string{
+			"actor_id":      "user-1",
+			"event_type":    "group.membership.invite",
+			"resource_id":   "group-1",
+			"resource_type": "group.membership.invite",
+		},
+	}
+	entities, links, err := snykAuditLogsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if !hasProjectedEntityType(entities, "snyk.user") {
+		t.Fatalf("expected audit actor entity; entities=%#v", entities)
+	}
+	if hasProjectedEntityURN(entities, projectionURN("tenant", "snyk_group.membership.invite", "group-1")) {
+		t.Fatalf("projected unmapped audit resource entity; entities=%#v", entities)
+	}
+	if len(links) != 0 {
+		t.Fatalf("expected no resource link for unmapped audit resource type; links=%#v", links)
+	}
+}
+
 func TestSnykAssetRelationshipProjectionLinksAssetToProjectAndTarget(t *testing.T) {
 	for _, tt := range []struct {
 		name       string

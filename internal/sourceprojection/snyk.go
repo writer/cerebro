@@ -138,7 +138,10 @@ func snykAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["project_id"], attributes["group_id"])
 	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
 	resourceURNKind := snykInventoryURNKind(resourceType)
-	resourceURN := projectionURN(tenantID, resourceURNKind, resourceID)
+	resourceURN := ""
+	if resourceURNKind != "" {
+		resourceURN = projectionURN(tenantID, resourceURNKind, resourceID)
+	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	if actorURN != "" {
@@ -192,7 +195,7 @@ func snykInventoryURNKind(resourceType string) string {
 	case "cloud_scan", "scan":
 		return "snyk_cloud_scans"
 	default:
-		return "snyk_" + normalizeIdentifier(resourceType)
+		return ""
 	}
 }
 

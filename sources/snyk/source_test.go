@@ -208,8 +208,8 @@ func TestRuntimeUsesSnykRESTPathsAndVersionedPagination(t *testing.T) {
 			wantAttrs: map[string]string{
 				"org_id":          "org-1",
 				"event_type":      "org.project.create",
-				"external_id":     "2026-06-01T00:00:00Z-org.project.create",
-				"source_event_id": "2026-06-01T00:00:00Z-org.project.create",
+				"external_id":     "2026-06-01T00:00:00Z-org.project.create-user-1-project-1",
+				"source_event_id": "2026-06-01T00:00:00Z-org.project.create-user-1-project-1",
 				"actor_id":        "user-1",
 				"actor_email":     "alice@example.test",
 				"resource_type":   "project",
@@ -421,7 +421,7 @@ func TestAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"items": []map[string]any{
 			{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-1", "content": map[string]any{"user_id": "user-1", "email": "alice@example.test", "type": "project"}},
-			{"created": "2026-06-01T00:00:00Z", "event": "org.project.delete", "org_id": "org-1", "project_id": "project-2", "content": map[string]any{"user_id": "user-2", "email": "bob@example.test", "type": "project"}},
+			{"created": "2026-06-01T00:00:00Z", "event": "org.project.create", "org_id": "org-1", "project_id": "project-2", "content": map[string]any{"user_id": "user-2", "email": "bob@example.test", "type": "project"}},
 		}}})
 	}))
 	defer server.Close()
@@ -440,8 +440,8 @@ func TestAuditLogsDoNotDedupeSameTimestamp(t *testing.T) {
 		t.Fatalf("events = %d, want 2 distinct same-timestamp audit logs", len(pull.Events))
 	}
 	for idx, want := range []string{
-		"2026-06-01T00:00:00Z-org.project.create",
-		"2026-06-01T00:00:00Z-org.project.delete",
+		"2026-06-01T00:00:00Z-org.project.create-user-1-project-1",
+		"2026-06-01T00:00:00Z-org.project.create-user-2-project-2",
 	} {
 		attrs := pull.Events[idx].Attributes
 		if got := attrs["external_id"]; got != want {
