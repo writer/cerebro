@@ -75,7 +75,8 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"device_name":         "ENG-MBA-01",
 				"serial_number":       "C02KOLIDE001",
 				"os":                  "macOS 15.5",
-				"status":              "Good",
+				"auth_state":          "Good",
+				"compliance_status":   "Good",
 				"authentication_mode": "only_registered_owner",
 				"registered_at":       "2026-05-01T12:00:00Z",
 			},
@@ -302,6 +303,9 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				if got := event.Attributes[key]; got != want {
 					t.Fatalf("%s attribute %q = %q, want %q", tt.family, key, got, want)
 				}
+			}
+			if tt.family == familyDevice && event.Attributes["status"] != "" {
+				t.Fatalf("device status = %q, want empty when provider only returns auth_state", event.Attributes["status"])
 			}
 			if requests != 3 {
 				t.Fatalf("requests = %d, want Check, Discover, and Read", requests)
