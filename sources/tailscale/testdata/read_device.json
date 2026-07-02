@@ -29,7 +29,7 @@
     "kind": "tailscale.device",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "addresses": ["100.64.0.10", "fd7a:115c:a1e0::10"],
+      "addresses": ["192.0.2.10", "fd7a:115c:a1e0::10"],
       "authorized": true,
       "blocksIncomingConnections": false,
       "clientVersion": "1.100.0",

@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "addresses": "100.64.0.20,fd7a:115c:a1e0::20",
+      "addresses": "192.0.2.20,fd7a:115c:a1e0::20",
       "comment": "Production API",
       "external_id": "svc:api",
       "family": "service",
@@ -20,7 +20,7 @@
     "kind": "tailscale.service",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "addrs": ["100.64.0.20", "fd7a:115c:a1e0::20"],
+      "addrs": ["192.0.2.20", "fd7a:115c:a1e0::20"],
       "comment": "Production API",
       "id": "svc:api",
       "name": "svc:api",

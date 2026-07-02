@@ -132,8 +132,8 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 			family:   "service",
 			kind:     "tailscale.service",
 			path:     "/tailnet/-/vip-services",
-			response: map[string]any{"vipServices": []map[string]any{{"name": "svc:api", "addrs": []string{"100.64.0.10", "fd7a:115c:a1e0::10"}, "ports": []string{"443"}, "tags": []string{"tag:prod"}, "comment": "Production API"}}},
-			want:     map[string]string{"service_id": "svc:api", "name": "svc:api", "addresses": "100.64.0.10,fd7a:115c:a1e0::10", "ports": "443", "tags": "tag:prod", "comment": "Production API"},
+			response: map[string]any{"vipServices": []map[string]any{{"name": "svc:api", "addrs": []string{"192.0.2.10", "fd7a:115c:a1e0::10"}, "ports": []string{"443"}, "tags": []string{"tag:prod"}, "comment": "Production API"}}},
+			want:     map[string]string{"service_id": "svc:api", "name": "svc:api", "addresses": "192.0.2.10,fd7a:115c:a1e0::10", "ports": "443", "tags": "tag:prod", "comment": "Production API"},
 		},
 		{
 			name:     "group",
