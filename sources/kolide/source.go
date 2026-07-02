@@ -35,6 +35,6 @@ func New() (*Source, error) {
 
 func (s *Source) allowLoopbackForTest() {
 	if s != nil && s.Source != nil {
-		s.Source.AllowLoopbackBaseURL = true
+		s.AllowLoopbackBaseURL = true
 	}
 }
