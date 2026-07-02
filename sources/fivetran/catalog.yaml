@@ -437,7 +437,7 @@ coverage_contract:
     - id: account_access_inventory
       type: app_entitlement
       title: Account access inventory
-      families: [users, roles, teams, groups]
+      families: [fivetran_users, fivetran_roles, fivetran_teams, fivetran_groups]
       support: supported
       high_value: true
       evidence_types: [identity_configuration, source_snapshot]
@@ -452,7 +452,7 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC6.2
       notes:
-        - Reads account users, roles, teams, and destination groups from first-class Fivetran API routes and preserves API-key principal IDs, emails, role names, team names, group names, and provider status fields for access review.
+        - Reads Fivetran account users, roles, teams, and destination groups for Fivetran access review. Families are source-qualified so this SaaS-local access evidence does not claim primary IAM, MFA, or cloud-service-account coverage.
     - id: account_profile
       type: entity_family
       title: Account profile

@@ -522,6 +522,7 @@ func fivetranScopedAssetFamily(name string, path string, scopeParam string, sche
 	family.Attributes["resource_id"] = family.Attributes["resource_id"] + "|" + scopeParam
 	family.Config.ConfigAttributes[scopeParam] = scopeParam
 	family.Config.IdentityKeys = []string{scopeParam}
+	family.Config.IdentityResourceID = true
 	return family
 }
 
@@ -547,9 +548,10 @@ func fivetranScopedCredentialFamily(name string, path string, scopeParam string,
 		},
 		StaticAttributes: fivetranCredentialStaticAttributes(name, scopeResourceType, credentialType),
 		Config: fivetranFamilyConfig(jsonapi.FamilyConfig{
-			ConfigAttributes: map[string]string{scopeParam: scopeParam},
-			IdentityKeys:     []string{scopeParam},
-			ResourceURNKind:  "fivetran_" + name,
+			ConfigAttributes:   map[string]string{scopeParam: scopeParam},
+			IdentityKeys:       []string{scopeParam},
+			IdentityResourceID: true,
+			ResourceURNKind:    "fivetran_" + name,
 		}),
 	})
 }

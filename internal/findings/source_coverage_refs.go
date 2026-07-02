@@ -58,6 +58,9 @@ func sourceCoverageRefsForDetection(detection PublicDetection, contracts []sourc
 		sourceMatched := sourceMatchesDetection(detection, sourceID, searchText)
 		sourceConflicted := coverageSourceConflictsWithPolicyDetection(detection.SourceID, sourceID, searchText)
 		for _, dimension := range contract.Dimensions {
+			if sourceOperationalPolicyCoverageRequiresSourceMatch(detection.SourceID, sourceMatched, dimension) {
+				continue
+			}
 			dimensionMatched := dimensionMatchesDetection(dimension, searchText)
 			evidenceMatched := evidenceMatchesDetection(detection.EvidenceType, dimension.EvidenceTypes)
 			effectiveSourceMatched := sourceMatched || genericIdentityCoverageMatchesDetection(sourceID, dimension, sourceMatchRequired, identityProviderNamed, genericIdentityCoverageAllowed, dimensionMatched)
@@ -228,6 +231,16 @@ func coverageControlMatchAllowed(detectionSourceID string, sourceMatched bool, d
 		return false
 	}
 	return true
+}
+
+func sourceOperationalPolicyCoverageRequiresSourceMatch(detectionSourceID string, sourceMatched bool, dimension sourcecdk.CoverageDimension) bool {
+	if strings.TrimSpace(detectionSourceID) != policyRuleSourceID || sourceMatched {
+		return false
+	}
+	if strings.TrimSpace(dimension.Type) == "incremental_sync" {
+		return true
+	}
+	return dimensionHasControlDomain(dimension, "source_operations")
 }
 
 func policyIdentityNamespaceRequiresSourceMatch(detection PublicDetection) bool {

@@ -67,19 +67,20 @@ func TestSourceCheckAndReadUsers(t *testing.T) {
 
 func TestSourceReadsProviderFamilies(t *testing.T) {
 	tests := []struct {
-		name       string
-		family     string
-		path       string
-		accept     string
-		item       map[string]any
-		kind       string
-		attrKey    string
-		attrValue  string
-		config     map[string]string
-		queryKey   string
-		queryValue string
-		singleton  bool
-		wantLimit  string
+		name                 string
+		family               string
+		path                 string
+		accept               string
+		item                 map[string]any
+		kind                 string
+		attrKey              string
+		attrValue            string
+		config               map[string]string
+		queryKey             string
+		queryValue           string
+		singleton            bool
+		wantLimit            string
+		wantScopedResourceID bool
 	}{
 		{
 			name:      "account info",
@@ -384,17 +385,18 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "postgres",
 		},
 		{
-			name:      "connector metadata details",
-			family:    fivetranapi.FamilyConnectorMetadataDetails,
-			path:      "/v1/metadata/connector-types/postgres",
-			accept:    "application/json",
-			item:      map[string]any{"id": "postgres", "name": "PostgreSQL", "service_status": "general_availability"},
-			kind:      "fivetran.connector_metadata_details",
-			attrKey:   "resource_id",
-			attrValue: "postgres",
-			config:    map[string]string{"services": "postgres"},
-			singleton: true,
-			wantLimit: "none",
+			name:                 "connector metadata details",
+			family:               fivetranapi.FamilyConnectorMetadataDetails,
+			path:                 "/v1/metadata/connector-types/postgres",
+			accept:               "application/json",
+			item:                 map[string]any{"id": "postgres", "name": "PostgreSQL", "service_status": "general_availability"},
+			kind:                 "fivetran.connector_metadata_details",
+			attrKey:              "resource_id",
+			attrValue:            "postgres",
+			config:               map[string]string{"services": "postgres"},
+			singleton:            true,
+			wantLimit:            "none",
+			wantScopedResourceID: true,
 		},
 		{
 			name:      "system keys",
@@ -437,17 +439,18 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			attrValue: "package-definition-1",
 		},
 		{
-			name:      "transformation package details",
-			family:    fivetranapi.FamilyTransformationPackageDetails,
-			path:      "/v1/transformations/package-metadata/package-definition-1",
-			accept:    "application/json",
-			item:      map[string]any{"id": "package-definition-1", "name": "Quickstart package", "version": "1.0.0"},
-			kind:      "fivetran.transformation_package_details",
-			attrKey:   "resource_id",
-			attrValue: "package-definition-1",
-			config:    map[string]string{"package_definition_ids": "package-definition-1"},
-			singleton: true,
-			wantLimit: "none",
+			name:                 "transformation package details",
+			family:               fivetranapi.FamilyTransformationPackageDetails,
+			path:                 "/v1/transformations/package-metadata/package-definition-1",
+			accept:               "application/json",
+			item:                 map[string]any{"id": "package-definition-1", "name": "Quickstart package", "version": "1.0.0"},
+			kind:                 "fivetran.transformation_package_details",
+			attrKey:              "resource_id",
+			attrValue:            "package-definition-1",
+			config:               map[string]string{"package_definition_ids": "package-definition-1"},
+			singleton:            true,
+			wantLimit:            "none",
+			wantScopedResourceID: true,
 		},
 	}
 
@@ -497,7 +500,15 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			if event.Kind != tt.kind {
 				t.Fatalf("kind = %q, want %s", event.Kind, tt.kind)
 			}
-			if event.Attributes[tt.attrKey] != tt.attrValue {
+			if tt.wantScopedResourceID {
+				got := event.Attributes[tt.attrKey]
+				if got == "" || got == tt.attrValue || !strings.HasPrefix(got, tt.attrValue+"-") {
+					t.Fatalf("%s = %q, want scoped %q identity in %#v", tt.attrKey, got, tt.attrValue, event.Attributes)
+				}
+				if event.Attributes["source_event_id"] != got {
+					t.Fatalf("source_event_id should match scoped resource_id, got %#v", event.Attributes)
+				}
+			} else if event.Attributes[tt.attrKey] != tt.attrValue {
 				t.Fatalf("%s = %q, want %q in %#v", tt.attrKey, event.Attributes[tt.attrKey], tt.attrValue, event.Attributes)
 			}
 			if event.Attributes["tenant_id"] != "tenant" {
@@ -526,8 +537,11 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 				if got := event.Attributes["service_account"]; got != "" {
 					t.Fatalf("service_account attribute = %q, want redacted", got)
 				}
-				if got := event.Attributes["resource_id"]; got != "group-1" {
-					t.Fatalf("resource_id = %q, want group-1", got)
+				if got := event.Attributes["resource_id"]; got == "group-1" || got == "" {
+					t.Fatalf("resource_id = %q, want scoped group service account identity", got)
+				}
+				if event.Attributes["source_event_id"] != event.Attributes["resource_id"] {
+					t.Fatalf("source_event_id should match scoped resource_id, got %#v", event.Attributes)
 				}
 			}
 			if tt.family == fivetranapi.FamilyDestinations || tt.family == fivetranapi.FamilyConnections {
@@ -667,6 +681,110 @@ func TestSourceReadsScopedMembershipsWithFanout(t *testing.T) {
 	}
 	if strings.Join(requestedPaths, ",") != "/v1/groups/group-1/users,/v1/groups/group-2/users" {
 		t.Fatalf("requested paths = %#v, want both scoped reads", requestedPaths)
+	}
+}
+
+func TestSourceReadsScopedAssetsWithScopedResourceIdentity(t *testing.T) {
+	tests := []struct {
+		name       string
+		family     string
+		configKey  string
+		scopeKey   string
+		scopeA     string
+		scopeB     string
+		pathA      string
+		pathB      string
+		resourceID string
+	}{
+		{
+			name:       "external secret manager assignments",
+			family:     fivetranapi.FamilyExternalSecretManagerAssignments,
+			configKey:  "external_secret_manager_ids",
+			scopeKey:   "external_secret_manager_id",
+			scopeA:     "esm-1",
+			scopeB:     "esm-2",
+			pathA:      "/v1/external-secrets-managers/esm-1/entities",
+			pathB:      "/v1/external-secrets-managers/esm-2/entities",
+			resourceID: "connection-1",
+		},
+		{
+			name:       "proxy agent connections",
+			family:     fivetranapi.FamilyProxyAgentConnections,
+			configKey:  "proxy_agent_ids",
+			scopeKey:   "proxy_agent_id",
+			scopeA:     "proxy-1",
+			scopeB:     "proxy-2",
+			pathA:      "/v1/proxy/proxy-1/connections",
+			pathB:      "/v1/proxy/proxy-2/connections",
+			resourceID: "connection-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := newTestSource(t)
+			requestedPaths := []string{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requireFivetranHeaders(t, r, "application/json")
+				requestedPaths = append(requestedPaths, r.URL.Path)
+				switch r.URL.Path {
+				case tt.pathA, tt.pathB:
+				default:
+					t.Fatalf("path = %q, want scoped asset path", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+					"id":   tt.resourceID,
+					"name": "Salesforce connection",
+				}, ""))
+			}))
+			defer server.Close()
+
+			cfg := fivetranConfig(server.URL, map[string]string{
+				"family":     tt.family,
+				tt.configKey: tt.scopeA + "," + tt.scopeB,
+				"per_page":   "2",
+			})
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 || pull.NextCursor == nil {
+				t.Fatalf("first pull events=%d cursor=%v, want one event and cursor", len(pull.Events), pull.NextCursor)
+			}
+			next, err := source.Read(context.Background(), cfg, pull.NextCursor)
+			if err != nil {
+				t.Fatalf("Read(next) error = %v", err)
+			}
+			if len(next.Events) != 1 || next.NextCursor != nil {
+				t.Fatalf("next pull events=%d cursor=%v, want one event and no cursor", len(next.Events), next.NextCursor)
+			}
+
+			byScope := map[string]map[string]string{}
+			for _, event := range pull.Events {
+				byScope[event.Attributes[tt.scopeKey]] = event.Attributes
+			}
+			for _, event := range next.Events {
+				byScope[event.Attributes[tt.scopeKey]] = event.Attributes
+			}
+			attrs := byScope[tt.scopeA]
+			otherAttrs := byScope[tt.scopeB]
+			if attrs[tt.scopeKey] != tt.scopeA || otherAttrs[tt.scopeKey] != tt.scopeB {
+				t.Fatalf("scoped attributes = %#v / %#v, want both scopes", attrs, otherAttrs)
+			}
+			if attrs["resource_id"] == tt.resourceID || otherAttrs["resource_id"] == tt.resourceID || attrs["resource_id"] == otherAttrs["resource_id"] {
+				t.Fatalf("resource_id values should include scope identity, got %q and %q", attrs["resource_id"], otherAttrs["resource_id"])
+			}
+			if attrs["source_event_id"] != attrs["resource_id"] || otherAttrs["source_event_id"] != otherAttrs["resource_id"] {
+				t.Fatalf("source_event_id should match scoped resource_id, got %#v and %#v", attrs, otherAttrs)
+			}
+			if attrs["resource_urn"] == otherAttrs["resource_urn"] {
+				t.Fatalf("resource_urn values should be scoped, got %q and %q", attrs["resource_urn"], otherAttrs["resource_urn"])
+			}
+			if strings.Join(requestedPaths, ",") != tt.pathA+","+tt.pathB {
+				t.Fatalf("requested paths = %#v, want both scoped reads", requestedPaths)
+			}
+		})
 	}
 }
 
