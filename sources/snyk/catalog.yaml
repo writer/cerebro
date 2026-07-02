@@ -207,7 +207,7 @@ coverage_contract:
       support: supported
       high_value: true
       evidence_types: [audit_log]
-      control_domains: [audit_logging, identity_access]
+      control_domains: [logging_monitoring, identity_access]
       notes:
         - Reads Snyk audit search endpoints using `cursor` and `size` pagination and projects actors to acted-on resources.
     - id: application_inventory
