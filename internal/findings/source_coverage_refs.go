@@ -375,16 +375,18 @@ func cloudProviderCoverageSourceConflicts(coverageSourceID string, searchText st
 }
 
 var identityProviderCoverageAliases = map[string][]string{
-	"azure":              {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"duo":                {"duo", "duo_security"},
-	"github":             {"github", "github_org", "github_organization"},
-	"google_workspace":   {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
-	"jumpcloud":          {"jumpcloud", "jump_cloud"},
-	"microsoft_365":      {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
-	"microsoft_entra":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"microsoft_entra_id": {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
-	"okta":               {"okta"},
-	"tailscale":          {"tailscale", "tailnet"},
+	"azure":                 {"azure", "microsoft_azure", "microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"duo":                   {"duo", "duo_security"},
+	"duo_security":          {"duo", "duo_security"},
+	"github":                {"github", "github_org", "github_organization"},
+	"google_workspace":      {"google_workspace", "googleworkspace", "google_workspaces", "gsuite"},
+	"jumpcloud":             {"jumpcloud", "jump_cloud"},
+	"microsoft_365":         {"microsoft_365", "microsoft365", "m365", "office365", "office_365"},
+	"microsoft_entra":       {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"microsoft_entra_id":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
+	"okta":                  {"okta"},
+	"sailpoint_identitynow": {"sailpoint", "sailpoint_identitynow", "identitynow", "identity_now"},
+	"tailscale":             {"tailscale", "tailnet"},
 }
 
 func identityProviderCoverageSourceConflicts(coverageSourceID string, searchText string) bool {

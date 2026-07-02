@@ -6227,6 +6227,86 @@ sources:
             control_id: CC6.1
           - framework: SOC 2
             control_id: CC7.1
+  - source_id: sailpoint_identitynow
+    name: SailPoint Identity Security Cloud
+    purpose: Declare source-backed identity inventory, access model, and lifecycle segmentation evidence lanes.
+    dimensions:
+      - dimension_id: identity_inventory
+        dimension_type: entity_family
+        support_level: supported
+        high_value: true
+        families:
+          - accounts
+          - identities
+        evidence_types:
+          - identity_configuration
+          - source_snapshot
+        control_domains:
+          - asset_inventory
+          - identity_access
+        control_refs:
+          - &sailpoint_identity_control_cis5
+            framework: CIS Controls v8
+            control_id: "5"
+          - &sailpoint_identity_control_cis6
+            framework: CIS Controls v8
+            control_id: "6"
+          - &sailpoint_identity_control_cc61
+            framework: SOC 2
+            control_id: CC6.1
+          - &sailpoint_identity_control_cc62
+            framework: SOC 2
+            control_id: CC6.2
+          - &sailpoint_identity_control_ac2
+            framework: NIST 800-53 r5
+            control_id: AC-2
+          - &sailpoint_identity_control_ac6
+            framework: NIST 800-53 r5
+            control_id: AC-6
+      - dimension_id: access_model
+        dimension_type: relationship
+        support_level: supported
+        high_value: true
+        families:
+          - access_profile_entitlements
+          - access_profiles
+          - entitlements
+          - role_dimensions
+          - role_entitlements
+          - roles
+        evidence_types:
+          - access_review
+          - identity_configuration
+        control_domains:
+          - authorization
+          - identity_access
+        control_refs:
+          - *sailpoint_identity_control_cis5
+          - *sailpoint_identity_control_cis6
+          - *sailpoint_identity_control_cc61
+          - *sailpoint_identity_control_cc62
+          - *sailpoint_identity_control_ac2
+          - *sailpoint_identity_control_ac6
+      - dimension_id: segmentation_policy
+        dimension_type: lifecycle_state
+        support_level: supported
+        high_value: true
+        families:
+          - identity_profiles
+          - lifecycle_states
+          - segments
+        evidence_types:
+          - configuration_state
+        control_domains:
+          - change_management
+          - identity_access
+        control_refs:
+          - *sailpoint_identity_control_cis5
+          - *sailpoint_identity_control_cis6
+          - *sailpoint_identity_control_cc61
+          - *sailpoint_identity_control_cc62
+          - *sailpoint_identity_control_ac2
+          - *sailpoint_identity_control_ac6
   - source_id: tailscale
     name: Tailscale
     purpose: Declare source-backed Tailscale user lifecycle, privileged user, group membership, tag ownership, ACL, device, and tailnet evidence lanes.
