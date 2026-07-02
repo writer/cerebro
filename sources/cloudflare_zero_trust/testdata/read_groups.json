@@ -23,6 +23,7 @@
     "payload": {
       "id": "access-group-1",
       "name": "Employees",
+      "description": "Employees allowed through Access",
       "include": [
         {
           "email_domain": {

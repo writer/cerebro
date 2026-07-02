@@ -25,6 +25,7 @@
     "payload": {
       "id": "access-policy-1",
       "name": "Require MFA",
+      "description": "Access policy requiring MFA group membership",
       "decision": "allow",
       "include": [
         {

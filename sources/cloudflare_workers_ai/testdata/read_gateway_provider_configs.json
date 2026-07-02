@@ -25,6 +25,7 @@
       "alias": "openai-production",
       "provider": "openai",
       "status": "active",
+      "type": "provider_config",
       "created_at": "2026-05-01T00:00:00Z"
     },
     "schema_ref": "cloudflare_workers_ai/gateway_provider_configs/v1",

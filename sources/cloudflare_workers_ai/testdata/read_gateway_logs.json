@@ -7,7 +7,6 @@
       "external_id": "gateway-log-1",
       "family": "gateway_logs",
       "id": "gateway-log-1",
-      "observed_at": "2026-06-01T00:00:00Z",
       "record_class": "audit_event",
       "resource_id": "gateway-1",
       "resource_name": "production-gateway",
