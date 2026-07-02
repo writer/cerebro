@@ -185,6 +185,48 @@ func TestSourceFanoutReadsRoleAssignedIdentities(t *testing.T) {
 	}
 }
 
+func TestSourceFanoutDiscoversSourceSchedulesPerSource(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		switch r.URL.Path {
+		case "/v2025/sources/source-a/schedules", "/v2025/sources/source-b/schedules":
+			_ = json.NewEncoder(w).Encode([]map[string]string{{
+				"type":           "ACCOUNT_AGGREGATION",
+				"cronExpression": "0 0 2 * * ?",
+			}})
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "tenant",
+		"base_url":   server.URL + "/v2025",
+		"token":      "test-token",
+		"family":     sailpointapi.FamilySourceSchedules,
+		"source_ids": "source-a,source-b",
+	})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 2 {
+		t.Fatalf("URNs = %#v, want one schedule per source", urns)
+	}
+	if urns[0] == urns[1] {
+		t.Fatalf("URNs collapsed schedules across sources: %#v", urns)
+	}
+}
+
 func TestSourceRejectsMissingFanoutIDsBeforeProviderCalls(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -239,6 +281,13 @@ func TestSourceAcceptsManagedFedRAMPBaseURLHost(t *testing.T) {
 	})
 	if _, err := source.runtimeConfig(context.Background(), cfg); err != nil {
 		t.Fatalf("runtimeConfig() error = %v", err)
+	}
+	tokenURL, err := managedOAuthTokenURLForBaseURL(sourcecdk.ConfigValue(cfg, "base_url"))
+	if err != nil {
+		t.Fatalf("managedOAuthTokenURLForBaseURL() error = %v", err)
+	}
+	if want := "https://acme.api.identitynow-fed.com/oauth/token"; tokenURL != want {
+		t.Fatalf("token URL = %q, want %q", tokenURL, want)
 	}
 }
 

@@ -192,24 +192,24 @@ func Families() []jsonapi.Family {
 			"authoritative": "isAuthoritative",
 			"cluster":       "isCluster",
 		}, "source_health"),
-		scopedUnpaged(FamilySourceProvisioningPolicies, "/sources/{source_id}/provisioning-policies", "sailpoint_identitynow_source_provisioning_policies", []string{"name", "usageType"}, []string{}, []string{"source_id"}, map[string]string{
+		withIDTemplate(scopedUnpaged(FamilySourceProvisioningPolicies, "/sources/{source_id}/provisioning-policies", "sailpoint_identitynow_source_provisioning_policies", []string{"id", "usageType", "name"}, []string{}, []string{"source_id"}, map[string]string{
 			"source_id":          "source_id",
-			"policy_id":          "usageType|name",
+			"policy_id":          "_record_id|usageType|name",
 			"policy_name":        "name",
 			"policy_description": "description",
 			"policy_type":        "provisioning_policy",
 			"usage_type":         "usageType",
 			"field_names":        "fields.name",
-		}, "policy"),
-		scopedUnpaged(FamilySourceSchedules, "/sources/{source_id}/schedules", "sailpoint_identitynow_source_schedules", []string{"type", "cronExpression"}, []string{}, []string{"source_id"}, map[string]string{
+		}, "policy"), "${source_id}-${usageType}"),
+		withIDTemplate(scopedUnpaged(FamilySourceSchedules, "/sources/{source_id}/schedules", "sailpoint_identitynow_source_schedules", []string{"type", "cronExpression"}, []string{}, []string{"source_id"}, map[string]string{
 			"source_id":       "source_id",
-			"schedule_id":     "type",
+			"schedule_id":     "_record_id|type",
 			"schedule_type":   "type",
 			"cron_expression": "cronExpression",
-			"policy_id":       "type",
+			"policy_id":       "_record_id|type",
 			"policy_name":     "type",
 			"policy_type":     "source_schedule",
-		}, "policy"),
+		}, "policy"), "${source_id}-${type}"),
 		paged(FamilyAccessProfiles, "/access-profiles", "sailpoint_identitynow_access_profiles", []string{"id", "name"}, []string{"modified", "created"}, map[string]string{
 			"access_profile_id":   "id",
 			"access_profile_name": "name",
@@ -525,6 +525,11 @@ func scopedUnpaged(name, path, urnKind string, idKeys, timestampKeys, pathParams
 func scopedSingleton(name, path, urnKind string, idKeys, timestampKeys, pathParams []string, attrs map[string]string, recordClass string) jsonapi.Family {
 	family := scopedUnpaged(name, path, urnKind, idKeys, timestampKeys, pathParams, attrs, recordClass)
 	family.Singleton = true
+	return family
+}
+
+func withIDTemplate(family jsonapi.Family, idTemplate string) jsonapi.Family {
+	family.Config.IDTemplate = idTemplate
 	return family
 }
 

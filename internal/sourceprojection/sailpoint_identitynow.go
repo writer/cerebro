@@ -205,9 +205,24 @@ func sailpointIdentitynowCertificationAccessReviewItemsProjections(event *cerebr
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), itemURN, userURN, relationObservedOn, identityEventLinkAttributes(event)))
 	}
 	if accessID := strings.TrimSpace(attrs["access_id"]); accessID != "" {
-		entitlementURN := projectionURN(tenantID, "sailpoint_identitynow_entitlement", accessID)
-		addEntity(entities, &ports.ProjectedEntity{URN: entitlementURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "sailpoint_identitynow.entitlement", Label: firstNonEmpty(attrs["access_name"], accessID), Attributes: map[string]string{"entitlement_id": accessID, "access_type": strings.TrimSpace(attrs["access_type"])}})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), itemURN, entitlementURN, relationObservedOn, identityEventLinkAttributes(event)))
+		accessType := strings.ToUpper(strings.TrimSpace(attrs["access_type"]))
+		accessKind := "entitlement"
+		accessEntityType := "sailpoint_identitynow.entitlement"
+		accessIDKey := "entitlement_id"
+		switch accessType {
+		case "ACCESS_PROFILE":
+			accessKind = "access_profile"
+			accessEntityType = "sailpoint_identitynow.access_profile"
+			accessIDKey = "access_profile_id"
+		case "ROLE":
+			accessKind = "role"
+			accessEntityType = "sailpoint_identitynow.role"
+			accessIDKey = "role_id"
+		}
+		accessURN := projectionURN(tenantID, "sailpoint_identitynow_"+accessKind, accessID)
+		accessAttrs := map[string]string{accessIDKey: accessID, "access_id": accessID, "access_type": accessType}
+		addEntity(entities, &ports.ProjectedEntity{URN: accessURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: accessEntityType, Label: firstNonEmpty(attrs["access_name"], accessID), Attributes: accessAttrs})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), itemURN, accessURN, relationObservedOn, identityEventLinkAttributes(event)))
 	}
 	return identityProjectionResult(entities, links)
 }

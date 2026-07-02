@@ -155,6 +155,11 @@ func (s *Source) runtimeConfig(ctx context.Context, cfg sourcecdk.Config) (sourc
 	options := oauthRuntimeConfigOptions
 	options.TokenCache = &s.tokenCache
 	options.AllowLoopback = s.allowLoopback
+	tokenURLTemplate, err := managedOAuthTokenURLForBaseURL(sourcecdk.ConfigValue(runtimeCfg, "base_url"))
+	if err != nil {
+		return sourcecdk.Config{}, err
+	}
+	options.TokenURLTemplate = tokenURLTemplate
 	return sourcehttp.ResolveClientCredentialsRuntimeConfig(ctx, runtimeCfg, options)
 }
 
@@ -182,6 +187,21 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func managedOAuthTokenURLForBaseURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse %s base_url for token endpoint: %w", sourceID, err)
+	}
+	if !parsed.IsAbs() || strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("%w: %s base_url must be absolute for OAuth token endpoint", sourcecdk.ErrInvalidConfig, sourceID)
+	}
+	parsed.Path = "/oauth/token"
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 func fanoutFor(cfg sourcecdk.Config) (sailpointapi.Fanout, bool) {

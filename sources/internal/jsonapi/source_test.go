@@ -62,6 +62,29 @@ func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
 	}
 }
 
+func TestRecordFromRawUsesIDTemplate(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate:   "${source_id}-${event}",
+			IdentityKeys: []string{"source_id"},
+		},
+	}, json.RawMessage(`{"source_id":"source-1","created":"2026-06-01T00:00:00Z","event":"org.project.create"}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	if record.ID != "source-1-org.project.create" {
+		t.Fatalf("record.ID = %q, want templated ID", record.ID)
+	}
+	if got := firstValueString(record.Values, "_record_id"); got != record.ID {
+		t.Fatalf("_record_id = %q, want %q", got, record.ID)
+	}
+	if record.Identity == record.ID || !strings.HasPrefix(record.Identity, record.ID+"-") {
+		t.Fatalf("record.Identity = %q, want scoped templated identity", record.Identity)
+	}
+}
+
 func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
 	values := map[string]any{
 		"results": []any{

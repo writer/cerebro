@@ -55,6 +55,7 @@ type FamilyConfig struct {
 	ConfigAttributes    map[string]string
 	StaticHeaders       map[string]string
 	RedactPayloadKeys   []string
+	IDTemplate          string
 	EncodeURNID         bool
 	IdentityKeys        []string
 	IdentityResourceID  bool

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestSailpointIdentitynowProjectsEveryRuntimeKind(t *testing.T) {
@@ -158,6 +159,49 @@ func TestSailpointIdentitynowCertificationReviewProjectionLinksAccess(t *testing
 	if len(links) < 3 {
 		t.Fatalf("links = %d, want review context links", len(links))
 	}
+}
+
+func TestSailpointIdentitynowCertificationReviewProjectionUsesAccessType(t *testing.T) {
+	tests := []struct {
+		name           string
+		accessType     string
+		wantEntityType string
+	}{
+		{name: "entitlement", accessType: "ENTITLEMENT", wantEntityType: "sailpoint_identitynow.entitlement"},
+		{name: "access profile", accessType: "ACCESS_PROFILE", wantEntityType: "sailpoint_identitynow.access_profile"},
+		{name: "role", accessType: "ROLE", wantEntityType: "sailpoint_identitynow.role"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := sailpointIdentitynowEvent("sailpoint_identitynow.certification_access_review_items", map[string]string{
+				"review_item_id":   "review-item-1",
+				"certification_id": "certification-1",
+				"identity_id":      "identity-1",
+				"access_id":        "access-1",
+				"access_name":      "Payroll Access",
+				"access_type":      test.accessType,
+			})
+			entities, _, err := sailpointIdentitynowCertificationAccessReviewItemsProjections(event)
+			if err != nil {
+				t.Fatalf("projection error = %v", err)
+			}
+			if !sailpointHasEntityType(entities, test.wantEntityType) {
+				t.Fatalf("missing entity type %q in %#v", test.wantEntityType, entities)
+			}
+			if test.wantEntityType != "sailpoint_identitynow.entitlement" && sailpointHasEntityType(entities, "sailpoint_identitynow.entitlement") {
+				t.Fatalf("created phantom entitlement entity for access_type=%s: %#v", test.accessType, entities)
+			}
+		})
+	}
+}
+
+func sailpointHasEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
+	for _, entity := range entities {
+		if entity.EntityType == entityType {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSailpointIdentitynowPersonalAccessTokenProjection(t *testing.T) {
