@@ -336,7 +336,7 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 		ClientID:       login.ClientID,
 		RedirectURI:    login.RedirectURI,
 		Resource:       login.Resource,
-		Subject:        firstNonEmpty(identity.Email, identity.Subject),
+		Subject:        authorizationCodeSubject(identity),
 		Email:          identity.Email,
 		TenantID:       entitlement.TenantID,
 		AllowedTenants: cloneStrings(entitlement.AllowedTenants),
@@ -814,13 +814,23 @@ func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identit
 	if entitlement.Subject != "" && entitlement.Subject != strings.TrimSpace(identity.Subject) {
 		return false
 	}
-	if entitlement.Email != "" && !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
-		return false
+	if entitlement.Email != "" {
+		if !identity.EmailVerified || !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
+			return false
+		}
 	}
 	if len(entitlement.Groups) > 0 && !containsAny(identity.Groups, entitlement.Groups) {
 		return false
 	}
 	return entitlement.ClientID != "" || entitlement.Subject != "" || entitlement.Email != "" || len(entitlement.Groups) > 0
+}
+
+func authorizationCodeSubject(identity Identity) string {
+	// Keep legacy email-shaped grant subjects only when upstream verified the email.
+	if identity.EmailVerified {
+		return firstNonEmpty(identity.Email, identity.Subject)
+	}
+	return strings.TrimSpace(identity.Subject)
 }
 
 func clientGrantAllowed(client config.MCPOAuthClient, grant string) bool {

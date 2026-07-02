@@ -22,6 +22,7 @@ import (
 
 const maxIntakeAttachmentBytes = 12 << 20
 const maxIntakeArchiveEntryBytes = maxIntakeAttachmentBytes
+const maxXLSXColumns = 16_384
 
 type xlsxWorksheet struct {
 	Rows []xlsxRow `xml:"sheetData>row"`
@@ -278,7 +279,10 @@ func readXLSXWorksheet(file *zip.File, sharedStrings []string) ([]spreadsheetRow
 		cellRefs := []string{}
 		nextIndex := 0
 		for _, cell := range row.Cells {
-			index := xlsxColumnIndex(cell.Ref)
+			index, err := xlsxColumnIndex(cell.Ref)
+			if err != nil {
+				return nil, err
+			}
 			if index < 0 {
 				index = nextIndex
 			}
@@ -388,9 +392,9 @@ func xlsxCellValue(cell xlsxCell, sharedStrings []string) string {
 	return strings.TrimSpace(cell.Value)
 }
 
-func xlsxColumnIndex(ref string) int {
+func xlsxColumnIndex(ref string) (int, error) {
 	if ref == "" {
-		return -1
+		return -1, nil
 	}
 	index := 0
 	found := false
@@ -404,11 +408,14 @@ func xlsxColumnIndex(ref string) int {
 		}
 		found = true
 		index = index*26 + int(char-'A'+1)
+		if index > maxXLSXColumns {
+			return -1, fmt.Errorf("%w: xlsx cell reference exceeds %d columns", ErrInvalidRequest, maxXLSXColumns)
+		}
 	}
 	if !found {
-		return -1
+		return -1, nil
 	}
-	return index - 1
+	return index - 1, nil
 }
 
 func readZipFile(file *zip.File) ([]byte, error) {

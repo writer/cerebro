@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -356,28 +357,35 @@ func (s *Store) SaveOAuthRefreshToken(ctx context.Context, token mcpoauth.Refres
 	if err != nil {
 		return fmt.Errorf("marshal groups: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	familyID := strings.TrimSpace(token.FamilyID)
+	err = s.runInTx(ctx, func(tx *sql.Tx) error {
+		if err := lockMCPOAuthRefreshFamily(ctx, tx, familyID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
 INSERT INTO mcp_oauth_refresh_tokens (
   token_hash, client_id, resource, subject, email, tenant_id, allowed_tenants_json,
   scopes_json, roles_json, groups_json, family_id, generation, created_at, expires_at, family_revoked
 ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14,
   EXISTS (SELECT 1 FROM mcp_oauth_refresh_tokens WHERE family_id = $11 AND family_revoked)
 )`,
-		token.TokenHash[:],
-		strings.TrimSpace(token.ClientID),
-		strings.TrimSpace(token.Resource),
-		strings.TrimSpace(token.Subject),
-		strings.TrimSpace(token.Email),
-		strings.TrimSpace(token.TenantID),
-		allowedTenants,
-		scopes,
-		roles,
-		groups,
-		strings.TrimSpace(token.FamilyID),
-		token.Generation,
-		nullableUTC(token.CreatedAt),
-		nullableUTC(token.ExpiresAt),
-	)
+			token.TokenHash[:],
+			strings.TrimSpace(token.ClientID),
+			strings.TrimSpace(token.Resource),
+			strings.TrimSpace(token.Subject),
+			strings.TrimSpace(token.Email),
+			strings.TrimSpace(token.TenantID),
+			allowedTenants,
+			scopes,
+			roles,
+			groups,
+			familyID,
+			token.Generation,
+			nullableUTC(token.CreatedAt),
+			nullableUTC(token.ExpiresAt),
+		)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("issue mcp oauth refresh token: %w", err)
 	}
@@ -391,6 +399,13 @@ func (s *Store) ConsumeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte
 	var result mcpoauth.RefreshToken
 	replay := false
 	err := s.runInTx(ctx, func(tx *sql.Tx) error {
+		familyID, err := lookupMCPOAuthRefreshFamily(ctx, tx, tokenHash)
+		if err != nil {
+			return err
+		}
+		if err := lockMCPOAuthRefreshFamily(ctx, tx, familyID); err != nil {
+			return err
+		}
 		row := tx.QueryRowContext(ctx, `
 SELECT client_id, resource, subject, email, tenant_id, allowed_tenants_json::text,
        scopes_json::text, roles_json::text, groups_json::text, family_id, generation, created_at,
@@ -420,18 +435,18 @@ FOR UPDATE`, tokenHash[:])
 		if !now.Before(result.ExpiresAt) {
 			return mcpoauth.ErrExpired
 		}
-		var err error
-		if result.AllowedTenants, err = stringSliceFromJSON(allowedJSON); err != nil {
-			return err
+		var decodeErr error
+		if result.AllowedTenants, decodeErr = stringSliceFromJSON(allowedJSON); decodeErr != nil {
+			return decodeErr
 		}
-		if result.Scopes, err = stringSliceFromJSON(scopesJSON); err != nil {
-			return err
+		if result.Scopes, decodeErr = stringSliceFromJSON(scopesJSON); decodeErr != nil {
+			return decodeErr
 		}
-		if result.Roles, err = stringSliceFromJSON(rolesJSON); err != nil {
-			return err
+		if result.Roles, decodeErr = stringSliceFromJSON(rolesJSON); decodeErr != nil {
+			return decodeErr
 		}
-		if result.Groups, err = stringSliceFromJSON(groupsJSON); err != nil {
-			return err
+		if result.Groups, decodeErr = stringSliceFromJSON(groupsJSON); decodeErr != nil {
+			return decodeErr
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE mcp_oauth_refresh_tokens SET consumed_at = $2 WHERE token_hash = $1`, tokenHash[:], now.UTC()); err != nil {
 			return fmt.Errorf("consume mcp oauth refresh token: %w", err)
@@ -449,11 +464,22 @@ func (s *Store) RevokeOAuthRefreshFamily(ctx context.Context, familyID string) e
 	if err := s.ensureMCPOAuthTables(ctx); err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE mcp_oauth_refresh_tokens SET family_revoked = TRUE WHERE family_id = $1`, strings.TrimSpace(familyID))
+	familyID = strings.TrimSpace(familyID)
+	var affected int64
+	err := s.runInTx(ctx, func(tx *sql.Tx) error {
+		if err := lockMCPOAuthRefreshFamily(ctx, tx, familyID); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE mcp_oauth_refresh_tokens SET family_revoked = TRUE WHERE family_id = $1`, familyID)
+		if err != nil {
+			return fmt.Errorf("revoke mcp oauth refresh family: %w", err)
+		}
+		affected, _ = res.RowsAffected()
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("revoke mcp oauth refresh family: %w", err)
+		return err
 	}
-	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return mcpoauth.ErrNotFound
 	}
@@ -464,16 +490,70 @@ func (s *Store) RevokeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte,
 	if err := s.ensureMCPOAuthTables(ctx); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	err := s.runInTx(ctx, func(tx *sql.Tx) error {
+		familyID, err := lookupMCPOAuthRefreshFamilyForClient(ctx, tx, tokenHash, clientID)
+		if errors.Is(err, mcpoauth.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := lockMCPOAuthRefreshFamily(ctx, tx, familyID); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
 UPDATE mcp_oauth_refresh_tokens
 SET family_revoked = TRUE
-WHERE family_id IN (
-  SELECT family_id FROM mcp_oauth_refresh_tokens WHERE token_hash = $1 AND client_id = $2
-)`, tokenHash[:], strings.TrimSpace(clientID))
+WHERE family_id = $1`, familyID)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("revoke mcp oauth refresh token: %w", err)
 	}
 	return nil
+}
+
+func lookupMCPOAuthRefreshFamily(ctx context.Context, tx *sql.Tx, tokenHash [32]byte) (string, error) {
+	var familyID string
+	if err := tx.QueryRowContext(ctx, `SELECT family_id FROM mcp_oauth_refresh_tokens WHERE token_hash = $1`, tokenHash[:]).Scan(&familyID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", mcpoauth.ErrNotFound
+		}
+		return "", fmt.Errorf("lookup mcp oauth refresh family: %w", err)
+	}
+	return strings.TrimSpace(familyID), nil
+}
+
+func lookupMCPOAuthRefreshFamilyForClient(ctx context.Context, tx *sql.Tx, tokenHash [32]byte, clientID string) (string, error) {
+	var familyID string
+	if err := tx.QueryRowContext(ctx, `SELECT family_id FROM mcp_oauth_refresh_tokens WHERE token_hash = $1 AND client_id = $2`, tokenHash[:], strings.TrimSpace(clientID)).Scan(&familyID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", mcpoauth.ErrNotFound
+		}
+		return "", fmt.Errorf("lookup mcp oauth refresh family: %w", err)
+	}
+	return strings.TrimSpace(familyID), nil
+}
+
+func lockMCPOAuthRefreshFamily(ctx context.Context, tx *sql.Tx, familyID string) error {
+	left, right := mcpOAuthRefreshFamilyLockKeys(familyID)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, left, right); err != nil {
+		return fmt.Errorf("lock mcp oauth refresh family: %w", err)
+	}
+	return nil
+}
+
+func mcpOAuthRefreshFamilyLockKeys(familyID string) (int32, int32) {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(familyID)))
+	return signedBigEndianInt32(sum[0:4]), signedBigEndianInt32(sum[4:8])
+}
+
+func signedBigEndianInt32(bytes []byte) int32 {
+	var value int32
+	for _, b := range bytes {
+		value = value<<8 | int32(b)
+	}
+	return value
 }
 
 func (s *Store) ensureMCPOAuthTables(ctx context.Context) error {

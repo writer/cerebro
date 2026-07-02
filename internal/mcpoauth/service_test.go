@@ -230,6 +230,100 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 	}
 }
 
+func TestEntitlementForIdentityRequiresVerifiedEmailClaim(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Email:          "user@example.com",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	_, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) || oauthErr.Code != "access_denied" {
+		t.Fatalf("unverified email entitlement error = %v, want access_denied", err)
+	}
+
+	entitlement, err := service.entitlementForIdentity(Identity{
+		Subject:       "user-1",
+		Email:         "user@example.com",
+		EmailVerified: true,
+		Groups:        []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("verified email entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
+func TestEntitlementForIdentitySubjectGrantDoesNotRequireVerifiedEmail(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Subject:        "user-1",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	entitlement, err := service.entitlementForIdentity(Identity{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Groups:  []string{"secops"},
+	}, "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("subject entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
+func TestAuthorizationCodeSubjectRequiresVerifiedEmail(t *testing.T) {
+	cases := []struct {
+		name     string
+		identity Identity
+		want     string
+	}{
+		{
+			name: "verified email keeps legacy email subject",
+			identity: Identity{
+				Subject:       "user-1",
+				Email:         "user@example.com",
+				EmailVerified: true,
+			},
+			want: "user@example.com",
+		},
+		{
+			name: "unverified email uses oidc subject",
+			identity: Identity{
+				Subject: "user-1",
+				Email:   "user@example.com",
+			},
+			want: "user-1",
+		},
+		{
+			name: "missing email uses oidc subject",
+			identity: Identity{
+				Subject: "user-1",
+			},
+			want: "user-1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := authorizationCodeSubject(tc.identity); got != tc.want {
+				t.Fatalf("authorizationCodeSubject() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T) {
 	service := &Service{cfg: config.MCPOAuthConfig{
 		Entitlements: []config.MCPOAuthEntitlement{{
