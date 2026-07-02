@@ -1571,6 +1571,86 @@ func TestGenerateDefinitionSupportsFamilyLevelBearerOverrideUnderDuoHMACAuth(t *
 	}
 }
 
+func TestGenerateDefinitionUsesDefaultFamilyAuthForDuoHealthCheck(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := GenerateDefinition(DefinitionRequest{
+		Definition: connectordefinitions.Definition{
+			ID:          "tenant-duo-default-bearer",
+			TenantID:    "tenant",
+			SourceID:    "duo_default_bearer",
+			DisplayName: "Duo Default Bearer",
+			Auth: connectordefinitions.AuthSpec{
+				Model: "duo_hmac",
+				CredentialFields: []connectordefinitions.Field{{
+					Key:           "client_id",
+					Secret:        true,
+					ReferenceOnly: true,
+				}, {
+					Key:           "client_secret",
+					Secret:        true,
+					ReferenceOnly: true,
+				}, {
+					Key:           "token",
+					Secret:        true,
+					ReferenceOnly: true,
+				}},
+			},
+			Transport: &connectordefinitions.TransportSpec{
+				BaseURL: "https://api-tenant.duosecurity.com",
+				Verification: &connectordefinitions.VerificationSpec{
+					Path: "/admin/v1/health",
+				},
+			},
+			ResourceFamilies: []connectordefinitions.ResourceFamily{{
+				ID:             "account",
+				Path:           "/v1/account",
+				AuthModel:      "bearer_token",
+				RecordSelector: "$.data[*]",
+				IDField:        "id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "duo_default_bearer.account",
+					SchemaRef: "duo_default_bearer/account/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "asset",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}, {
+				ID:             "users",
+				Path:           "/admin/v1/users",
+				RecordSelector: "$.response[*]",
+				IDField:        "user_id",
+				Event: connectordefinitions.EventMappingSpec{
+					Kind:      "duo_default_bearer.user",
+					SchemaRef: "duo_default_bearer/user/v1",
+				},
+				Projection: &connectordefinitions.ProjectionSpec{
+					Template: "identity_user",
+				},
+				Coverage: []connectordefinitions.CoverageDimensionSpec{{Type: "entity_family", Support: "partial"}},
+			}},
+		},
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	sourceTest := readGeneratedFile(t, outputDir, "sources/duo_default_bearer/source_test.go")
+	for _, want := range []string{
+		`wantSignatureLength := 0`,
+		`expectedAuthHeaderValue := "Bearer test-token"`,
+		`duoSignatureLength: 0`,
+		`duoSignatureLength: 40`,
+		`"token": "test-token"`,
+		`"client_id": "DIXXXXXXXXXXXXXXXXXX"`,
+		`"client_secret": "deadbeefsecret"`,
+	} {
+		if !strings.Contains(sourceTest, want) {
+			t.Fatalf("source_test.go missing %q:\n%s", want, sourceTest)
+		}
+	}
+}
+
 func TestGenerateDefinitionSupportsSingletonFamily(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{

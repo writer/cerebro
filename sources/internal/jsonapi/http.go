@@ -199,7 +199,9 @@ func addCursorQuery(query url.Values, family Family, cursor string) {
 		return
 	}
 	query.Del(param)
-	for _, value := range splitRepeatedCursor(cursor) {
+	values := splitRepeatedCursor(cursor)
+	sort.Strings(values)
+	for _, value := range values {
 		query.Add(param, value)
 	}
 }

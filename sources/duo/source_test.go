@@ -245,6 +245,74 @@ func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
 	}
 }
 
+func TestReadDuoInventoryUsesOffsetPagination(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
+			t.Fatalf("request path = %q, want /admin/v1/users", got)
+		}
+		assertDuoHMACAuth(t, r, "DIXXXXXXXXXXXXXXXXXX", "deadbeefsecret")
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Fatalf("limit = %q, want 1", got)
+		}
+		switch requests {
+		case 1:
+			if got := r.URL.Query().Get("offset"); got != "0" {
+				t.Fatalf("first offset = %q, want 0", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": []map[string]any{{
+				"user_id": "user-1", "username": "alice", "status": "active",
+			}}})
+		case 2:
+			if got := r.URL.Query().Get("offset"); got != "1" {
+				t.Fatalf("second offset = %q, want 1", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": []map[string]any{}})
+		default:
+			t.Fatalf("unexpected request %d", requests)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":      server.URL,
+		"client_id":     "DIXXXXXXXXXXXXXXXXXX",
+		"client_secret": "deadbeefsecret",
+		"family":        "user",
+		"per_page":      "1",
+		"tenant_id":     "writer",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("first Read() error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first events = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "1" {
+		t.Fatalf("first NextCursor = %#v, want 1", first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("second Read() error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("second events = %d, want 0", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
 func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -267,11 +335,11 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 					"isotimestamp": "2023-11-14T22:13:20Z",
 					"timestamp":    1700000000000,
 				}},
-				"metadata": map[string]any{"next_offset": []any{"1700000000001", "auth-1"}},
+				"metadata": map[string]any{"next_offset": []any{"1751400000000", "0bea1c1e-0000-4000-8000-000000000001"}},
 			}})
 		case 2:
-			if got := r.URL.Query()["next_offset"]; len(got) != 2 || got[0] != "1700000000001" || got[1] != "auth-1" {
-				t.Fatalf("second next_offset = %#v, want repeated Duo cursor values", got)
+			if got := r.URL.Query()["next_offset"]; len(got) != 2 || got[0] != "0bea1c1e-0000-4000-8000-000000000001" || got[1] != "1751400000000" {
+				t.Fatalf("second next_offset = %#v, want sorted repeated Duo cursor values", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": map[string]any{"authlogs": []map[string]any{}}})
 		default:
@@ -296,8 +364,8 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Read() error = %v", err)
 	}
-	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "1700000000001,auth-1" {
-		t.Fatalf("first NextCursor = %#v, want 1700000000001,auth-1", first.NextCursor)
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "1751400000000,0bea1c1e-0000-4000-8000-000000000001" {
+		t.Fatalf("first NextCursor = %#v, want 1751400000000,0bea1c1e-0000-4000-8000-000000000001", first.NextCursor)
 	}
 	second, err := source.Read(context.Background(), cfg, first.NextCursor)
 	if err != nil {
