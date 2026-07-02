@@ -26,6 +26,7 @@ func New() (*Source, error) {
 		RequireTenantID: true,
 		TokenScheme:     "Bearer",
 		StaticHeaders:   map[string]string{"X-Kolide-Api-Version": defaultAPIVersion},
+		RecordFilters:   map[string]jsonapi.RecordFilter{familyVulnerability: kolideVulnerabilityIssue},
 		Families:        families(),
 	})
 	if err != nil {

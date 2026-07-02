@@ -729,6 +729,74 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	}
 }
 
+func TestReadVulnerabilityFamilyFiltersComplianceIssues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/issues" {
+			t.Errorf("request path = %q, want /issues", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{
+					"id":          "issue-compliance-1",
+					"issue_key":   "volume",
+					"issue_value": "Macintosh HD",
+					"title":       "Disk encryption disabled",
+					"value":       map[string]any{"encrypted": false},
+				},
+				{
+					"id":          "issue-vuln-1",
+					"issue_key":   "cve",
+					"issue_value": "CVE-2026-0001",
+					"title":       "OpenSSL package has a vulnerable version",
+					"value": map[string]any{
+						"cve_id":            "CVE-2026-0001",
+						"package_name":      "openssl",
+						"installed_version": "3.0.1",
+						"fixed_version":     "3.0.2",
+						"severity":          "high",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "kolide-token",
+		"family":    "vulnerability",
+	})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:kolide_vulnerability:issue-vuln-1" {
+		t.Fatalf("URNs = %#v, want only vulnerability issue URN", urns)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want only vulnerability issue", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["vulnerability_id"] != "issue-vuln-1" || attrs["cve_id"] != "CVE-2026-0001" {
+		t.Fatalf("attrs = %#v, want vulnerability issue attributes", attrs)
+	}
+	if attrs["package_name"] != "openssl" || attrs["fixed_version"] != "3.0.2" {
+		t.Fatalf("attrs = %#v, want package fix details from vulnerability value", attrs)
+	}
+}
+
 func TestReadIssueFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/issues" {
