@@ -803,6 +803,13 @@ func TestReadMergesBareDetailObjectWhenAllowed(t *testing.T) {
 	if got := pull.Events[0].Attributes["serial_number"]; got != "SERIAL1" {
 		t.Fatalf("serial_number = %q, want detail value", got)
 	}
+	var payload map[string]any
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if _, ok := payload["_record_id"]; ok {
+		t.Fatalf("payload leaked _record_id: %#v", payload)
+	}
 }
 
 func TestReadUsesFamilyMethod(t *testing.T) {
