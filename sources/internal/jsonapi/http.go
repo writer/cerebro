@@ -442,38 +442,6 @@ func responseListKeys(family Family) []string {
 	return keys
 }
 
-func rawMessageAtPath(object map[string]json.RawMessage, path string) (json.RawMessage, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil, false
-	}
-	if !strings.Contains(path, ".") {
-		value, ok := object[path]
-		return value, ok
-	}
-	parts := strings.Split(path, ".")
-	current := object
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return nil, false
-		}
-		raw, ok := current[part]
-		if !ok {
-			return nil, false
-		}
-		if i == len(parts)-1 {
-			return raw, true
-		}
-		var nested map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &nested); err != nil {
-			return nil, false
-		}
-		current = nested
-	}
-	return nil, false
-}
-
 func recordsFromObjectMap(raw json.RawMessage, valueKey string) ([]json.RawMessage, error) {
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &values); err != nil {

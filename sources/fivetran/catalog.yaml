@@ -438,19 +438,10 @@ coverage_contract:
       type: app_entitlement
       title: Account access inventory
       families: [fivetran_users, fivetran_roles, fivetran_teams, fivetran_groups]
-      support: supported
-      high_value: true
+      support: partial
+      high_value: false
       evidence_types: [identity_configuration, source_snapshot]
       control_domains: [identity_access, authorization]
-      control_refs:
-        - framework_name: "CIS Controls v8"
-          control_id: "5"
-        - framework_name: "CIS Controls v8"
-          control_id: "6"
-        - framework_name: "NIST 800-53 r5"
-          control_id: AC-2
-        - framework_name: SOC 2
-          control_id: CC6.2
       notes:
         - Reads Fivetran account users, roles, teams, and destination groups for Fivetran access review. Families are source-qualified so this SaaS-local access evidence does not claim primary IAM, MFA, or cloud-service-account coverage.
     - id: account_profile
