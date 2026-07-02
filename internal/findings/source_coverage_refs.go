@@ -281,6 +281,9 @@ func sourceCoverageReplacementIndex(refs []SourceCoverageRef, protectedDimension
 		if strings.TrimSpace(ref.DimensionType) == protectedDimensionType {
 			continue
 		}
+		if protectedDimensionType == "audit_event" && strings.TrimSpace(ref.DimensionType) == "lifecycle_state" {
+			continue
+		}
 		rank := sourceCoverageDimensionPreservationRank(ref.DimensionType)
 		if replacement < 0 || rank < replacementRank || (rank == replacementRank && i > replacement) {
 			replacement = i
