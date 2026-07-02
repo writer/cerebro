@@ -1,0 +1,51 @@
+[
+  {
+    "id": "box-group-membership-1",
+    "tenant_id": "tenant",
+    "source_id": "box",
+    "kind": "box.group_memberships",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "box/group_memberships/v1",
+    "payload": {
+      "id": "membership-1",
+      "type": "group_membership",
+      "role": "member",
+      "group_id": "group-1",
+      "group": {
+        "id": "group-1",
+        "type": "group",
+        "name": "Engineering"
+      },
+      "user": {
+        "id": "user-1",
+        "type": "user",
+        "login": "user@example.test",
+        "name": "User One"
+      }
+    },
+    "attributes": {
+      "external_id": "membership-1",
+      "family": "group_memberships",
+      "group_id": "group-1",
+      "group_name": "Engineering",
+      "member_email": "user@example.test",
+      "member_id": "user-1",
+      "member_name": "User One",
+      "member_type": "user",
+      "member_user_id": "user-1",
+      "membership_id": "membership-1",
+      "provider": "box",
+      "record_class": "identity_group_membership",
+      "resource_id": "user-1",
+      "resource_name": "User One",
+      "resource_type": "user",
+      "resource_urn": "urn:cerebro:tenant:runtime_users:user-1",
+      "role": "member",
+      "schema": "group_memberships",
+      "source_event_id": "membership-1",
+      "source_provider": "box",
+      "source_system": "box",
+      "tenant_id": "tenant"
+    }
+  }
+]

@@ -1347,6 +1347,12 @@ func valueAtParts(current any, parts []string) (any, bool) {
 		return current, true
 	}
 	if list, ok := current.([]any); ok {
+		if len(parts) == 1 && parts[0] == "__count" {
+			return len(list), true
+		}
+		if len(parts) > 1 && parts[len(parts)-1] == "__sum" {
+			return sumListValues(list, parts[:len(parts)-1])
+		}
 		if index, err := strconv.Atoi(parts[0]); err == nil {
 			if index < 0 || index >= len(list) {
 				return nil, false
@@ -1380,6 +1386,56 @@ func valueAtParts(current any, parts []string) (any, bool) {
 		}
 	}
 	return nil, false
+}
+
+func sumListValues(list []any, parts []string) (any, bool) {
+	var intTotal int64
+	var floatTotal float64
+	allInt := true
+	found := false
+	for _, item := range list {
+		value, ok := valueAtParts(item, parts)
+		if !ok {
+			continue
+		}
+		for _, scalar := range scalarValues(value) {
+			text := valueString(scalar)
+			if text == "" {
+				continue
+			}
+			if parsed, err := strconv.ParseInt(text, 10, 64); err == nil {
+				intTotal += parsed
+				floatTotal += float64(parsed)
+				found = true
+				continue
+			}
+			parsed, err := strconv.ParseFloat(text, 64)
+			if err != nil {
+				continue
+			}
+			floatTotal += parsed
+			allInt = false
+			found = true
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	if allInt {
+		return intTotal, true
+	}
+	return floatTotal, true
+}
+
+func scalarValues(value any) []any {
+	if list, ok := value.([]any); ok {
+		values := make([]any, 0, len(list))
+		for _, item := range list {
+			values = append(values, scalarValues(item)...)
+		}
+		return values
+	}
+	return []any{value}
 }
 
 func valueString(value any) string {

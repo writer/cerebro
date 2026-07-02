@@ -61,6 +61,21 @@ func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
 	}
 }
 
+func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
+	values := map[string]any{
+		"results": []any{
+			map[string]any{"input_tokens": json.Number("1200")},
+			map[string]any{"input_tokens": json.Number("340")},
+		},
+	}
+	if got := firstValueString(values, "results.__count"); got != "2" {
+		t.Fatalf("results.__count = %q, want 2", got)
+	}
+	if got := firstValueString(values, "results.input_tokens.__sum"); got != "1540" {
+		t.Fatalf("results.input_tokens.__sum = %q, want 1540", got)
+	}
+}
+
 func TestReadPagesJSONAPIRecords(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

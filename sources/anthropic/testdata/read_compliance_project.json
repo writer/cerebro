@@ -1,84 +1,41 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/compliance/apps/projects",
-      "archived_at": "2026-06-01T00:00:00Z",
-      "created_at": "2026-06-01T00:00:00Z",
-      "creator_email": "creator@anthropic.example.test",
-      "creator_user_id": "creator-user-id-source-anthropic-compliance_project-1",
-      "description": "description-source-anthropic-compliance_project-1",
-      "display_name": "Anthropic Compliance Project Fixture",
-      "email": "user@example.test",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_project/source-anthropic-compliance_project-1",
-      "external_id": "source-anthropic-compliance_project-1",
-      "family": "compliance_project",
-      "name": "Anthropic Compliance Project Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "organization_id": "organization-id-source-anthropic-compliance_project-1",
-      "organization_uuid": "organization-uuid-source-anthropic-compliance_project-1",
-      "project_id": "project-id-source-anthropic-compliance_project-1",
-      "provider": "anthropic",
-      "resource_id": "source-anthropic-compliance_project-1",
-      "resource_name": "Anthropic Compliance Project Fixture",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_project:source-anthropic-compliance_project-1",
-      "source_event_id": "source-anthropic-compliance_project-1",
-      "source_product": "anthropic",
-      "source_provider": "anthropic",
-      "source_system": "anthropic",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "source-anthropic-user-1",
-      "visibility": "visibility-source-anthropic-compliance_project-1"
-    },
-    "id": "source-anthropic-compliance_project-event-1",
+    "id": "anthropic-compliance_project-event-1",
     "kind": "anthropic.compliance_project",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/compliance/apps/projects",
-      "archived_at": "2026-06-01T00:00:00Z",
-      "created_at": "2026-06-01T00:00:00Z",
-      "created_by": {
-        "email": "creator@anthropic.example.test",
-        "id": "creator-user-id-source-anthropic-compliance_project-1"
-      },
-      "description": "description-source-anthropic-compliance_project-1",
-      "display_name": "Anthropic Compliance Project Fixture",
-      "email": "user@example.test",
-      "event_id": "source-anthropic-compliance_project-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/anthropic/compliance_project/source-anthropic-compliance_project-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_project/source-anthropic-compliance_project-1",
-      "family": "compliance_project",
-      "id": "project-id-source-anthropic-compliance_project-1",
-      "name": "Anthropic Compliance Project Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "claude_proj_legal_review",
+      "name": "Legal Review",
+      "description": "Matter review workspace",
       "organization": {
-        "id": "organization-id-source-anthropic-compliance_project-1",
-        "uuid": "organization-uuid-source-anthropic-compliance_project-1"
+        "id": "org_01j7m6s7zk8x9c4n2q5b1a0e9f",
+        "uuid": "8b4b6800-1a7f-4a2c-9b52-651534177001"
       },
-      "resource_id": "source-anthropic-compliance_project-1",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_project:source-anthropic-compliance_project-1",
-      "schema_ref": "anthropic/compliance_project/v1",
-      "source_id": "anthropic",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "source-anthropic-user-1",
-      "visibility": "visibility-source-anthropic-compliance_project-1"
+      "created_by": {
+        "id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+        "email": "ada@example.com"
+      },
+      "status": "active",
+      "visibility": "organization",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T01:00:00Z"
     },
     "schema_ref": "anthropic/compliance_project/v1",
     "source_id": "anthropic",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "anthropic",
+      "project_id": "claude_proj_legal_review",
+      "name": "Legal Review",
+      "description": "Matter review workspace",
+      "organization_id": "org_01j7m6s7zk8x9c4n2q5b1a0e9f",
+      "organization_uuid": "8b4b6800-1a7f-4a2c-9b52-651534177001",
+      "creator_user_id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+      "creator_email": "ada@example.com",
+      "status": "active",
+      "visibility": "organization",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T01:00:00Z"
+    }
   }
 ]

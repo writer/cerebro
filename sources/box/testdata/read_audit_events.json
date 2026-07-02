@@ -7,14 +7,14 @@
     "occurred_at": "2026-06-01T00:00:00Z",
     "schema_ref": "box/audit_events/v1",
     "payload": {
-      "id": "audit-1",
-      "event_type": "file.downloaded",
-      "actor": {
+      "event_id": "event-1",
+      "event_type": "ITEM_DOWNLOAD",
+      "created_by": {
         "id": "user-1",
-        "email": "user@example.test",
+        "login": "user@example.test",
         "name": "User One"
       },
-      "resource": {
+      "source": {
         "id": "file-1",
         "type": "file",
         "name": "Security Evidence.pdf"
@@ -24,12 +24,12 @@
       "actor_email": "user@example.test",
       "actor_id": "user-1",
       "actor_name": "User One",
-      "event_type": "file.downloaded",
+      "event_type": "ITEM_DOWNLOAD",
       "resource_id": "file-1",
       "resource_name": "Security Evidence.pdf",
       "resource_type": "file",
       "resource_urn": "urn:cerebro:tenant:runtime_content_assets:file-1",
-      "source_event_id": "audit-1",
+      "source_event_id": "event-1",
       "tenant_id": "tenant"
     }
   }

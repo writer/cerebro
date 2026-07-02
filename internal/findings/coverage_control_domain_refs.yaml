@@ -83,6 +83,16 @@ control_domains:
     - { framework_name: "CCPA", control_id: "1798.100" }
     - { framework_name: "ISO 42001", control_id: "A.2.2" }
     - { framework_name: "EU AI Act", control_id: "Art.11" }
+  data_governance:
+    - { framework_name: "SOC 2", control_id: "CC6.1" }
+    - { framework_name: "SOC 2", control_id: "CC7.1" }
+    - { framework_name: "NIST 800-53 r5", control_id: "CM-8" }
+    - { framework_name: "CIS Controls v8", control_id: "3" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.9" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.12" }
+    - { framework_name: "ISO 27001:2022", control_id: "A.5.34" }
+    - { framework_name: "GDPR", control_id: "Article 30" }
+    - { framework_name: "CCPA", control_id: "1798.100" }
   cloud_security:
     - { framework_name: "SOC 2", control_id: "CC6.1" }
     - { framework_name: "SOC 2", control_id: "CC6.6" }
