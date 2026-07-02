@@ -1,70 +1,23 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/compliance/organizations/{organization_uuid}/settings",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_organization_setting/source-anthropic-compliance_organization_setting-1",
-      "external_id": "source-anthropic-compliance_organization_setting-1",
-      "family": "compliance_organization_setting",
-      "list_keys": "settings",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "organization_uuid": "organization-uuid-source-anthropic-compliance_organization_setting-1",
-      "policy_id": "source-anthropic-policy-1",
-      "policy_name": "Anthropic Compliance Organization Setting Fixture",
-      "provider": "anthropic",
-      "resource_id": "source-anthropic-compliance_organization_setting-1",
-      "resource_name": "Anthropic Compliance Organization Setting Fixture",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_organization_setting:source-anthropic-compliance_organization_setting-1",
-      "setting_name": "Setting Name",
-      "setting_type": "setting-type-source-anthropic-compliance_organization_setting-1",
-      "setting_value": "setting-value-source-anthropic-compliance_organization_setting-1",
-      "source_event_id": "source-anthropic-compliance_organization_setting-1",
-      "source_product": "anthropic",
-      "source_provider": "anthropic",
-      "source_system": "anthropic",
-      "status": "active",
-      "tenant_id": "tenant"
-    },
-    "id": "source-anthropic-compliance_organization_setting-event-1",
+    "id": "anthropic-compliance_organization_setting-event-1",
     "kind": "anthropic.compliance_organization_setting",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "api_method": "GET",
-      "api_path": "/compliance/organizations/{organization_uuid}/settings",
-      "event_id": "source-anthropic-compliance_organization_setting-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/anthropic/compliance_organization_setting/source-anthropic-compliance_organization_setting-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/anthropic/compliance_organization_setting/source-anthropic-compliance_organization_setting-1",
-      "family": "compliance_organization_setting",
-      "id": "source-anthropic-compliance_organization_setting-1",
-      "list_keys": [
-        "settings"
-      ],
-      "name": "Setting Name",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "organization_uuid": "organization-uuid-source-anthropic-compliance_organization_setting-1",
-      "policy_id": "source-anthropic-policy-1",
-      "policy_name": "Anthropic Compliance Organization Setting Fixture",
-      "resource_id": "source-anthropic-compliance_organization_setting-1",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:anthropic_compliance_organization_setting:source-anthropic-compliance_organization_setting-1",
-      "schema_ref": "anthropic/compliance_organization_setting/v1",
-      "source_id": "anthropic",
-      "status": "active",
-      "tenant_id": "tenant",
-      "type": "setting-type-source-anthropic-compliance_organization_setting-1",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "value": "setting-value-source-anthropic-compliance_organization_setting-1"
+      "organization_uuid": "8b4b6800-1a7f-4a2c-9b52-651534177001",
+      "name": "data_retention",
+      "type": "boolean",
+      "value": "enabled"
     },
     "schema_ref": "anthropic/compliance_organization_setting/v1",
     "source_id": "anthropic",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "anthropic",
+      "organization_uuid": "8b4b6800-1a7f-4a2c-9b52-651534177001",
+      "setting_name": "data_retention",
+      "setting_type": "boolean",
+      "setting_value": "enabled"
+    }
   }
 ]
