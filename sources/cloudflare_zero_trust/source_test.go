@@ -202,6 +202,133 @@ func TestReadApplicationsDerivesRequiredAttributes(t *testing.T) {
 	}
 }
 
+func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
+	cases := []struct {
+		name     string
+		family   string
+		path     string
+		record   map[string]any
+		wantType string
+		wantID   string
+		wantName string
+		wantURN  string
+	}{
+		{
+			name:   "users",
+			family: familyUsers,
+			path:   "/accounts/account-1/access/users",
+			record: map[string]any{
+				"id":         "access-user-1",
+				"name":       "Alice Example",
+				"email":      "alice@example.com",
+				"type":       "person",
+				"created_at": "2026-05-01T00:00:00Z",
+			},
+			wantType: "user",
+			wantID:   "access-user-1",
+			wantName: "Alice Example",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_users:access-user-1",
+		},
+		{
+			name:   "groups",
+			family: familyGroups,
+			path:   "/accounts/account-1/access/groups",
+			record: map[string]any{
+				"id":          "access-group-1",
+				"name":        "Employees",
+				"description": "Employees allowed through Access",
+				"type":        "email_domain",
+			},
+			wantType: "group",
+			wantID:   "access-group-1",
+			wantName: "Employees",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_groups:access-group-1",
+		},
+		{
+			name:   "roles",
+			family: familyRoles,
+			path:   "/accounts/account-1/access/policies",
+			record: map[string]any{
+				"id":          "access-policy-1",
+				"name":        "Require MFA",
+				"type":        "allow",
+				"decision":    "allow",
+				"description": "Access policy requiring MFA group membership",
+			},
+			wantType: "access_policy",
+			wantID:   "access-policy-1",
+			wantName: "Require MFA",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_roles:access-policy-1",
+		},
+		{
+			name:   "audit_events",
+			family: familyAuditEvents,
+			path:   "/accounts/account-1/access/logs/access_requests",
+			record: map[string]any{
+				"id":         "access-request-1",
+				"action":     "login",
+				"status":     "approved",
+				"user_id":    "access-user-1",
+				"user_email": "alice@example.com",
+				"app_id":     "access-app-1",
+				"app_domain": "admin.example.com",
+			},
+			wantType: "application",
+			wantID:   "access-app-1",
+			wantName: "admin.example.com",
+			wantURN:  "urn:cerebro:tenant:cloudflare_zero_trust_applications:access-app-1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.Path; got != tc.path {
+					t.Errorf("path = %q, want %q", got, tc.path)
+					http.Error(w, "unexpected path", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"result":  []map[string]any{tc.record},
+					"success": true,
+				})
+			}))
+			defer server.Close()
+
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"account_id": "account-1",
+				"base_url":   server.URL,
+				"family":     tc.family,
+				"tenant_id":  "tenant",
+				"token":      "test-token",
+			}), nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			attrs := pull.Events[0].Attributes
+			for attr, want := range map[string]string{
+				"resource_id":   tc.wantID,
+				"resource_name": tc.wantName,
+				"resource_type": tc.wantType,
+				"resource_urn":  tc.wantURN,
+			} {
+				if got := attrs[attr]; got != want {
+					t.Fatalf("%s = %q, want %q", attr, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
