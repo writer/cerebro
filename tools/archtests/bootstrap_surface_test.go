@@ -86,8 +86,11 @@ import (
 // adapters; HTTP request handling lives in
 // internal/sourcehttp/grcvendorquestionnaire, questionnaire state shaping lives
 // in internal/grcvendor, and storage stays behind the
-// GRCVendorQuestionnaireReviewStore port.
-const bootstrapProductionGoLineBudget = 26878
+// GRCVendorQuestionnaireReviewStore port. Connector catalog summary view adds
+// only query-parameter parsing plus compact response mapping over the existing
+// connector library response; catalog assembly and runtime state stay behind the
+// existing registry, catalog, and store boundaries.
+const bootstrapProductionGoLineBudget = 26980
 
 type bootstrapFileLineCount struct {
 	path  string
