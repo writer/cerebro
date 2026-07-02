@@ -29,7 +29,9 @@ func TestReadDeviceFamily(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/devices":
 			if got := r.Header.Get("Authorization"); got != "Bearer kandji-token" {
-				t.Fatalf("Authorization = %q, want Bearer kandji-token", got)
+				t.Errorf("Authorization = %q, want Bearer kandji-token", got)
+				http.Error(w, "unexpected auth", http.StatusInternalServerError)
+				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": []map[string]any{
@@ -51,7 +53,8 @@ func TestReadDeviceFamily(t *testing.T) {
 				"general": map[string]any{"device_id": "device-1"},
 			})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -122,7 +125,8 @@ func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 				},
 			})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -170,7 +174,9 @@ func TestReadDeviceFamilyEmitsPostureAttributes(t *testing.T) {
 func TestReadApplicationFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/prism/apps" {
-			t.Fatalf("request path = %q, want /api/v1/prism/apps", r.URL.Path)
+			t.Errorf("request path = %q, want /api/v1/prism/apps", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -223,7 +229,9 @@ func TestReadApplicationFamily(t *testing.T) {
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/vulnerability-management/detections" {
-			t.Fatalf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
+			t.Errorf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -347,7 +355,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 func TestReadVulnerabilityFamilyKeepsSameCVEOnDifferentDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/vulnerability-management/detections" {
-			t.Fatalf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
+			t.Errorf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
