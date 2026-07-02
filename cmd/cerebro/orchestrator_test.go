@@ -76,6 +76,16 @@ func TestParseOrchestratorOptionsAcceptsRuntimeID(t *testing.T) {
 	}
 }
 
+func TestParseOrchestratorOptionsAcceptsRuntimeIDs(t *testing.T) {
+	options, err := parseOrchestratorOptions([]string{"runtime_ids=writer-okta-user, writer-okta-group"})
+	if err != nil {
+		t.Fatalf("parseOrchestratorOptions(runtime_ids) error = %v", err)
+	}
+	if got := strings.Join(options.Filter.RuntimeIDs, ","); got != "writer-okta-user,writer-okta-group" {
+		t.Fatalf("runtime ids filter = %q, want writer-okta-user,writer-okta-group", got)
+	}
+}
+
 func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 	signals := orchestratorShutdownSignals()
 	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
@@ -990,6 +1000,13 @@ func TestOrchestratorListFilterPreservesRuntimeID(t *testing.T) {
 	filter := orchestratorListFilter(ports.SourceRuntimeFilter{RuntimeID: "writer-okta-audit", Limit: 1})
 	if got := filter.RuntimeID; got != "writer-okta-audit" {
 		t.Fatalf("orchestratorListFilter().RuntimeID = %q, want writer-okta-audit", got)
+	}
+}
+
+func TestOrchestratorListFilterPreservesRuntimeIDs(t *testing.T) {
+	filter := orchestratorListFilter(ports.SourceRuntimeFilter{RuntimeIDs: []string{"writer-okta-user", "writer-okta-group"}, Limit: 1})
+	if got := strings.Join(filter.RuntimeIDs, ","); got != "writer-okta-user,writer-okta-group" {
+		t.Fatalf("orchestratorListFilter().RuntimeIDs = %q, want writer-okta-user,writer-okta-group", got)
 	}
 }
 
