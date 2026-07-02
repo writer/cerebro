@@ -97,8 +97,9 @@ func New() (*Source, error) {
 				PageSizeParams:   []string{"per_page"},
 				ListKeys:         []string{"result", "data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"aud": "aud", "domain": "domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "policies": "policies", "resource_id": "id", "resource_name": "name", "resource_type": "type|application", "resource_urn": "resource_urn|urn|metadata.resource_urn", "session_duration": "session_duration", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "applications", "source_system": "cloudflare_zero_trust"},
+				Attributes:       map[string]string{"aud": "aud", "domain": "domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "policies": "policies", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "session_duration": "session_duration", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "application", "schema": "applications", "source_system": "cloudflare_zero_trust"},
+				Config:           jsonapi.FamilyConfig{ResourceURNKind: "cloudflare_zero_trust_applications"},
 			},
 			{
 				Name:             familyAuditEvents,

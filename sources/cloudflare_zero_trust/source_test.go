@@ -147,6 +147,61 @@ func TestReadUsesCloudflareV4Pagination(t *testing.T) {
 	}
 }
 
+func TestReadApplicationsDerivesRequiredAttributes(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/account-1/access/apps" {
+			t.Errorf("path = %q, want /accounts/account-1/access/apps", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"id":               "access-app-1",
+				"name":             "Admin Console",
+				"domain":           "admin.example.com",
+				"type":             "self_hosted",
+				"aud":              "aud-access-app-1",
+				"session_duration": "24h",
+				"created_at":       "2026-05-01T00:00:00Z",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "account-1",
+		"base_url":   server.URL,
+		"family":     familyApplications,
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"resource_id":     "access-app-1",
+		"resource_name":   "Admin Console",
+		"resource_type":   "application",
+		"resource_urn":    "urn:cerebro:tenant:cloudflare_zero_trust_applications:access-app-1",
+		"source_event_id": "access-app-1",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+}
+
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {

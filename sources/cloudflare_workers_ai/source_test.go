@@ -64,6 +64,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:cloudflare_workers_ai_model_catalog:@cf%2Fmeta%2Fllama-3.1-8b-instruct" {
 		t.Fatalf("resource_urn = %q, want encoded model URN", got)
 	}
+	if got := event.Attributes["resource_type"]; got != "model" {
+		t.Fatalf("resource_type = %q, want model", got)
+	}
 }
 
 func TestReadAIGatewaysMapsProviderName(t *testing.T) {
@@ -114,6 +117,58 @@ func TestReadAIGatewaysMapsProviderName(t *testing.T) {
 		"deployment_name": "production-gateway",
 		"resource_type":   "ai_gateway",
 		"resource_urn":    "urn:cerebro:tenant:cloudflare_workers_ai_ai_gateways:gateway-1",
+	} {
+		if got := attrs[attr]; got != want {
+			t.Fatalf("%s = %q, want %q", attr, got, want)
+		}
+	}
+}
+
+func TestReadVectorizeIndexesDerivesRequiredAttributes(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/accounts/test-account/vectorize/v2/indexes" {
+			t.Errorf("path = %q, want /accounts/test-account/vectorize/v2/indexes", got)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]any{{
+				"name":        "docs-index",
+				"dimensions":  1536,
+				"metric":      "cosine",
+				"description": "Production documentation embeddings",
+			}},
+			"success": true,
+		})
+	}))
+	defer server.Close()
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id": "test-account",
+		"base_url":   server.URL,
+		"family":     familyVectorizeIndexes,
+		"tenant_id":  "tenant",
+		"token":      "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	for attr, want := range map[string]string{
+		"resource_id":     "docs-index",
+		"resource_name":   "docs-index",
+		"resource_type":   "vectorize_index",
+		"resource_urn":    "urn:cerebro:tenant:cloudflare_workers_ai_vectorize_indexes:docs-index",
+		"source_event_id": "docs-index",
 	} {
 		if got := attrs[attr]; got != want {
 			t.Fatalf("%s = %q, want %q", attr, got, want)
