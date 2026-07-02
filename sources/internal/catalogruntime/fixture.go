@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -29,13 +30,7 @@ func ReadDefinitionFixture(ctx context.Context, definition connectordefinitions.
 	if err != nil {
 		return FixtureReadResult{}, err
 	}
-	pull, err := source.Read(ctx, sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "connector-contract-test",
-		"family":    familyID,
-		"base_url":  server.URL,
-		"token":     "fixture-token",
-		"api_key":   "fixture-token",
-	}), nil)
+	pull, err := source.Read(ctx, fixtureConfig(definition, familyID, server.URL), nil)
 	if err != nil {
 		return FixtureReadResult{}, err
 	}
@@ -51,4 +46,35 @@ func ReadDefinitionFixture(ctx context.Context, definition connectordefinitions.
 		result.SchemaRefs = append(result.SchemaRefs, event.SchemaRef)
 	}
 	return result, nil
+}
+
+func fixtureConfig(definition connectordefinitions.Definition, familyID string, baseURL string) sourcecdk.Config {
+	values := map[string]string{
+		"tenant_id": "connector-contract-test",
+		"family":    familyID,
+		"base_url":  baseURL,
+		"token":     "fixture-token",
+		"api_key":   "fixture-token",
+	}
+	for _, field := range append(definition.ConfigFields, definition.Auth.CredentialFields...) {
+		key := strings.TrimSpace(field.Key)
+		if key == "" || !field.Required || strings.TrimSpace(values[key]) != "" {
+			continue
+		}
+		values[key] = fixtureValue(key)
+	}
+	return sourcecdk.NewConfig(values)
+}
+
+func fixtureValue(key string) string {
+	switch strings.TrimSpace(key) {
+	case "client_id":
+		return "fixture-client-id"
+	case "client_secret":
+		return "fixture-client-secret"
+	case "enterprise_id":
+		return "fixture-enterprise-id"
+	default:
+		return "fixture-" + strings.ReplaceAll(strings.TrimSpace(key), "_", "-")
+	}
 }

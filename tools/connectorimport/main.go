@@ -137,7 +137,14 @@ func runTarget(f *fetcher, registry apisGuruRegistry, entry manifestTarget) conn
 			Error:    err.Error(),
 		}
 	}
-	return connectorimport.GenerateTarget(doc, entry.target())
+	target := targetWithProviderAPIReferences(registry, entry)
+	return connectorimport.GenerateTarget(doc, target)
+}
+
+func targetWithProviderAPIReferences(registry apisGuruRegistry, entry manifestTarget) connectorimport.Target {
+	target := entry.target()
+	target.ProviderAPIReferences = providerAPIReferences(registry, entry)
+	return target
 }
 
 func fail(err error) {

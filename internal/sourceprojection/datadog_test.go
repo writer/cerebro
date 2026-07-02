@@ -152,3 +152,144 @@ func TestDatadogAuditProjectsActorAndResource(t *testing.T) {
 	assertProjectedLink(t, state, auditURN, relationObservedOn, resourceURN)
 	assertProjectedLink(t, state, userURN, relationActedOn, resourceURN)
 }
+
+func TestDatadogRuntimeKindsAreExplicitDepthEvidence(t *testing.T) {
+	cases := []struct {
+		event      *cerebrov1.EventEnvelope
+		entityType string
+	}{
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-user-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.users",
+				Attributes: map[string]string{
+					"user_id": "user-1",
+					"email":   "alice@example.test",
+					"name":    "Alice Example",
+				},
+			},
+			entityType: "datadog.users",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-role-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.roles",
+				Attributes: map[string]string{
+					"role_id": "role-1",
+					"name":    "Datadog Admin",
+				},
+			},
+			entityType: "datadog.roles",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-team-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.teams",
+				Attributes: map[string]string{
+					"team_id": "platform",
+					"name":    "Platform",
+				},
+			},
+			entityType: "datadog.teams",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-monitor-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.monitors",
+				Attributes: map[string]string{
+					"monitor_id": "monitor-1",
+					"name":       "Checkout latency",
+					"type":       "query alert",
+					"tags":       "service:checkout,team:platform",
+				},
+			},
+			entityType: "datadog.monitors",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-slo-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.slos",
+				Attributes: map[string]string{
+					"slo_id": "slo-1",
+					"name":   "Checkout availability",
+					"type":   "metric",
+					"tags":   "service:checkout,team:platform",
+				},
+			},
+			entityType: "datadog.slos",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-dashboard-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.dashboards",
+				Attributes: map[string]string{
+					"dashboard_id": "dashboard-1",
+					"title":        "Checkout operations",
+					"tags":         "service:checkout,team:platform",
+				},
+			},
+			entityType: "datadog.dashboards",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-incident-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.incidents",
+				Attributes: map[string]string{
+					"incident_id": "incident-1",
+					"title":       "Checkout outage",
+					"state":       "active",
+					"team_id":     "platform",
+					"service":     "checkout",
+				},
+			},
+			entityType: "datadog.incidents",
+		},
+		{
+			event: &cerebrov1.EventEnvelope{
+				Id:       "datadog-audit-event",
+				TenantId: "writer",
+				SourceId: "datadog",
+				Kind:     "datadog.audit_events",
+				Attributes: map[string]string{
+					"audit_id":    "audit-1",
+					"event_type":  "role.updated",
+					"actor_id":    "user-1",
+					"resource_id": "role-1",
+				},
+			},
+			entityType: "datadog.audit_events",
+		},
+	}
+	registered := make(map[string]struct{})
+	for _, kind := range BuiltinRegistry().Kinds() {
+		registered[kind] = struct{}{}
+	}
+	for _, tc := range cases {
+		t.Run(tc.event.Kind, func(t *testing.T) {
+			if _, ok := registered[tc.event.Kind]; !ok {
+				t.Fatalf("declared Datadog kind %q is not routed in the projection registry", tc.event.Kind)
+			}
+			entities, _, err := BuiltinRegistry().Project(tc.event)
+			if err != nil {
+				t.Fatalf("Project(%s) error = %v", tc.event.Kind, err)
+			}
+			if !hasProjectedEntityType(entities, tc.entityType) {
+				t.Fatalf("kind %q did not project %q; entities=%#v", tc.event.Kind, tc.entityType, entities)
+			}
+		})
+	}
+}

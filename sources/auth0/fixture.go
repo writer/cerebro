@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/auth0api"
 )
 
 //go:embed testdata/*.json
@@ -19,7 +20,7 @@ func NewFixture() (sourcecdk.Source, error) {
 		return nil, err
 	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{familyUsers, familyRoles, familyAuditEvents} {
+	for _, family := range auth0api.FamilyNames() {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err
@@ -32,7 +33,7 @@ func NewFixture() (sourcecdk.Source, error) {
 	}
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
 		Spec:          spec,
-		DefaultFamily: defaultFamily,
+		DefaultFamily: auth0api.DefaultFamily,
 		Check:         checkFixtureConfig,
 		ResolveFamily: resolveFixtureFamily,
 		Families:      families,
@@ -52,7 +53,7 @@ func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
 	}
 	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
 	if family == "" {
-		return defaultFamily, nil
+		return auth0api.DefaultFamily, nil
 	}
 	return family, nil
 }

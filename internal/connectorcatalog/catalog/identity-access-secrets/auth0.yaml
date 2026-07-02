@@ -1,152 +1,543 @@
 entries:
-  - classifier_output: supported
+  - classifier_output: bespoke_required
     definition:
       auth:
         credential_fields:
           - key: client_id
+            label: Client ID
             reference_only: true
+            required: true
           - key: client_secret
+            label: Client secret
             reference_only: true
+            required: true
             secret: true
         model: oauth_client_credentials
         scopes:
-          - read:users
-          - read:roles
+          - read:authentication_methods
+          - read:client_grants
+          - read:clients
+          - read:connections
+          - read:grants
+          - read:guardian_factors
           - read:logs
+          - read:organization_member_roles
+          - read:organization_members
+          - read:organizations
+          - read:resource_servers
+          - read:role_members
+          - read:roles
+          - read:users
+        scope_separator: " "
+        token_expiration_buffer_seconds: 60
         token_params:
           audience: https://${config.domain}/api/v2/
         token_url: https://${config.domain}/oauth/token
       categories:
         - identity
         - access
+        - saas
       config_fields:
-        - help: Auth0 tenant domain used for Management API requests.
+        - help: Bare Auth0 tenant hostname used for Management API requests.
           key: domain
           label: Tenant domain
           placeholder: example.us.auth0.com
           required: true
-      description: Collects users, roles, and audit events from Auth0 and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context.
+        - help: Optional comma-separated organization IDs for organization member fanout.
+          key: organization_ids
+          label: Organization IDs
+          required: false
+        - help: Optional comma-separated user IDs for user role and authentication method fanout.
+          key: user_ids
+          label: User IDs
+          required: false
+      description: Collects Auth0 Management API users, roles, organizations, organization members, applications, identity connections, APIs, grants, MFA methods, Guardian factors, and tenant logs. Projects identity records, application/API scope entitlements, organization membership, grant relationships, and audit events into the graph.
       display_name: Auth0
       id: builtin-auth0
       resource_families:
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - users
-              high_value: true
-              id: users
-              support: partial
-              title: Identity users
-              type: entity_family
-          event:
-            kind: auth0.users
-            required_payload_fields:
-              - user_id
-            schema_ref: auth0/users/v1
-            urn_kind: auth0_users
-          id: users
-          id_field: user_id
+        - id: users
           label: Users
           method: GET
+          path: /users
+          record_selector: $[*]
+          id_field: user_id
           name_field: name
           pagination:
-            page_param: page
-            page_size: 100
-            page_size_param: per_page
             type: page
-          path: /users
-          projection:
-            fields:
-              display_name: name
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: user_id
-            template: identity_user
-          record_selector: $[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - roles
-              high_value: true
-              id: roles
-              support: partial
-              title: Identity roles
-              type: entity_family
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
           event:
-            kind: auth0.roles
-            required_payload_fields:
-              - id
-            schema_ref: auth0/roles/v1
-            urn_kind: auth0_roles
-          id: roles
-          id_field: id
+            kind: auth0.users
+            schema_ref: auth0/users/v1
+            urn_kind: auth0_users
+            required_payload_fields: [user_id]
+          permissions_needed: [read:users]
+          projection:
+            template: identity_user
+            fields:
+              user_id: user_id
+              email: email|primary_email
+              display_name: name|nickname
+              status: blocked
+          coverage:
+            - id: users
+              title: Tenant users
+              type: entity_family
+              families: [users]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: roles
           label: Roles
           method: GET
+          path: /roles
+          record_selector: $[*]
+          id_field: id
           name_field: name
           pagination:
-            page_param: page
-            page_size: 100
-            page_size_param: per_page
             type: page
-          path: /roles
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.roles
+            schema_ref: auth0/roles/v1
+            urn_kind: auth0_roles
+            required_payload_fields: [id]
+          permissions_needed: [read:roles]
           projection:
+            template: identity_group
             fields:
-              description: description|summary
-              group_email: group_email|email
               group_id: id
               group_name: name
-            template: identity_group
-          record_selector: $[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
+              description: description
+          coverage:
+            - id: roles
+              title: Tenant roles
+              type: app_entitlement
+              families: [roles]
+              support: supported
               high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: audit_events
+          label: Tenant logs
+          method: GET
+          path: /logs
+          record_selector: $[*]
+          id_field: log_id
+          pagination:
+            type: cursor
+            cursor_param: from
+            cursor_json_path: $[-1].log_id
+            page_size_param: take
+            page_size: 100
           event:
             kind: auth0.audit_events
-            required_payload_fields:
-              - log_id
             schema_ref: auth0/audit_events/v1
             urn_kind: auth0_audit_events
-          id: audit_events
-          id_field: log_id
-          label: Audit events
-          method: GET
-          pagination:
-            cursor_json_path: $[-1].log_id
-            cursor_param: from
-            page_size: 100
-            page_size_param: take
-            type: cursor
-          path: /logs
+            required_payload_fields: [log_id]
+          permissions_needed: [read:logs]
           projection:
-            fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: log_id
             template: audit_event
+            fields:
+              event_type: type
+              actor_id: user_id
+              actor_email: user_name|user.email
+              resource_id: client_id
+          coverage:
+            - id: audit_events
+              title: Tenant logs
+              type: audit_event
+              families: [audit_events]
+              support: supported
+              high_value: true
+              evidence_types: [logging_configuration]
+              control_domains: [logging_monitoring]
+        - id: organizations
+          label: Organizations
+          method: GET
+          path: /organizations
           record_selector: $[*]
+          id_field: id
+          name_field: display_name
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.organizations
+            schema_ref: auth0/organizations/v1
+            urn_kind: auth0_organizations
+            required_payload_fields: [id]
+          permissions_needed: [read:organizations]
+          projection:
+            entity:
+              entity_type: auth0.org
+              urn_kind: auth0_org
+              id_attributes: [organization_id]
+              label_attribute: display_name
+          coverage:
+            - id: organizations
+              title: Organizations
+              type: entity_family
+              families: [organizations]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: organization_members
+          label: Organization members
+          method: GET
+          path: /organizations/{organization_id}/members
+          record_selector: $[*]
+          id_field: user_id
+          name_field: name
+          read:
+            path_params: [organization_id]
+          config:
+            config_attributes:
+              organization_id: organization_id
+              group_id: organization_id
+            config_query:
+              fields: organization_member_fields
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.organization_members
+            schema_ref: auth0/organization_members/v1
+            urn_kind: auth0_organization_members
+            required_payload_fields: [user_id]
+          permissions_needed: [read:organization_members, read:organization_member_roles]
+          projection:
+            template: identity_group_membership
+            fields:
+              group_id: organization_id
+              member_user_id: user_id
+              member_email: email
+              member_name: name
+          coverage:
+            - id: organization_members
+              title: Organization members
+              type: relationship
+              families: [organization_members]
+              support: supported
+              high_value: true
+              evidence_types: [relationship_evidence]
+              control_domains: [identity_access]
+        - id: clients
+          label: Applications
+          method: GET
+          path: /clients
+          record_selector: $[*]
+          id_field: client_id
+          name_field: name
+          sensitive_payload_paths:
+            - client_secret
+            - signing_key
+            - encryption_key
+            - client_authentication_methods.private_key_jwt.credentials
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.clients
+            schema_ref: auth0/clients/v1
+            urn_kind: auth0_clients
+            required_payload_fields: [client_id]
+          permissions_needed: [read:clients]
+          projection:
+            template: identity_application
+            fields:
+              app_id: client_id
+              app_name: name
+              application_type: app_type
+              redirect_uri_hosts: callbacks|allowed_origins|web_origins
+          coverage:
+            - id: applications
+              title: Applications and OAuth clients
+              type: entity_family
+              families: [clients]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: connections
+          label: Connections
+          method: GET
+          path: /connections
+          record_selector: $[*]
+          id_field: id
+          name_field: name
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.connections
+            schema_ref: auth0/connections/v1
+            urn_kind: auth0_connections
+            required_payload_fields: [id]
+          permissions_needed: [read:connections]
+          projection:
+            entity:
+              entity_type: auth0.connection
+              urn_kind: auth0_connection
+              id_attributes: [connection_id]
+              label_attribute: connection_name
+          coverage:
+            - id: connections
+              title: Identity provider connections
+              type: relationship
+              families: [connections]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: resource_servers
+          label: Resource servers
+          method: GET
+          path: /resource-servers
+          record_selector: $[*]
+          id_field: id
+          name_field: name
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.resource_servers
+            schema_ref: auth0/resource_servers/v1
+            urn_kind: auth0_resource_servers
+            required_payload_fields: [id]
+          permissions_needed: [read:resource_servers]
+          projection:
+            entity:
+              entity_type: auth0.api
+              urn_kind: auth0_api
+              id_attributes: [api_identifier, api_id]
+              label_attribute: api_name
+          coverage:
+            - id: apis
+              title: Resource servers and API scopes
+              type: app_entitlement
+              families: [resource_servers]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: client_grants
+          label: Client grants
+          method: GET
+          path: /client-grants
+          record_selector: $[*]
+          id_field: id
+          name_field: audience
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.client_grants
+            schema_ref: auth0/client_grants/v1
+            urn_kind: auth0_client_grants
+            required_payload_fields: [id]
+          permissions_needed: [read:client_grants]
+          projection:
+            template: identity_app_assignment
+            fields:
+              app_id: client_id
+              audience: audience
+              scope: scope
+              subject_type: application
+          coverage:
+            - id: client_grants
+              title: Client grants
+              type: app_entitlement
+              families: [client_grants]
+              support: supported
+              high_value: true
+              evidence_types: [relationship_evidence]
+              control_domains: [identity_access]
+        - id: grants
+          label: User grants
+          method: GET
+          path: /grants
+          record_selector: $[*]
+          id_field: id
+          name_field: audience
+          config_query:
+            audience: grant_audience
+            client_id: grant_client_id
+            user_id: grant_user_id
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.grants
+            schema_ref: auth0/grants/v1
+            urn_kind: auth0_grants
+            required_payload_fields: [id]
+          permissions_needed: [read:grants]
+          projection:
+            template: identity_app_assignment
+            fields:
+              app_id: client_id
+              subject_id: user_id
+              subject_type: user
+              audience: audience
+              scope: scope
+          coverage:
+            - id: grants
+              title: User grants
+              type: app_entitlement
+              families: [grants]
+              support: supported
+              high_value: true
+              evidence_types: [relationship_evidence]
+              control_domains: [identity_access]
+        - id: user_roles
+          label: User roles
+          method: GET
+          path: /users/{user_id}/roles
+          record_selector: $[*]
+          id_field: id
+          name_field: name
+          read:
+            path_params: [user_id]
+          config:
+            config_attributes:
+              user_id: user_id
+              member_user_id: user_id
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.user_roles
+            schema_ref: auth0/user_roles/v1
+            urn_kind: auth0_user_roles
+            required_payload_fields: [id]
+          permissions_needed: [read:users, read:roles, read:role_members]
+          projection:
+            template: identity_group_membership
+            fields:
+              group_id: id
+              group_name: name
+              member_user_id: user_id
+          coverage:
+            - id: user_roles
+              title: User roles
+              type: relationship
+              families: [user_roles]
+              support: supported
+              high_value: true
+              evidence_types: [relationship_evidence]
+              control_domains: [identity_access]
+        - id: user_authentication_methods
+          label: User authentication methods
+          method: GET
+          path: /users/{user_id}/authentication-methods
+          record_selector: $[*]
+          id_field: id
+          name_field: type
+          read:
+            path_params: [user_id]
+          config:
+            config_attributes:
+              user_id: user_id
+              owner_user_id: user_id
+          pagination:
+            type: page
+            page_param: page
+            page_size_param: per_page
+            page_size: 100
+            start_page: 0
+          event:
+            kind: auth0.user_authentication_methods
+            schema_ref: auth0/user_authentication_methods/v1
+            urn_kind: auth0_user_authentication_methods
+            required_payload_fields: [id]
+          permissions_needed: [read:authentication_methods]
+          projection:
+            template: identity_credential
+            fields:
+              credential_id: id
+              credential_type: type
+              user_id: user_id
+              status: confirmed
+          coverage:
+            - id: user_authentication_methods
+              title: User authentication methods
+              type: entity_family
+              families: [user_authentication_methods]
+              support: supported
+              high_value: true
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
+        - id: guardian_factors
+          label: Guardian factors
+          method: GET
+          path: /guardian/factors
+          record_selector: $[*]
+          id_field: name
+          name_field: name
+          read:
+            disable_page_size: true
+          pagination:
+            type: none
+            disable_page_size: true
+          event:
+            kind: auth0.guardian_factors
+            schema_ref: auth0/guardian_factors/v1
+            urn_kind: auth0_guardian_factors
+            required_payload_fields: [name]
+          permissions_needed: [read:guardian_factors]
+          projection:
+            template: identity_credential
+            fields:
+              credential_id: name
+              credential_type: name
+              status: enabled
+          coverage:
+            - id: guardian_factors
+              title: Guardian MFA factors
+              type: entity_family
+              families: [guardian_factors]
+              support: supported
+              high_value: false
+              evidence_types: [identity_configuration]
+              control_domains: [identity_access]
       schema_version: cerebro.integration/v1
       source_id: auth0
       tenant_id: builtin_catalog
       transport:
         base_url: https://${config.domain}/api/v2
         verification:
-          expect_status:
-            - 200
+          expect_status: [200]
           method: GET
           path: /users

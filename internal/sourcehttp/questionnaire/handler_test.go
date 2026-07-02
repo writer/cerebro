@@ -115,6 +115,16 @@ func TestParseIntakeAttachmentKeepsSpreadsheetFormat(t *testing.T) {
 	}
 }
 
+func TestParseIntakeAttachmentRejectsXLSXCellReferencePastColumnLimit(t *testing.T) {
+	_, err := parseIntakeAttachment(createRequest{
+		IntakeFile:   base64.StdEncoding.EncodeToString(testXLSXWorkbookWithCellRef(t, "ZZZZ1")),
+		IntakeFormat: "xlsx",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("parseIntakeAttachment error = %v, want invalid cell reference", err)
+	}
+}
+
 func TestQuestionsFromSpreadsheetRowsStopsAtSheetBoundary(t *testing.T) {
 	questions, err := questionsFromSpreadsheetRows([]spreadsheetRow{
 		{
@@ -1101,6 +1111,24 @@ func testXLSXWorkbook(t *testing.T) []byte {
       <c r="C3" t="inlineStr"><is><t>audit_report</t></is></c>
       <c r="D3" t="inlineStr"><is><t>SOC2-CC7.2</t></is></c>
       <c r="E3" t="inlineStr"><is><t>security@example.com</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func testXLSXWorkbookWithCellRef(t *testing.T, cellRef string) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	writeZipFile(t, writer, "xl/worksheets/sheet1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="`+cellRef+`" t="inlineStr"><is><t>question</t></is></c>
     </row>
   </sheetData>
 </worksheet>`)

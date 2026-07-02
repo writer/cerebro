@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "app_id": "app-1",
+      "app_name": "SAML App",
+      "app_url": "https://example.test/sso",
+      "external_id": "app-1",
+      "family": "applications",
+      "provider": "jumpcloud",
+      "record_class": "identity_application",
+      "resource_id": "app-1",
+      "resource_name": "SAML App",
+      "resource_type": "application",
+      "resource_urn": "urn:cerebro:tenant:jumpcloud_applications:app-1",
+      "schema": "applications",
+      "source_event_id": "app-1",
+      "source_provider": "jumpcloud",
+      "source_system": "jumpcloud",
+      "tenant_id": "tenant"
+    },
+    "id": "jumpcloud-applications-event-1",
+    "kind": "jumpcloud.applications",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "_id": "app-1",
+      "displayName": "SAML App",
+      "ssoUrl": "https://example.test/sso"
+    },
+    "schema_ref": "jumpcloud/applications/v1",
+    "source_id": "jumpcloud",
+    "tenant_id": "tenant"
+  }
+]

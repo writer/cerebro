@@ -1,0 +1,33 @@
+[
+  {
+    "id": "snyk-project-project-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.projects",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/projects/v1",
+    "payload": {
+      "id": "project-1",
+      "type": "project",
+      "attributes": {
+        "name": "Checkout API",
+        "origin": "github",
+        "type": "npm"
+      }
+    },
+    "attributes": {
+      "external_id": "project-1",
+      "family": "projects",
+      "org_id": "org-1",
+      "project_id": "project-1",
+      "name": "Checkout API",
+      "origin": "github",
+      "type": "npm",
+      "resource_id": "project-1",
+      "resource_name": "Checkout API",
+      "resource_type": "snyk_project",
+      "source_event_id": "project-1",
+      "source_provider": "snyk"
+    }
+  }
+]

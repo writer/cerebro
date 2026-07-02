@@ -1356,7 +1356,7 @@ func TestConnectorCatalogAdvertisesConnectionMethods(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -1454,7 +1454,7 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -1546,11 +1546,17 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		t.Fatalf("microsoft_entra_id classifier_output = %q, want supported", entraID.ClassifierOutput)
 	}
 	auth0 := bySourceID["auth0"]
-	if auth0.CatalogStatus != connectorcatalog.StatusGenerateable || !auth0.RuntimeExecutable {
-		t.Fatalf("auth0 status = %q executable=%v, want generateable executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
+	if auth0.CatalogStatus != connectorcatalog.StatusNeedsBespokeRuntime || !auth0.RuntimeExecutable {
+		t.Fatalf("auth0 status = %q executable=%v, want bespoke-backed executable", auth0.CatalogStatus, auth0.RuntimeExecutable)
 	}
 	if auth0.AuthModel != "oauth_client_credentials" || auth0.VerificationEndpoint != "/users" {
 		t.Fatalf("auth0 auth/verification = %q/%q, want oauth client credentials /users", auth0.AuthModel, auth0.VerificationEndpoint)
+	}
+	if auth0.ReadinessStage != connectorReadinessStageRuntimeBacked {
+		t.Fatalf("auth0 readiness = %q, want %q", auth0.ReadinessStage, connectorReadinessStageRuntimeBacked)
+	}
+	if !auth0.Cataloged || auth0.Callable {
+		t.Fatalf("auth0 cataloged=%v callable=%v, want runtime-backed catalog entry not directly callable", auth0.Cataloged, auth0.Callable)
 	}
 	jenkins := bySourceID["jenkins"]
 	if jenkins.CatalogStatus != connectorcatalog.StatusGenerateable || !jenkins.RuntimeExecutable {
@@ -1563,6 +1569,294 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 		if family.ProjectionTemplate == "" || !family.HighValue {
 			t.Fatalf("jenkins family = %#v, want projection and high-value coverage", family)
 		}
+	}
+}
+
+func TestConnectorCatalogDefaultViewReturnsFullPayload(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors")
+	if err != nil {
+		t.Fatalf("GET /connectors error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors status = %d, want 200", resp.StatusCode)
+	}
+	var payload struct {
+		CredentialTransport json.RawMessage              `json:"credential_transport"`
+		View                string                       `json:"view"`
+		Page                *connectorLibraryPage        `json:"page"`
+		Connectors          []map[string]json.RawMessage `json:"connectors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.View != connectorLibraryViewFull {
+		t.Fatalf("view = %q, want full", payload.View)
+	}
+	if payload.Page != nil {
+		t.Fatalf("page = %#v, want omitted for unpaged default full response", payload.Page)
+	}
+	if len(payload.CredentialTransport) == 0 {
+		t.Fatal("credential_transport missing from default connector catalog response")
+	}
+	var aws map[string]json.RawMessage
+	for _, connector := range payload.Connectors {
+		var sourceID string
+		if err := json.Unmarshal(connector["source_id"], &sourceID); err != nil {
+			t.Fatalf("decode connector source_id: %v", err)
+		}
+		if sourceID == "aws" {
+			aws = connector
+			break
+		}
+	}
+	if aws == nil {
+		t.Fatal("aws connector missing from default connector catalog response")
+	}
+	for _, field := range []string{"connection_methods", "scope_options", "emitted_kinds", "description", "integration_depth"} {
+		if _, ok := aws[field]; !ok {
+			t.Fatalf("default connector catalog response missing %s for aws", field)
+		}
+	}
+}
+
+func TestConnectorCatalogSummaryViewOmitsSetupPayloads(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors?view=summary")
+	if err != nil {
+		t.Fatalf("GET /connectors?view=summary error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /connectors?view=summary status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if got, max := len(body), 512*1024; got > max {
+		t.Fatalf("summary response size = %d bytes, want <= %d bytes", got, max)
+	}
+	var payload struct {
+		View             string                       `json:"view"`
+		Counts           connectorLibraryCounts       `json:"counts"`
+		Page             *connectorLibraryPage        `json:"page"`
+		Connectors       []map[string]json.RawMessage `json:"connectors"`
+		CredentialStores []json.RawMessage            `json:"credential_stores"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.View != connectorLibraryViewSummary {
+		t.Fatalf("view = %q, want summary", payload.View)
+	}
+	if payload.Counts.Total == 0 || len(payload.Connectors) == 0 {
+		t.Fatalf("summary response missing connectors/counts: counts=%#v connectors=%d", payload.Counts, len(payload.Connectors))
+	}
+	if payload.Page != nil {
+		t.Fatalf("page = %#v, want omitted for unpaged summary response", payload.Page)
+	}
+	if len(payload.Connectors) != payload.Counts.Total {
+		t.Fatalf("summary connectors = %d, want counts total %d", len(payload.Connectors), payload.Counts.Total)
+	}
+	if len(payload.CredentialStores) != 0 {
+		t.Fatalf("credential_stores = %#v, want omitted from summary view", payload.CredentialStores)
+	}
+	var aws map[string]json.RawMessage
+	for _, connector := range payload.Connectors {
+		var sourceID string
+		if err := json.Unmarshal(connector["source_id"], &sourceID); err != nil {
+			t.Fatalf("decode connector source_id: %v", err)
+		}
+		for _, field := range []string{"connection_methods", "scope_options", "resource_families", "credential_stores", "emitted_kinds", "description", "integration_depth"} {
+			if _, ok := connector[field]; ok {
+				t.Fatalf("summary connector %q included %s: %s", sourceID, field, body)
+			}
+		}
+		for _, field := range []string{"cataloged", "callable", "setup_allowed"} {
+			if _, ok := connector[field]; !ok {
+				t.Fatalf("summary connector %q omitted %s: %s", sourceID, field, body)
+			}
+		}
+		if sourceID == "aws" {
+			aws = connector
+		}
+	}
+	if aws == nil {
+		t.Fatalf("aws connector missing from summary response: %s", body)
+	}
+	var awsSummary struct {
+		SourceID            string `json:"source_id"`
+		DisplayName         string `json:"display_name"`
+		AccessStatus        string `json:"access_status"`
+		ReadinessStage      string `json:"readiness_stage"`
+		IntegrationLevel    string `json:"integration_level"`
+		IntegrationScore    int    `json:"integration_score"`
+		EmittedKindCount    int    `json:"emitted_kind_count"`
+		ResourceFamilyCount int    `json:"resource_family_count"`
+	}
+	encodedAWS, err := json.Marshal(aws)
+	if err != nil {
+		t.Fatalf("marshal aws connector: %v", err)
+	}
+	if err := json.Unmarshal(encodedAWS, &awsSummary); err != nil {
+		t.Fatalf("decode aws connector: %v", err)
+	}
+	if awsSummary.SourceID != "aws" || awsSummary.DisplayName != "Amazon Web Services" {
+		t.Fatalf("aws identity = %#v, want source/display name", awsSummary)
+	}
+	if awsSummary.AccessStatus == "" || awsSummary.ReadinessStage == "" {
+		t.Fatalf("aws access/readiness missing: %#v", awsSummary)
+	}
+	if awsSummary.IntegrationLevel == "" || awsSummary.IntegrationScore == 0 || awsSummary.EmittedKindCount == 0 {
+		t.Fatalf("aws integration summary = %#v, want compact depth counts", awsSummary)
+	}
+}
+
+func TestConnectorCatalogPagination(t *testing.T) {
+	source := &bootstrapTokenSource{id: "aws", emittedKinds: []string{"aws.account", "aws.iam_role"}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registry.WithBuiltinDefinitionCatalog()
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	type pagedConnectorCatalog struct {
+		View       string                  `json:"view"`
+		Counts     connectorLibraryCounts  `json:"counts"`
+		Page       *connectorLibraryPage   `json:"page"`
+		Connectors []connectorCatalogEntry `json:"connectors"`
+	}
+	decodePage := func(path string) pagedConnectorCatalog {
+		t.Helper()
+		resp, err := server.Client().Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		defer closeResponseBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200", path, resp.StatusCode)
+		}
+		var payload pagedConnectorCatalog
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode %s response: %v", path, err)
+		}
+		if payload.Page == nil {
+			t.Fatalf("GET %s missing page metadata", path)
+		}
+		return payload
+	}
+
+	first := decodePage("/connectors?view=summary&limit=200")
+	if first.View != connectorLibraryViewSummary {
+		t.Fatalf("first view = %q, want summary", first.View)
+	}
+	if got := len(first.Connectors); got != connectorLibraryPageMaxLimit {
+		t.Fatalf("first page connectors = %d, want %d", got, connectorLibraryPageMaxLimit)
+	}
+	if first.Page.Total != first.Counts.Total || first.Page.Returned != connectorLibraryPageMaxLimit || !first.Page.HasMore || first.Page.NextCursor != "200" {
+		t.Fatalf("first page metadata = %#v counts=%#v", first.Page, first.Counts)
+	}
+
+	second := decodePage("/connectors?view=summary&limit=200&cursor=" + first.Page.NextCursor)
+	if got := len(second.Connectors); got != connectorLibraryPageMaxLimit {
+		t.Fatalf("second page connectors = %d, want %d", got, connectorLibraryPageMaxLimit)
+	}
+	if second.Page.Total != first.Page.Total || second.Page.Returned != connectorLibraryPageMaxLimit || !second.Page.HasMore || second.Page.NextCursor != "400" {
+		t.Fatalf("second page metadata = %#v first=%#v", second.Page, first.Page)
+	}
+	if len(first.Connectors) == 0 || len(second.Connectors) == 0 {
+		t.Fatalf("pagination returned empty page: first=%d second=%d", len(first.Connectors), len(second.Connectors))
+	}
+	if first.Connectors[0].SourceID == second.Connectors[0].SourceID {
+		t.Fatalf("pagination did not advance: first=%q second=%q", first.Connectors[0].SourceID, second.Connectors[0].SourceID)
+	}
+
+	full := decodePage("/connectors?limit=500")
+	if full.View != connectorLibraryViewFull {
+		t.Fatalf("full view = %q, want full", full.View)
+	}
+	if full.Page.Limit != connectorLibraryPageMaxLimit || len(full.Connectors) != connectorLibraryPageMaxLimit {
+		t.Fatalf("full page = %#v connectors=%d, want max-page clamp", full.Page, len(full.Connectors))
+	}
+}
+
+func TestConnectorCatalogRejectsInvalidPagination(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, query := range []string{"limit=0", "limit=abc", "cursor=-1", "cursor=abc"} {
+		resp, err := server.Client().Get(server.URL + "/connectors?" + query)
+		if err != nil {
+			t.Fatalf("GET /connectors?%s error = %v", query, err)
+		}
+		defer closeResponseBody(t, resp)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("GET /connectors?%s status = %d, want 400", query, resp.StatusCode)
+		}
+	}
+}
+
+func TestConnectorCatalogRejectsUnknownView(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}, Dependencies{StateStore: &connectorTestStore{stubRuntimeStore: &stubRuntimeStore{}}}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/connectors?view=verbose")
+	if err != nil {
+		t.Fatalf("GET /connectors?view=verbose error = %v", err)
+	}
+	defer closeResponseBody(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /connectors?view=verbose status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -1874,7 +2168,7 @@ func TestConnectorAccessConfigHidesAndRestrictsSources(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -1982,7 +2276,7 @@ func TestConnectorCatalogAdvertisesAWSSecretStoreEnvProjectionUntilNativeConfigu
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -2048,7 +2342,7 @@ func TestConnectorCatalogAdvertisesConfiguredAWSSecretStore(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -2104,7 +2398,7 @@ func TestConnectorCatalogAdvertisesAWSOnboardingGuidance(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}
@@ -2250,7 +2544,7 @@ func TestConnectorScopeOptionsIncludeCoverageNotes(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/connectors")
+	resp, err := server.Client().Get(server.URL + "/connectors?view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}

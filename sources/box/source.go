@@ -3,11 +3,11 @@ package box
 import (
 	"context"
 	"embed"
-	"fmt"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/boxapi"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
@@ -15,17 +15,19 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID               = "box"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/2.0/users/me"
-	defaultBaseURLTemplate = "https://api.box.com"
-	tokenScheme            = "Bearer"
-	familyUsers            = "users"
-	familyContentAssets    = "content_assets"
-	familyAuditEvents      = "audit_events"
+	sourceID               = boxapi.SourceID
+	defaultFamily          = boxapi.DefaultFamily
+	defaultHealthPath      = boxapi.DefaultHealthPath
+	defaultBaseURLTemplate = boxapi.DefaultBaseURLTemplate
+	tokenScheme            = boxapi.TokenScheme
+	familyUsers            = boxapi.FamilyUsers
+	familyContentAssets    = boxapi.FamilyContentAssets
+	familyGroups           = boxapi.FamilyGroups
+	familyGroupMemberships = boxapi.FamilyGroupMemberships
+	familyAuditEvents      = boxapi.FamilyAuditEvents
 )
 
-var templateKeys = []string{"client_id", "client_secret"}
+var templateKeys = boxapi.TemplateKeys
 
 type Source struct {
 	inner         *jsonapi.Source
@@ -38,50 +40,18 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "oauth_authorization_code",
-		TokenScheme:     tokenScheme,
-		OAuthTokenURL:   "https://api.box.com/oauth/token",
-		Families: []jsonapi.Family{
-			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "runtime_users",
-				IDKeys:           []string{"id", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "box"},
-			},
-			{
-				Name:             familyContentAssets,
-				Path:             "/v1/resources",
-				URNKind:          "runtime_content_assets",
-				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "content_assets", "source_system": "box"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit/events",
-				URNKind:          "runtime_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "box"},
-			},
+		SourceID:                    sourceID,
+		DefaultFamily:               defaultFamily,
+		RequireTenantID:             true,
+		AuthModel:                   "oauth_client_credentials",
+		TokenScheme:                 tokenScheme,
+		OAuthTokenURL:               "https://api.box.com/oauth2/token",
+		OAuthTokenRequestAuthMethod: "client_secret_post",
+		OAuthTokenParams: map[string]string{
+			"box_subject_type": "${config.box_subject_type}",
+			"box_subject_id":   "${config.box_subject_id}",
 		},
+		Families: boxapi.Families(),
 	})
 	if err != nil {
 		return nil, err
@@ -101,6 +71,9 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
 		return err
 	}
@@ -112,19 +85,39 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
+		return s.inner.DiscoverPathParamValues(ctx, runtimeCfg, param, values)
+	}
 	return s.inner.Discover(ctx, runtimeCfg)
 }
 
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.ReadWithCheckpoint(ctx, cfg, cursor, nil)
+}
+
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	return s.inner.Read(ctx, runtimeCfg, cursor)
+	if param, values := boxapi.PathParamValues(runtimeCfg); param != "" {
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
+	}
+	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
+	values := cfg.Values()
+	if strings.TrimSpace(values["box_subject_type"]) == "" {
+		values["box_subject_type"] = "enterprise"
+	}
+	if strings.TrimSpace(values["box_subject_id"]) == "" {
+		values["box_subject_id"] = strings.TrimSpace(values["enterprise_id"])
+	}
+	if strings.TrimSpace(values["box_subject_id"]) == "" && firstNonEmpty(values["token"], values["access_token"], values["api_token"]) != "" {
+		values["box_subject_id"] = "token_override"
+	}
+	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, sourcecdk.NewConfig(values), templateKeys)
 }
 
 func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
@@ -133,15 +126,7 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
 func firstNonEmpty(values ...string) string {

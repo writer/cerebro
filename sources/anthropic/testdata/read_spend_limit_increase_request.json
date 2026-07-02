@@ -1,77 +1,37 @@
 [
   {
-    "attributes": {
-      "actor_email": "actor@anthropic.example.test",
-      "amount": "1",
-      "api_method": "GET",
-      "api_path": "/organizations/spend_limit_increase_requests",
-      "created_at": "2026-06-01T00:00:00Z",
-      "currency": "USD",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/anthropic/spend_limit_increase_request/source-anthropic-spend_limit_increase_request-1",
-      "external_id": "source-anthropic-spend_limit_increase_request-1",
-      "family": "spend_limit_increase_request",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "period": "period-source-anthropic-spend_limit_increase_request-1",
-      "policy_id": "source-anthropic-policy-1",
-      "policy_name": "Anthropic Spend Limit Increase Request Fixture",
-      "provider": "anthropic",
-      "request_id": "request-id-source-anthropic-spend_limit_increase_request-1",
-      "resource_id": "source-anthropic-spend_limit_increase_request-1",
-      "resource_name": "Anthropic Spend Limit Increase Request Fixture",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:anthropic_spend_limit_increase_request:source-anthropic-spend_limit_increase_request-1",
-      "source_event_id": "source-anthropic-spend_limit_increase_request-1",
-      "source_product": "anthropic",
-      "source_provider": "anthropic",
-      "source_system": "anthropic",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "user-id-source-anthropic-spend_limit_increase_request-1"
-    },
-    "id": "source-anthropic-spend_limit_increase_request-event-1",
+    "id": "anthropic-spend_limit_increase_request-event-1",
     "kind": "anthropic.spend_limit_increase_request",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "actor": {
-        "email_address": "email@anthropic.example.test"
-      },
-      "amount": "1",
-      "api_method": "GET",
-      "api_path": "/organizations/spend_limit_increase_requests",
-      "created_at": "2026-06-01T00:00:00Z",
-      "currency": "USD",
-      "event_id": "source-anthropic-spend_limit_increase_request-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/anthropic/spend_limit_increase_request/source-anthropic-spend_limit_increase_request-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/anthropic/spend_limit_increase_request/source-anthropic-spend_limit_increase_request-1",
-      "family": "spend_limit_increase_request",
-      "id": "request-id-source-anthropic-spend_limit_increase_request-1",
-      "name": "Anthropic Spend Limit Increase Request Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "period": "period-source-anthropic-spend_limit_increase_request-1",
-      "policy_id": "source-anthropic-policy-1",
-      "policy_name": "Anthropic Spend Limit Increase Request Fixture",
-      "resource_id": "source-anthropic-spend_limit_increase_request-1",
-      "resource_type": "policy",
-      "resource_urn": "urn:cerebro:tenant:anthropic_spend_limit_increase_request:source-anthropic-spend_limit_increase_request-1",
-      "schema_ref": "anthropic/spend_limit_increase_request/v1",
+      "id": "slir_monthly_01",
       "scope": {
-        "user_id": "user-id-source-anthropic-spend_limit_increase_request-1"
+        "user_id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba"
       },
-      "source_id": "anthropic",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "actor": {
+        "email_address": "ada@example.com"
+      },
+      "status": "pending",
+      "amount": 2500,
+      "currency": "usd",
+      "period": "monthly",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T01:00:00Z"
     },
     "schema_ref": "anthropic/spend_limit_increase_request/v1",
     "source_id": "anthropic",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "anthropic",
+      "request_id": "slir_monthly_01",
+      "user_id": "user_01j7m6t3j9n2w8q4r6p5s0c1ba",
+      "actor_email": "ada@example.com",
+      "status": "pending",
+      "amount": "2500",
+      "currency": "usd",
+      "period": "monthly",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T01:00:00Z"
+    }
   }
 ]

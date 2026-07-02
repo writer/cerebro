@@ -26,6 +26,12 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 		writeMetric(&b, "Runtime-backed sources", report.Summary.RuntimeDepth.RuntimeBackedSources)
 		writeMetric(&b, "Reference-runtime sources", report.Summary.RuntimeDepth.ReferenceRuntimeSources)
 		writeMetric(&b, "Needs runtime depth", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
+		writeMetric(&b, "Sources with read fixtures", report.Summary.RuntimeDepth.SourcesWithReadFixtures)
+		writeMetric(&b, "Sources with discover fixtures", report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures)
+		writeMetric(&b, "Needs provider API discovery", report.Summary.RuntimeDepth.NeedsProviderAPIDiscovery)
+		writeMetric(&b, "Sources with provider API contract", report.Summary.RuntimeDepth.SourcesWithProviderAPIContract)
+		writeMetric(&b, "Sources with provider API family mapping", report.Summary.RuntimeDepth.SourcesWithProviderAPIMapping)
+		writeMetric(&b, "Sources with matching runtime transport", report.Summary.RuntimeDepth.SourcesWithRuntimeTransportMatch)
 		writeMetric(&b, "Sources with runtime fixtures", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
 		writeMetric(&b, "Sources with deploy manifest", report.Summary.RuntimeDepth.SourcesWithDeployManifest)
 		writeMetric(&b, "Sources with projector tests", report.Summary.RuntimeDepth.SourcesWithProjectorTests)
@@ -89,6 +95,33 @@ func RenderReviewMarkdown(report ReviewReport, maxItems int) string {
 					break
 				}
 				fmt.Fprintf(&b, "| `%s` | %d | %s | %s | %s |\n", escapeCell(candidate.SourceID), candidate.Score, inlineCodeOrDash(candidate.PackagePath), escapeCell(strings.Join(limitStrings(candidate.Missing, 6), ", ")), escapeCell(candidate.NextAction))
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if report.Summary.RuntimeDepth != nil || len(report.APIDiscoveryQueue) > 0 {
+		b.WriteString("## Provider API Discovery Queue\n\n")
+		if len(report.APIDiscoveryQueue) == 0 {
+			b.WriteString("No sources need provider API discovery.\n\n")
+		} else {
+			b.WriteString("| Source | Families | Existing references | Search starting point | Next action |\n| --- | --- | --- | --- | --- |\n")
+			for i, candidate := range report.APIDiscoveryQueue {
+				if i >= maxItems {
+					fmt.Fprintf(&b, "| ... | ... | ... | ... | %d more |\n", len(report.APIDiscoveryQueue)-maxItems)
+					break
+				}
+				search := ""
+				if len(candidate.SearchQueries) > 0 {
+					search = candidate.SearchQueries[0]
+				}
+				fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s |\n",
+					escapeCell(candidate.SourceID),
+					escapeCell(strings.Join(limitStrings(candidate.MissingFamilies, 6), ", ")),
+					escapeCell(strings.Join(limitStrings(candidate.ExistingReferences, 2), ", ")),
+					escapeCell(search),
+					escapeCell(candidate.NextAction),
+				)
 			}
 			b.WriteString("\n")
 		}

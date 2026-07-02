@@ -93,14 +93,17 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if s.options.RequireTenantID && resolved.tenantID == "" {
 		return resolved, fmt.Errorf("%s tenant_id is required", s.options.SourceID)
 	}
+	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(s.options.OAuthTokenURL) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, s.AllowLoopbackBaseURL) {
+		return resolved, fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, s.options.SourceID)
+	}
+	if familyBaseURL := firstNonEmpty(sourcecdk.ConfigValue(cfg, resolved.family+"_base_url"), family.Config.BaseURL); familyBaseURL != "" {
+		resolved.baseURL = strings.TrimSpace(familyBaseURL)
+	}
 	if resolved.baseURL == "" {
 		resolved.baseURL = strings.TrimSpace(s.options.DefaultBaseURL)
 	}
 	if resolved.baseURL == "" {
 		return resolved, fmt.Errorf("%s base_url is required", s.options.SourceID)
-	}
-	if strings.TrimSpace(configuredTokenURL) != "" && strings.TrimSpace(s.options.OAuthTokenURL) != "" && !providerManagedTokenURLOverrideAllowed(configuredTokenURL, s.AllowLoopbackBaseURL) {
-		return resolved, fmt.Errorf("%w: %s token_url is provider-managed and cannot be overridden", sourcecdk.ErrInvalidConfig, s.options.SourceID)
 	}
 	resolved.baseURL, err = resolveConfigTemplate(s.options.SourceID, resolved.baseURL, cfg)
 	if err != nil {

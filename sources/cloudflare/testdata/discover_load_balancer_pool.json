@@ -1,3 +1,1 @@
-[
-  "urn:cerebro:tenant:cloudflare_load_balancer_pool:source-cloudflare-load_balancer_pool-1"
-]
+["urn:cerebro:writer:cloudflare_load_balancer_pool:pool-1"]

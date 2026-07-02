@@ -15,6 +15,14 @@ func boxContentAssetsProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	return boxAssetProjections(event)
 }
 
+func boxGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupProjections(event, identityProjectionProfile{Provider: "box"})
+}
+
+func boxGroupMembershipsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: "box"})
+}
+
 func boxAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAuditProjections(event, identityProjectionProfile{Provider: "box"})
 }

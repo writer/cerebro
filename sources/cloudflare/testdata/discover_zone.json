@@ -1,3 +1,1 @@
-[
-  "urn:cerebro:tenant:cloudflare_zone:source-cloudflare-zone-1"
-]
+["urn:cerebro:writer:cloudflare_zone:zone-1"]

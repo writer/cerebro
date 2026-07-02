@@ -87,6 +87,18 @@ func TestGenerateWritesSourceRuntimeSDKScaffold(t *testing.T) {
 	if got := receipt["stale_after_seconds"]; got != float64(7200) {
 		t.Fatalf("stale_after_seconds = %#v, want 7200", got)
 	}
+	discoverFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/discover_finding_vulnerability.json")
+	for _, want := range []string{"urn:cerebro:tenant:runtime_finding_vulnerability:source-demo_source-finding_vulnerability-1"} {
+		if !strings.Contains(discoverFixture, want) {
+			t.Fatalf("discover fixture missing %q:\n%s", want, discoverFixture)
+		}
+	}
+	readFixture := readGeneratedFile(t, outputDir, "sources/demo_source/testdata/read_asset_host.json")
+	for _, want := range []string{`"family": "asset_host"`, `"record_class": "asset"`, `"resource_type": "host"`} {
+		if !strings.Contains(readFixture, want) {
+			t.Fatalf("read fixture missing %q:\n%s", want, readFixture)
+		}
+	}
 	deploy, err := sourcedeploy.Parse([]byte(readGeneratedFile(t, outputDir, "sources/demo_source/deploy.yaml")), "generated")
 	if err != nil {
 		t.Fatalf("parse deploy manifest: %v", err)
@@ -189,6 +201,18 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 					Path: "/v1/me",
 				},
 			},
+			ProviderAPI: &connectordefinitions.ProviderAPISpec{
+				Status:     "verified",
+				Transport:  "rest",
+				Auth:       "bearer_token",
+				BaseURL:    "https://api.example.test",
+				References: []string{"https://docs.example.test/openapi.yaml"},
+				Families: []connectordefinitions.ProviderAPIFamilySpec{{
+					ID:     "users",
+					Method: "GET",
+					Path:   "/v1/users",
+				}},
+			},
 			ResourceFamilies: []connectordefinitions.ResourceFamily{{
 				ID:             "users",
 				Path:           "/v1/users",
@@ -221,7 +245,16 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 	catalog := readGeneratedFile(t, outputDir, "sources/example_idp/catalog.yaml")
-	for _, want := range []string{"- example_idp.user", "families: [users]", "schema_ref: example_idp/user/v1"} {
+	for _, want := range []string{
+		"provider_api:",
+		"status: \"verified\"",
+		"base_url: \"https://api.example.test\"",
+		"- \"https://docs.example.test/openapi.yaml\"",
+		"path: \"/v1/users\"",
+		"- example_idp.user",
+		"families: [users]",
+		"schema_ref: example_idp/user/v1",
+	} {
 		if !strings.Contains(catalog, want) {
 			t.Fatalf("catalog missing %q:\n%s", want, catalog)
 		}
@@ -1051,6 +1084,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				IDField:        "id",
 				StaticQuery:    map[string]string{"full": "true"},
 				ConfigQuery:    map[string]string{"author": "organization"},
+				Config:         &connectordefinitions.FamilyConfigSpec{IdentityKeys: []string{"id"}},
 				Event: connectordefinitions.EventMappingSpec{
 					Kind:      "huggingface.repositories",
 					SchemaRef: "huggingface/repositories/v1",
@@ -1118,8 +1152,9 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`LinkHeader:       "Link"`,
 		`DisablePageSize:  true`,
 		`Config: jsonapi.FamilyConfig{`,
-		`StaticQuery: map[string]string{"full": "true"}`,
-		`ConfigQuery: map[string]string{"author": "organization"}`,
+		`StaticQuery:  map[string]string{"full": "true"}`,
+		`ConfigQuery:  map[string]string{"author": "organization"}`,
+		`IdentityKeys: []string{"id"}`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source.go missing %q:\n%s", want, source)

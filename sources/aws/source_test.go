@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -130,6 +131,7 @@ import (
 	ssoadmintypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
 	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
+	"gopkg.in/yaml.v3"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -683,6 +685,76 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   awsRuntimeFamilyConfigsForTest(t),
+		RequireDiscover: true,
+	})
+}
+
+func TestAWSProviderUnavailableReturnsError(t *testing.T) {
+	errProviderUnavailable := errors.New("provider unavailable")
+	source := newTestSource(t, fakeAWS{fakeAWSAuditPosture: fakeAWSAuditPosture{
+		cloudTrailLookup: func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+			return nil, errProviderUnavailable
+		},
+	}})
+	cfg := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail})
+
+	if err := source.Check(context.Background(), cfg); !errors.Is(err, errProviderUnavailable) {
+		t.Fatalf("Check(%s) error = %v, want provider unavailable", familyCloudTrail, err)
+	}
+	if _, err := source.Discover(context.Background(), cfg); !errors.Is(err, errProviderUnavailable) {
+		t.Fatalf("Discover(%s) error = %v, want provider unavailable", familyCloudTrail, err)
+	}
+	if _, err := source.Read(context.Background(), cfg, nil); !errors.Is(err, errProviderUnavailable) {
+		t.Fatalf("Read(%s) error = %v, want provider unavailable", familyCloudTrail, err)
+	}
+}
+
+func awsRuntimeFamilyConfigsForTest(t *testing.T) map[string]sourcecdk.Config {
+	t.Helper()
+	configs := map[string]sourcecdk.Config{}
+	for _, family := range runtimeFamiliesForTest(t) {
+		configs[family] = sourcecdk.NewConfig(map[string]string{
+			"account_id":                   "123456789012",
+			"family":                       family,
+			"group_name":                   "Security",
+			"identity_center_instance_arn": "arn:aws:sso:::instance/ssoins-1234567890abcdef",
+			"identity_store_id":            "d-1234567890",
+			"permission_set_arn":           "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-1234567890abcdef",
+			"principal_name":               "admin@writer.com",
+			"principal_type":               "user",
+			"target_account_id":            "123456789012",
+			"user_name":                    "admin@writer.com",
+		})
+	}
+	return configs
+}
+
+func runtimeFamiliesForTest(t *testing.T) []string {
+	t.Helper()
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog.yaml: %v", err)
+	}
+	var catalog struct {
+		RuntimeFamilies []string `yaml:"runtime_families"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog.yaml: %v", err)
+	}
+	if len(catalog.RuntimeFamilies) == 0 {
+		t.Fatal("catalog runtime_families is empty")
+	}
+	return catalog.RuntimeFamilies
 }
 
 func TestReadAWSNetworkACLAndFlowLogEvents(t *testing.T) {

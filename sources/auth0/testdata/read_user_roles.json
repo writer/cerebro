@@ -1,0 +1,28 @@
+[
+  {
+    "id": "auth0-user-role-role-1",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.user_roles",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/user_roles/v1",
+    "payload": {
+      "id": "role-1",
+      "name": "Security Administrators"
+    },
+    "attributes": {
+      "group_id": "role-1",
+      "group_name": "Security Administrators",
+      "member_type": "user",
+      "member_user_id": "auth0|user-1",
+      "resource_id": "role-1",
+      "resource_name": "Security Administrators",
+      "resource_type": "role_membership",
+      "resource_urn": "urn:cerebro:tenant:runtime_user_roles:role-1",
+      "role": "Security Administrators",
+      "source_event_id": "role-1",
+      "tenant_id": "tenant",
+      "user_id": "auth0|user-1"
+    }
+  }
+]

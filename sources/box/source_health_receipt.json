@@ -1,5 +1,5 @@
 {
-  "adapter_health_path": "/2.0/users/me",
+  "adapter_health_path": "/users/me",
   "auth_model": "oauth_authorization_code",
   "evidence_cas_reference_kind": "box.evidence_cas_reference",
   "expected_cadence_seconds": 86400,

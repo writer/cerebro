@@ -41,15 +41,16 @@ const (
 
 // Target describes one provider to import.
 type Target struct {
-	SourceID    string   `json:"source_id" yaml:"source_id"`
-	DisplayName string   `json:"display_name" yaml:"display_name"`
-	Description string   `json:"description" yaml:"description"`
-	Domain      string   `json:"domain" yaml:"domain"`
-	Categories  []string `json:"categories" yaml:"categories"`
-	BaseURL     string   `json:"base_url" yaml:"base_url"`
-	AuthModel   string   `json:"auth_model" yaml:"auth_model"`
-	MaxFamilies int      `json:"max_families" yaml:"max_families"`
-	AllFamilies bool     `json:"all_families" yaml:"all_families"`
+	SourceID              string   `json:"source_id" yaml:"source_id"`
+	DisplayName           string   `json:"display_name" yaml:"display_name"`
+	Description           string   `json:"description" yaml:"description"`
+	Domain                string   `json:"domain" yaml:"domain"`
+	Categories            []string `json:"categories" yaml:"categories"`
+	BaseURL               string   `json:"base_url" yaml:"base_url"`
+	AuthModel             string   `json:"auth_model" yaml:"auth_model"`
+	ProviderAPIReferences []string `json:"provider_api_references,omitempty" yaml:"provider_api_references,omitempty"`
+	MaxFamilies           int      `json:"max_families" yaml:"max_families"`
+	AllFamilies           bool     `json:"all_families" yaml:"all_families"`
 }
 
 // Outcome is the per-target result of an import attempt.
@@ -83,15 +84,16 @@ func GenerateTarget(doc *openapi3.T, target Target) Outcome {
 		maxFamilies = maxCatalogFamilies
 	}
 	definition, report, err := openapigen.Generate(doc, openapigen.Request{
-		SourceID:    target.SourceID,
-		DisplayName: target.DisplayName,
-		Description: target.Description,
-		Categories:  target.Categories,
-		BaseURL:     target.BaseURL,
-		AuthModel:   target.AuthModel,
-		MaxFamilies: maxFamilies,
-		AllFamilies: false,
-		ListGETOnly: true,
+		SourceID:              target.SourceID,
+		DisplayName:           target.DisplayName,
+		Description:           target.Description,
+		Categories:            target.Categories,
+		BaseURL:               target.BaseURL,
+		AuthModel:             target.AuthModel,
+		ProviderAPIReferences: target.ProviderAPIReferences,
+		MaxFamilies:           maxFamilies,
+		AllFamilies:           false,
+		ListGETOnly:           true,
 	})
 	if err != nil {
 		outcome.Verdict = VerdictGenerationError

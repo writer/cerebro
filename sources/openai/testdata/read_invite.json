@@ -1,72 +1,35 @@
 [
   {
-    "attributes": {
-      "accepted_at": "2026-06-01T00:00:00Z",
-      "api_method": "GET",
-      "api_path": "/organization/invites",
-      "created_at": "2026-06-01T00:00:00Z",
-      "display_name": "Openai Invite Fixture",
-      "email": "email@openai.example.test",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/openai/invite/source-openai-invite-1",
-      "expires_at": "2026-06-01T00:00:00Z",
-      "external_id": "source-openai-invite-1",
-      "family": "invite",
-      "invite_id": "invite-id-source-openai-invite-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "projects": "projects-source-openai-invite-1",
-      "provider": "openai",
-      "resource_id": "source-openai-invite-1",
-      "resource_name": "Openai Invite Fixture",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:openai_invite:source-openai-invite-1",
-      "role": "member",
-      "source_event_id": "source-openai-invite-1",
-      "source_product": "openai",
-      "source_provider": "openai",
-      "source_system": "openai",
-      "status": "open",
-      "tenant_id": "tenant",
-      "user_id": "source-openai-user-1"
-    },
-    "id": "source-openai-invite-event-1",
+    "id": "openai-invite-event-1",
     "kind": "openai.invite",
     "occurred_at": "2026-06-01T00:00:00Z",
     "payload": {
-      "accepted_at": "2026-06-01T00:00:00Z",
-      "api_method": "GET",
-      "api_path": "/organization/invites",
-      "created_at": "2026-06-01T00:00:00Z",
-      "display_name": "Openai Invite Fixture",
-      "email": "email@openai.example.test",
-      "event_id": "source-openai-invite-1",
-      "evidence_cas": {
-        "digest": "sha256:test",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/openai/invite/source-openai-invite-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/openai/invite/source-openai-invite-1",
-      "expires_at": "2026-06-01T00:00:00Z",
-      "family": "invite",
-      "id": "invite-id-source-openai-invite-1",
-      "name": "Openai Invite Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "projects": "projects-source-openai-invite-1",
-      "resource_id": "source-openai-invite-1",
-      "resource_type": "identity_user",
-      "resource_urn": "urn:cerebro:tenant:openai_invite:source-openai-invite-1",
-      "role": "member",
-      "schema_ref": "openai/invite/v1",
-      "source_id": "openai",
-      "status": "open",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z",
-      "user_id": "source-openai-user-1"
+      "id": "invite_security_admin_01",
+      "object": "organization.invite",
+      "email": "security-admin@example.com",
+      "role": "owner",
+      "status": "pending",
+      "created_at": 1780272000,
+      "expires_at": 1780876800,
+      "projects": [
+        {
+          "id": "proj_prod_01",
+          "role": "owner"
+        }
+      ]
     },
     "schema_ref": "openai/invite/v1",
     "source_id": "openai",
-    "tenant_id": "tenant"
+    "tenant_id": "tenant",
+    "attributes": {
+      "source_product": "openai",
+      "invite_id": "invite_security_admin_01",
+      "email": "security-admin@example.com",
+      "role": "owner",
+      "status": "pending",
+      "projects": "[{\"id\":\"proj_prod_01\",\"role\":\"owner\"}]",
+      "created_at": "1780272000",
+      "expires_at": "1780876800"
+    }
   }
 ]

@@ -1,0 +1,27 @@
+[
+  {
+    "id": "snyk-group-group-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
+    "kind": "snyk.groups",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "snyk/groups/v1",
+    "payload": {
+      "id": "group-1",
+      "type": "group",
+      "attributes": {
+        "name": "Engineering",
+        "slug": "engineering"
+      }
+    },
+    "attributes": {
+      "external_id": "group-1",
+      "family": "groups",
+      "group_id": "group-1",
+      "name": "Engineering",
+      "slug": "engineering",
+      "source_event_id": "group-1",
+      "source_provider": "snyk"
+    }
+  }
+]

@@ -1,6 +1,27 @@
 id: appwrite
 name: "Appwrite"
 description: "Collects team, log, membership, and continent from Appwrite and projects them into the Cerebro graph as groups, audit events, group memberships, and assets for repository, build, deployment, and release context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: api_key
+  base_url: https://cloud.appwrite.io/v1
+  references:
+    - https://appwrite.io/specs/open-api3?platform=client
+    - https://appwrite.io/specs/open-api3?platform=server
+  families:
+    - id: team
+      method: GET
+      path: /teams
+    - id: log
+      method: GET
+      path: /account/logs
+    - id: membership
+      method: GET
+      path: /teams/{teamId}/memberships
+    - id: continent
+      method: GET
+      path: /locale/continents
 emitted_kinds:
   - appwrite.team
   - appwrite.log

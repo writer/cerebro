@@ -126,6 +126,41 @@ func TestReviewAnalysisFlagsScrapedSourceIdentity(t *testing.T) {
 	}
 }
 
+func TestProviderAPISearchQueriesPreservePriorityOrder(t *testing.T) {
+	entry := Entry{
+		Definition: reviewDefinition("example_api", "Example API", nil),
+	}
+	queries := providerAPISearchQueries(entry, SourceReview{SourceID: "example_api"}, []string{"users", "roles"})
+	if len(queries) == 0 {
+		t.Fatal("queries = empty")
+	}
+	wantFirst := "gh search code 'Example API openapi' --filename openapi.yaml --limit 20"
+	if queries[0] != wantFirst {
+		t.Fatalf("first query = %q, want %q; queries = %#v", queries[0], wantFirst, queries)
+	}
+}
+
+func TestProviderAPISearchQueriesTruncateFamilyHintsWithoutOverflowText(t *testing.T) {
+	entry := Entry{
+		Definition: reviewDefinition("example_api", "Example API", nil),
+	}
+	queries := providerAPISearchQueries(entry, SourceReview{SourceID: "example_api"}, []string{"users", "groups", "roles", "teams", "audit", "repos"})
+	var webSearch string
+	for _, query := range queries {
+		if strings.HasPrefix(query, "web search: ") {
+			webSearch = query
+			break
+		}
+	}
+	want := "web search: Example API API reference users groups roles teams"
+	if webSearch != want {
+		t.Fatalf("web search query = %q, want %q; queries = %#v", webSearch, want, queries)
+	}
+	if strings.Contains(webSearch, "more") {
+		t.Fatalf("web search query included overflow text: %q", webSearch)
+	}
+}
+
 func TestReviewAnalysisDisambiguatesOverlappingCleanupQuestions(t *testing.T) {
 	analysis := Analysis{
 		Summary: Summary{Total: 2, Generateable: 2},
@@ -303,35 +338,51 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 		},
 	}
 	inventory := RuntimeDepthInventory{
-		"github": {
+		"github": scoredRuntimeDepth(RuntimeDepth{
 			SourceID:                "github",
 			PackagePath:             "sources/github",
-			Score:                   100,
 			HasSourcePackage:        true,
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
 			HasSourceTests:          true,
+			HasReadFixtures:         true,
+			HasDiscoverFixtures:     true,
 			HasFixturePair:          true,
 			HasDeployManifest:       true,
 			HasProjectorTests:       true,
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
-			RuntimeFamilies:         []string{"audit"},
-		},
-		"generated": {
+			ProviderAPI: RuntimeProviderAPIDepth{
+				HasContract:         true,
+				HasMapping:          true,
+				HasRuntimeTransport: true,
+				Status:              "verified",
+				Transport:           "rest",
+				Auth:                "github_app",
+				BaseURL:             "https://api.github.com",
+				References:          []string{"https://docs.github.com/rest"},
+				MappedFamilies:      []string{"audit"},
+			},
+			RuntimeFamilies: []string{"audit"},
+		}),
+		"generated": scoredRuntimeDepth(RuntimeDepth{
 			SourceID:                "generated",
 			PackagePath:             "sources/generated",
-			Score:                   75,
 			HasSourcePackage:        true,
 			HasSourceCatalog:        true,
 			HasSourceImplementation: true,
 			HasSourceTests:          true,
+			HasReadFixtures:         true,
 			HasDeployManifest:       true,
 			HasEventContracts:       true,
 			HasCoverageContract:     true,
-			RuntimeFamilies:         []string{"users"},
-			Missing:                 []string{"runtime:fixture_pair", "runtime:projector_tests"},
-		},
+			ProviderAPI: RuntimeProviderAPIDepth{
+				HasContract:         true,
+				HasRuntimeTransport: true,
+				Transport:           "rest",
+			},
+			RuntimeFamilies: []string{"users"},
+		}),
 	}
 
 	report := ReviewAnalysisWithRuntimeDepth(analysis, inventory)
@@ -345,11 +396,23 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if report.Summary.RuntimeDepth.NeedsRuntimeDepth != 2 {
 		t.Fatalf("needs runtime depth = %d, want 2", report.Summary.RuntimeDepth.NeedsRuntimeDepth)
 	}
+	if report.Summary.RuntimeDepth.SourcesWithReadFixtures != 2 {
+		t.Fatalf("sources with read fixtures = %d, want 2", report.Summary.RuntimeDepth.SourcesWithReadFixtures)
+	}
+	if report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures != 1 {
+		t.Fatalf("sources with discover fixtures = %d, want 1", report.Summary.RuntimeDepth.SourcesWithDiscoverFixtures)
+	}
+	if report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures != 1 {
+		t.Fatalf("sources with runtime fixture pairs = %d, want 1", report.Summary.RuntimeDepth.SourcesWithRuntimeFixtures)
+	}
 	if _, ok := runtimeDepthFor(report, "github"); ok {
 		t.Fatalf("runtime depth queue = %#v, did not expect github source", report.RuntimeDepthQueue)
 	}
 	if _, ok := runtimeDepthFor(report, "generated"); !ok {
 		t.Fatalf("runtime depth queue = %#v, want generated source", report.RuntimeDepthQueue)
+	}
+	if _, ok := apiDiscoveryFor(report, "generated"); !ok {
+		t.Fatalf("api discovery queue = %#v, want generated source", report.APIDiscoveryQueue)
 	}
 	candidate, ok := runtimeDepthFor(report, "catalog_only")
 	if !ok {
@@ -361,6 +424,9 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if !hasQuestion(report, "catalog_only", "runtime_depth") {
 		t.Fatalf("questions = %#v, want runtime_depth question", report.Questions)
 	}
+	if !hasQuestion(report, "catalog_only", "provider_api_discovery") {
+		t.Fatalf("questions = %#v, want provider_api_discovery question", report.Questions)
+	}
 	if !hasQueue(report, "runtime_depth", "generated") {
 		t.Fatalf("promotion queues = %#v, want generated in runtime_depth queue", report.PromotionQueues)
 	}
@@ -370,6 +436,11 @@ func TestReviewAnalysisBuildsRuntimeDepthQueue(t *testing.T) {
 	if hasQueue(report, "sourcegen_ready", "github") || hasQueue(report, "runtime_depth", "github") {
 		t.Fatalf("promotion queues = %#v, did not expect reference runtime github in promotion queues", report.PromotionQueues)
 	}
+}
+
+func scoredRuntimeDepth(depth RuntimeDepth) RuntimeDepth {
+	depth.Score, depth.Missing = runtimeDepthScore(depth)
+	return depth
 }
 
 func reviewDefinition(sourceID string, displayName string, families []connectordefinitions.ResourceFamily) connectordefinitions.Definition {
@@ -465,6 +536,15 @@ func runtimeDepthFor(report ReviewReport, sourceID string) (RuntimeDepthCandidat
 		}
 	}
 	return RuntimeDepthCandidate{}, false
+}
+
+func apiDiscoveryFor(report ReviewReport, sourceID string) (APIDiscoveryCandidate, bool) {
+	for _, candidate := range report.APIDiscoveryQueue {
+		if candidate.SourceID == sourceID {
+			return candidate, true
+		}
+	}
+	return APIDiscoveryCandidate{}, false
 }
 
 func hasQueue(report ReviewReport, queueID string, sourceID string) bool {

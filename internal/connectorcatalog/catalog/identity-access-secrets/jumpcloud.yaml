@@ -7,122 +7,367 @@ entries:
             reference_only: true
             secret: true
         model: api_key
+        token_header: x-api-key
       categories:
         - identity
         - access
-      description: Collects users, groups, and audit events from JumpCloud and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context.
+        - device
+      config_fields:
+        - key: org_id
+          label: Organization ID
+          required: false
+        - key: group_ids
+          label: User group IDs
+          required: false
+        - key: audit_start_time
+          label: Audit start time
+          required: false
+        - key: insights_base_url
+          label: Directory Insights API URL
+          required: false
+      description: Collects JumpCloud directory users, groups, systems, applications, group membership edges, and Directory Insights events for identity, access, device, and audit graph context.
       display_name: JumpCloud
       id: builtin-jumpcloud
       resource_families:
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
                 - users
               high_value: true
               id: users
+              notes:
+                - Reads JumpCloud API v1 /systemusers with results records, totalCount metadata, and skip/limit pagination.
               support: partial
-              title: Identity users
+              title: System users
               type: entity_family
           event:
             kind: jumpcloud.users
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - user_id
             required_payload_fields:
-              - id
+              - _id
             schema_ref: jumpcloud/users/v1
             urn_kind: jumpcloud_users
           id: users
-          id_field: id
-          label: Users
+          id_field: _id
+          label: System users
           method: GET
+          name_field: displayname
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: limit
+            offset_param: skip
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            type: offset
+          path: /systemusers
           projection:
             fields:
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: id
+              display_name: displayname|username|email
+              email: email
+              login: username|email
+              resource_id: _id
+              resource_name: displayname|username|email
+              resource_type: identity_user
+              source_event_id: _id
+              tenant_id: tenant_id
+              user_id: _id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.results[*]
         - coverage:
             - control_domains:
-                - asset_inventory
+                - identity_access
               evidence_types:
                 - source_snapshot
               families:
                 - groups
               high_value: true
               id: groups
+              notes:
+                - Reads JumpCloud API v2 /usergroups for identity group inventory.
               support: partial
-              title: Identity groups
+              title: User groups
               type: entity_family
           event:
             kind: jumpcloud.groups
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
             required_payload_fields:
               - id
             schema_ref: jumpcloud/groups/v1
             urn_kind: jumpcloud_groups
           id: groups
           id_field: id
-          label: Groups
+          label: User groups
           method: GET
+          name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            limit_param: limit
+            offset_param: skip
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            type: offset
+          path: /v2/usergroups
           projection:
             fields:
-              description: description|summary
-              group_email: group_email|email
               group_id: id
+              group_name: name
+              group_type: type
+              resource_id: id
+              resource_name: name
+              resource_type: user_group
+              source_event_id: id
+              tenant_id: tenant_id
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - endpoint_security
+              evidence_types:
+                - source_snapshot
+              families:
+                - systems
+              high_value: true
+              id: systems
+              notes:
+                - Reads JumpCloud API v1 /systems for endpoint inventory, operating system, agent version, active state, and last contact fields.
+              support: partial
+              title: Systems
+              type: entity_family
+          event:
+            kind: jumpcloud.systems
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - system_id
+              - resource_id
+              - resource_type
+            required_payload_fields:
+              - _id
+            schema_ref: jumpcloud/systems/v1
+            urn_kind: jumpcloud_systems
+          id: systems
+          id_field: _id
+          label: Systems
+          method: GET
+          name_field: displayName
+          pagination:
+            limit_param: limit
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /systems
+          projection:
+            fields:
+              active: active
+              agent_version: agentVersion
+              hostname: hostname
+              last_contact_at: lastContact
+              os: os
+              resource_id: _id
+              resource_name: displayName|hostname
+              resource_type: system
+              source_event_id: _id
+              system_id: _id
+              tenant_id: tenant_id
+            template: asset
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+                - saas_management
+              evidence_types:
+                - source_snapshot
+              families:
+                - applications
+              high_value: true
+              id: applications
+              notes:
+                - Reads JumpCloud API v1 /applications for SSO application inventory.
+              support: partial
+              title: Applications
+              type: entity_family
+          event:
+            kind: jumpcloud.applications
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - app_id
+              - resource_id
+              - resource_type
+            required_payload_fields:
+              - _id
+            schema_ref: jumpcloud/applications/v1
+            urn_kind: jumpcloud_applications
+          id: applications
+          id_field: _id
+          label: Applications
+          method: GET
+          name_field: displayName
+          pagination:
+            limit_param: limit
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /applications
+          projection:
+            fields:
+              app_id: _id
+              app_name: displayName|displayLabel|name
+              app_url: ssoUrl|learnMore
+              resource_id: _id
+              resource_name: displayName|displayLabel|name
+              resource_type: application
+              source_event_id: _id
+              tenant_id: tenant_id
+            template: asset
+          record_selector: $.results[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+                - endpoint_security
+              evidence_types:
+                - source_snapshot
+              families:
+                - system_groups
+              high_value: true
+              id: system_groups
+              notes:
+                - Reads JumpCloud API v2 /systemgroups for device grouping context.
+              support: partial
+              title: System groups
+              type: entity_family
+          event:
+            kind: jumpcloud.system_groups
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+            required_payload_fields:
+              - id
+            schema_ref: jumpcloud/system_groups/v1
+            urn_kind: jumpcloud_system_groups
+          id: system_groups
+          id_field: id
+          label: System groups
+          method: GET
+          name_field: name
+          pagination:
+            limit_param: limit
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /v2/systemgroups
+          projection:
+            fields:
+              group_id: id
+              group_name: name
+              group_type: type
+              resource_id: id
+              resource_name: name
+              resource_type: system_group
+              source_event_id: id
+              tenant_id: tenant_id
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
+                - identity_access
+              evidence_types:
+                - source_snapshot
+              families:
+                - group_members
+              high_value: true
+              id: group_members
+              notes:
+                - Fans out configured group_ids into JumpCloud API v2 /usergroups/{group_id}/members and projects group-to-user membership.
+              support: partial
+              title: User group members
+              type: entity_family
+          event:
+            kind: jumpcloud.group_members
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - group_id
+              - member_id
+            required_payload_fields:
+              - to.id
+            schema_ref: jumpcloud/group_members/v1
+            urn_kind: jumpcloud_group_members
+          id: group_members
+          id_field: to.id
+          label: User group members
+          method: GET
+          pagination:
+            limit_param: limit
+            offset_param: skip
+            page_size: 100
+            type: offset
+          path: /v2/usergroups/{group_id}/members
+          projection:
+            fields:
+              group_id: group_id
+              member_id: to.id|id
+              member_type: to.type|type
+              member_user_id: to.id|id
+              resource_id: to.id|id
+              resource_type: to.type|type
+              source_event_id: to.id|id
+              tenant_id: tenant_id
+            template: group_membership
+          read:
+            path_params:
+              - group_id
+          record_selector: $[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
+                - identity_access
               evidence_types:
                 - logging_configuration
               families:
                 - audit_events
               high_value: true
               id: audit_events
+              notes:
+                - Reads Directory Insights POST /events with service/start_time request body filters and X-Search_after response-header continuation in the promoted Source CDK adapter.
               support: partial
-              title: Audit events
+              title: Directory Insights events
               type: audit_event
           event:
             kind: jumpcloud.audit_events
+            required_attributes:
+              - tenant_id
+              - source_event_id
+              - event_type
+              - actor_id
             required_payload_fields:
               - id
             schema_ref: jumpcloud/audit_events/v1
             urn_kind: jumpcloud_audit_events
           id: audit_events
           id_field: id
-          label: Audit events
-          method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+          label: Directory Insights events
+          method: POST
+          path: /events
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
+              actor_email: initiated_by.email|actor.email|resource.email|email|username
+              actor_id: initiated_by.id|actor.id|resource.id|user_id|username
+              event_type: event_type|type|action
               id: id
+              resource_id: resource.id|target.id|object.id
+              resource_type: resource.type|target.type|object.type
+              source_event_id: id
+              tenant_id: tenant_id
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $[*]
       schema_version: cerebro.integration/v1
       source_id: jumpcloud
       tenant_id: builtin_catalog
@@ -132,4 +377,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v2/systeminsights
+          path: /systemusers

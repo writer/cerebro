@@ -50,6 +50,7 @@ func main() {
 	var categories string
 	var baseURL string
 	var authModel string
+	var providerAPIReferences string
 	var maxFamilies int
 	var allFamilies bool
 	var outputDir string
@@ -63,6 +64,7 @@ func main() {
 	flag.StringVar(&categories, "category", "security", "comma-separated connector categories")
 	flag.StringVar(&baseURL, "base-url", "", "provider API base URL; inferred from OpenAPI servers when empty")
 	flag.StringVar(&authModel, "auth-model", "", "auth model override")
+	flag.StringVar(&providerAPIReferences, "provider-api-references", "", "comma-separated provider-owned API spec or reference URLs")
 	flag.IntVar(&maxFamilies, "max-families", 4, "maximum selected resource families")
 	flag.BoolVar(&allFamilies, "all-families", false, "select every endpoint")
 	flag.StringVar(&outputDir, "output-dir", ".", "output directory for sourcegen files")
@@ -84,15 +86,16 @@ func main() {
 
 	// Step 2: Generate connector definition from the spec.
 	definition, report, err := openapigen.Generate(doc, openapigen.Request{
-		SourceID:    sourceID,
-		TenantID:    tenantID,
-		DisplayName: displayName,
-		Description: description,
-		Categories:  splitList(categories),
-		BaseURL:     baseURL,
-		AuthModel:   authModel,
-		MaxFamilies: maxFamilies,
-		AllFamilies: allFamilies,
+		SourceID:              sourceID,
+		TenantID:              tenantID,
+		DisplayName:           displayName,
+		Description:           description,
+		Categories:            splitList(categories),
+		BaseURL:               baseURL,
+		AuthModel:             authModel,
+		ProviderAPIReferences: splitList(providerAPIReferences),
+		MaxFamilies:           maxFamilies,
+		AllFamilies:           allFamilies,
 	})
 	if err != nil {
 		fail(fmt.Errorf("generate definition: %w", err))

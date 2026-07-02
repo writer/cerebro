@@ -8,8 +8,10 @@ entries:
           - key: client_secret
             reference_only: true
             secret: true
+          - key: tenant_id
+            reference_only: true
         model: oauth_client_credentials
-        token_url: https://graph.microsoft.com/oauth/token
+        token_url: https://login.microsoftonline.com/${config.tenant_id}/oauth2/v2.0/token
       categories:
         - identity
         - access
@@ -34,25 +36,24 @@ entries:
             required_payload_fields:
               - id
             schema_ref: microsoft_entra_id/users/v1
-            urn_kind: microsoft_entra_id_users
+            urn_kind: runtime_users
           id: users
           id_field: id
           label: Users
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            next_url_json_path: $.@odata.nextLink
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: $top
+            type: next_url
+          path: /v1.0/users
           projection:
             fields:
               email: email|primary_email|profile.email
               status: status|state|lifecycle_state
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.value[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -70,25 +71,24 @@ entries:
             required_payload_fields:
               - id
             schema_ref: microsoft_entra_id/groups/v1
-            urn_kind: microsoft_entra_id_groups
+            urn_kind: runtime_groups
           id: groups
           id_field: id
           label: Groups
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            next_url_json_path: $.@odata.nextLink
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            page_size_param: $top
+            type: next_url
+          path: /v1.0/groups
           projection:
             fields:
               description: description|summary
               group_email: group_email|email
               group_id: id
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $.value[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -106,18 +106,17 @@ entries:
             required_payload_fields:
               - id
             schema_ref: microsoft_entra_id/audit_events/v1
-            urn_kind: microsoft_entra_id_audit_events
+            urn_kind: runtime_audit_events
           id: audit_events
           id_field: id
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            next_url_json_path: $.@odata.nextLink
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit/events
+            page_size_param: $top
+            type: next_url
+          path: /v1.0/auditLogs/directoryAudits
           projection:
             fields:
               actor_email: actor_email|actor.email|email|user.email
@@ -125,7 +124,7 @@ entries:
               event_type: event_type|event_name|action|type
               id: id
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.value[*]
       schema_version: cerebro.integration/v1
       source_id: microsoft_entra_id
       tenant_id: builtin_catalog
