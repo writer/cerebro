@@ -53,6 +53,9 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 		if err != nil {
 			return err
 		}
+		if len(values) == 0 {
+			return nil
+		}
 		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
 	}
 	path := fivetranapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
@@ -72,6 +75,9 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 		if err != nil {
 			return nil, err
 		}
+		if len(values) == 0 {
+			return nil, nil
+		}
 		return s.discoverScoped(ctx, runtimeCfg, param, values)
 	}
 	return s.inner.Discover(ctx, runtimeCfg)
@@ -87,11 +93,21 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.Pull{}, err
 	}
 	if param, values := fivetranapi.PathParamValues(runtimeCfg); param != "" {
-		values, err = s.resolvePathParamValues(ctx, runtimeCfg, param, values)
+		values, innerCursor, err := s.readPathParamState(ctx, runtimeCfg, cursor, param, values)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
-		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
+		if len(values) == 0 {
+			return sourcecdk.Pull{}, nil
+		}
+		pull, err := s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, innerCursor, checkpoint, param, values)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		if len(fivetranapi.CompactStrings(values)) > 0 && len(fivetranapi.CompactStrings(fivetranapi.ConfiguredPathParamValues(runtimeCfg, param))) == 0 {
+			pull.NextCursor = fivetranapi.EncodePathParamCursor(param, values, pull.NextCursor)
+		}
+		return pull, nil
 	}
 	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
@@ -142,6 +158,21 @@ func (s *Source) resolvePathParamValues(ctx context.Context, cfg sourcecdk.Confi
 		cursor = pull.NextCursor
 	}
 	return nil, fmt.Errorf("fivetran %s parent fanout exceeded page limit", param)
+}
+
+func (s *Source) readPathParamState(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, param string, values []string) ([]string, *cerebrov1.SourceCursor, error) {
+	values = fivetranapi.CompactStrings(values)
+	if len(values) > 0 {
+		return values, cursor, nil
+	}
+	if values, innerCursor, ok := fivetranapi.DecodePathParamCursor(cursor, param); ok {
+		return values, innerCursor, nil
+	}
+	values, err := s.resolvePathParamValues(ctx, cfg, param, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	return values, cursor, nil
 }
 
 func (s *Source) allowLoopbackForTest() {

@@ -250,13 +250,14 @@ func groupServiceAccountsFamily() jsonapi.Family {
 	family := fivetranScopedCredentialFamily(FamilyGroupServiceAccounts, "/v1/groups/{group_id}/service-account", "group_id", "group", "service_account")
 	family.Singleton = true
 	family.DisablePageSize = true
-	family.IDKeys = []string{"service_account", "group_id"}
+	family.IDKeys = []string{"group_id"}
 	family.Attributes["group_id"] = "group_id"
-	family.Attributes["credential_id"] = "service_account|group_id"
-	family.Attributes["resource_id"] = "service_account|group_id"
-	family.Attributes["resource_name"] = "service_account|group_id"
-	family.Attributes["service_account"] = "service_account"
-	family.Attributes["source_event_id"] = "service_account|group_id"
+	family.Attributes["credential_id"] = "group_id"
+	family.Attributes["resource_id"] = "group_id"
+	family.Attributes["resource_name"] = "group_id"
+	delete(family.Attributes, "service_account")
+	family.Attributes["source_event_id"] = "group_id"
+	family.Config.RedactPayloadKeys = []string{"service_account"}
 	return family
 }
 

@@ -154,7 +154,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			item:      map[string]any{"service_account": "svc-account"},
 			kind:      "fivetran.group_service_accounts",
 			attrKey:   "credential_id",
-			attrValue: "svc-account",
+			attrValue: "group-1",
 			config:    map[string]string{"group_ids": "group-1"},
 			singleton: true,
 			wantLimit: "none",
@@ -513,6 +513,21 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 					t.Fatalf("system key payload retained secret: %#v", payload)
 				}
 			}
+			if tt.family == fivetranapi.FamilyGroupServiceAccounts {
+				var payload map[string]any
+				if err := json.Unmarshal(event.Payload, &payload); err != nil {
+					t.Fatalf("decode service account payload: %v", err)
+				}
+				if _, ok := payload["service_account"]; ok {
+					t.Fatalf("service account payload retained API key: %#v", payload)
+				}
+				if got := event.Attributes["service_account"]; got != "" {
+					t.Fatalf("service_account attribute = %q, want redacted", got)
+				}
+				if got := event.Attributes["resource_id"]; got != "group-1" {
+					t.Fatalf("resource_id = %q, want group-1", got)
+				}
+			}
 		})
 	}
 }
@@ -638,6 +653,116 @@ func TestSourceAutoFansOutScopedFamiliesFromParentInventory(t *testing.T) {
 	}
 	if strings.Join(requestedPaths, ",") != "/v1/groups,/v1/groups/group-1/users" {
 		t.Fatalf("requested paths = %#v, want parent inventory then scoped read", requestedPaths)
+	}
+}
+
+func TestSourceAutoFanoutCursorPinsParentInventoryAcrossPages(t *testing.T) {
+	source := newTestSource(t)
+	parentReads := 0
+	scopedReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireFivetranHeaders(t, r, "application/json")
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/groups":
+			parentReads++
+			if parentReads > 1 {
+				t.Fatalf("parent inventory was re-read after cursor resume")
+			}
+			_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+				"id":   "group-1",
+				"name": "Warehouse",
+			}, ""))
+		case "/v1/groups/group-1/users":
+			scopedReads++
+			switch scopedReads {
+			case 1:
+				if got := r.URL.Query().Get("cursor"); got != "" {
+					t.Fatalf("first scoped cursor = %q, want empty", got)
+				}
+				_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+					"id":    "user-1",
+					"email": "first@example.test",
+				}, "scope-page-2"))
+			case 2:
+				if got := r.URL.Query().Get("cursor"); got != "scope-page-2" {
+					t.Fatalf("second scoped cursor = %q, want scope-page-2", got)
+				}
+				_ = json.NewEncoder(w).Encode(fivetranList(map[string]any{
+					"id":    "user-2",
+					"email": "second@example.test",
+				}, ""))
+			default:
+				t.Fatalf("scoped reads = %d, want at most 2", scopedReads)
+			}
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := fivetranConfig(server.URL, map[string]string{
+		"family":   fivetranapi.FamilyGroupUsers,
+		"per_page": "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if len(first.Events) != 1 || first.NextCursor == nil {
+		t.Fatalf("first pull events=%d cursor=%v, want one event and cursor", len(first.Events), first.NextCursor)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("second pull events = %d, want 1", len(second.Events))
+	}
+	if parentReads != 1 || scopedReads != 2 {
+		t.Fatalf("parentReads=%d scopedReads=%d, want 1 and 2", parentReads, scopedReads)
+	}
+}
+
+func TestSourceEmptyAutoFanoutParentInventoryNoOps(t *testing.T) {
+	source := newTestSource(t)
+	requestedPaths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireFivetranHeaders(t, r, "application/json")
+		requestedPaths = append(requestedPaths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/groups":
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": "Success", "data": map[string]any{"items": []any{}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := fivetranConfig(server.URL, map[string]string{
+		"family":   fivetranapi.FamilyGroupUsers,
+		"per_page": "2",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v, want nil for empty auto-discovered parent inventory", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want nil for empty auto-discovered parent inventory", err)
+	}
+	if len(pull.Events) != 0 || pull.NextCursor != nil {
+		t.Fatalf("pull events=%d cursor=%v, want empty no-op", len(pull.Events), pull.NextCursor)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v, want nil for empty auto-discovered parent inventory", err)
+	}
+	if len(urns) != 0 {
+		t.Fatalf("URNs = %#v, want none", urns)
+	}
+	if strings.Join(requestedPaths, ",") != "/v1/groups,/v1/groups,/v1/groups" {
+		t.Fatalf("requested paths = %#v, want parent inventory for check/read/discover only", requestedPaths)
 	}
 }
 

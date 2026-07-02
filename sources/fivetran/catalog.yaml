@@ -636,7 +636,7 @@ event_contracts:
   - kind: fivetran.group_service_accounts
     schema_ref: fivetran/group_service_accounts/v1
     required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
-    required_payload_fields: [service_account]
+    required_payload_fields: [group_id]
   - kind: fivetran.destinations
     schema_ref: fivetran/destinations/v1
     required_attributes: [tenant_id, source_event_id, resource_id, resource_type]

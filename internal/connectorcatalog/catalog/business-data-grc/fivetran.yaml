@@ -590,25 +590,24 @@ entries:
           event:
             kind: fivetran.group_service_accounts
             required_attributes: [tenant_id, source_event_id, group_id, credential_id, resource_type]
-            required_payload_fields: [service_account]
+            required_payload_fields: [group_id]
             schema_ref: fivetran/group_service_accounts/v1
             urn_kind: fivetran_group_service_accounts
           id: group_service_accounts
-          id_field: service_account
+          id_field: group_id
           label: Group service accounts
           method: GET
-          name_field: service_account
+          name_field: group_id
           path: /v1/groups/{group_id}/service-account
           projection:
             fields:
-              credential_id: service_account|group_id
+              credential_id: group_id
               group_id: group_id
-              resource_id: service_account|group_id
-              resource_name: service_account|group_id
+              resource_id: group_id
+              resource_name: group_id
               resource_type: service_account
               scope_type: group
-              service_account: service_account
-              source_event_id: service_account|group_id
+              source_event_id: group_id
             template: asset
           read:
             path_params: [group_id]
