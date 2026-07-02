@@ -35,9 +35,13 @@ type Family struct {
 	DisablePageSize       bool
 	ListKeys              []string
 	MapRecords            map[string]string
-	Singleton             bool
-	RequireID             bool
-	IncrementalWatermark  bool
+	// Singleton reads one provider object from Path. Standard response envelopes
+	// such as {"data": {...}, "code": "Success"} are unwrapped when every
+	// sibling of the record key is response metadata; provider objects that carry
+	// their own data/result/item/record fields are preserved.
+	Singleton            bool
+	RequireID            bool
+	IncrementalWatermark bool
 }
 
 // FamilyConfig groups request and event bindings that are derived from family
