@@ -1842,15 +1842,6 @@ func isDuoHMACAuthModel(authModel string) bool {
 	}
 }
 
-func hasString(values []string, want string) bool {
-	for _, value := range values {
-		if strings.TrimSpace(value) == want {
-			return true
-		}
-	}
-	return false
-}
-
 // renderTestPath substitutes ${config.key}/${credential.key}/${connection.key}
 // placeholders with their testConfigValue so generated test assertions match the
 // concrete request paths the runtime produces for sources with path parameters.
