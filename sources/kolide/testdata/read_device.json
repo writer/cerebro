@@ -16,9 +16,8 @@
       "form_factor": "Computer",
       "os": "macOS 15.5",
       "os_name": "macOS 15.5",
-      "status": "Good",
+      "auth_state": "Good",
       "authentication_mode": "only_registered_owner",
-      "compliance_status": "Good",
       "registered_at": "2026-05-01T12:00:00Z",
       "last_authenticated_at": "2026-05-29T17:05:00Z",
       "last_seen_at": "2026-05-30T08:30:00Z"

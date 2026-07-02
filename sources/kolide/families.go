@@ -34,7 +34,7 @@ func families() []jsonapi.Family {
 				"registered_at":         "registered_at",
 				"last_authenticated_at": "last_authenticated_at",
 				"will_block_at":         "will_block_at",
-				"compliance_status":     "compliance_status|auth_state",
+				"compliance_status":     "compliance_status",
 				"failure_count":         "failure_count|failing_checks_count|failures|open_issues_count",
 				"resolved_at":           "resolved_at",
 				"registered":            "registered|enrolled|is_registered",
