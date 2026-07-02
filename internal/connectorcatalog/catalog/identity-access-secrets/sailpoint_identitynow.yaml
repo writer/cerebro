@@ -298,7 +298,6 @@ entries:
             fields:
               policy_id: id
               policy_name: name
-              policy_status: status|priority
               policy_type: identity_profile
             template: policy
           record_selector: $[*]

@@ -435,7 +435,7 @@ func Families() []jsonapi.Family {
 			"created_at":    "created",
 			"observed_at":   "modified|completed|created",
 		}, "account_activity"), map[string]string{"resource_type": "identity"}),
-		withStaticAttributes(paged50(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created", "expirationDate"}, map[string]string{
+		withStaticAttributes(paged50(FamilyPersonalAccessTokens, "/personal-access-tokens", "sailpoint_identitynow_personal_access_tokens", []string{"id", "name"}, []string{"lastUsed", "created"}, map[string]string{
 			"credential_id":                 "id",
 			"credential_name":               "name",
 			"subject_id":                    "owner.id",

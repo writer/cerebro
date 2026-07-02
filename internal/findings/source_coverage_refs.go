@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-const maxPublicDetectionSourceCoverageRefs = 12
+const maxPublicDetectionSourceCoverageRefs = 15
 
 // SourceCoverageRef links a public detection back to source coverage dimensions
 // that can supply evidence for the detection's mapped controls.
