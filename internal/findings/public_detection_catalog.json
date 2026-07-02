@@ -2900,23 +2900,19 @@
           ]
         },
         {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
+          "source_id": "files_com",
+          "dimension_id": "user",
           "dimension_type": "entity_family",
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
             "user"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "source_snapshot"
           ],
           "control_domains": [
-            "identity_access"
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -30379,6 +30375,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "group",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -33322,6 +33340,28 @@
           "dimension_id": "groups",
           "dimension_type": "entity_family",
           "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "group",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
           "high_value": true,
           "families": [
             "group"
@@ -38246,6 +38286,28 @@
           "dimension_id": "groups",
           "dimension_type": "entity_family",
           "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "group",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
           "high_value": true,
           "families": [
             "group"
@@ -48823,6 +48885,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "group",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -65050,6 +65134,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -77003,6 +77109,28 @@
           ]
         },
         {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "external_accounts",
           "dimension_type": "entity_family",
@@ -78931,6 +79059,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "permission",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "permission"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -110219,6 +110369,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -161817,6 +161989,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "group",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -237358,6 +237556,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "permission",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "permission"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -250182,6 +250402,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            }
+          ]
         }
       ]
     },
@@ -250608,6 +250850,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            }
+          ]
         }
       ]
     },
@@ -250959,6 +251223,28 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.17"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -251419,6 +251705,28 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.17"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -254691,6 +254999,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "login",
+          "dimension_type": "audit_event",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "login"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         }
@@ -260235,6 +260565,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "permission",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "permission"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -261247,6 +261599,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "permission",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "permission"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -281770,6 +282144,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "files_com",
+          "dimension_id": "permission",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "permission"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -291952,22 +292348,19 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "role_assignments",
-          "dimension_type": "app_entitlement",
+          "source_id": "files_com",
+          "dimension_id": "user",
+          "dimension_type": "entity_family",
           "support_level": "partial",
           "high_value": true,
           "families": [
-            "admin_role",
-            "privileged",
-            "role_assignment",
-            "super_admin"
+            "user"
           ],
           "evidence_types": [
-            "identity_configuration"
+            "source_snapshot"
           ],
           "control_domains": [
-            "identity_access"
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {

@@ -400,7 +400,7 @@ func TestTenantConnectorDefinitionAppearsAsRunnableConnector(t *testing.T) {
 		t.Fatalf("POST /connector-definitions status = %d, want 200", createResp.StatusCode)
 	}
 
-	listResp, err := server.Client().Get(server.URL + "/connectors?tenant_id=tenant-a")
+	listResp, err := server.Client().Get(server.URL + "/connectors?tenant_id=tenant-a&view=full")
 	if err != nil {
 		t.Fatalf("GET /connectors error = %v", err)
 	}

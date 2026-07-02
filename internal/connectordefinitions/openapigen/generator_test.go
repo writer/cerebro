@@ -1,6 +1,7 @@
 package openapigen
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -131,6 +132,47 @@ func TestGenerateHandlesMissingComponents(t *testing.T) {
 	}
 	if len(definition.ResourceFamilies) == 0 || report.EndpointCount == 0 {
 		t.Fatalf("expected at least one resource family, report = %#v", report)
+	}
+}
+
+func TestGenerateReportsOpenAPIOperationProvenance(t *testing.T) {
+	doc := loadFixture(t, provenanceFixture)
+	definition, report, err := Generate(doc, Request{
+		SourceID:              "provider_trace",
+		MaxFamilies:           1,
+		ProviderAPIReferences: []string{"https://github.com/provider/api/openapi.yaml"},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if definition.ProviderAPI == nil {
+		t.Fatal("definition provider API = nil, want OpenAPI provenance")
+	}
+	if definition.ProviderAPI.Status != "verified" || definition.ProviderAPI.Transport != "rest" {
+		t.Fatalf("definition provider API = %#v", definition.ProviderAPI)
+	}
+	if !reflect.DeepEqual(definition.ProviderAPI.References, []string{"https://github.com/provider/api/openapi.yaml"}) {
+		t.Fatalf("definition provider API references = %#v", definition.ProviderAPI.References)
+	}
+	if len(definition.ProviderAPI.Families) != 1 || definition.ProviderAPI.Families[0].ID != "event" || definition.ProviderAPI.Families[0].Path != "/orgs/{org}/audit/events" {
+		t.Fatalf("definition provider API families = %#v", definition.ProviderAPI.Families)
+	}
+	if report.EndpointCount != 2 || len(report.Selected) != 1 || len(report.Skipped) != 1 {
+		t.Fatalf("report endpoint counts = endpoint:%d selected:%d skipped:%d", report.EndpointCount, len(report.Selected), len(report.Skipped))
+	}
+	selected := report.Selected[0]
+	if selected.Path != "/orgs/{org}/audit/events" || selected.OperationID != "listAuditEvents" || selected.Summary != "List audit events" {
+		t.Fatalf("selected endpoint provenance = %#v", selected)
+	}
+	if !reflect.DeepEqual(selected.Tags, []string{"Audit", "Security"}) {
+		t.Fatalf("selected tags = %#v, want Audit/Security", selected.Tags)
+	}
+	skipped := report.Skipped[0]
+	if skipped.Path != "/repositories" || skipped.OperationID != "listRepositories" || skipped.Summary != "List repositories" {
+		t.Fatalf("skipped endpoint provenance = %#v", skipped)
+	}
+	if !reflect.DeepEqual(skipped.Tags, []string{"Inventory"}) {
+		t.Fatalf("skipped tags = %#v, want Inventory", skipped.Tags)
 	}
 }
 
@@ -361,6 +403,60 @@ paths:
       responses:
         '200':
           description: Widgets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+`
+
+const provenanceFixture = `
+openapi: 3.0.3
+info:
+  title: Provider Trace API
+servers:
+  - url: https://trace.example.test
+paths:
+  /orgs/{org}/audit/events:
+    get:
+      operationId: listAuditEvents
+      summary: List audit events
+      tags: [Audit, Audit, " Security "]
+      parameters:
+        - name: org
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Audit events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        action: {type: string}
+  /repositories:
+    get:
+      operationId: listRepositories
+      summary: List repositories
+      tags: [Inventory]
+      responses:
+        '200':
+          description: Repositories.
           content:
             application/json:
               schema:

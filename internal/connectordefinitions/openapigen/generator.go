@@ -20,15 +20,16 @@ var pathParamPattern = regexp.MustCompile(`\{([^{}]+)\}`)
 
 // Request configures OpenAPI-to-connector-definition generation.
 type Request struct {
-	SourceID    string
-	TenantID    string
-	DisplayName string
-	Description string
-	Categories  []string
-	BaseURL     string
-	AuthModel   string
-	MaxFamilies int
-	AllFamilies bool
+	SourceID              string
+	TenantID              string
+	DisplayName           string
+	Description           string
+	Categories            []string
+	BaseURL               string
+	AuthModel             string
+	ProviderAPIReferences []string
+	MaxFamilies           int
+	AllFamilies           bool
 	// ListGETOnly restricts resource families to GET list endpoints, dropping
 	// POST "search" listings. The zero-code catalog runtime only executes GET
 	// lists, so importers set this to keep a stray POST endpoint from forcing an
@@ -41,6 +42,9 @@ type Endpoint struct {
 	Method             string   `json:"method"`
 	Path               string   `json:"path"`
 	RenderedPath       string   `json:"rendered_path,omitempty"`
+	OperationID        string   `json:"operation_id,omitempty"`
+	Summary            string   `json:"summary,omitempty"`
+	Tags               []string `json:"tags,omitempty"`
 	FamilyID           string   `json:"family_id,omitempty"`
 	RecordSelector     string   `json:"record_selector,omitempty"`
 	IDField            string   `json:"id_field,omitempty"`
@@ -120,6 +124,7 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 		},
 		ResourceFamilies: resourcesFromCandidates(selected),
 	}
+	definition.ProviderAPI = providerAPISpec(request, baseURL, auth.Model, selected)
 	normalized, err := connectordefinitions.Normalize(definition)
 	if err != nil {
 		return connectordefinitions.Definition{}, Report{}, err
@@ -137,6 +142,29 @@ func Generate(doc *openapi3.T, request Request) (connectordefinitions.Definition
 		EndpointCount: len(candidates),
 	}
 	return normalized, report, nil
+}
+
+func providerAPISpec(request Request, baseURL string, authModel string, selected []candidate) *connectordefinitions.ProviderAPISpec {
+	references := normalizeStrings(request.ProviderAPIReferences)
+	if len(references) == 0 {
+		return nil
+	}
+	families := make([]connectordefinitions.ProviderAPIFamilySpec, 0, len(selected))
+	for _, next := range selected {
+		families = append(families, connectordefinitions.ProviderAPIFamilySpec{
+			ID:     next.resource.ID,
+			Method: next.resource.Method,
+			Path:   next.endpoint.Path,
+		})
+	}
+	return &connectordefinitions.ProviderAPISpec{
+		Status:     "verified",
+		Transport:  "rest",
+		Auth:       authModel,
+		BaseURL:    baseURL,
+		References: references,
+		Families:   families,
+	}
 }
 
 func collectCandidates(doc *openapi3.T, sourceID string, getOnly bool) []candidate {
@@ -212,6 +240,9 @@ func collectCandidates(doc *openapi3.T, sourceID string, getOnly bool) []candida
 					Method:             method,
 					Path:               pair.path,
 					RenderedPath:       renderedPath,
+					OperationID:        strings.TrimSpace(operation.OperationID),
+					Summary:            strings.TrimSpace(operation.Summary),
+					Tags:               normalizeOpenAPITags(operation.Tags),
 					FamilyID:           familyID,
 					RecordSelector:     selector,
 					IDField:            idField,
@@ -1169,6 +1200,23 @@ func normalizeStrings(values []string) []string {
 		out = append(out, value)
 	}
 	sort.Strings(out)
+	return out
+}
+
+func normalizeOpenAPITags(values []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
 	return out
 }
 
