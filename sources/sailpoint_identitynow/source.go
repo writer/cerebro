@@ -169,9 +169,13 @@ func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
 }
 
 func healthCheckConfig(cfg sourcecdk.Config) sourcecdk.Config {
-	values := cfg.Values()
-	values["family"] = defaultFamily
-	return sourcecdk.NewConfig(values)
+	runtimeValues := cfg.Values()
+	healthValues := make(map[string]string, len(runtimeValues)+1)
+	for key, value := range runtimeValues {
+		healthValues[key] = value
+	}
+	healthValues["family"] = defaultFamily
+	return sourcecdk.NewConfig(healthValues)
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {

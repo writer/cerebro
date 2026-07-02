@@ -385,7 +385,7 @@ var identityProviderCoverageAliases = map[string][]string{
 	"microsoft_entra":       {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
 	"microsoft_entra_id":    {"microsoft_entra", "microsoft_entra_id", "entra", "entra_id", "azure_ad", "aad"},
 	"okta":                  {"okta"},
-	"sailpoint_identitynow": {"sailpoint_identitynow", "identitynow", "identity_now", "identity_security_cloud", "isc"},
+	"sailpoint_identitynow": {"sailpoint_identitynow", "identitynow", "identity_now", "identity_security_cloud"},
 	"tailscale":             {"tailscale", "tailnet"},
 }
 

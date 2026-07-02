@@ -283,6 +283,9 @@ func TestSourceCheckFanoutFamilyUsesHealthProbeBeforeScopedCheck(t *testing.T) {
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
+	if got := sourcecdk.ConfigValue(cfg, "family"); got != sailpointapi.FamilyRoleAssignedIdentities {
+		t.Fatalf("original family = %q, want scoped family unchanged", got)
+	}
 	if len(paths) != 2 || paths[0] != "/v2025/identities" || paths[1] != "/v2025/roles/role-a/assigned-identities" {
 		t.Fatalf("paths = %v, want health probe followed by scoped family check", paths)
 	}
