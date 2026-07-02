@@ -114,4 +114,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${RELEASE_TAG}" -m "Release ${RELEASE_TAG}"
           git push origin "refs/tags/${RELEASE_TAG}"
-          gh workflow run "Release" --ref "${RELEASE_TAG}" -f "release_tag=${RELEASE_TAG}"
+          gh workflow run "Release" --ref main -f "release_tag=${RELEASE_TAG}"

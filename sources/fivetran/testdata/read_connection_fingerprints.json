@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fivetran-connection_fingerprints-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.connection_fingerprints",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/connection_fingerprints/v1",
+    "payload": {
+      "id": "fingerprint-1",
+      "name": "Warehouse SSH fingerprint",
+      "hash": "SHA256:7e3a9d",
+      "public_key": "SHA256:7e3a9d",
+      "family": "connection_fingerprints",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/connection_fingerprints/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "connection_id": "connection-1"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "fingerprint-1",
+      "external_id": "fingerprint-1",
+      "family": "connection_fingerprints",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "connection_fingerprints",
+      "record_class": "credential",
+      "resource_type": "fingerprint",
+      "resource_id": "fingerprint-1",
+      "resource_name": "Warehouse SSH fingerprint",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connection_fingerprints:fingerprint-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "connection_id": "connection-1",
+      "credential_id": "fingerprint-1",
+      "hash": "SHA256:7e3a9d",
+      "public_key": "SHA256:7e3a9d"
+    }
+  }
+]

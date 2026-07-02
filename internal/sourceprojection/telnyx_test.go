@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestTelnyxAuditProjection(t *testing.T) {
@@ -68,13 +69,35 @@ func TestTelnyxPolicyProjection(t *testing.T) {
 }
 
 func TestTelnyxAlertProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "telnyx", Kind: "telnyx.notification_channel", Attributes: map[string]string{"alert_id": "alert-1", "alert_name": "High Error Rate", "alert_severity": "critical", "alert_status": "open", "evidence_id": "evidence-1"}}
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "telnyx", Kind: "telnyx.notification_channel", Attributes: map[string]string{"alert_id": "alert-1", "alert_name": "ops@example.test", "alert_source": "profile-1", "alert_type": "webhook", "evidence_id": "evidence-1"}}
 	entities, links, err := telnyxNotificationChannelProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
 		t.Fatal("expected projected alert")
+	}
+	var alert *ports.ProjectedEntity
+	for _, entity := range entities {
+		if entity.EntityType == "alert" {
+			alert = entity
+			break
+		}
+	}
+	if alert == nil {
+		t.Fatalf("alert entity missing: %#v", entities)
+	}
+	if got := alert.Attributes["alert_type"]; got != "webhook" {
+		t.Fatalf("alert_type = %q, want webhook", got)
+	}
+	if got := alert.Attributes["alert_source"]; got != "profile-1" {
+		t.Fatalf("alert_source = %q, want profile-1", got)
+	}
+	if got := alert.Attributes["alert_severity"]; got != "" {
+		t.Fatalf("alert_severity = %q, want empty without provider severity", got)
+	}
+	if got := alert.Attributes["alert_status"]; got != "" {
+		t.Fatalf("alert_status = %q, want empty without provider status", got)
 	}
 	if len(links) == 0 {
 		t.Fatal("expected projected evidence links")

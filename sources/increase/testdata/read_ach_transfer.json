@@ -1,65 +1,85 @@
 [
   {
+    "id": "increase-ach-transfer-event-1",
+    "tenant_id": "tenant",
+    "source_id": "increase",
+    "kind": "increase.ach_transfer",
+    "occurred_at": "2020-01-31T23:59:59Z",
+    "schema_ref": "increase/ach_transfer/v1",
+    "payload": {
+      "account_id": "account_in71c4amph0vgo2qllky",
+      "account_number": "987654321",
+      "acknowledgement": {
+        "acknowledged_at": "2020-01-31T23:59:59Z"
+      },
+      "addenda": null,
+      "amount": 100,
+      "approval": {
+        "approved_at": "2020-01-31T23:59:59Z",
+        "approved_by": null
+      },
+      "cancellation": null,
+      "company_descriptive_date": null,
+      "company_discretionary_data": null,
+      "company_entry_description": null,
+      "company_id": "1234987601",
+      "company_name": "National Phonograph Company",
+      "created_at": "2020-01-31T23:59:59Z",
+      "created_by": {
+        "category": "user",
+        "user": {
+          "email": "user@example.com"
+        }
+      },
+      "currency": "USD",
+      "destination_account_holder": "business",
+      "external_account_id": "external_account_ukk55lr923a3ac0pp7iv",
+      "funding": "checking",
+      "id": "ach_transfer_uoxatyh3lt5evrsdvo7q",
+      "idempotency_key": null,
+      "inbound_funds_hold": null,
+      "individual_id": null,
+      "individual_name": "Ian Crease",
+      "network": "ach",
+      "notifications_of_change": [],
+      "pending_transaction_id": null,
+      "preferred_effective_date": {
+        "date": null,
+        "settlement_schedule": "same_day"
+      },
+      "return": null,
+      "routing_number": "101050001",
+      "settlement": null,
+      "standard_entry_class_code": "corporate_credit_or_debit",
+      "statement_descriptor": "Statement descriptor",
+      "status": "returned",
+      "submission": {
+        "administrative_returns_expected_by": "2020-02-05T11:00:00Z",
+        "effective_date": "2020-01-31",
+        "expected_funds_settlement_at": "2020-02-03T13:30:00Z",
+        "expected_settlement_schedule": "future_dated",
+        "submitted_at": "2020-01-31T23:59:59Z",
+        "trace_number": "058349238292834"
+      },
+      "transaction_id": "transaction_uyrp7fld2ium70oa7oi",
+      "type": "ach_transfer"
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/ach_transfers",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-increase-ach_transfer-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-increase-ach_transfer-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/increase/ach_transfer/source-increase-ach_transfer-1",
-      "external_id": "source-increase-ach_transfer-1",
+      "external_id": "ach_transfer_uoxatyh3lt5evrsdvo7q",
       "family": "ach_transfer",
-      "id": "source-increase-ach_transfer-1",
-      "name": "Increase Ach Transfer Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
       "provider": "increase",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-increase-ach_transfer-1",
-      "resource_name": "Increase Ach Transfer Fixture",
-      "resource_type": "ach_transfer",
-      "resource_urn": "urn:cerebro:tenant:increase_ach_transfer:source-increase-ach_transfer-1",
       "schema": "ach_transfer",
-      "source_event_id": "source-increase-ach_transfer-1",
+      "source_event_id": "ach_transfer_uoxatyh3lt5evrsdvo7q",
       "source_provider": "increase",
       "source_system": "increase",
-      "tenant_id": "tenant"
-    },
-    "id": "source-increase-ach_transfer-event-1",
-    "kind": "increase.ach_transfer",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "account_id": "Increase Ach Transfer Fixture",
-      "ach_transfer": "ach_transfer",
-      "api_method": "GET",
-      "api_path": "/ach_transfers",
-      "event_id": "source-increase-ach_transfer-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-increase-ach_transfer-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-increase-ach_transfer-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/increase/ach_transfer/source-increase-ach_transfer-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/increase/ach_transfer/source-increase-ach_transfer-1",
-      "family": "ach_transfer",
-      "id": "source-increase-ach_transfer-1",
-      "name": "Increase Ach Transfer Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-increase-ach_transfer-1",
-      "resource_type": "ach_transfer",
-      "resource_urn": "urn:cerebro:tenant:increase_ach_transfer:source-increase-ach_transfer-1",
-      "schema_ref": "increase/ach_transfer/v1",
-      "source_id": "increase",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "increase/ach_transfer/v1",
-    "source_id": "increase",
-    "tenant_id": "tenant"
+      "created_at": "2020-01-31T23:59:59Z",
+      "status": "returned",
+      "resource_type": "ach_transfer",
+      "resource_id": "ach_transfer_uoxatyh3lt5evrsdvo7q",
+      "resource_name": "account_in71c4amph0vgo2qllky",
+      "resource_urn": "urn:cerebro:tenant:increase_ach_transfer:ach_transfer_uoxatyh3lt5evrsdvo7q"
+    }
   }
 ]

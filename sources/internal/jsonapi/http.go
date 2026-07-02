@@ -82,6 +82,10 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		next = cursorFromLastItem(family, items, pageSize)
 	}
 	if next == "" && !responseDone {
+		next = headerCursor(family, headers)
+		responseCursorKnown = responseCursorKnown || next != ""
+	}
+	if next == "" && !responseDone {
 		next = linkHeaderCursor(family, headers)
 		responseCursorKnown = responseCursorKnown || next != ""
 	}
@@ -375,14 +379,14 @@ func parseListResponse(family Family, raw json.RawMessage) ([]json.RawMessage, s
 		return []json.RawMessage{item}, next, responseCursorKnown, nil
 	}
 	for _, key := range responseListKeys(family) {
-		if value, ok := object[key]; ok {
+		if value, ok := rawValueAtPath(object, key); ok {
 			if err := json.Unmarshal(value, &items); err == nil {
 				return items, next, responseCursorKnown, nil
 			}
 		}
 	}
 	for objectKey, valueKey := range family.MapRecords {
-		if value, ok := object[objectKey]; ok {
+		if value, ok := rawValueAtPath(object, objectKey); ok {
 			items, err := recordsFromObjectMap(value, valueKey)
 			if err != nil {
 				return nil, "", false, err
@@ -472,10 +476,47 @@ func singletonRecord(raw json.RawMessage, fallbackID string) (json.RawMessage, e
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err
 	}
+	for _, key := range []string{"data", "result", "item", "record"} {
+		value := object[key]
+		if len(value) == 0 {
+			continue
+		}
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(value, &nested); err == nil && singletonEnvelopeCanUnwrap(object, key) {
+			object = nested
+			break
+		}
+	}
 	if _, ok := object["id"]; !ok && strings.TrimSpace(fallbackID) != "" {
 		object["id"] = json.RawMessage(strconv.Quote(strings.TrimSpace(fallbackID)))
 	}
 	return json.Marshal(object)
+}
+
+func singletonEnvelopeCanUnwrap(object map[string]json.RawMessage, recordKey string) bool {
+	for key, value := range object {
+		if key == recordKey {
+			continue
+		}
+		if !singletonEnvelopeSibling(key, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func singletonEnvelopeSibling(key string, value json.RawMessage) bool {
+	switch strings.TrimSpace(key) {
+	case "code", "message", "error", "errors", "meta", "metadata", "pagination", "page", "links", "next_cursor", "cursor":
+		return true
+	case "ok", "success":
+		return true
+	case "status":
+		status := strings.ToLower(rawString(value))
+		return status == "ok" || status == "success" || status == "succeeded"
+	default:
+		return false
+	}
 }
 
 func responseCursor(family Family, object map[string]json.RawMessage) (string, bool) {
@@ -560,34 +601,46 @@ func responseCursorValue(family Family, value string) string {
 }
 
 func rawStringAtPath(object map[string]json.RawMessage, path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
+	raw, ok := rawValueAtPath(object, path)
+	if !ok {
 		return ""
 	}
+	return rawString(raw)
+}
+
+func rawValueAtPath(object map[string]json.RawMessage, path string) (json.RawMessage, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false
+	}
 	if !strings.Contains(path, ".") {
-		return rawString(object[path])
+		raw := object[path]
+		if len(raw) == 0 {
+			return nil, false
+		}
+		return raw, true
 	}
 	parts := strings.Split(path, ".")
 	current := object
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return ""
+			return nil, false
 		}
 		raw := current[part]
 		if len(raw) == 0 {
-			return ""
+			return nil, false
 		}
 		if i == len(parts)-1 {
-			return rawString(raw)
+			return raw, true
 		}
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &nested); err != nil {
-			return ""
+			return nil, false
 		}
 		current = nested
 	}
-	return ""
+	return nil, false
 }
 
 func linkHeaderCursor(family Family, headers http.Header) string {
@@ -615,6 +668,19 @@ func linkHeaderCursor(family Family, headers http.Header) string {
 		}
 		if value := strings.TrimSpace(parsed.Query().Get(cursorParam(family))); value != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func headerCursor(family Family, headers http.Header) string {
+	for _, headerName := range family.NextCursorHeaders {
+		headerName = strings.TrimSpace(headerName)
+		if headerName == "" {
+			continue
+		}
+		if value := strings.TrimSpace(headers.Get(headerName)); value != "" {
+			return responseCursorValue(family, value)
 		}
 	}
 	return ""
@@ -892,9 +958,74 @@ func eventFromRecord(sourceID string, settings settings, family Family, record r
 		Kind:       sourceID + "." + family.Name,
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  sourceID + "/" + family.Name + "/v1",
-		Payload:    cloneRaw(record.Raw),
+		Payload:    payloadForRecord(family, record.Raw),
 		Attributes: attributesFor(sourceID, settings, family, record),
 	}
+}
+
+func payloadForRecord(family Family, raw json.RawMessage) json.RawMessage {
+	if len(family.Config.RedactPayloadKeys) == 0 {
+		return cloneRaw(raw)
+	}
+	var object map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&object); err != nil {
+		return cloneRaw(raw)
+	}
+	redactedFields := make([]string, 0, len(family.Config.RedactPayloadKeys))
+	for _, key := range family.Config.RedactPayloadKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if deleteObjectPath(object, key) {
+			redactedFields = append(redactedFields, key)
+		}
+	}
+	if len(redactedFields) > 0 {
+		object["redacted_fields"] = redactedFields
+	}
+	redacted, err := json.Marshal(object)
+	if err != nil {
+		return cloneRaw(raw)
+	}
+	return redacted
+}
+
+func deleteObjectPath(object map[string]any, path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	if !strings.Contains(path, ".") {
+		if _, ok := object[path]; !ok {
+			return false
+		}
+		delete(object, path)
+		return true
+	}
+	parts := strings.Split(path, ".")
+	current := object
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return false
+		}
+		if i == len(parts)-1 {
+			if _, ok := current[part]; !ok {
+				return false
+			}
+			delete(current, part)
+			return true
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			return false
+		}
+		current = next
+	}
+	return false
 }
 
 func eventID(sourceID string, tenantID string, baseURL string, path string, family string, recordID string) string {
@@ -921,6 +1052,12 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	}
 	for attr, path := range family.Attributes {
 		addAttribute(attrs, attr, firstValueString(record.Values, path))
+	}
+	if family.Config.IdentityResourceID {
+		if identity := strings.TrimSpace(record.Identity); identity != "" {
+			addAttribute(attrs, "resource_id", identity)
+			addAttribute(attrs, "source_event_id", identity)
+		}
 	}
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
 		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record))

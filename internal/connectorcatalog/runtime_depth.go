@@ -406,12 +406,12 @@ func sourceKindsFromProjectorTest(content string) map[string][]string {
 			if !ok {
 				return true
 			}
-			switch key.Name {
-			case "SourceId":
+			switch strings.ToLower(key.Name) {
+			case "sourceid":
 				if sourceIDLooksStable(value) {
 					eventSources[value] = struct{}{}
 				}
-			case "Kind":
+			case "kind":
 				if sourceID, ok := sourceIDFromEventKindLiteral(value); ok {
 					if kindSources[sourceID] == nil {
 						kindSources[sourceID] = map[string]struct{}{}

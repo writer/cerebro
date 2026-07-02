@@ -1,0 +1,39 @@
+[
+  {
+    "id": "fivetran-transformations-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.transformations",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/transformations/v1",
+    "payload": {
+      "id": "transformation-1",
+      "name": "Normalize account tables",
+      "status": "enabled",
+      "schedule_type": "integrated",
+      "family": "transformations",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/transformations/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "transformation-1",
+      "external_id": "transformation-1",
+      "family": "transformations",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "transformations",
+      "record_class": "asset",
+      "resource_type": "transformation",
+      "resource_id": "transformation-1",
+      "resource_name": "Normalize account tables",
+      "resource_urn": "urn:cerebro:tenant:fivetran_transformations:transformation-1",
+      "observed_at": "2026-06-01T00:00:00Z",
+      "status": "enabled",
+      "schedule_type": "integrated"
+    }
+  }
+]

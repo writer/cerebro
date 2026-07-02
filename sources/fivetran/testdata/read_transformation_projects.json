@@ -1,0 +1,35 @@
+[
+  {
+    "id": "fivetran-transformation_projects-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.transformation_projects",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/transformation_projects/v1",
+    "payload": {
+      "id": "project-1",
+      "name": "dbt production",
+      "family": "transformation_projects",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/transformation_projects/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "project-1",
+      "external_id": "project-1",
+      "family": "transformation_projects",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "transformation_project",
+      "record_class": "asset",
+      "resource_type": "transformation_project",
+      "resource_id": "project-1",
+      "resource_name": "dbt production",
+      "resource_urn": "urn:cerebro:tenant:fivetran_transformation_projects:project-1",
+      "observed_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]

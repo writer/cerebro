@@ -145,6 +145,8 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	if read == nil {
 		read = &connectordefinitions.ResourceReadSpec{}
 	}
+	config := familyConfig(resource)
+	config.Method = method
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -161,14 +163,13 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		TimestampKeys:         timestampKeys(resource),
 		Attributes:            attributePaths(resource, class),
 		StaticAttributes:      staticAttributes(sourceID, name, class),
-		Config:                familyConfig(resource),
+		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
 		ListKeys:              listKeys(resource),
 		MapRecords:            cloneStringMap(read.MapRecords),
 		Singleton:             read.Singleton || resource.Singleton,
 		IncrementalWatermark:  resource.Incremental != nil && strings.TrimSpace(resource.Incremental.State) == "high_watermark",
-		Method:                method,
 	}, nil
 }
 
@@ -232,8 +233,11 @@ func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
 
 func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyConfig {
 	out := jsonapi.FamilyConfig{
-		StaticQuery: cloneStringMap(resource.StaticQuery),
-		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+		StaticQuery:       cloneStringMap(resource.StaticQuery),
+		StaticHeaders:     cloneStringMap(resource.StaticHeaders),
+		ConfigQuery:       cloneStringMap(resource.ConfigQuery),
+		RedactPayloadKeys: sensitivePayloadKeys(resource.SensitivePayloadPaths),
+		Method:            strings.ToUpper(strings.TrimSpace(resource.Method)),
 	}
 	if resource.Config != nil {
 		out.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
@@ -243,6 +247,17 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	}
 	return out
+}
+
+func sensitivePayloadKeys(paths []string) []string {
+	keys := make([]string, 0, len(paths))
+	for _, path := range paths {
+		key := cursorJSONPathKey(path)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
@@ -300,7 +315,7 @@ func selectorListKey(selector string) string {
 	}
 	if strings.HasPrefix(selector, "$.") && strings.HasSuffix(selector, "[*]") {
 		key := strings.TrimSuffix(strings.TrimPrefix(selector, "$."), "[*]")
-		if !strings.Contains(key, ".") {
+		if key != "" && !strings.ContainsAny(key, "[]*") {
 			return key
 		}
 	}

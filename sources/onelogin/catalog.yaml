@@ -1,84 +1,320 @@
 id: onelogin
 name: "OneLogin"
-description: "Collects users, groups, and audit events from OneLogin and projects them into the Cerebro graph as users, groups, and audit events for identity, access, device, and secret context."
+description: "Collects OneLogin users, groups, roles, applications, assignments, MFA devices, delegated administration privileges, mappings, app rules, and audit events for identity and access graph context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_client_credentials
+  base_url: https://{subdomain}.onelogin.com
+  references:
+    - https://developers.onelogin.com/api-docs/2/oauth20-tokens/generate-tokens-2
+    - https://developers.onelogin.com/api-docs/2/getting-started/using-query-parameters
+    - https://developers.onelogin.com/api-docs/2/users/list-users
+    - https://developers.onelogin.com/api-docs/2/roles/list-roles
+    - https://developers.onelogin.com/api-docs/2/apps/list-apps
+    - https://developers.onelogin.com/api-docs/2/apps/list-users
+    - https://developers.onelogin.com/api-docs/2/app-rules/list-rules
+    - https://developers.onelogin.com/api-docs/2/multi-factor-authentication/enrolled-factors
+    - https://developers.onelogin.com/api-docs/2/user-mappings/list-mappings
+    - https://developers.onelogin.com/api-docs/1/privileges/list-privileges
+  families:
+    - id: users
+      method: GET
+      path: /api/2/users
+    - id: groups
+      method: GET
+      path: /api/1/groups
+    - id: roles
+      method: GET
+      path: /api/2/roles
+    - id: apps
+      method: GET
+      path: /api/2/apps
+    - id: audit_events
+      method: GET
+      path: /api/1/events
+    - id: privileges
+      method: GET
+      path: /api/1/privileges
+    - id: mappings
+      method: GET
+      path: /api/2/mappings
+    - id: user_apps
+      method: GET
+      path: /api/2/users/{id}/apps
+    - id: user_privileges
+      method: GET
+      path: /api/2/users/{id}/privileges
+    - id: delegated_privileges
+      method: GET
+      path: /api/2/users/{id}/delegated_privileges
+    - id: mfa_devices
+      method: GET
+      path: /api/2/mfa/users/{user_id}/devices
+    - id: role_users
+      method: GET
+      path: /api/2/roles/{id}/users
+    - id: role_admins
+      method: GET
+      path: /api/2/roles/{id}/admins
+    - id: role_apps
+      method: GET
+      path: /api/2/roles/{id}/apps
+    - id: app_users
+      method: GET
+      path: /api/2/apps/{app_id}/users
+    - id: app_rules
+      method: GET
+      path: /api/2/apps/{app_id}/rules
+    - id: privilege_users
+      method: GET
+      path: /api/1/privileges/{id}/users
+    - id: privilege_roles
+      method: GET
+      path: /api/1/privileges/{id}/roles
 emitted_kinds:
   - onelogin.users
   - onelogin.groups
+  - onelogin.roles
+  - onelogin.apps
   - onelogin.audit_events
+  - onelogin.privileges
+  - onelogin.mappings
+  - onelogin.user_apps
+  - onelogin.user_privileges
+  - onelogin.delegated_privileges
+  - onelogin.mfa_devices
+  - onelogin.role_users
+  - onelogin.role_admins
+  - onelogin.role_apps
+  - onelogin.app_users
+  - onelogin.app_rules
+  - onelogin.privilege_users
+  - onelogin.privilege_roles
 runtime_families:
-  - audit_events
-  - groups
   - users
+  - groups
+  - roles
+  - apps
+  - audit_events
+  - privileges
+  - mappings
+  - user_apps
+  - user_privileges
+  - delegated_privileges
+  - mfa_devices
+  - role_users
+  - role_admins
+  - role_apps
+  - app_users
+  - app_rules
+  - privilege_users
+  - privilege_roles
 kind_lifecycle:
   - kind: onelogin.users
     status: active
   - kind: onelogin.groups
     status: active
+  - kind: onelogin.roles
+    status: active
+  - kind: onelogin.apps
+    status: active
   - kind: onelogin.audit_events
+    status: active
+  - kind: onelogin.privileges
+    status: active
+  - kind: onelogin.mappings
+    status: active
+  - kind: onelogin.user_apps
+    status: active
+  - kind: onelogin.user_privileges
+    status: active
+  - kind: onelogin.delegated_privileges
+    status: active
+  - kind: onelogin.mfa_devices
+    status: active
+  - kind: onelogin.role_users
+    status: active
+  - kind: onelogin.role_admins
+    status: active
+  - kind: onelogin.role_apps
+    status: active
+  - kind: onelogin.app_users
+    status: active
+  - kind: onelogin.app_rules
+    status: active
+  - kind: onelogin.privilege_users
+    status: active
+  - kind: onelogin.privilege_roles
     status: active
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: onelogin
   dimensions:
-    - id: users
+    - id: directory_inventory
       type: entity_family
-      title: "Users"
-      families: [users]
+      title: "Directory users, groups, and roles"
+      families: [users, groups, roles]
+      support: partial
+      high_value: true
+      evidence_types: [source_snapshot, access_review]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.15
+      notes:
+        - Reads OneLogin v2 users and roles plus v1 groups with provider pagination.
+    - id: application_inventory
+      type: entity_family
+      title: "Applications"
+      families: [apps]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, saas_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
-    - id: groups
-      type: entity_family
-      title: "Groups"
-      families: [groups]
+        - Reads OneLogin v2 applications for SSO application inventory and provisioning state.
+    - id: assignments
+      type: relationship
+      title: "Role, app, and privilege assignments"
+      families: [user_apps, user_privileges, delegated_privileges, role_users, role_admins, role_apps, app_users, privilege_users, privilege_roles]
       support: partial
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      evidence_types: [access_review, identity_configuration]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "NIST 800-53 r5"
+          control_id: AC-2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Scoped assignment endpoints require configured user_ids, role_ids, app_ids, or privilege_ids for bounded fanout.
+    - id: mfa_devices
+      type: relationship
+      title: "User MFA devices"
+      families: [mfa_devices]
+      support: partial
+      high_value: true
+      evidence_types: [identity_configuration, source_snapshot]
+      control_domains: [identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "NIST 800-53 r5"
+          control_id: IA-2
+      notes:
+        - Reads OneLogin v2 enrolled authentication factors for configured user_ids and projects device ownership.
+    - id: policies
+      type: entity_family
+      title: "Mappings and app rules"
+      families: [mappings, app_rules, privileges]
+      support: partial
+      high_value: true
+      evidence_types: [configuration_snapshot]
+      control_domains: [identity_access, change_management]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC8.1
+      notes:
+        - Reads user mappings, application rules, and delegated administration privilege definitions.
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Events"
       families: [audit_events]
       support: partial
       high_value: true
       evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      control_domains: [logging_monitoring, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads OneLogin v1 events with provider cursor pagination.
     - id: incremental_sync
       type: incremental_sync
-      title: Incremental cursor sync
-      support: planned
+      title: "Incremental cursor sync"
+      support: partial
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      notes:
+        - OneLogin v2 collection endpoints use After-Cursor response headers; v1 cursor endpoints use provider response cursors.
 event_contracts:
   - kind: onelogin.users
     schema_ref: onelogin/users/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - user_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, user_id]
+    required_payload_fields: [id]
   - kind: onelogin.groups
     schema_ref: onelogin/groups/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - group_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, group_id]
+    required_payload_fields: [id]
+  - kind: onelogin.roles
+    schema_ref: onelogin/roles/v1
+    required_attributes: [tenant_id, source_event_id, role_id]
+    required_payload_fields: [id]
+  - kind: onelogin.apps
+    schema_ref: onelogin/apps/v1
+    required_attributes: [tenant_id, source_event_id, app_id]
+    required_payload_fields: [id]
   - kind: onelogin.audit_events
     schema_ref: onelogin/audit_events/v1
-    required_attributes:
-      - tenant_id
-      - source_event_id
-      - event_type
-      - actor_id
-    required_payload_fields:
-      - id
+    required_attributes: [tenant_id, source_event_id, event_type, actor_id]
+    required_payload_fields: [id]
+  - kind: onelogin.privileges
+    schema_ref: onelogin/privileges/v1
+    required_attributes: [tenant_id, source_event_id, role_id]
+    required_payload_fields: [id]
+  - kind: onelogin.mappings
+    schema_ref: onelogin/mappings/v1
+    required_attributes: [tenant_id, source_event_id, policy_rule_id]
+    required_payload_fields: [id]
+  - kind: onelogin.user_apps
+    schema_ref: onelogin/user_apps/v1
+    required_attributes: [tenant_id, source_event_id, user_id, app_id]
+    required_payload_fields: [id]
+  - kind: onelogin.user_privileges
+    schema_ref: onelogin/user_privileges/v1
+    required_attributes: [tenant_id, source_event_id, user_id, role_id]
+    required_payload_fields: [id]
+  - kind: onelogin.delegated_privileges
+    schema_ref: onelogin/delegated_privileges/v1
+    required_attributes: [tenant_id, source_event_id, user_id, role_id]
+    required_payload_fields: [id]
+  - kind: onelogin.mfa_devices
+    schema_ref: onelogin/mfa_devices/v1
+    required_attributes: [tenant_id, source_event_id, user_id, credential_id]
+    required_payload_fields: [device_id]
+  - kind: onelogin.role_users
+    schema_ref: onelogin/role_users/v1
+    required_attributes: [tenant_id, source_event_id, role_id, member_user_id]
+    required_payload_fields: [id]
+  - kind: onelogin.role_admins
+    schema_ref: onelogin/role_admins/v1
+    required_attributes: [tenant_id, source_event_id, role_id, subject_id]
+    required_payload_fields: [id]
+  - kind: onelogin.role_apps
+    schema_ref: onelogin/role_apps/v1
+    required_attributes: [tenant_id, source_event_id, role_id, app_id]
+    required_payload_fields: [id]
+  - kind: onelogin.app_users
+    schema_ref: onelogin/app_users/v1
+    required_attributes: [tenant_id, source_event_id, app_id, subject_id]
+    required_payload_fields: [id]
+  - kind: onelogin.app_rules
+    schema_ref: onelogin/app_rules/v1
+    required_attributes: [tenant_id, source_event_id, app_id, policy_rule_id]
+    required_payload_fields: [id]
+  - kind: onelogin.privilege_users
+    schema_ref: onelogin/privilege_users/v1
+    required_attributes: [tenant_id, source_event_id, privilege_id, subject_id]
+    required_payload_fields: [user_id]
+  - kind: onelogin.privilege_roles
+    schema_ref: onelogin/privilege_roles/v1
+    required_attributes: [tenant_id, source_event_id, privilege_id, subject_id]
+    required_payload_fields: [role_id]

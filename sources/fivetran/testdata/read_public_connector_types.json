@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fivetran-public_connector_types-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.public_connector_types",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/public_connector_types/v1",
+    "payload": {
+      "id": "postgres",
+      "service": "postgres",
+      "name": "PostgreSQL",
+      "family": "public_connector_types",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/public_connector_types/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "postgres",
+      "external_id": "postgres",
+      "family": "public_connector_types",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "public_connector_type",
+      "record_class": "asset",
+      "resource_type": "public_connector_type",
+      "resource_id": "postgres",
+      "resource_name": "PostgreSQL",
+      "resource_urn": "urn:cerebro:tenant:fivetran_public_connector_types:postgres",
+      "service": "postgres",
+      "observed_at": "2026-06-01T00:00:00Z"
+    }
+  }
+]

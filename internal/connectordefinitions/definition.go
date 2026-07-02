@@ -316,6 +316,7 @@ type ResourceFamily struct {
 	EventKind             string                  `json:"event_kind,omitempty"`
 	Event                 EventMappingSpec        `json:"event,omitempty"`
 	StaticQuery           map[string]string       `json:"static_query,omitempty"`
+	StaticHeaders         map[string]string       `json:"static_headers,omitempty"`
 	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
@@ -869,6 +870,7 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 			}
 		}
 	}
+	validateFamilyConfigMap(family.ID, "static_headers", family.StaticHeaders, add)
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
 			add(blocking("pagination_"+family.ID, "Pagination", "Pagination type must be none, cursor, page, offset, link, or next_url."))
@@ -1152,6 +1154,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		}
 		family.Event = normalizeEventMapping(legacyEventKind, family.Event)
 		family.StaticQuery = normalizeStringMap(family.StaticQuery)
+		family.StaticHeaders = normalizeStringMap(family.StaticHeaders)
 		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)

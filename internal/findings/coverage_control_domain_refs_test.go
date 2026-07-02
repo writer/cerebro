@@ -576,6 +576,79 @@ func TestPolicySourceCoverageDoesNotGenericMatchSourceNamedIdentityPolicy(t *tes
 	}
 }
 
+func TestPolicySourceCoverageDoesNotUseFivetranAccountAccessForCloudIdentityRules(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "aws-iam-no-policies-attached-user",
+		Name:        "IAM Policies Attached to Groups Not Users",
+		Description: "Flags failed resource-state evidence for aws iam user access.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"aws", "iam", "users", "groups", "identity", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "cloud_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "NIST 800-53 r5", ControlID: "AC-2"},
+			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{loadSourceCoverageContractForTest(t, "fivetran")}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no Fivetran account access coverage for cloud IAM policy", refs)
+	}
+}
+
+func loadSourceCoverageContractForTest(t *testing.T, sourceID string) sourcecdk.CoverageContract {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("..", "..", "sources", sourceID, "catalog.yaml")) // #nosec G304 -- test reads repository source catalog fixtures.
+	if err != nil {
+		t.Fatalf("read %s catalog: %v", sourceID, err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(payload)
+	if err != nil {
+		t.Fatalf("load %s catalog: %v", sourceID, err)
+	}
+	if catalog.CoverageContract == nil {
+		t.Fatalf("%s catalog missing coverage contract", sourceID)
+	}
+	return *catalog.CoverageContract
+}
+
+func TestPolicySourceCoverageDoesNotUseCrossSourceOperationalSyncCoverage(t *testing.T) {
+	detection := PublicDetection{
+		ID:          "aws-cloudwatch-log-group-retention",
+		Name:        "CloudWatch Log Group Retention",
+		Description: "Flags failed resource-state evidence for AWS log group retention.",
+		SourceID:    policyRuleSourceID,
+		Tags:        []string{"aws", "cloudwatch", "logs", "log-group", "policy"},
+		PublicDetectionAuditDepth: PublicDetectionAuditDepth{
+			EvidenceType: "cloud_configuration",
+		},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "NIST 800-53 r5", ControlID: "AU-12"},
+		},
+	}
+	contracts := []sourcecdk.CoverageContract{{
+		SourceID: "fivetran",
+		Dimensions: []sourcecdk.CoverageDimension{{
+			ID:             "incremental_sync",
+			Type:           "incremental_sync",
+			Families:       []string{"log_services", "connections"},
+			Support:        sourcecdk.CoverageSupportSupported,
+			EvidenceTypes:  []string{"source_sync_status"},
+			ControlDomains: []string{"source_operations"},
+			ControlRefs: []sourcecdk.CoverageControlRef{{
+				FrameworkName: "NIST 800-53 r5",
+				ControlID:     "AU-12",
+			}},
+		}},
+	}}
+
+	if refs := sourceCoverageRefsForDetection(detection, contracts); len(refs) != 0 {
+		t.Fatalf("SourceCoverageRefs = %#v, want no cross-source operational sync coverage for cloud logging policy", refs)
+	}
+}
+
 func TestPolicySourceCoverageAllowsNamedCrossIdentityFinding(t *testing.T) {
 	detection := PublicDetection{
 		ID:          "identity-github-active-without-okta-link",

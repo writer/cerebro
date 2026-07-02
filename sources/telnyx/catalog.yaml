@@ -64,8 +64,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /call_events for recent call-control events; caller-configured event filters are not yet modeled.
     - id: billing_group
       type: entity_family
       title: "Billing Group"
@@ -74,8 +79,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /billing_groups for billing group inventory and organization ownership.
     - id: credential_connection
       type: entity_family
       title: "Credential Connection"
@@ -83,9 +93,16 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.6
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.9
+      known_unsupported_fields:
+        - credential password value
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /credential_connections for credential-auth connection metadata; credential secret values are not represented in fixtures or normalized attributes.
     - id: managed_account
       type: entity_family
       title: "Managed Account"
@@ -93,9 +110,16 @@ coverage_contract:
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, identity_access]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: SOC 2
+          control_id: CC6.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.18
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /managed_accounts for managed account identity, organization, billing, and manager-account metadata.
     - id: call_control_application
       type: lifecycle_state
       title: "Call Control Application"
@@ -104,8 +128,13 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /call_control_applications for call-control application status, webhook URL, and inbound or outbound call limits.
     - id: notification_channel
       type: alert_state
       title: "Notification Channel"
@@ -114,8 +143,16 @@ coverage_contract:
       high_value: true
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
+      known_unsupported_fields:
+        - delivery severity
+        - notification delivery result
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /notification_channels for configured notification destinations and channel types; delivery outcome is not returned by this endpoint.
     - id: detail_records_report
       type: entity_family
       title: "Detail Records Report"
@@ -124,8 +161,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
+      known_unsupported_fields:
+        - downloaded report rows
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /wireless/detail_records_reports for WDR report status and report URL metadata; the source does not download report file contents.
     - id: notification_event
       type: audit_event
       title: "Notification Event"
@@ -134,8 +178,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /notification_events for available notification event types and categories.
     - id: notification_event_condition
       type: audit_event
       title: "Notification Event Condition"
@@ -144,8 +193,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /notification_event_conditions for notification condition parameters, supported channels, and associated record types.
     - id: wireless_connectivity_log
       type: audit_event
       title: "Wireless Connectivity Log"
@@ -154,8 +208,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.15
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /sim_cards/{id}/wireless_connectivity_logs for a configured SIM card's session log, network, and APN fields.
     - id: sim_card_group
       type: entity_family
       title: "Sim Card Group"
@@ -164,8 +223,15 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.5.9
+      known_unsupported_fields:
+        - SIM card membership list
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /sim_card_groups for wireless group inventory, data limit, gateway, and blocklist metadata.
     - id: sim_card_group_action
       type: entity_family
       title: "Sim Card Group Action"
@@ -174,8 +240,13 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "ISO 27001:2022"
+          control_id: A.8.16
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Backed by Telnyx GET /sim_card_group_actions for asynchronous SIM card group operation status and requested action type.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -232,7 +303,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_type
     required_payload_fields:
       - id
   - kind: telnyx.detail_records_report

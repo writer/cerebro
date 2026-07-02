@@ -1,0 +1,48 @@
+[
+  {
+    "id": "fivetran-connection_table_columns-event-1",
+    "tenant_id": "tenant",
+    "source_id": "fivetran",
+    "kind": "fivetran.connection_table_columns",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "fivetran/connection_table_columns/v1",
+    "payload": {
+      "id": "EMAIL",
+      "name": "EMAIL",
+      "connection_id": "connection-1",
+      "schema_name": "public",
+      "table_name": "users",
+      "config": {
+        "enabled": true,
+        "hashed": false
+      },
+      "family": "connection_table_columns",
+      "source_id": "fivetran",
+      "schema_ref": "fivetran/connection_table_columns/v1",
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-01T00:00:00Z"
+    },
+    "attributes": {
+      "tenant_id": "tenant",
+      "source_event_id": "EMAIL",
+      "external_id": "EMAIL",
+      "family": "connection_table_columns",
+      "provider": "fivetran",
+      "source_provider": "fivetran",
+      "source_system": "fivetran",
+      "schema": "connection_table_columns",
+      "record_class": "asset",
+      "resource_type": "connection_table_column",
+      "resource_id": "EMAIL",
+      "resource_name": "EMAIL",
+      "resource_urn": "urn:cerebro:tenant:fivetran_connection_table_columns:EMAIL",
+      "connection_id": "connection-1",
+      "schema_name": "public",
+      "table_name": "users",
+      "column_name": "EMAIL",
+      "enabled": "true",
+      "hashed": "false",
+      "status": "true"
+    }
+  }
+]
