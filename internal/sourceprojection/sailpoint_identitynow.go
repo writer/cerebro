@@ -249,7 +249,7 @@ func sailpointIdentitynowSourceChildProjections(event *cerebrov1.EventEnvelope, 
 		SourceID:   event.GetSourceId(),
 		EntityType: "sailpoint_identitynow." + childKind,
 		Label:      firstNonEmpty(label, childID),
-		Attributes: copySailpointAttributes(attrs, "source_id", "schema_id", "schema_name", "status", "hostname", "native_object_type", "identity_attribute", "display_attribute", "include_permissions"),
+		Attributes: copySailpointAttributes(attrs, "source_id", "source_name", "source_type", "schema_id", "schema_name", "status", "hostname", "org", "authoritative", "cluster", "native_object_type", "identity_attribute", "display_attribute", "include_permissions"),
 	})
 	if sourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{URN: sourceURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: sailpointIdentitynowProfile.entityType("application"), Label: firstNonEmpty(attrs["source_name"], attrs["source_id"]), Attributes: map[string]string{"source_id": strings.TrimSpace(attrs["source_id"])}})
@@ -275,7 +275,7 @@ func sailpointIdentitynowAccessModelProjections(event *cerebrov1.EventEnvelope) 
 		SourceID:   event.GetSourceId(),
 		EntityType: "sailpoint_identitynow." + entityKind,
 		Label:      firstNonEmpty(attrs["policy_name"], attrs["role_name"], attrs["access_profile_name"], attrs["identity_profile_name"], attrs["segment_name"], attrs["campaign_name"], attrs["certification_name"], attrs["schedule_type"], entityID),
-		Attributes: copySailpointAttributes(attrs, "policy_id", "policy_name", "policy_type", "policy_status", "role_id", "role_name", "access_profile_id", "identity_profile_id", "lifecycle_state", "campaign_id", "certification_id", "segment_id", "source_id", "owner_id", "enabled", "requestable", "status", "phase", "completed", "deadline", "identity_count"),
+		Attributes: copySailpointAttributes(attrs, "policy_id", "policy_name", "policy_type", "policy_status", "role_id", "role_name", "access_profile_id", "identity_profile_id", "lifecycle_state", "campaign_id", "certification_id", "segment_id", "source_id", "schedule_id", "schedule_type", "cron_expression", "owner_id", "enabled", "requestable", "status", "phase", "completed", "deadline", "identity_count"),
 	})
 	if sourceID := strings.TrimSpace(attrs["source_id"]); sourceID != "" {
 		sourceURN := identityApplicationURN(tenantID, sailpointIdentitynowProfile.Provider, sourceID)

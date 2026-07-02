@@ -165,6 +165,7 @@ func TestSailpointIdentitynowCertificationProjectionCopiesPolicyStatus(t *testin
 	event := sailpointIdentitynowEvent("sailpoint_identitynow.certifications", map[string]string{
 		"certification_id":   "certification-1",
 		"certification_name": "Finance approver certification",
+		"policy_type":        "certification",
 		"policy_status":      "ACTIVE",
 		"phase":              "ACTIVE",
 	})
@@ -177,10 +178,100 @@ func TestSailpointIdentitynowCertificationProjectionCopiesPolicyStatus(t *testin
 			if got := entity.Attributes["policy_status"]; got != "ACTIVE" {
 				t.Fatalf("policy_status = %q, want ACTIVE", got)
 			}
+			if got := entity.Attributes["policy_type"]; got != "certification" {
+				t.Fatalf("policy_type = %q, want certification", got)
+			}
 			return
 		}
 	}
 	t.Fatalf("missing certification entity in %#v", entities)
+}
+
+func TestSailpointIdentitynowSourceHealthProjectionCopiesHealthMetadata(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.source_health", map[string]string{
+		"source_id":     "source-1",
+		"source_name":   "Corporate Active Directory",
+		"source_type":   "Active Directory - Direct",
+		"status":        "SOURCE_STATE_HEALTHY",
+		"hostname":      "ad.example.test",
+		"org":           "acme",
+		"authoritative": "true",
+		"cluster":       "false",
+	})
+	entities, _, err := sailpointIdentitynowSourceHealthProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	entity := sailpointEntityByType(entities, "sailpoint_identitynow.source_health")
+	if entity == nil {
+		t.Fatalf("missing source health entity in %#v", entities)
+	}
+	for key, want := range map[string]string{
+		"source_name":   "Corporate Active Directory",
+		"source_type":   "Active Directory - Direct",
+		"org":           "acme",
+		"authoritative": "true",
+		"cluster":       "false",
+	} {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestSailpointIdentitynowSourceScheduleProjectionCopiesCronExpression(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.source_schedules", map[string]string{
+		"source_id":       "source-1",
+		"schedule_id":     "source-1-ACCOUNT_AGGREGATION",
+		"schedule_type":   "ACCOUNT_AGGREGATION",
+		"cron_expression": "0 0 2 * * ?",
+		"policy_id":       "source-1-ACCOUNT_AGGREGATION",
+		"policy_name":     "ACCOUNT_AGGREGATION",
+		"policy_type":     "source_schedule",
+	})
+	entities, _, err := sailpointIdentitynowSourceSchedulesProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	entity := sailpointEntityByType(entities, "sailpoint_identitynow.source_schedule")
+	if entity == nil {
+		t.Fatalf("missing source schedule entity in %#v", entities)
+	}
+	if got := entity.Attributes["cron_expression"]; got != "0 0 2 * * ?" {
+		t.Fatalf("cron_expression = %q, want schedule expression", got)
+	}
+	if got := entity.Attributes["schedule_type"]; got != "ACCOUNT_AGGREGATION" {
+		t.Fatalf("schedule_type = %q, want ACCOUNT_AGGREGATION", got)
+	}
+}
+
+func TestSailpointIdentitynowAuditProjectionLinksUserResources(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.access_request_status", map[string]string{
+		"actor_id":      "identity-actor",
+		"actor_name":    "Riley Chen",
+		"resource_id":   "identity-resource",
+		"resource_name": "Morgan Alvarez",
+		"resource_type": "user",
+		"event_type":    "GRANT_ACCESS",
+	})
+	entities, links, err := sailpointIdentitynowAccessRequestStatusProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	actorURN := identityUserURN("tenant", "sailpoint_identitynow", "identity-actor", "")
+	resourceURN := identityUserURN("tenant", "sailpoint_identitynow", "identity-resource", "")
+	if !hasProjectedEntityURN(entities, actorURN) {
+		t.Fatalf("missing actor user entity %q in %#v", actorURN, entities)
+	}
+	if !hasProjectedEntityURN(entities, resourceURN) {
+		t.Fatalf("missing resource user entity %q in %#v", resourceURN, entities)
+	}
+	if hasProjectedEntityURN(entities, projectionURN("tenant", "sailpoint_identitynow_identity", "identity-resource")) {
+		t.Fatalf("created disconnected identity resource entity in %#v", entities)
+	}
+	if !projectedLinksContain(links, actorURN, relationActedOn, resourceURN) {
+		t.Fatalf("missing acted_on link %q -> %q in %#v", actorURN, resourceURN, links)
+	}
 }
 
 func TestSailpointIdentitynowCertificationReviewProjectionUsesAccessType(t *testing.T) {
@@ -241,12 +332,16 @@ func TestSailpointIdentitynowCertificationReviewProjectionSkipsUnknownAccessType
 }
 
 func sailpointHasEntityType(entities []*ports.ProjectedEntity, entityType string) bool {
+	return sailpointEntityByType(entities, entityType) != nil
+}
+
+func sailpointEntityByType(entities []*ports.ProjectedEntity, entityType string) *ports.ProjectedEntity {
 	for _, entity := range entities {
 		if entity.EntityType == entityType {
-			return true
+			return entity
 		}
 	}
-	return false
+	return nil
 }
 
 func TestSailpointIdentitynowPersonalAccessTokenProjection(t *testing.T) {

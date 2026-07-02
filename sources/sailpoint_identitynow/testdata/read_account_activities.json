@@ -41,7 +41,7 @@
       "actor_name": "Riley Chen",
       "resource_id": "2c91808568c529c60168cca6f90c1001",
       "resource_name": "Morgan Alvarez",
-      "resource_type": "identity",
+      "resource_type": "user",
       "event_type": "appRequest",
       "observed_at": "2026-06-15T16:20:00Z",
       "external_id": "2c9180835d2e5168015d32f890ca2999",

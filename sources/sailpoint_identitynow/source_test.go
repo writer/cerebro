@@ -169,7 +169,7 @@ func TestSourceAccessRequestStatusEmitsAuditProjectionAttributes(t *testing.T) {
 		"actor_name":    "Request Owner",
 		"resource_id":   "identity-1",
 		"resource_name": "Jane Access",
-		"resource_type": "identity",
+		"resource_type": "user",
 		"event_type":    "EXECUTED",
 	} {
 		if got := attrs[key]; got != want {

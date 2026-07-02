@@ -41,6 +41,7 @@
       "completed": "false",
       "signed": "false",
       "phase": "ACTIVE",
+      "policy_type": "certification",
       "policy_status": "ACTIVE",
       "observed_at": "2026-06-15T16:20:00Z",
       "external_id": "2c9180835d2e5168015d32f890ca1581",
