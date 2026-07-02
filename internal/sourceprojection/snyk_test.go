@@ -205,6 +205,17 @@ func TestSnykAuditProjectionLinksMembershipEventsToScope(t *testing.T) {
 			wantURNKind:      "snyk_groups",
 		},
 		{
+			name:       "group membership from event kind",
+			kind:       "snyk.group_audit_logs",
+			resourceID: "group-1",
+			attributes: map[string]string{
+				"resource_type": "membership",
+				"event_type":    "group.member.add",
+			},
+			wantResourceType: "snyk.groups",
+			wantURNKind:      "snyk_groups",
+		},
+		{
 			name:       "org membership",
 			kind:       "snyk.audit_logs",
 			resourceID: "org-1",

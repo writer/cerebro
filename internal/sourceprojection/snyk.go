@@ -189,7 +189,7 @@ func snykAuditResourceURNKind(event *cerebrov1.EventEnvelope, resourceType strin
 	switch normalizeIdentifier(resourceType) {
 	case "membership", "group_membership", "org_membership":
 		attributes := event.GetAttributes()
-		if strings.TrimSpace(attributes["group_id"]) != "" || normalizeIdentifier(event.GetKind()) == "snyk_group_audit_logs" {
+		if strings.TrimSpace(attributes["group_id"]) != "" || normalizeIdentifier(event.GetKind()) == "snyk.group_audit_logs" {
 			return "snyk_groups"
 		}
 		if strings.TrimSpace(attributes["org_id"]) != "" {
