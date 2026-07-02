@@ -184,6 +184,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "mfa_posture",
           "dimension_type": "app_entitlement",
@@ -356,34 +378,6 @@
             "identity_configuration"
           ],
           "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -2297,6 +2291,144 @@
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.20"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "account_rulesets",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account_ruleset"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "dns_records",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "dns_record"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "load_balancer_pools",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "load_balancer_pool"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "load_balancers",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "load_balancer"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "zone_rulesets",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "zone_ruleset"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "gateway_rules",
+          "dimension_type": "entity_family",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "gateway_rule"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.20"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.6"
+            }
+          ]
+        }
       ]
     },
     {
@@ -3839,6 +3971,28 @@
             "access_review",
             "identity_configuration",
             "relationship_evidence"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
           ],
           "control_domains": [
             "identity_access"
@@ -5672,6 +5826,32 @@
           ]
         },
         {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -5830,51 +6010,6 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "active_account",
-            "deprovisioned",
-            "dormant_user",
-            "employee_record",
-            "external_user",
-            "last_login",
-            "never_logged_in",
-            "stale_login",
-            "suspended",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.16"
-            },
-            {
-              "framework_name": "ISO 27001:2022",
-              "control_id": "A.5.18"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.6"
             }
           ]
         }
@@ -7779,6 +7914,51 @@
             "access_review",
             "identity_configuration",
             "relationship_evidence"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "access_groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "access_group",
+            "zone_access_group"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "members",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "member"
+          ],
+          "evidence_types": [
+            "identity_configuration"
           ],
           "control_domains": [
             "identity_access"
@@ -10095,6 +10275,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "applications"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -10538,6 +10740,28 @@
           ]
         },
         {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "users",
           "dimension_type": "entity_family",
@@ -10699,32 +10923,6 @@
             "super_admin"
           ],
           "evidence_types": [
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.2"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
             "identity_configuration"
           ],
           "control_domains": [
@@ -12037,6 +12235,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "mfa_posture",
           "dimension_type": "app_entitlement",
@@ -12209,34 +12429,6 @@
             "identity_configuration"
           ],
           "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
             "identity_access"
           ],
           "matched_control_refs": [
@@ -22766,6 +22958,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -23140,6 +23354,28 @@
               "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -38303,6 +38539,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "load_balancers",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "load_balancer"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "groups",
           "dimension_type": "entity_family",
@@ -38926,6 +39184,28 @@
               "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -41709,18 +41989,13 @@
           ]
         },
         {
-          "source_id": "google_workspace",
-          "dimension_id": "mfa_posture",
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
           "dimension_type": "app_entitlement",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "2sv",
-            "admin_mfa",
-            "mfa",
-            "two_factor",
-            "two_step_verification",
-            "user"
+            "groups"
           ],
           "evidence_types": [
             "identity_configuration"
@@ -41730,8 +42005,8 @@
           ],
           "matched_control_refs": [
             {
-              "framework_name": "CIS Controls v8",
-              "control_id": "6"
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -42283,6 +42558,28 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "8.4"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -44345,6 +44642,28 @@
               "control_id": "8.4"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -44804,6 +45123,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -51428,6 +51769,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -51741,6 +52104,28 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "8.3"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -56494,6 +56879,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -58588,6 +58995,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "groups"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -58833,6 +59262,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "groups"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -63314,6 +63765,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -64021,6 +64494,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -64157,6 +64652,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -64955,6 +65472,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -65493,6 +66032,28 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "3.5"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "audit_events",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit_events"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         }
@@ -66606,6 +67167,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "groups"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -69268,6 +69851,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -69798,6 +70403,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -70269,6 +70896,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -72986,6 +73635,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -78405,6 +79076,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "acl_grants",
           "dimension_type": "app_entitlement",
@@ -78823,6 +79516,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -92719,6 +93434,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -101812,6 +102549,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -106538,6 +107297,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -122389,6 +123170,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -122508,6 +123311,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -122669,6 +123494,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -122828,6 +123675,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -122947,6 +123816,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -123114,6 +124005,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -123279,6 +124192,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -123398,6 +124333,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -123553,6 +124510,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -123672,6 +124651,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -123795,6 +124796,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -123916,6 +124939,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -124035,6 +125080,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -124206,6 +125273,28 @@
           "control_domains": [
             "data_protection",
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -189837,6 +190926,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "members",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "member"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -237174,6 +238285,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "permission",
           "dimension_type": "entity_family",
@@ -237697,6 +238830,28 @@
               "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "groups"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
@@ -240522,6 +241677,28 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -246417,6 +247594,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "groups",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "groups"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -247065,6 +248264,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -247520,6 +248741,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -247752,6 +248995,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "load_balancers",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "load_balancer"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -248567,6 +249832,28 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -249543,6 +250830,28 @@
               "control_id": "AC-3"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -249681,6 +250990,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
             }
           ]
         }
@@ -249877,6 +251208,32 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
             },
             {
               "framework_name": "SOC 2",
@@ -250196,6 +251553,32 @@
             {
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "7.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
             },
             {
               "framework_name": "SOC 2",
@@ -250757,6 +252140,51 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "roles",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.5.18"
             }
           ]
         }
@@ -251832,6 +253260,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         }
@@ -255586,6 +257036,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "audit_logs",
+          "dimension_type": "audit_event",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "audit_log"
+          ],
+          "evidence_types": [
+            "logging_configuration"
+          ],
+          "control_domains": [
+            "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.15"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         }
@@ -259725,6 +261201,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "permission",
           "dimension_type": "entity_family",
@@ -260757,6 +262255,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -267877,6 +269397,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "google_workspace",
           "dimension_id": "mfa_posture",
           "dimension_type": "app_entitlement",
@@ -267928,37 +269470,6 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "dormant_account_reviews",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "dormant_user",
-            "last_login",
-            "never_logged_in",
-            "reviewer_decision",
-            "stale_login"
-          ],
-          "evidence_types": [
-            "access_review",
-            "reviewer_attestation"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             }
           ]
         }
@@ -270581,6 +272092,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
+            }
+          ]
         }
       ]
     },
@@ -270990,6 +272523,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "users"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.2"
             }
           ]
         },
@@ -272923,6 +274478,28 @@
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-3"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -280621,6 +282198,28 @@
           ]
         },
         {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "acl_grants",
           "dimension_type": "app_entitlement",
@@ -281110,6 +282709,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -285062,6 +286683,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -286606,6 +288249,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "accounts",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
