@@ -11,9 +11,9 @@
       "issue_value": "Macintosh HD",
       "title": "Disk encryption disabled",
       "check_id": "check_01",
-      "check_url": "https://api.kolide.com/checks/check_01",
+      "check_url": "https://api.kolide.example.test/checks/check_01",
       "device_id": "device_01",
-      "device_url": "https://api.kolide.com/devices/device_01",
+      "device_url": "https://api.kolide.example.test/devices/device_01",
       "detected_at": "2026-05-20T14:00:00Z",
       "last_rechecked_at": "2026-05-21T09:15:00Z",
       "blocks_device_at": "2026-05-27T14:00:00Z",
@@ -38,11 +38,11 @@
       "last_rechecked_at": "2026-05-21T09:15:00Z",
       "device_information": {
         "identifier": "device_01",
-        "location": "https://api.kolide.com/devices/device_01"
+        "location": "https://api.kolide.example.test/devices/device_01"
       },
       "check_information": {
         "identifier": "check_01",
-        "location": "https://api.kolide.com/checks/check_01"
+        "location": "https://api.kolide.example.test/checks/check_01"
       }
     },
     "schema_ref": "kolide/issue/v1",

@@ -13,7 +13,7 @@
       "serial_number": "PF4KOLIDE002",
       "user_id": "person_02",
       "owner_id": "person_02",
-      "owner_url": "https://api.kolide.com/people/person_02",
+      "owner_url": "https://api.kolide.example.test/people/person_02",
       "registered_at": "2026-05-04T10:00:00Z",
       "last_authenticated_at": "2026-05-28T11:20:00Z",
       "last_seen_at": "2026-05-28T11:45:00Z"
@@ -29,7 +29,7 @@
       "last_seen_at": "2026-05-28T11:45:00Z",
       "registered_owner_info": {
         "identifier": "person_02",
-        "location": "https://api.kolide.com/people/person_02"
+        "location": "https://api.kolide.example.test/people/person_02"
       },
       "serial": "PF4KOLIDE002",
       "hardware_uuid": "B6124D09-BD62-4638-B228-184F7C6C8D99",

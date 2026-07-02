@@ -3,6 +3,7 @@ package kolide
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,19 +233,29 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
 				if r.URL.Path != tt.path {
-					t.Fatalf("request path = %q, want %s", r.URL.Path, tt.path)
+					t.Errorf("request path = %q, want %s", r.URL.Path, tt.path)
+					http.Error(w, "unexpected path", http.StatusInternalServerError)
+					return
 				}
 				if got := r.URL.Query().Get("per_page"); got == "" {
-					t.Fatalf("per_page query is empty")
+					t.Errorf("per_page query is empty")
+					http.Error(w, "missing per_page", http.StatusInternalServerError)
+					return
 				}
 				if got := r.URL.Query().Get("limit"); got != "" {
-					t.Fatalf("limit query = %q, want Kolide per_page only", got)
+					t.Errorf("limit query = %q, want Kolide per_page only", got)
+					http.Error(w, "unexpected limit", http.StatusInternalServerError)
+					return
 				}
 				if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
-					t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
+					t.Errorf("Authorization = %q, want Bearer kolide-token", got)
+					http.Error(w, "unexpected auth", http.StatusInternalServerError)
+					return
 				}
 				if got := r.Header.Get("X-Kolide-Api-Version"); got != defaultAPIVersion {
-					t.Fatalf("X-Kolide-Api-Version = %q, want %s", got, defaultAPIVersion)
+					t.Errorf("X-Kolide-Api-Version = %q, want %s", got, defaultAPIVersion)
+					http.Error(w, "unexpected api version", http.StatusInternalServerError)
+					return
 				}
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"data":       []map[string]any{tt.record},
@@ -321,9 +332,11 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want provider unavailable error")
 	}
-	if !strings.Contains(err.Error(), "kolide API returned 401") ||
-		!strings.Contains(err.Error(), "This feature has been disabled by your organization") {
-		t.Fatalf("Read() error = %v, want Kolide unavailable message", err)
+	var statusErr interface {
+		StatusCode() int
+	}
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusUnauthorized {
+		t.Fatalf("Read() error = %v, want provider status 401", err)
 	}
 }
 
@@ -334,7 +347,9 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/devices" {
-			t.Fatalf("request path = %q, want /devices", r.URL.Path)
+			t.Errorf("request path = %q, want /devices", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_, _ = w.Write(fixture)
 	}))
@@ -369,7 +384,9 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/devices" {
-			t.Fatalf("request path = %q, want /devices", r.URL.Path)
+			t.Errorf("request path = %q, want /devices", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -416,7 +433,9 @@ func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/devices" {
-			t.Fatalf("request path = %q, want /devices", r.URL.Path)
+			t.Errorf("request path = %q, want /devices", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -455,10 +474,14 @@ func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/packages" {
-			t.Fatalf("request path = %q, want /packages", r.URL.Path)
+			t.Errorf("request path = %q, want /packages", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
-			t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
+			t.Errorf("Authorization = %q, want Bearer kolide-token", got)
+			http.Error(w, "unexpected auth", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -513,7 +536,9 @@ func TestReadSoftwareFamily(t *testing.T) {
 func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/packages" {
-			t.Fatalf("request path = %q, want /packages", r.URL.Path)
+			t.Errorf("request path = %q, want /packages", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -560,7 +585,9 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/issues" {
-			t.Fatalf("request path = %q, want /issues", r.URL.Path)
+			t.Errorf("request path = %q, want /issues", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -607,7 +634,9 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 func TestReadIssueFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/issues" {
-			t.Fatalf("request path = %q, want /issues", r.URL.Path)
+			t.Errorf("request path = %q, want /issues", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -674,7 +703,9 @@ func TestReadIssueFamily(t *testing.T) {
 func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/issues" {
-			t.Fatalf("request path = %q, want /issues", r.URL.Path)
+			t.Errorf("request path = %q, want /issues", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{{
@@ -720,7 +751,9 @@ func TestReadIssueFamilyDoesNotUseBlockDeadlineAsOccurredAt(t *testing.T) {
 func TestReadCheckFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/checks" {
-			t.Fatalf("request path = %q, want /checks", r.URL.Path)
+			t.Errorf("request path = %q, want /checks", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{

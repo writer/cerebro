@@ -8,7 +8,7 @@
       "last_seen_at": "2026-05-30T08:30:00Z",
       "registered_owner_info": {
         "identifier": "person_01",
-        "location": "https://api.kolide.com/people/person_01"
+        "location": "https://api.kolide.example.test/people/person_01"
       },
       "operating_system": "macOS 15.5",
       "hardware_model": "MacBook Pro",

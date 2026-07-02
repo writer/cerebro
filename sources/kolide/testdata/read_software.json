@@ -14,14 +14,14 @@
       "version": "1.12.3",
       "installed_version": "1.12.3",
       "built_at": "2026-05-15T18:45:00Z",
-      "download_url": "https://api.kolide.com/packages/package_01"
+      "download_url": "https://api.kolide.example.test/packages/package_01"
     },
     "id": "kolide-fixture-software-01",
     "kind": "kolide.software",
     "occurred_at": "2026-05-15T18:45:00Z",
     "payload": {
       "id": "package_01",
-      "url": "https://api.kolide.com/packages/package_01",
+      "url": "https://api.kolide.example.test/packages/package_01",
       "version": "1.12.3",
       "built_at": "2026-05-15T18:45:00Z"
     },
