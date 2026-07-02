@@ -341,6 +341,32 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{
+		familyCheck,
+		familyDevice,
+		familyIssue,
+		familySoftware,
+		familyUserDevice,
+		familyVulnerability,
+	} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+}
+
 func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/device.json")
 	if err != nil {

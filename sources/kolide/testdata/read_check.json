@@ -34,6 +34,7 @@
       "issue_title": "Enable disk encryption",
       "fix_instructions_template": "Turn on FileVault.",
       "rationale_template": "Disk encryption protects local data.",
+      "updated_at": "2026-05-30T08:30:00Z",
       "blocks_auth_configuration": {
         "blocking_enabled": true,
         "grace_period_days": 3
