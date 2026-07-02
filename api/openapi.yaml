@@ -487,7 +487,7 @@ paths:
         '200':
           description: Connector catalog with executable built-in sources plus catalog-only connector definitions. Default and full responses include runtime counts, credential capability state, catalog status (catalog_ready, generateable, needs_auth_extension, needs_bespoke_runtime), classifier output, auth model, verification endpoint, resource families, backend-advertised connection methods when executable, credential-store choices, deployment/readiness guidance, product groups, region guidance, and source resource scope options including support notes for resource scoping. Summary responses keep catalog browsing fields and omit setup payloads; use /connectors/{sourceID} for one connector's full setup and operations detail.
         '400':
-          description: Connector catalog view or tenant filter was invalid.
+          description: Connector catalog view was invalid.
   /connectors/{sourceID}:
     get:
       summary: Get connector operations summary
