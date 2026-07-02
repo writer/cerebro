@@ -77,6 +77,48 @@ func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
 	}
 }
 
+func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps" {
+			t.Fatalf("request path = %q, want /apps", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"device_id": "device-1", "bundle_id": "com.example.app", "name": "Example App"},
+				{"device_id": "device-2", "bundle_id": "com.example.app", "name": "Example App"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "app",
+		Path:    "/apps",
+		URNKind: "test_app",
+		IDKeys:  []string{"id", "device_id+bundle_id"},
+	})
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "app",
+		"token":     "token-1",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 2 {
+		t.Fatalf("len(URNs) = %d, want per-device app installations", len(urns))
+	}
+	want := map[sourcecdk.URN]struct{}{
+		"urn:cerebro:writer:test_app:device-1:com.example.app": {},
+		"urn:cerebro:writer:test_app:device-2:com.example.app": {},
+	}
+	for _, urn := range urns {
+		if _, ok := want[urn]; !ok {
+			t.Fatalf("unexpected URN %q, want %#v", urn, want)
+		}
+	}
+}
+
 func TestReadPagesJSONAPIRecords(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

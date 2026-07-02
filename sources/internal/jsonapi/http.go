@@ -1335,12 +1335,32 @@ func rawString(raw json.RawMessage) string {
 func firstValueString(values map[string]any, paths ...string) string {
 	for _, path := range paths {
 		for _, candidate := range attributePaths(path) {
-			if value := valueString(valueAt(values, candidate)); value != "" {
+			if value := valueStringForPath(values, candidate); value != "" {
 				return value
 			}
 		}
 	}
 	return ""
+}
+
+func valueStringForPath(values map[string]any, path string) string {
+	if !strings.Contains(path, "+") {
+		return valueString(valueAt(values, path))
+	}
+	parts := strings.Split(path, "+")
+	valuesForParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return ""
+		}
+		value := valueString(valueAt(values, part))
+		if value == "" {
+			return ""
+		}
+		valuesForParts = append(valuesForParts, value)
+	}
+	return strings.Join(valuesForParts, ":")
 }
 
 func attributePaths(path string) []string {

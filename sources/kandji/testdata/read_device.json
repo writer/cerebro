@@ -1,7 +1,7 @@
 [
   {
     "attributes": {
-      "agent_installed": "True",
+      "agent_installed": "true",
       "agent_installed_at": "2024-06-17 11:32:35+00:00",
       "blueprint_id": "ab102b9d-8e9c-420d-a498-f2a1123091c7",
       "blueprint_name": "Engineering Macs",

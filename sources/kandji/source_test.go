@@ -224,6 +224,61 @@ func TestReadApplicationFamily(t *testing.T) {
 	if attrs["device_name"] != "MacBook Pro" || attrs["platform"] != "Mac" || attrs["owner_email"] != "alice@example.com" {
 		t.Fatalf("attrs = %#v, want Prism device/user attributes", attrs)
 	}
+	if attrs["external_id"] != "device-1:com.apple.Safari" {
+		t.Fatalf("external_id = %q, want device-scoped bundle id", attrs["external_id"])
+	}
+}
+
+func TestReadApplicationFamilyKeepsSameBundleOnDifferentDevices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/prism/apps" {
+			t.Errorf("request path = %q, want /api/v1/prism/apps", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"device_id": "device-1", "bundle_id": "com.apple.Safari", "name": "Safari", "version": "18.0"},
+				{"device_id": "device-2", "bundle_id": "com.apple.Safari", "name": "Safari", "version": "18.0"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kandji-token",
+		"family":    "application",
+	})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 2 {
+		t.Fatalf("len(URNs) = %d, want both per-device app installations", len(urns))
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want both per-device app installations", len(pull.Events))
+	}
+	got := map[string]bool{}
+	for _, event := range pull.Events {
+		got[event.Attributes["external_id"]] = true
+	}
+	for _, want := range []string{"device-1:com.apple.Safari", "device-2:com.apple.Safari"} {
+		if !got[want] {
+			t.Fatalf("external IDs = %#v, missing %q", got, want)
+		}
+	}
 }
 
 func TestReadVulnerabilityFamily(t *testing.T) {
@@ -281,6 +336,9 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	if attrs["severity"] != "High" || attrs["description"] != "WebKit memory safety issue" || attrs["serial_number"] != "SERIAL1" {
 		t.Fatalf("attrs = %#v, want Kandji vulnerability detection attributes", attrs)
 	}
+	if attrs["external_id"] != "device-1:CVE-2026-0001:Safari:18.0" {
+		t.Fatalf("external_id = %q, want device-scoped CVE detection id", attrs["external_id"])
+	}
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
@@ -305,9 +363,9 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 		kind            string
 		wantResourceURN string
 	}{
-		{family: familyApplication, kind: "kandji.application", wantResourceURN: "urn:cerebro:tenant:kandji_application:com.agilebits.onepassword7"},
+		{family: familyApplication, kind: "kandji.application", wantResourceURN: "urn:cerebro:tenant:kandji_application:aa79459d-8566-4655-b09a-8f5c6bcf8b43:com.agilebits.onepassword7"},
 		{family: familyDevice, kind: "kandji.device", wantResourceURN: "urn:cerebro:tenant:kandji_device:03f81208-2b6a-4a77-81f5-cf1633bcfb95"},
-		{family: familyVulnerability, kind: "kandji.vulnerability", wantResourceURN: "urn:cerebro:tenant:kandji_vulnerability:CVE-2024-12345"},
+		{family: familyVulnerability, kind: "kandji.vulnerability", wantResourceURN: "urn:cerebro:tenant:kandji_vulnerability:abcd:CVE-2024-12345:Acrobat Reader:1.0.0"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)
@@ -402,7 +460,13 @@ func TestReadVulnerabilityFamilyKeepsSameCVEOnDifferentDevices(t *testing.T) {
 	if pull.Events[0].Id == pull.Events[1].Id {
 		t.Fatalf("event IDs are equal %q, want per-row identities", pull.Events[0].Id)
 	}
-	if pull.Events[0].Attributes["external_id"] == pull.Events[1].Attributes["external_id"] {
-		t.Fatalf("external_id values are equal %q, want per-row fallback identities", pull.Events[0].Attributes["external_id"])
+	got := map[string]bool{}
+	for _, event := range pull.Events {
+		got[event.Attributes["external_id"]] = true
+	}
+	for _, want := range []string{"device-1:CVE-2026-0001:Safari:1.0.0", "device-2:CVE-2026-0001:Safari:1.0.0"} {
+		if !got[want] {
+			t.Fatalf("external IDs = %#v, missing %q", got, want)
+		}
 	}
 }
