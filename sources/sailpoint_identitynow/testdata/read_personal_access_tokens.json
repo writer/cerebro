@@ -7,7 +7,7 @@
     "schema_ref": "sailpoint_identitynow/personal_access_tokens/v1",
     "occurred_at": "2026-06-15T16:20:00Z",
     "payload": {
-      "id": "86f1dc6fe8f54414950454cbb11278fa",
+      "id": "pat-fixture-1",
       "name": "Data ingestion automation",
       "scope": [
         "sp:scopes:all"
@@ -32,7 +32,7 @@
       "schema": "personal_access_tokens",
       "record_class": "credential",
       "tenant_id": "tenant",
-      "credential_id": "86f1dc6fe8f54414950454cbb11278fa",
+      "credential_id": "pat-fixture-1",
       "credential_type": "personal_access_token",
       "credential_name": "Data ingestion automation",
       "subject_id": "2c91808568c529c60168cca6f90c1002",
@@ -44,8 +44,8 @@
       "managed": "false",
       "created_at": "2026-06-01T08:00:00Z",
       "observed_at": "2026-06-15T16:20:00Z",
-      "external_id": "86f1dc6fe8f54414950454cbb11278fa",
-      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_personal_access_tokens:86f1dc6fe8f54414950454cbb11278fa"
+      "external_id": "pat-fixture-1",
+      "resource_urn": "urn:cerebro:tenant:sailpoint_identitynow_personal_access_tokens:pat-fixture-1"
     }
   }
 ]

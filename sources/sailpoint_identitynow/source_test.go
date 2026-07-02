@@ -3,9 +3,9 @@ package sailpoint_identitynow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -24,6 +24,7 @@ func TestSourceCheckAndReadUsesOAuthAndOffsetPaging(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth/token" {
 			tokenRequests++
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			if err := r.ParseForm(); err != nil {
 				t.Fatalf("ParseForm() error = %v", err)
 			}
@@ -188,8 +189,8 @@ func TestSourceProviderUnavailableForMissingFanoutIDs(t *testing.T) {
 		"token":     "test-token",
 		"family":    sailpointapi.FamilyRoleAssignedIdentities,
 	})
-	if _, err := source.Read(context.Background(), cfg, nil); err == nil || !strings.Contains(err.Error(), "role_id values are required") {
-		t.Fatalf("Read() error = %v, want missing role_id values error", err)
+	if _, err := source.Read(context.Background(), cfg, nil); !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		t.Fatalf("Read() error = %v, want ErrInvalidConfig", err)
 	}
 }
 

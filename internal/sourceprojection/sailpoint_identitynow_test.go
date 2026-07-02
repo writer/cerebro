@@ -6,37 +6,6 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-var sailpointIdentitynowProjectorCoverageEvents = []*cerebrov1.EventEnvelope{
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identities"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.accounts"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.account_entitlements"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.sources"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_schemas"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_health"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_provisioning_policies"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.source_schedules"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_profiles"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_profile_entitlements"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.roles"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_assigned_identities"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_entitlements"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.role_dimensions"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.entitlements"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_entitlements"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_role_assignments"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.identity_profiles"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.lifecycle_states"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.workgroups"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.workgroup_members"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.campaigns"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.certifications"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.certification_access_review_items"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.access_request_status"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.account_activities"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.personal_access_tokens"},
-	{SourceId: "sailpoint_identitynow", Kind: "sailpoint_identitynow.segments"},
-}
-
 func TestSailpointIdentitynowProjectsEveryRuntimeKind(t *testing.T) {
 	tests := []struct {
 		name    string
