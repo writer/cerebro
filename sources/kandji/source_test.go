@@ -365,7 +365,7 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}{
 		{family: familyApplication, kind: "kandji.application", wantResourceURN: "urn:cerebro:tenant:kandji_application:aa79459d-8566-4655-b09a-8f5c6bcf8b43:com.agilebits.onepassword7"},
 		{family: familyDevice, kind: "kandji.device", wantResourceURN: "urn:cerebro:tenant:kandji_device:03f81208-2b6a-4a77-81f5-cf1633bcfb95"},
-		{family: familyVulnerability, kind: "kandji.vulnerability", wantResourceURN: "urn:cerebro:tenant:kandji_vulnerability:abcd:CVE-2024-12345:Acrobat Reader:1.0.0"},
+		{family: familyVulnerability, kind: "kandji.vulnerability", wantResourceURN: "urn:cerebro:tenant:kandji_vulnerability:abcd:CVE-2024-12345:Acrobat%20Reader:1.0.0"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), familyConfigs[tt.family], nil)

@@ -17,6 +17,7 @@
       "mdm_enabled": "true",
       "model": "MacBook Air",
       "os": "Mac",
+      "os_name": "macOS",
       "os_version": "14.4.1",
       "owner_email": "platform-admin@example.com",
       "platform": "Mac",
@@ -28,6 +29,7 @@
       "serial_number": "FVHHFKF7Q6L4",
       "source_product": "kandji",
       "source_provider": "kandji",
+      "status": "ACTIVE",
       "tenant_id": "tenant",
       "user_email": "platform-admin@example.com",
       "user_id": "5344c996-8823-4b37-8d6e-8515fc7c3a0a"
@@ -89,9 +91,11 @@
         "local_hostname": "EN-MBA-042",
         "mac_address": "b8:2a:a9:b0:04:2f"
       },
+      "os_name": "macOS",
       "os_version": "14.4.1",
       "platform": "Mac",
       "serial_number": "FVHHFKF7Q6L4",
+      "status": "ACTIVE",
       "tags": [
         "engineering"
       ],

@@ -1358,7 +1358,7 @@ func valueStringForPath(values map[string]any, path string) string {
 		if value == "" {
 			return ""
 		}
-		valuesForParts = append(valuesForParts, value)
+		valuesForParts = append(valuesForParts, cerebrourn.EncodeSegment(value))
 	}
 	return strings.Join(valuesForParts, ":")
 }

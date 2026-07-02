@@ -84,8 +84,8 @@ func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
-				{"device_id": "device-1", "bundle_id": "com.example.app", "name": "Example App"},
-				{"device_id": "device-2", "bundle_id": "com.example.app", "name": "Example App"},
+				{"device_id": "device:1", "bundle_id": "com.example.app", "name": "Example App"},
+				{"device_id": "device", "bundle_id": "1:com.example.app", "name": "Example App"},
 			},
 		})
 	}))
@@ -109,8 +109,8 @@ func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
 		t.Fatalf("len(URNs) = %d, want per-device app installations", len(urns))
 	}
 	want := map[sourcecdk.URN]struct{}{
-		"urn:cerebro:writer:test_app:device-1:com.example.app": {},
-		"urn:cerebro:writer:test_app:device-2:com.example.app": {},
+		"urn:cerebro:writer:test_app:device%3A1:com.example.app": {},
+		"urn:cerebro:writer:test_app:device:1%3Acom.example.app": {},
 	}
 	for _, urn := range urns {
 		if _, ok := want[urn]; !ok {
