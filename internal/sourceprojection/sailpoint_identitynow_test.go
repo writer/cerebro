@@ -161,6 +161,28 @@ func TestSailpointIdentitynowCertificationReviewProjectionLinksAccess(t *testing
 	}
 }
 
+func TestSailpointIdentitynowCertificationProjectionCopiesPolicyStatus(t *testing.T) {
+	event := sailpointIdentitynowEvent("sailpoint_identitynow.certifications", map[string]string{
+		"certification_id":   "certification-1",
+		"certification_name": "Finance approver certification",
+		"policy_status":      "ACTIVE",
+		"phase":              "ACTIVE",
+	})
+	entities, _, err := sailpointIdentitynowCertificationsProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	for _, entity := range entities {
+		if entity.EntityType == "sailpoint_identitynow.certification" {
+			if got := entity.Attributes["policy_status"]; got != "ACTIVE" {
+				t.Fatalf("policy_status = %q, want ACTIVE", got)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing certification entity in %#v", entities)
+}
+
 func TestSailpointIdentitynowCertificationReviewProjectionUsesAccessType(t *testing.T) {
 	tests := []struct {
 		name           string

@@ -389,6 +389,7 @@ func Families() []jsonapi.Family {
 			"completed":          "completed",
 			"signed":             "signed",
 			"phase":              "phase",
+			"policy_status":      "phase|status",
 			"due":                "due",
 			"created_at":         "created",
 			"observed_at":        "modified|created",
