@@ -283,13 +283,13 @@ coverage_contract:
       notes:
         - "GET /logs uses Auth0 checkpoint mode with from/take and the last returned log_id."
     - id: incremental_sync
-      type: audit_event
+      type: incremental_sync
       title: Incremental cursor sync
       families: [users, roles, audit_events]
       support: supported
       high_value: true
-      evidence_types: [logging_configuration]
-      control_domains: [logging_monitoring]
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
       control_refs:
         - framework_name: "CIS Controls v8"
           control_id: "8"
