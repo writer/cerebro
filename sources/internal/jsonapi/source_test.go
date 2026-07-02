@@ -1031,28 +1031,17 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestReadUsesConfiguredNestedListKeys(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{
 				"otp_devices": []map[string]any{{"id": "device-1", "type_display_name": "OneLogin Protect"}},
-=======
-func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code": "Success",
-			"data": map[string]any{
-				"id":     "state-1",
-				"status": "connected",
->>>>>>> 6b23fa7a5 (Deepen Fivetran runtime coverage)
 			},
 		})
 	}))
 	defer server.Close()
 
 	source := newCustomTestSource(t, server.URL, Family{
-<<<<<<< HEAD
 		Name:       "mfa_devices",
 		Path:       "/users/1/otp_devices",
 		URNKind:    "test_mfa_device",
@@ -1063,7 +1052,29 @@ func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
 		"family":    "mfa_devices",
-=======
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Attributes["credential_id"] != "device-1" {
+		t.Fatalf("Events = %#v, want MFA device from nested list", pull.Events)
+	}
+}
+
+func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "Success",
+			"data": map[string]any{
+				"id":     "state-1",
+				"status": "connected",
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
 		Name:       "state",
 		Path:       "/state",
 		URNKind:    "test_state",
@@ -1074,23 +1085,17 @@ func TestReadSingletonUnwrapsProviderDataObject(t *testing.T) {
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
 		"family":    "state",
->>>>>>> 6b23fa7a5 (Deepen Fivetran runtime coverage)
 		"token":     "token-1",
 	}), nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-<<<<<<< HEAD
-	if len(pull.Events) != 1 || pull.Events[0].Attributes["credential_id"] != "device-1" {
-		t.Fatalf("Events = %#v, want MFA device from nested list", pull.Events)
-=======
 	if len(pull.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pull.Events))
 	}
 	attrs := pull.Events[0].Attributes
 	if attrs["resource_id"] != "state-1" || attrs["status"] != "connected" {
 		t.Fatalf("attributes = %#v, want unwrapped data object", attrs)
->>>>>>> 6b23fa7a5 (Deepen Fivetran runtime coverage)
 	}
 }
 
