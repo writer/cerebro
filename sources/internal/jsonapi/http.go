@@ -36,7 +36,7 @@ type record struct {
 const responseCursorDone = "__jsonapi_response_cursor_done__"
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
-	if !settings.perPageConfigured && family.Config.DefaultPageSize > 0 {
+	if !settings.perPageConfigured && family.Config.DefaultPageSize > 0 && pageSize >= family.Config.DefaultPageSize {
 		pageSize = family.Config.DefaultPageSize
 	}
 	query := url.Values{}

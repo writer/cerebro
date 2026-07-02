@@ -274,6 +274,46 @@ func TestSourceUsesFamilyDefaultPageSizeAndHonorsOverride(t *testing.T) {
 	}
 }
 
+func TestSourceCheckKeepsSmallProbeForDefaultPageSizeFamilies(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+
+	var roleLimits []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		switch r.URL.Path {
+		case "/v2025/identities":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		case "/v2025/roles":
+			roleLimits = append(roleLimits, r.URL.Query().Get("limit"))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "tenant",
+		"base_url":  server.URL + "/v2025",
+		"token":     "test-token",
+		"family":    sailpointapi.FamilyRoles,
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if len(roleLimits) != 1 || roleLimits[0] != "1" {
+		t.Fatalf("role limits = %v, want [1]", roleLimits)
+	}
+}
+
 func TestSourcePersonalAccessTokensUsesOffsetPagination(t *testing.T) {
 	source, err := New()
 	if err != nil {
