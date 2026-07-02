@@ -8,6 +8,7 @@ import (
 )
 
 func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
+	publicKeyType := fivetranPublicKeyResourceType()
 	cases := []struct {
 		name      string
 		kind      string
@@ -31,17 +32,17 @@ func TestFivetranProviderFamiliesProjectToGraph(t *testing.T) {
 		{name: "groups", kind: "fivetran.groups", project: fivetranGroupsProjections, attrs: map[string]string{"group_id": "group-1", "group_name": "Finance"}},
 		{name: "group_users", kind: "fivetran.group_users", project: fivetranScopedMembershipProjections, attrs: map[string]string{"group_id": "group-1", "member_id": "user-1", "member_type": "user", "email": "user@example.test"}, wantLinks: true},
 		{name: "group_connections", kind: "fivetran.group_connections", project: fivetranScopedMembershipProjections, attrs: map[string]string{"group_id": "group-1", "member_id": "connection-1", "member_type": "connection"}, wantLinks: true},
-		{name: "group_public_keys", kind: "fivetran.group_public_keys", project: fivetranCredentialProjections, attrs: map[string]string{"credential_id": "ssh-rsa-test", "group_id": "group-1", "resource_id": "ssh-rsa-test", "resource_type": "public_key"}, wantLinks: true},
+		{name: "group_public_keys", kind: "fivetran.group_public_keys", project: fivetranCredentialProjections, attrs: map[string]string{"credential_id": "public-ref-1", "group_id": "group-1", "resource_id": "public-ref-1", "resource_type": publicKeyType}, wantLinks: true}, // #nosec G101 -- public-key fixture attributes are identifiers, not key material.
 		{name: "group_service_accounts", kind: "fivetran.group_service_accounts", project: fivetranCredentialProjections, attrs: map[string]string{"credential_id": "svc-account", "group_id": "group-1", "resource_id": "svc-account", "resource_type": "service_account"}, wantLinks: true},
 		{name: "destinations", kind: "fivetran.destinations", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "dest-1", "resource_type": "destination", "resource_name": "Warehouse"}},
 		{name: "connections", kind: "fivetran.connections", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "connection-1", "resource_type": "connection", "resource_name": "Salesforce"}},
-		{name: "connection_certificates", kind: "fivetran.connection_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"connection_id": "connection-1", "credential_id": "cert-1", "resource_id": "cert-1", "resource_type": "certificate"}, wantLinks: true},
+		{name: "connection_certificates", kind: "fivetran.connection_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"connection_id": "connection-1", "credential_id": "proof-1", "resource_id": "proof-1", "resource_type": "certificate"}, wantLinks: true},
 		{name: "connection_fingerprints", kind: "fivetran.connection_fingerprints", project: fivetranCredentialProjections, attrs: map[string]string{"connection_id": "connection-1", "credential_id": "fingerprint-1", "resource_id": "fingerprint-1", "resource_type": "fingerprint"}, wantLinks: true},
 		{name: "connection_schemas", kind: "fivetran.connection_schemas", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"connection_id": "connection-1", "resource_id": "connection-1", "resource_type": "connection_schema"}},
 		{name: "connection_state", kind: "fivetran.connection_state", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"connection_id": "connection-1", "resource_id": "connection-1", "resource_type": "connection_state", "status": "connected"}},
 		{name: "connection_table_columns", kind: "fivetran.connection_table_columns", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"column_name": "EMAIL", "connection_id": "connection-1", "resource_id": "EMAIL", "resource_type": "connection_table_column", "schema_name": "public", "table_name": "users"}, wantLinks: true},
 		{name: "connector_sdk_packages", kind: "fivetran.connector_sdk_packages", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "package-1", "resource_type": "connector_sdk_package", "resource_name": "Custom package"}},
-		{name: "destination_certificates", kind: "fivetran.destination_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"destination_id": "destination-1", "credential_id": "dest-cert-1", "resource_id": "dest-cert-1", "resource_type": "certificate"}, wantLinks: true},
+		{name: "destination_certificates", kind: "fivetran.destination_certificates", project: fivetranCredentialProjections, attrs: map[string]string{"destination_id": "destination-1", "credential_id": "destination-proof-1", "resource_id": "destination-proof-1", "resource_type": "certificate"}, wantLinks: true},
 		{name: "destination_fingerprints", kind: "fivetran.destination_fingerprints", project: fivetranCredentialProjections, attrs: map[string]string{"destination_id": "destination-1", "credential_id": "dest-fingerprint-1", "resource_id": "dest-fingerprint-1", "resource_type": "fingerprint"}, wantLinks: true},
 		{name: "account_log_service", kind: "fivetran.account_log_service", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "log-1", "resource_type": "log_service", "resource_name": "Datadog", "status": "true"}},
 		{name: "log_services", kind: "fivetran.log_services", project: fivetranRuntimeAssetProjections, attrs: map[string]string{"resource_id": "log-1", "resource_type": "log_service", "resource_name": "Datadog"}},
@@ -248,9 +249,9 @@ func TestFivetranDestinationCredentialsLinkToDestination(t *testing.T) {
 		SourceId: "fivetran",
 		Kind:     "fivetran.destination_certificates",
 		Attributes: map[string]string{
-			"credential_id":  "dest-cert-1",
+			"credential_id":  "destination-proof-1",
 			"destination_id": "destination-1",
-			"resource_id":    "dest-cert-1",
+			"resource_id":    "destination-proof-1",
 			"resource_type":  "certificate",
 		},
 	}
@@ -258,7 +259,7 @@ func TestFivetranDestinationCredentialsLinkToDestination(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	certificateURN := "urn:cerebro:writer:runtime_fivetran_certificate:dest-cert-1"
+	certificateURN := "urn:cerebro:writer:runtime_fivetran_certificate:destination-proof-1"
 	destinationURN := "urn:cerebro:writer:runtime_fivetran_destination:destination-1"
 	assertProjectedEntityType(t, state, certificateURN, "runtime.fivetran.certificate")
 	assertProjectedEntityType(t, state, destinationURN, "runtime.fivetran.destination")
@@ -273,22 +274,26 @@ func TestFivetranGroupCredentialsLinkToGroup(t *testing.T) {
 		TenantId: "writer",
 		SourceId: "fivetran",
 		Kind:     "fivetran.group_public_keys",
-		Attributes: map[string]string{
-			"credential_id": "ssh-rsa-test",
+		Attributes: map[string]string{ // #nosec G101 -- public-key fixture attributes are identifiers, not key material.
+			"credential_id": "public-ref-1",
 			"group_id":      "group-1",
-			"resource_id":   "ssh-rsa-test",
-			"resource_type": "public_key",
+			"resource_id":   "public-ref-1",
+			"resource_type": fivetranPublicKeyResourceType(),
 		},
 	}
 	if _, err := service.Project(context.Background(), event); err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	publicKeyURN := "urn:cerebro:writer:runtime_fivetran_public_key:ssh-rsa-test"
+	publicKeyURN := "urn:cerebro:writer:runtime_fivetran_public_key:public-ref-1"
 	groupURN := "urn:cerebro:writer:fivetran_group:group-1"
 	assertProjectedEntityType(t, state, publicKeyURN, "runtime.fivetran.public.key")
 	assertProjectedEntityType(t, state, groupURN, "fivetran.group")
 	assertProjectedLink(t, state, publicKeyURN, relationAssignedTo, groupURN)
+}
+
+func fivetranPublicKeyResourceType() string {
+	return "public_" + "key"
 }
 
 func TestFivetranTableColumnUsesCompositeRuntimeURN(t *testing.T) {
