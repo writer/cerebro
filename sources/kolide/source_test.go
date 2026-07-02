@@ -77,6 +77,7 @@ func TestSourceCheckAndReadFamilies(t *testing.T) {
 				"os":                  "macOS 15.5",
 				"status":              "Good",
 				"authentication_mode": "only_registered_owner",
+				"registered_at":       "2026-05-01T12:00:00Z",
 			},
 		},
 		{
@@ -379,6 +380,12 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	if event.Attributes["device_name"] != "ENG-MBA-01" || event.Attributes["serial_number"] != "C02KOLIDE001" {
 		t.Fatalf("attrs = %#v, want fixture device name/serial", event.Attributes)
 	}
+	if got := event.Attributes["registered_at"]; got != "2026-05-01T12:00:00Z" {
+		t.Fatalf("registered_at = %q, want fixture timestamp", got)
+	}
+	if got := event.Attributes["registered"]; got != "" {
+		t.Fatalf("registered = %q, want empty when provider omits boolean registration state", got)
+	}
 }
 
 func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
@@ -395,6 +402,7 @@ func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 				"serial_number": "SERIAL1",
 				"failure_count": 3,
 				"registered":    true,
+				"registered_at": "2026-05-01T12:00:00Z",
 				"resolved_at":   nil,
 			}},
 		})
@@ -427,6 +435,9 @@ func TestReadDeviceFamilyEmitsHostPostureAttributes(t *testing.T) {
 	}
 	if attrs["registered"] != "true" {
 		t.Fatalf("registered = %q, want true", attrs["registered"])
+	}
+	if attrs["registered_at"] != "2026-05-01T12:00:00Z" {
+		t.Fatalf("registered_at = %q, want 2026-05-01T12:00:00Z", attrs["registered_at"])
 	}
 }
 

@@ -19,7 +19,6 @@
       "status": "Good",
       "authentication_mode": "only_registered_owner",
       "compliance_status": "Good",
-      "registered": "2026-05-01T12:00:00Z",
       "registered_at": "2026-05-01T12:00:00Z",
       "last_authenticated_at": "2026-05-29T17:05:00Z",
       "last_seen_at": "2026-05-30T08:30:00Z"

@@ -36,7 +36,7 @@ func families() []jsonapi.Family {
 				"compliance_status":     "auth_state|compliance_status",
 				"failure_count":         "failure_count|failing_checks_count|failures|open_issues_count",
 				"resolved_at":           "resolved_at",
-				"registered":            "registered_at|registered|enrolled|is_registered",
+				"registered":            "registered|enrolled|is_registered",
 				"mdm_enabled":           "mdm.enabled|mdm_enabled",
 				"last_seen_at":          "last_seen_at",
 				"owner_email":           "owner.email",
