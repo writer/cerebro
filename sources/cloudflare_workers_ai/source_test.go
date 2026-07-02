@@ -61,6 +61,9 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if got := event.Attributes["resource_name"]; got != "Llama 3.1 8B Instruct" {
 		t.Fatalf("resource_name = %q, want model name", got)
 	}
+	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:cloudflare_workers_ai_model_catalog:@cf%2Fmeta%2Fllama-3.1-8b-instruct" {
+		t.Fatalf("resource_urn = %q, want encoded model URN", got)
+	}
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {

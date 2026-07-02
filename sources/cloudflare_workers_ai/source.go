@@ -60,7 +60,9 @@ func New() (*Source, error) {
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "model_catalog", "source_system": "cloudflare_workers_ai"},
 				Config: jsonapi.FamilyConfig{
-					StaticQuery: map[string]string{"format": "openrouter"},
+					StaticQuery:     map[string]string{"format": "openrouter"},
+					EncodeURNID:     true,
+					ResourceURNKind: "cloudflare_workers_ai_model_catalog",
 				},
 			},
 			{
