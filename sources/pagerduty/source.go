@@ -54,28 +54,28 @@ func New() (*Source, error) {
 
 func (s *Source) Spec() *cerebrov1.SourceSpec { return s.inner.Spec() }
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
-		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
-			return s.inner.CheckPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
-		}
+	if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+		return s.inner.CheckPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
 	}
 	return s.inner.Check(ctx, cfg)
 }
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
-		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
-			return s.inner.DiscoverPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
-		}
+	if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+		return s.inner.DiscoverPathParamValues(ctx, cfg, pagerDutyServiceIDConfig, serviceIDs)
 	}
 	return s.inner.Discover(ctx, cfg)
 }
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	if sourcecdk.ConfigValue(cfg, "family") == familyIntegration {
-		if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
-			return s.inner.ReadPathParamValues(ctx, cfg, cursor, pagerDutyServiceIDConfig, serviceIDs)
-		}
+	if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+		return s.inner.ReadPathParamValues(ctx, cfg, cursor, pagerDutyServiceIDConfig, serviceIDs)
 	}
 	return s.inner.Read(ctx, cfg, cursor)
+}
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	if serviceIDs := pagerDutyIntegrationServiceIDs(cfg); len(serviceIDs) > 0 {
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, cfg, cursor, checkpoint, pagerDutyServiceIDConfig, serviceIDs)
+	}
+	return s.inner.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
@@ -231,6 +231,9 @@ func pagerDutyStaticAttributes() map[string]string {
 }
 
 func pagerDutyIntegrationServiceIDs(cfg sourcecdk.Config) []string {
+	if sourcecdk.ConfigValue(cfg, "family") != familyIntegration {
+		return nil
+	}
 	if values := splitConfigList(sourcecdk.ConfigValue(cfg, pagerDutyServiceIDsConfig)); len(values) > 0 {
 		return values
 	}
