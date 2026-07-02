@@ -26,10 +26,11 @@ import (
 )
 
 type record struct {
-	Raw      json.RawMessage
-	Values   map[string]any
-	ID       string
-	Identity string
+	Raw       json.RawMessage
+	Values    map[string]any
+	ID        string
+	IDEncoded bool
+	Identity  string
 }
 
 const responseCursorDone = "__jsonapi_response_cursor_done__"
@@ -860,14 +861,14 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 	if err := decoder.Decode(&values); err != nil {
 		return record{}, fmt.Errorf("decode record: %w", err)
 	}
-	id := firstValueString(values, family.IDKeys...)
+	id, idEncoded := firstValueStringInfo(values, family.IDKeys...)
 	if id == "" {
 		if family.RequireID {
 			return record{}, fmt.Errorf("%s id is required", family.Name)
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, IDEncoded: idEncoded, Identity: recordIdentity(id, values, family.Config.IdentityKeys)}, nil
 }
 
 func rawWithPathParams(raw json.RawMessage, pathParams map[string]string) (json.RawMessage, error) {
@@ -944,7 +945,7 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 	kind := firstNonEmpty(family.URNKind, family.Name)
 	urns := make([]sourcecdk.URN, 0, len(records))
 	for _, record := range dedupeRecords(records) {
-		recordID := urnRecordID(family, record.ID)
+		recordID := urnRecordID(family, record.ID, record.IDEncoded)
 		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
 		if err != nil {
 			return nil, err
@@ -1098,8 +1099,8 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	return attrs
 }
 
-func urnRecordID(family Family, recordID string) string {
-	if family.Config.EncodeURNID {
+func urnRecordID(family Family, recordID string, recordIDEncoded bool) string {
+	if family.Config.EncodeURNID && !recordIDEncoded {
 		return cerebrourn.EncodeSegment(recordID)
 	}
 	return recordID
@@ -1115,7 +1116,7 @@ func resourceURNFor(settings settings, family Family, attrs map[string]string, r
 	if strings.TrimSpace(attrs["resource_id"]) == "" && kind != recordKind {
 		return ""
 	}
-	recordID = urnRecordID(family, recordID)
+	recordID = urnRecordID(family, recordID, recordID == record.ID && record.IDEncoded)
 	urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", settings.tenantID, kind, recordID))
 	if err != nil {
 		return ""
@@ -1333,34 +1334,39 @@ func rawString(raw json.RawMessage) string {
 }
 
 func firstValueString(values map[string]any, paths ...string) string {
+	value, _ := firstValueStringInfo(values, paths...)
+	return value
+}
+
+func firstValueStringInfo(values map[string]any, paths ...string) (string, bool) {
 	for _, path := range paths {
 		for _, candidate := range attributePaths(path) {
-			if value := valueStringForPath(values, candidate); value != "" {
-				return value
+			if value, encoded := valueStringForPath(values, candidate); value != "" {
+				return value, encoded
 			}
 		}
 	}
-	return ""
+	return "", false
 }
 
-func valueStringForPath(values map[string]any, path string) string {
+func valueStringForPath(values map[string]any, path string) (string, bool) {
 	if !strings.Contains(path, "+") {
-		return valueString(valueAt(values, path))
+		return valueString(valueAt(values, path)), false
 	}
 	parts := strings.Split(path, "+")
 	valuesForParts := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return ""
+			return "", false
 		}
 		value := valueString(valueAt(values, part))
 		if value == "" {
-			return ""
+			return "", false
 		}
 		valuesForParts = append(valuesForParts, cerebrourn.EncodeSegment(value))
 	}
-	return strings.Join(valuesForParts, "/")
+	return strings.Join(valuesForParts, "/"), true
 }
 
 func attributePaths(path string) []string {

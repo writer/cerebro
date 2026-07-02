@@ -119,6 +119,39 @@ func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
 	}
 }
 
+func TestDiscoverDoesNotDoubleEncodeCompositeIDKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps" {
+			t.Fatalf("request path = %q, want /apps", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"device_id": "device:1", "bundle_id": "role/Admin+Owner"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "app",
+		Path:    "/apps",
+		URNKind: "test_app",
+		IDKeys:  []string{"device_id+bundle_id"},
+		Config:  FamilyConfig{EncodeURNID: true},
+	})
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "app",
+		"token":     "token-1",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_app:device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("URNs = %#v, want composite ID without second encoding pass", urns)
+	}
+}
+
 func TestRawScalarRecordSkipsCompositeIDKeys(t *testing.T) {
 	raw, err := rawRecordWithIDKey(Family{
 		IDKeys: []string{"device_id+bundle_id", "id"},
