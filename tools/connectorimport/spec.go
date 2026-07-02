@@ -42,10 +42,10 @@ func resolveSpec(f *fetcher, registry apisGuruRegistry, entry manifestTarget) (*
 func providerAPIReferences(registry apisGuruRegistry, entry manifestTarget) []string {
 	values := append([]string(nil), entry.ProviderAPIReferences...)
 	switch {
-	case strings.TrimSpace(entry.SpecURL) != "":
-		values = append(values, strings.TrimSpace(entry.SpecURL))
 	case strings.TrimSpace(entry.SpecFile) != "":
 		values = append(values, strings.TrimSpace(entry.SpecFile))
+	case strings.TrimSpace(entry.SpecURL) != "":
+		values = append(values, strings.TrimSpace(entry.SpecURL))
 	case strings.TrimSpace(entry.APIsGuru) != "":
 		if specURL, err := registry.specURL(entry.APIsGuru); err == nil {
 			values = append(values, specURL)

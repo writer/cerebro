@@ -44,3 +44,17 @@ func TestTargetWithProviderAPIReferencesDoesNotDuplicateManifestReferences(t *te
 		t.Fatalf("ProviderAPIReferences = %v, want %v", got, want)
 	}
 }
+
+func TestTargetWithProviderAPIReferencesUsesResolvedSpecSourcePrecedence(t *testing.T) {
+	entry := manifestTarget{
+		SourceID: "example",
+		SpecFile: "testdata/provider/openapi.yaml",
+		SpecURL:  "https://provider.example/openapi.json",
+	}
+
+	got := targetWithProviderAPIReferences(apisGuruRegistry{}, entry).ProviderAPIReferences
+	want := []string{"testdata/provider/openapi.yaml"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ProviderAPIReferences = %v, want %v", got, want)
+	}
+}
