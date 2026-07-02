@@ -1,6 +1,27 @@
 id: apideck
 name: "Apideck"
 description: "Collects ledger account, bill, credit note, and customer from Apideck and projects them into the Cerebro graph as users and assets for owner, account, evidence, and compliance context."
+provider_api:
+  status: verified
+  transport: rest
+  auth: api_key
+  base_url: https://unify.apideck.com
+  references:
+    - https://raw.githubusercontent.com/apideck-libraries/openapi-specs/master/accounting.yml
+    - https://developers.apideck.com/apis/accounting/reference
+  families:
+    - id: ledger_account
+      method: GET
+      path: /accounting/ledger-accounts
+    - id: bill
+      method: GET
+      path: /accounting/bills
+    - id: credit_note
+      method: GET
+      path: /accounting/credit-notes
+    - id: customer
+      method: GET
+      path: /accounting/customers
 emitted_kinds:
   - apideck.ledger_account
   - apideck.bill

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "slack-access-log-U1",
+    "tenant_id": "tenant",
+    "source_id": "slack",
+    "kind": "slack.access_log",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "slack/access_log/v1",
+    "payload": {
+      "user_id": "U1",
+      "username": "alice",
+      "ip": "203.0.113.10",
+      "user_agent": "Mozilla/5.0",
+      "count": 3,
+      "date_first": 1780271000,
+      "date_last": 1780272000
+    },
+    "attributes": {
+      "actor_id": "U1",
+      "actor_name": "alice",
+      "event_type": "team_access",
+      "external_id": "U1",
+      "family": "access_log",
+      "ip_address": "203.0.113.10",
+      "login_count": "3",
+      "provider": "slack",
+      "source_product": "slack",
+      "source_provider": "slack",
+      "user_agent": "Mozilla/5.0",
+      "user_id": "U1",
+      "username": "alice"
+    }
+  }
+]

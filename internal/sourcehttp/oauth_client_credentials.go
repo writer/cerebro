@@ -17,15 +17,16 @@ import (
 
 // ClientCredentialsOptions describes a generic OAuth 2.0 client-credentials exchange.
 type ClientCredentialsOptions struct {
-	SourceID         string
-	TokenURLTemplate string
-	TemplateKeys     []string
-	Scopes           []string
-	ScopeSeparator   string
-	TokenParams      map[string]string
-	ExpirationBuffer time.Duration
-	AllowLoopback    bool
-	Timeout          time.Duration
+	SourceID          string
+	TokenURLTemplate  string
+	TemplateKeys      []string
+	TokenHostSuffixes []string
+	Scopes            []string
+	ScopeSeparator    string
+	TokenParams       map[string]string
+	ExpirationBuffer  time.Duration
+	AllowLoopback     bool
+	Timeout           time.Duration
 }
 
 // ClientCredentialsCache caches access tokens until shortly before expiry.
@@ -55,6 +56,11 @@ func (c *ClientCredentialsCache) Token(ctx context.Context, cfg sourcecdk.Config
 	tokenURL, err = normalizeOAuthURL(tokenURL, options)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(configuredTokenURL) == "" {
+		if err := validateProviderManagedTokenURLHost(tokenURL, options); err != nil {
+			return "", err
+		}
 	}
 	clientID, err := sourcecdk.RequiredConfigValue(sourceID(options.SourceID), cfg, "client_id")
 	if err != nil {
@@ -137,6 +143,108 @@ func providerManagedTokenURLOverrideAllowed(raw string, allowLoopback bool) bool
 		return false
 	}
 	return IsLoopbackHost(parsed.Hostname())
+}
+
+func validateProviderManagedTokenURLHost(raw string, options ClientCredentialsOptions) error {
+	if strings.TrimSpace(options.TokenURLTemplate) == "" {
+		return nil
+	}
+	suffixes := allowedProviderManagedTokenHostSuffixes(options)
+	if len(suffixes) == 0 {
+		return nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("parse %s token_url: %w", sourceID(options.SourceID), err)
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return fmt.Errorf("%w: %s token_url must include a host", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID))
+	}
+	if options.AllowLoopback && IsLoopbackHost(host) {
+		return nil
+	}
+	for _, suffix := range suffixes {
+		if hostMatchesSuffix(host, suffix) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s token_url host is not allowed", sourcecdk.ErrInvalidConfig, sourceID(options.SourceID))
+}
+
+func allowedProviderManagedTokenHostSuffixes(options ClientCredentialsOptions) []string {
+	var suffixes []string
+	suffixes = append(suffixes, options.TokenHostSuffixes...)
+	suffixes = append(suffixes, sourceTokenHostSuffixes(sourceID(options.SourceID))...)
+	suffixes = append(suffixes, tokenURLTemplateHostSuffix(options.TokenURLTemplate)...)
+	return uniqueHostSuffixes(suffixes)
+}
+
+func tokenURLTemplateHostSuffix(template string) []string {
+	parsed, err := url.Parse(strings.TrimSpace(template))
+	if err != nil || parsed == nil {
+		return nil
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return nil
+	}
+	if !strings.Contains(host, "${") {
+		return []string{host}
+	}
+	closeIndex := strings.LastIndex(host, "}")
+	if closeIndex < 0 || closeIndex+1 >= len(host) {
+		return nil
+	}
+	suffix := strings.TrimPrefix(host[closeIndex+1:], ".")
+	if suffix == "" || strings.Contains(suffix, "${") {
+		return nil
+	}
+	return []string{suffix}
+}
+
+func sourceTokenHostSuffixes(source string) []string {
+	switch strings.TrimSpace(source) {
+	case "auth0":
+		return []string{"auth0.com"}
+	case "auditboard":
+		return []string{"auditboardapp.com"}
+	case "beyondtrust":
+		return []string{"beyondtrustcloud.com", "beyondtrust.com"}
+	case "cyberark_identity", "cyberark_pam":
+		return []string{"cyberark.cloud", "idaptive.app"}
+	case "microsoft_defender_for_cloud_apps":
+		return []string{"cloudappsecurity.com", "mcas.ms"}
+	case "onetrust":
+		return []string{"onetrust.com"}
+	case "workday":
+		return []string{"myworkday.com", "workday.com"}
+	default:
+		return nil
+	}
+}
+
+func uniqueHostSuffixes(values []string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, value := range values {
+		value = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), ".")
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func hostMatchesSuffix(host string, suffix string) bool {
+	host = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(host)), ".")
+	suffix = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(suffix)), ".")
+	return host == suffix || strings.HasSuffix(host, "."+suffix)
 }
 
 func clientCredentialsCacheKey(sourceID string, tokenURL string, form url.Values) string {

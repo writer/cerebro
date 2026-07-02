@@ -14,6 +14,19 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func identityForTest(subject string, groups []string) Identity {
+	return NewIdentity(subject, VerifiedEmail{}, "", groups)
+}
+
+func verifiedIdentityForTest(t *testing.T, subject string, email string, name string, groups []string) Identity {
+	t.Helper()
+	verifiedEmail, ok := NewVerifiedEmail(email, true)
+	if !ok {
+		t.Fatalf("NewVerifiedEmail(%q, true) rejected test email", email)
+	}
+	return NewIdentity(subject, verifiedEmail, name, groups)
+}
+
 func TestTokenRefreshReplayRevokesFamily(t *testing.T) {
 	store := &replayRefreshStore{
 		consumeRecord: RefreshToken{FamilyID: "family-1"},
@@ -208,11 +221,7 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 			Scopes:         []string{ScopeSecurityRead},
 		}},
 	}}
-	entitlement, err := service.entitlementForIdentity(Identity{
-		Subject: "user-1",
-		Email:   "user@example.com",
-		Groups:  []string{"secops"},
-	}, "droid", []string{ScopeSecurityRead}, false)
+	entitlement, err := service.entitlementForIdentity(identityForTest("user-1", []string{"secops"}), "droid", []string{ScopeSecurityRead}, false)
 	if err != nil {
 		t.Fatalf("entitlementForIdentity error = %v", err)
 	}
@@ -220,13 +229,112 @@ func TestEntitlementForIdentityScopesTenantGrant(t *testing.T) {
 		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
 	}
 
-	_, err = service.entitlementForIdentity(Identity{
-		Subject: "user-2",
-		Groups:  []string{"engineering"},
-	}, "droid", []string{ScopeSecurityRead}, false)
+	_, err = service.entitlementForIdentity(identityForTest("user-2", []string{"engineering"}), "droid", []string{ScopeSecurityRead}, false)
 	var oauthErr *OAuthError
 	if !errors.As(err, &oauthErr) || oauthErr.Code != "access_denied" {
 		t.Fatalf("missing entitlement error = %v, want access_denied", err)
+	}
+}
+
+func TestEntitlementForIdentityRequiresVerifiedEmailClaim(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Email:          "user@example.com",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	unverifiedEmail, ok := NewVerifiedEmail("user@example.com", false)
+	if ok {
+		t.Fatal("NewVerifiedEmail accepted an unverified email")
+	}
+	_, err := service.entitlementForIdentity(NewIdentity("user-1", unverifiedEmail, "", []string{"secops"}), "droid", []string{ScopeSecurityRead}, false)
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) || oauthErr.Code != "access_denied" {
+		t.Fatalf("unverified email entitlement error = %v, want access_denied", err)
+	}
+
+	entitlement, err := service.entitlementForIdentity(verifiedIdentityForTest(t, "user-1", "user@example.com", "", []string{"secops"}), "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("verified email entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
+func TestEntitlementForIdentitySubjectGrantDoesNotRequireVerifiedEmail(t *testing.T) {
+	service := &Service{cfg: config.MCPOAuthConfig{
+		Entitlements: []config.MCPOAuthEntitlement{{
+			Subject:        "user-1",
+			AllowedTenants: []string{"writer"},
+			Scopes:         []string{ScopeSecurityRead},
+		}},
+	}}
+	entitlement, err := service.entitlementForIdentity(identityForTest("user-1", []string{"secops"}), "droid", []string{ScopeSecurityRead}, false)
+	if err != nil {
+		t.Fatalf("subject entitlement error = %v", err)
+	}
+	if got := entitlement.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+}
+
+func TestAuthorizationCodeSubjectRequiresVerifiedEmail(t *testing.T) {
+	cases := []struct {
+		name     string
+		identity Identity
+		want     string
+	}{
+		{
+			name:     "verified email keeps legacy email subject",
+			identity: verifiedIdentityForTest(t, "user-1", "user@example.com", "", nil),
+			want:     "user@example.com",
+		},
+		{
+			name:     "unverified email uses oidc subject",
+			identity: NewIdentity("user-1", VerifiedEmail{}, "", nil),
+			want:     "user-1",
+		},
+		{
+			name:     "missing email uses oidc subject",
+			identity: identityForTest("user-1", nil),
+			want:     "user-1",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := authorizationCodeSubject(tc.identity); got != tc.want {
+				t.Fatalf("authorizationCodeSubject() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAuthorizationCodeFromLoginUsesVerifiedEmailBoundary(t *testing.T) {
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	login := LoginState{
+		ClientID:      "droid",
+		RedirectURI:   "http://127.0.0.1/callback",
+		Resource:      "https://cerebro.example/api/v1/mcp",
+		CodeChallenge: "challenge",
+	}
+	entitlement := grantEntitlement{
+		TenantID:       "writer",
+		AllowedTenants: []string{"writer"},
+		Scopes:         []string{ScopeSecurityRead},
+		Roles:          []string{"cerebro.viewer"},
+	}
+
+	verifiedCode := authorizationCodeFromLogin(login, verifiedIdentityForTest(t, "user-1", "user@example.com", "", nil), entitlement, "code-token", now, time.Minute)
+	if verifiedCode.Subject != "user@example.com" || verifiedCode.Email != "user@example.com" {
+		t.Fatalf("verified authorization code subject/email = %q/%q, want verified email", verifiedCode.Subject, verifiedCode.Email)
+	}
+
+	unverifiedCode := authorizationCodeFromLogin(login, identityForTest("user-1", nil), entitlement, "code-token", now, time.Minute)
+	if unverifiedCode.Subject != "user-1" || unverifiedCode.Email != "" {
+		t.Fatalf("unverified authorization code subject/email = %q/%q, want subject only", unverifiedCode.Subject, unverifiedCode.Email)
 	}
 }
 
@@ -240,11 +348,7 @@ func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T
 		}},
 	}}
 
-	narrowed, err := service.entitlementForIdentity(Identity{
-		Subject: "user-1",
-		Email:   "user@example.com",
-		Groups:  []string{"secops"},
-	}, "droid", []string{ScopeSecurityRead}, true)
+	narrowed, err := service.entitlementForIdentity(identityForTest("user-1", []string{"secops"}), "droid", []string{ScopeSecurityRead}, true)
 	if err != nil {
 		t.Fatalf("entitlementForIdentity explicit scope error = %v", err)
 	}
@@ -252,11 +356,7 @@ func TestEntitlementForIdentityDropsRolesWhenExplicitScopeRequested(t *testing.T
 		t.Fatalf("explicit-scope entitlement roles = %#v, want none so scope request narrows grant", narrowed.Roles)
 	}
 
-	defaulted, err := service.entitlementForIdentity(Identity{
-		Subject: "user-1",
-		Email:   "user@example.com",
-		Groups:  []string{"secops"},
-	}, "droid", []string{ScopeSecurityRead}, false)
+	defaulted, err := service.entitlementForIdentity(identityForTest("user-1", []string{"secops"}), "droid", []string{ScopeSecurityRead}, false)
 	if err != nil {
 		t.Fatalf("entitlementForIdentity default scope error = %v", err)
 	}
@@ -295,12 +395,7 @@ func TestCallbackRecordsOAuthIdentityDirectory(t *testing.T) {
 		}},
 	}, store, func(context.Context, AccessGrant, time.Duration, time.Time) (string, error) {
 		return "access-token", nil
-	}, WithOIDCProvider(staticOIDCProvider{identity: Identity{
-		Subject: "00u123",
-		Email:   "person@example.com",
-		Name:    "Person Example",
-		Groups:  []string{"security-team"},
-	}}))
+	}, WithOIDCProvider(staticOIDCProvider{identity: verifiedIdentityForTest(t, "00u123", "person@example.com", "Person Example", []string{"security-team"})}))
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -357,12 +452,7 @@ func TestCallbackContinuesWhenIdentityDirectoryRecordFails(t *testing.T) {
 		}},
 	}, store, func(context.Context, AccessGrant, time.Duration, time.Time) (string, error) {
 		return "access-token", nil
-	}, WithOIDCProvider(staticOIDCProvider{identity: Identity{
-		Subject: "00u123",
-		Email:   "person@example.com",
-		Name:    "Person Example",
-		Groups:  []string{"security-team"},
-	}}))
+	}, WithOIDCProvider(staticOIDCProvider{identity: verifiedIdentityForTest(t, "00u123", "person@example.com", "Person Example", []string{"security-team"})}))
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

@@ -161,9 +161,30 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 			message: catalogIssue.Message,
 		})
 	}
+	var runtimeInventory connectorcatalog.RuntimeDepthInventory
+	runtimeInventoryLoaded := false
+	loadRuntimeInventory := func() (connectorcatalog.RuntimeDepthInventory, error) {
+		if runtimeInventoryLoaded {
+			return runtimeInventory, nil
+		}
+		inventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		if err != nil {
+			return connectorcatalog.RuntimeDepthInventory{}, err
+		}
+		runtimeInventory = inventory
+		runtimeInventoryLoaded = true
+		return runtimeInventory, nil
+	}
 	if options.requireSourcegenReady {
+		runtimeInventory, err := loadRuntimeInventory()
+		if err != nil {
+			return nil, err
+		}
 		for _, entry := range analysis.Entries {
 			if entry.Generateable {
+				continue
+			}
+			if bespokeRuntimeReady(entry, runtimeInventory) {
 				continue
 			}
 			message := fmt.Sprintf("connector definition %q is %s, want %s", entry.Definition.SourceID, entry.Status, connectorcatalog.StatusGenerateable)
@@ -177,7 +198,7 @@ func checkConnectorDefinitionCatalogWithOptions(root string, options repositoryC
 		}
 	}
 	if options.runtimeDepthBudgetEnabled {
-		runtimeInventory, err := connectorcatalog.DiscoverRuntimeDepth(root)
+		runtimeInventory, err := loadRuntimeInventory()
 		if err != nil {
 			return nil, fmt.Errorf("discover runtime depth: %w", err)
 		}
@@ -210,6 +231,17 @@ func runtimeBackedDepthQueue(analysis connectorcatalog.Analysis, runtimeInventor
 		}
 	}
 	return queued, examples
+}
+
+func bespokeRuntimeReady(entry connectorcatalog.Entry, runtimeInventory connectorcatalog.RuntimeDepthInventory) bool {
+	if entry.Status != connectorcatalog.StatusNeedsBespokeRuntime {
+		return false
+	}
+	depth, ok := runtimeInventory[entry.Definition.SourceID]
+	if !ok {
+		return false
+	}
+	return depth.Score >= 80 && depth.HasSourcePackage && depth.HasSourceImplementation
 }
 
 func printConnectorDefinitionCatalogSummary(root string) error {

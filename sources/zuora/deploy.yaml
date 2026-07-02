@@ -7,10 +7,109 @@ secretKeys:
 runtimes:
   - localId: event-trigger
     config:
-      account_key: env:ZUORA_ACCOUNT_KEY
-      event_number: env:ZUORA_EVENT_NUMBER
-      rs_number: env:ZUORA_RS_NUMBER
       family: event_trigger
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: accounting-code
+    config:
+      family: accounting_code
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: accounting-period
+    config:
+      family: accounting_period
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: callout-history
+    config:
+      family: callout
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: email-history
+    config:
+      family: email
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: email-template
+    config:
+      family: email_template
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: hosted-page
+    config:
+      family: hostedpage
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: notification-definition
+    config:
+      family: notification_definition
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: product
+    config:
+      family: product
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: revenue-event
+    config:
+      event_number: env:ZUORA_EVENT_NUMBER
+      family: revenue_event
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: revenue-schedule
+    config:
+      rs_number: env:ZUORA_RS_NUMBER
+      family: revenue_schedule
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /events/event-triggers
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:ZUORA_TOKEN
+  - localId: account-payment-method
+    config:
+      account_key: env:ZUORA_ACCOUNT_KEY
+      family: account
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /events/event-triggers
       expected_cadence_seconds: "86400"

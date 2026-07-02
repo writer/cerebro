@@ -234,6 +234,12 @@ includes only MCP request/response mapping for source check, discover, and read
 operations, plus response-boundary event limits so one live source page cannot
 produce an unbounded MCP payload.
 
+Connector catalog summary view and pagination stay in bootstrap as HTTP
+boundary mapping. The budget includes only `view`, `limit`, and `cursor` query
+parsing plus compact and paginated response shaping over the existing connector
+library response; catalog assembly, runtime state, and credential-store behavior
+stay behind the registry, catalog, and store boundaries.
+
 ## Postgres migrations
 
 State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.

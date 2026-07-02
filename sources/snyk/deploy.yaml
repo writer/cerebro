@@ -1,12 +1,65 @@
 sourceId: snyk
 secretKeys:
   - SNYK_TOKEN
+  - SNYK_ORG_ID
 runtimes:
+  - localId: orgs
+    config:
+      family: orgs
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: groups
+    config:
+      family: groups
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: projects
+    config:
+      family: projects
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: targets
+    config:
+      family: targets
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
   - localId: assets
     config:
       family: assets
+      org_id: env:SNYK_ORG_ID
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /rest/orgs
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: findings
+    config:
+      family: findings
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      token: env:SNYK_TOKEN
+  - localId: vulnerabilities
+    config:
+      family: vulnerabilities
+      org_id: env:SNYK_ORG_ID
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"

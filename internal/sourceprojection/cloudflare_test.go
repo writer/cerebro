@@ -92,33 +92,39 @@ func TestProjectCloudflareInventoryEntitiesAndLinks(t *testing.T) {
 }
 
 func TestRegistryRoutesCloudflareCoreKinds(t *testing.T) {
-	cases := []struct {
-		kind       string
-		attrs      map[string]string
-		payload    string
-		entityType string
-	}{
-		{"cloudflare.account", map[string]string{"account_id": "acct-1", "name": "Writer"}, `{"id":"acct-1"}`, "cloudflare.account"},
-		{"cloudflare.member", map[string]string{"member_id": "member-1", "account_id": "acct-1"}, `{"id":"member-1"}`, "cloudflare.member"},
-		{"cloudflare.role", map[string]string{"role_id": "role-1", "account_id": "acct-1"}, `{"id":"role-1"}`, "cloudflare.role"},
-		{"cloudflare.zone", map[string]string{"zone_id": "zone-1", "account_id": "acct-1"}, `{"id":"zone-1"}`, "cloudflare.zone"},
-		{"cloudflare.dns_record", map[string]string{"record_id": "dns-1", "zone_id": "zone-1"}, `{"id":"dns-1"}`, "cloudflare.dns_record"},
+	events := []*cerebrov1.EventEnvelope{
+		{Id: "cf-access-application", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.access_application", Attributes: map[string]string{"application_id": "app-1", "account_id": "acct-1", "name": "Admin App"}, Payload: []byte(`{"id":"app-1"}`)},
+		{Id: "cf-access-group", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.access_group", Attributes: map[string]string{"group_id": "group-1", "account_id": "acct-1", "name": "Employees"}, Payload: []byte(`{"id":"group-1"}`)},
+		{Id: "cf-account", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.account", Attributes: map[string]string{"account_id": "acct-1", "name": "Writer"}, Payload: []byte(`{"id":"acct-1"}`)},
+		{Id: "cf-account-ruleset", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.account_ruleset", Attributes: map[string]string{"ruleset_id": "ruleset-1", "account_id": "acct-1", "name": "Account WAF"}, Payload: []byte(`{"id":"ruleset-1"}`)},
+		{Id: "cf-audit-log", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.audit_log", Attributes: map[string]string{"audit_id": "audit-1", "account_id": "acct-1", "actor_email": "admin@example.com"}, Payload: []byte(`{"id":"audit-1"}`)},
+		{Id: "cf-member", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.member", Attributes: map[string]string{"member_id": "member-1", "account_id": "acct-1", "email": "alice@example.com"}, Payload: []byte(`{"id":"member-1"}`)},
+		{Id: "cf-gateway-rule", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.gateway_rule", Attributes: map[string]string{"rule_id": "rule-1", "account_id": "acct-1", "name": "Block Malware"}, Payload: []byte(`{"id":"rule-1"}`)},
+		{Id: "cf-load-balancer", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.load_balancer", Attributes: map[string]string{"load_balancer_id": "lb-1", "zone_id": "zone-1", "name": "www.example.com"}, Payload: []byte(`{"id":"lb-1"}`)},
+		{Id: "cf-load-balancer-pool", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.load_balancer_pool", Attributes: map[string]string{"pool_id": "pool-1", "account_id": "acct-1", "name": "Primary Pool"}, Payload: []byte(`{"id":"pool-1"}`)},
+		{Id: "cf-role", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.role", Attributes: map[string]string{"role_id": "role-1", "account_id": "acct-1", "name": "Administrator"}, Payload: []byte(`{"id":"role-1"}`)},
+		{Id: "cf-worker-script", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.worker_script", Attributes: map[string]string{"script_id": "api", "account_id": "acct-1", "name": "api"}, Payload: []byte(`{"id":"api"}`)},
+		{Id: "cf-zone", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.zone", Attributes: map[string]string{"zone_id": "zone-1", "account_id": "acct-1", "name": "example.com"}, Payload: []byte(`{"id":"zone-1"}`)},
+		{Id: "cf-zone-access-application", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.zone_access_application", Attributes: map[string]string{"application_id": "app-1", "zone_id": "zone-1", "name": "Zone Admin"}, Payload: []byte(`{"id":"app-1"}`)},
+		{Id: "cf-zone-access-group", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.zone_access_group", Attributes: map[string]string{"group_id": "group-1", "zone_id": "zone-1", "name": "Zone Employees"}, Payload: []byte(`{"id":"group-1"}`)},
+		{Id: "cf-zone-ruleset", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.zone_ruleset", Attributes: map[string]string{"ruleset_id": "zone-ruleset-1", "zone_id": "zone-1", "name": "Zone WAF"}, Payload: []byte(`{"id":"zone-ruleset-1"}`)},
+		{Id: "cf-dns-record", TenantId: "writer", SourceId: "cloudflare", Kind: "cloudflare.dns_record", Attributes: map[string]string{"record_id": "dns-1", "zone_id": "zone-1", "name": "www.example.com"}, Payload: []byte(`{"id":"dns-1"}`)},
 	}
-	for _, tc := range cases {
-		t.Run(tc.kind, func(t *testing.T) {
-			entities, _, err := BuiltinRegistry().Project(cloudflareTestEvent("cf-"+tc.kind, tc.kind, tc.attrs, tc.payload))
+	for _, event := range events {
+		t.Run(event.GetKind(), func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(event)
 			if err != nil {
-				t.Fatalf("Project(%s) error = %v", tc.kind, err)
+				t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
 			}
 			found := false
 			for _, entity := range entities {
-				if entity.EntityType == tc.entityType {
+				if entity.EntityType == event.GetKind() {
 					found = true
 					break
 				}
 			}
 			if !found {
-				t.Fatalf("kind %q did not route to dedicated projector; entities=%#v", tc.kind, entities)
+				t.Fatalf("kind %q did not route to projector; entities=%#v", event.GetKind(), entities)
 			}
 		})
 	}

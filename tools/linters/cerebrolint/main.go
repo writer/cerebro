@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/tools/linters/nobackpointer"
 	"github.com/writer/cerebro/tools/linters/noenvoutsidecmd"
 	"github.com/writer/cerebro/tools/linters/noerrstringmatch"
+	"github.com/writer/cerebro/tools/linters/noidentityemail"
 	"github.com/writer/cerebro/tools/linters/noinmemorydb"
 	"github.com/writer/cerebro/tools/linters/nopanicprod"
 	"github.com/writer/cerebro/tools/linters/nosleep"
@@ -32,6 +33,7 @@ func main() {
 		novarfunc.Analyzer,
 		nosleep.Analyzer,
 		noerrstringmatch.Analyzer,
+		noidentityemail.Analyzer,
 		nountypedboundary.Analyzer,
 		nobackpointer.Analyzer,
 		sealedinterface.Analyzer,

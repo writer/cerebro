@@ -90,6 +90,7 @@ type normalizedRequest struct {
 	OAuthScopes       []string
 	OAuthTokenParams  map[string]string
 	OAuthTokenMethod  string
+	ProviderAPI       *connectordefinitions.ProviderAPISpec
 	EnvPrefix         string
 	PackageName       string
 	DefaultFamily     string
@@ -122,11 +123,16 @@ type familyData struct {
 	LinkHeader            string
 	PageSizeParams        []string
 	DisablePageSize       bool
-	StaticQuery           map[string]string
-	ConfigQuery           map[string]string
+	Config                familyConfigData
 	RequiredAttributes    []string
 	RequiredPayloadFields []string
 	Projection            *connectordefinitions.ProjectionSpec
+}
+
+type familyConfigData struct {
+	StaticQuery  map[string]string
+	ConfigQuery  map[string]string
+	IdentityKeys []string
 }
 
 type oauthClientCredentialsData struct {
@@ -284,6 +290,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		OAuthScopes:       append([]string(nil), definition.Auth.Scopes...),
 		OAuthTokenParams:  cloneStringMap(definition.Auth.TokenParams),
 		OAuthTokenMethod:  strings.TrimSpace(definition.Auth.TokenRequestAuthMethod),
+		ProviderAPI:       cloneProviderAPI(definition.ProviderAPI),
 		EnvPrefix:         strings.ToUpper(strings.NewReplacer("-", "_").Replace(sourceID)),
 		PackageName:       packageName(sourceID),
 		BaseURLTemplate:   transportBaseURL(definition.Transport),
@@ -545,6 +552,30 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
+func mergeStringMaps(first map[string]string, second map[string]string) map[string]string {
+	if len(first) == 0 {
+		return cloneStringMap(second)
+	}
+	if len(second) == 0 {
+		return cloneStringMap(first)
+	}
+	merged := cloneStringMap(first)
+	for key, value := range second {
+		merged[key] = value
+	}
+	return merged
+}
+
+func cloneProviderAPI(api *connectordefinitions.ProviderAPISpec) *connectordefinitions.ProviderAPISpec {
+	if api == nil {
+		return nil
+	}
+	cloned := *api
+	cloned.References = append([]string(nil), api.References...)
+	cloned.Families = append([]connectordefinitions.ProviderAPIFamilySpec(nil), api.Families...)
+	return &cloned
+}
+
 func normalizeIdentifiers(label string, values []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
@@ -680,8 +711,7 @@ func familiesForDefinition(request normalizedRequest, definition connectordefini
 			LinkHeader:            linkHeaderForResource(resource),
 			PageSizeParams:        pageSizeParamsForResource(resource),
 			DisablePageSize:       disablePageSizeForResource(resource),
-			StaticQuery:           resource.StaticQuery,
-			ConfigQuery:           resource.ConfigQuery,
+			Config:                familyConfig(resource),
 			RequiredAttributes:    requiredAttributes,
 			RequiredPayloadFields: requiredPayloadFields,
 			Projection:            resource.Projection,
@@ -706,6 +736,20 @@ func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
 		}
 	}
 	return uniqueStrings(keys)
+}
+
+func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
+	config := familyConfigData{
+		StaticQuery: cloneStringMap(resource.StaticQuery),
+		ConfigQuery: cloneStringMap(resource.ConfigQuery),
+	}
+	if resource.Config == nil {
+		return config
+	}
+	config.StaticQuery = mergeStringMaps(config.StaticQuery, resource.Config.StaticQuery)
+	config.ConfigQuery = mergeStringMaps(config.ConfigQuery, resource.Config.ConfigQuery)
+	config.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
+	return config
 }
 
 func listKeysForResource(resource connectordefinitions.ResourceFamily) []string {
@@ -923,6 +967,9 @@ func renderCatalog(request normalizedRequest) string {
 	fmt.Fprintf(&b, "id: %s\n", request.SourceID)
 	fmt.Fprintf(&b, "name: %s\n", yamlString(request.Name))
 	fmt.Fprintf(&b, "description: %s\n", yamlString(request.Description))
+	if request.ProviderAPI != nil {
+		renderProviderAPI(&b, request.ProviderAPI)
+	}
 	fmt.Fprintf(&b, "emitted_kinds:\n")
 	for _, family := range request.Families {
 		fmt.Fprintf(&b, "  - %s\n", family.EventKind)
@@ -973,6 +1020,51 @@ func renderCatalog(request normalizedRequest) string {
 		}
 	}
 	return b.String()
+}
+
+func renderProviderAPI(b *strings.Builder, api *connectordefinitions.ProviderAPISpec) {
+	fmt.Fprintf(b, "provider_api:\n")
+	if strings.TrimSpace(api.Status) != "" {
+		fmt.Fprintf(b, "  status: %s\n", yamlString(api.Status))
+	}
+	if strings.TrimSpace(api.Transport) != "" {
+		fmt.Fprintf(b, "  transport: %s\n", yamlString(api.Transport))
+	}
+	if strings.TrimSpace(api.Auth) != "" {
+		fmt.Fprintf(b, "  auth: %s\n", yamlString(api.Auth))
+	}
+	if strings.TrimSpace(api.BaseURL) != "" {
+		fmt.Fprintf(b, "  base_url: %s\n", yamlString(api.BaseURL))
+	}
+	if strings.TrimSpace(api.Endpoint) != "" {
+		fmt.Fprintf(b, "  endpoint: %s\n", yamlString(api.Endpoint))
+	}
+	if len(api.References) > 0 {
+		fmt.Fprintf(b, "  references:\n")
+		for _, ref := range api.References {
+			if strings.TrimSpace(ref) != "" {
+				fmt.Fprintf(b, "    - %s\n", yamlString(ref))
+			}
+		}
+	}
+	if len(api.Families) > 0 {
+		fmt.Fprintf(b, "  families:\n")
+		for _, family := range api.Families {
+			if strings.TrimSpace(family.ID) == "" {
+				continue
+			}
+			fmt.Fprintf(b, "    - id: %s\n", family.ID)
+			if strings.TrimSpace(family.Method) != "" {
+				fmt.Fprintf(b, "      method: %s\n", yamlString(family.Method))
+			}
+			if strings.TrimSpace(family.Path) != "" {
+				fmt.Fprintf(b, "      path: %s\n", yamlString(family.Path))
+			}
+			if strings.TrimSpace(family.Operation) != "" {
+				fmt.Fprintf(b, "      operation: %s\n", yamlString(family.Operation))
+			}
+		}
+	}
 }
 
 func renderDeploy(request normalizedRequest) string {
@@ -1219,13 +1311,16 @@ func renderSourceGo(request normalizedRequest) string {
 		fmt.Fprintf(&b, "\t\t\t\tTimestampKeys: []string{%s},\n", quotedStrings([]string{"observed_at", "updated_at", "last_seen_at", "created_at"}))
 		fmt.Fprintf(&b, "\t\t\t\tAttributes: map[string]string{%s},\n", renderedAttributeMap(attributePathsForFamily(family)))
 		fmt.Fprintf(&b, "\t\t\t\tStaticAttributes: map[string]string{%s},\n", renderedAttributeMap(staticAttributesForFamily(request, family)))
-		if len(family.StaticQuery) != 0 || len(family.ConfigQuery) != 0 {
+		if len(family.Config.StaticQuery) != 0 || len(family.Config.ConfigQuery) != 0 || len(family.Config.IdentityKeys) != 0 {
 			fmt.Fprintf(&b, "\t\t\t\tConfig: jsonapi.FamilyConfig{\n")
-			if len(family.StaticQuery) != 0 {
-				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.StaticQuery))
+			if len(family.Config.StaticQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tStaticQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.StaticQuery))
 			}
-			if len(family.ConfigQuery) != 0 {
-				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.ConfigQuery))
+			if len(family.Config.ConfigQuery) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tConfigQuery: map[string]string{%s},\n", renderedAttributeMap(family.Config.ConfigQuery))
+			}
+			if len(family.Config.IdentityKeys) != 0 {
+				fmt.Fprintf(&b, "\t\t\t\t\tIdentityKeys: []string{%s},\n", quotedStrings(family.Config.IdentityKeys))
 			}
 			fmt.Fprintf(&b, "\t\t\t\t},\n")
 		}
@@ -2143,6 +2238,7 @@ func renderRuntimeDocs(request normalizedRequest) string {
 		fmt.Fprintf(&b, "- `%s`, emits `%s`, reads `%s`\n", family.Name, family.EventKind, family.Path)
 	}
 	fmt.Fprintf(&b, "\n## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs: `sources/%s/testdata/discover_<family>.json` and `sources/%s/testdata/read_<family>.json` for every generated family\n", request.SourceID, request.SourceID)
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()
@@ -2159,6 +2255,7 @@ func renderPRBody(request normalizedRequest) string {
 	fmt.Fprintf(&b, "- Health endpoint: `%s`\n", healthEndpoint(request.SourceID))
 	fmt.Fprintf(&b, "- Freshness: `%s`\n\n", request.FreshnessExpectation)
 	fmt.Fprintf(&b, "## Tests\n\n")
+	fmt.Fprintf(&b, "- Fixture pairs cover discover and read payloads for every generated family.\n")
 	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
 	fmt.Fprintf(&b, "- `make catalog-check`\n")
 	return b.String()

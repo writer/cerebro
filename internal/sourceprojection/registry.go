@@ -192,7 +192,17 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	attestedcompute.EventKindGraphDelta:             attestedComputeGraphDeltaProjections,
 	"backstage.component":                           backstageComponentProjections,
 	"auth0.audit_events":                            auth0AuditEventsProjections,
+	"auth0.client_grants":                           auth0ClientGrantsProjections,
+	"auth0.clients":                                 auth0ClientsProjections,
+	"auth0.connections":                             auth0ConnectionsProjections,
+	"auth0.grants":                                  auth0GrantsProjections,
+	"auth0.guardian_factors":                        auth0GuardianFactorsProjections,
+	"auth0.organization_members":                    auth0OrganizationMembersProjections,
+	"auth0.organizations":                           auth0OrganizationsProjections,
+	"auth0.resource_servers":                        auth0ResourceServersProjections,
 	"auth0.roles":                                   auth0RolesProjections,
+	"auth0.user_authentication_methods":             auth0UserAuthenticationMethodsProjections,
+	"auth0.user_roles":                              auth0UserRolesProjections,
 	"auth0.users":                                   auth0UsersProjections,
 	"archetype.scan":                                archetypeScanProjections,
 	"archetype.vulnerability":                       archetypeVulnerabilityProjections,
@@ -782,10 +792,14 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"probely.framework":                             probelyFrameworkProjections,
 	"probely.needs_attention_top":                   probelyNeedsAttentionTopProjections,
 	"probely.user":                                  probelyUserProjections,
+	"slack.access_log":                              slackAccessLogProjections,
+	"slack.audit_log":                               slackAuditLogProjections,
 	"slack.channel":                                 slackTeamScopedProjections,
+	"slack.channel_member":                          slackChannelMemberProjections,
 	"slack.team":                                    slackTeamProjections,
 	"slack.user":                                    slackUserProjections,
 	"slack.user_group":                              slackTeamScopedProjections,
+	"slack.user_group_member":                       slackUserGroupMemberProjections,
 	"tailscale.device":                              tailscaleDeviceProjections,
 	"tailscale.grant":                               tailscaleGrantProjections,
 	"tailscale.group":                               tailscaleGroupProjections,
@@ -844,9 +858,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"conjur.resource_3":    conjurResource3Projections,
 
 	// box generated projectors (sourcegen promotion)
-	"box.audit_events":   boxAuditEventsProjections,
-	"box.content_assets": boxContentAssetsProjections,
-	"box.users":          boxUsersProjections,
+	"box.audit_events":      boxAuditEventsProjections,
+	"box.content_assets":    boxContentAssetsProjections,
+	"box.group_memberships": boxGroupMembershipsProjections,
+	"box.groups":            boxGroupsProjections,
+	"box.users":             boxUsersProjections,
 
 	// asana generated projectors (sourcegen promotion)
 	"asana.audit_events": asanaAuditEventsProjections,
@@ -3407,9 +3423,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"journy_io.user":             journyIoUserProjections,
 
 	// jumpcloud generated projectors (sourcegen promotion)
-	"jumpcloud.audit_events": jumpcloudAuditEventsProjections,
-	"jumpcloud.groups":       jumpcloudGroupsProjections,
-	"jumpcloud.users":        jumpcloudUsersProjections,
+	"jumpcloud.applications":  jumpcloudApplicationsProjections,
+	"jumpcloud.audit_events":  jumpcloudAuditEventsProjections,
+	"jumpcloud.group_members": jumpcloudGroupMembersProjections,
+	"jumpcloud.groups":        jumpcloudGroupsProjections,
+	"jumpcloud.system_groups": jumpcloudSystemGroupsProjections,
+	"jumpcloud.systems":       jumpcloudSystemsProjections,
+	"jumpcloud.users":         jumpcloudUsersProjections,
 
 	// jumpseller generated projectors (sourcegen promotion)
 	"jumpseller.checkout_custom_fields_json": jumpsellerCheckoutCustomFieldsJsonProjections,
@@ -5182,6 +5202,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"snowflake.vulnerabilities":        snowflakeVulnerabilitiesProjections,
 
 	// snyk generated projectors (sourcegen promotion)
+	"snyk.groups":          genericInventoryProjections,
+	"snyk.orgs":            genericInventoryProjections,
+	"snyk.projects":        genericInventoryProjections,
+	"snyk.targets":         genericInventoryProjections,
 	"snyk.assets":          snykAssetsProjections,
 	"snyk.findings":        snykFindingsProjections,
 	"snyk.vulnerabilities": snykVulnerabilitiesProjections,

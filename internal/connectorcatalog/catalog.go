@@ -408,19 +408,17 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 	if definition.Transport == nil || definition.Transport.Verification == nil || strings.TrimSpace(definition.Transport.Verification.Path) == "" {
 		issues = append(issues, Issue{Path: path, Message: "verification endpoint is required"})
 	}
-	if len(definition.ResourceFamilies) < 2 || len(definition.ResourceFamilies) > 12 {
-		issues = append(issues, Issue{Path: path, Message: "definition must include 2-12 high-value resource families"})
-	}
-	highValue := false
+	highValueFamilies := 0
 	for _, family := range definition.ResourceFamilies {
 		if len(family.Coverage) == 0 {
 			issues = append(issues, Issue{Path: path, Message: fmt.Sprintf("resource family %q must declare coverage dimensions", family.ID)})
 			continue
 		}
+		familyHighValue := false
 		for _, dimension := range family.Coverage {
 			dimensionID := proofGateDimensionID(family.ID, dimension)
 			if dimension.HighValue {
-				highValue = true
+				familyHighValue = true
 			}
 			if !dimension.HighValue {
 				continue
@@ -435,8 +433,14 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 				}
 			}
 		}
+		if familyHighValue {
+			highValueFamilies++
+		}
 	}
-	if !highValue {
+	if len(definition.ResourceFamilies) < 2 || highValueFamilies > 12 {
+		issues = append(issues, Issue{Path: path, Message: "definition must include at least 2 resource families and at most 12 high-value resource families"})
+	}
+	if highValueFamilies == 0 {
 		issues = append(issues, Issue{Path: path, Message: "at least one high-value coverage dimension is required"})
 	}
 	return issues

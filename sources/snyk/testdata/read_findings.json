@@ -1,71 +1,31 @@
 [
   {
-    "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/findings",
-      "description": "Snyk Findings Fixture finding",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-snyk-findings-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-snyk-findings-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/snyk/findings/source-snyk-findings-1",
-      "external_id": "source-snyk-findings-1",
-      "family": "findings",
-      "finding_id": "source-snyk-findings-1",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "provider": "snyk",
-      "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-snyk-findings-1",
-      "resource_name": "Snyk Findings Fixture",
-      "resource_type": "findings",
-      "resource_urn": "urn:cerebro:tenant:snyk_findings:source-snyk-findings-1",
-      "schema": "findings",
-      "severity": "high",
-      "source_event_id": "source-snyk-findings-1",
-      "source_provider": "snyk",
-      "source_system": "snyk",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Snyk Findings Fixture"
-    },
-    "id": "source-snyk-findings-event-1",
+    "id": "snyk-finding-issue-1",
+    "tenant_id": "tenant",
+    "source_id": "snyk",
     "kind": "snyk.findings",
     "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/findings",
-      "description": "Snyk Findings Fixture finding",
-      "event_id": "source-snyk-findings-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-snyk-findings-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-snyk-findings-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/snyk/findings/source-snyk-findings-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/snyk/findings/source-snyk-findings-1",
-      "family": "findings",
-      "finding_id": "source-snyk-findings-1",
-      "id": "source-snyk-findings-1",
-      "name": "Snyk Findings Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "finding",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-snyk-findings-1",
-      "resource_type": "findings",
-      "resource_urn": "urn:cerebro:tenant:snyk_findings:source-snyk-findings-1",
-      "schema_ref": "snyk/findings/v1",
-      "severity": "high",
-      "source_id": "snyk",
-      "status": "open",
-      "tenant_id": "tenant",
-      "title": "Snyk Findings Fixture",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
     "schema_ref": "snyk/findings/v1",
-    "source_id": "snyk",
-    "tenant_id": "tenant"
+    "payload": {
+      "id": "issue-1",
+      "type": "issue",
+      "attributes": {
+        "title": "Critical package issue",
+        "effective_severity_level": "critical",
+        "status": "open"
+      }
+    },
+    "attributes": {
+      "external_id": "issue-1",
+      "family": "findings",
+      "org_id": "org-1",
+      "finding_id": "issue-1",
+      "title": "Critical package issue",
+      "severity": "critical",
+      "status": "open",
+      "resource_urn": "urn:cerebro:tenant:snyk_assets:asset-1",
+      "source_event_id": "issue-1",
+      "source_provider": "snyk"
+    }
   }
 ]

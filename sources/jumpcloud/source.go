@@ -4,26 +4,31 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
+	"github.com/writer/cerebro/sources/internal/jumpcloudapi"
 )
+
+const groupMemberDiscoveryPageLimit = 1000
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const (
-	sourceID               = "jumpcloud"
-	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v2/systeminsights"
-	defaultBaseURLTemplate = "https://console.jumpcloud.com/api"
-	tokenHeader            = ""
-	tokenScheme            = "Token"
-	familyUsers            = "users"
-	familyGroups           = "groups"
-	familyAuditEvents      = "audit_events"
+	sourceID               = jumpcloudapi.SourceID
+	defaultFamily          = jumpcloudapi.DefaultFamily
+	defaultHealthPath      = "/systemusers?limit=1&skip=0"
+	defaultBaseURLTemplate = jumpcloudapi.DefaultBaseURLTemplate
+	tokenScheme            = ""
+	familyUsers            = jumpcloudapi.FamilyUsers
+	familyGroups           = jumpcloudapi.FamilyGroups
+	familySystems          = jumpcloudapi.FamilySystems
+	familyApplications     = jumpcloudapi.FamilyApplications
+	familySystemGroups     = jumpcloudapi.FamilySystemGroups
+	familyGroupMembers     = jumpcloudapi.FamilyGroupMembers
+	familyAuditEvents      = jumpcloudapi.FamilyAuditEvents
 )
 
 var templateKeys = []string{"api_key"}
@@ -43,49 +48,10 @@ func New() (*Source, error) {
 		DefaultFamily:   defaultFamily,
 		RequireTenantID: true,
 		AuthModel:       "api_key",
-		TokenHeader:     tokenHeader,
+		TokenHeader:     jumpcloudapi.TokenHeader,
 		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
-			{
-				Name:             familyUsers,
-				Path:             "/v1/users",
-				URNKind:          "jumpcloud_users",
-				IDKeys:           []string{"id", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "jumpcloud"},
-			},
-			{
-				Name:             familyGroups,
-				Path:             "/v1/groups",
-				URNKind:          "jumpcloud_groups",
-				IDKeys:           []string{"id", "group_id", "group_email", "email"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "id", "group_name": "group_name|name|display_name", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "groups", "source_system": "jumpcloud"},
-			},
-			{
-				Name:             familyAuditEvents,
-				Path:             "/v1/audit/events",
-				URNKind:          "jumpcloud_audit_events",
-				IDKeys:           []string{"id", "event_id", "uuid", "request_id"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_events", "source_system": "jumpcloud"},
-			},
-		},
+		ConfigHeaders:   map[string]string{"x-org-id": "org_id"},
+		Families:        jumpcloudapi.Families(),
 	})
 	if err != nil {
 		return nil, err
@@ -105,7 +71,14 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.CheckAuditEvents(ctx, runtimeCfg, s != nil && s.allowLoopback)
+	}
+	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
+		return s.inner.CheckPathParamValues(ctx, runtimeCfg, param, values)
+	}
+	path := jumpcloudapi.FirstNonEmpty(sourcecdk.ConfigValue(runtimeCfg, "health_path"), defaultHealthPath)
+	if err := s.inner.CheckPath(ctx, runtimeCfg, path, nil); err != nil {
 		return err
 	}
 	return s.inner.Check(ctx, runtimeCfg)
@@ -116,45 +89,80 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.DiscoverAuditEvents(ctx, runtimeCfg, s != nil && s.allowLoopback)
+	}
+	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
+		return s.discoverGroupMembers(ctx, runtimeCfg, param, values)
+	}
 	return s.inner.Discover(ctx, runtimeCfg)
 }
 
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.ReadWithCheckpoint(ctx, cfg, cursor, nil)
+}
+
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	runtimeCfg, err := s.runtimeConfig(ctx, cfg)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	return s.inner.Read(ctx, runtimeCfg, cursor)
+	if jumpcloudapi.FamilyName(runtimeCfg) == familyAuditEvents {
+		return jumpcloudapi.ReadAuditEvents(ctx, runtimeCfg, cursor, checkpoint, s != nil && s.allowLoopback)
+	}
+	if param, values := jumpCloudPathParamValues(runtimeCfg); param != "" {
+		return s.inner.ReadPathParamValuesWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint, param, values)
+	}
+	return s.inner.ReadWithCheckpoint(ctx, runtimeCfg, cursor, checkpoint)
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
-}
-
 func loadSpec() (*cerebrov1.SourceSpec, error) {
-	specBytes, err := catalogFS.ReadFile("catalog.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-	spec, err := sourcecdk.LoadCatalog(specBytes)
-	if err != nil {
-		return nil, fmt.Errorf("load catalog: %w", err)
-	}
-	return spec, nil
+	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+func jumpCloudPathParamValues(cfg sourcecdk.Config) (string, []string) {
+	if jumpcloudapi.FamilyName(cfg) != familyGroupMembers {
+		return "", nil
+	}
+	return "group_id", jumpcloudapi.ConfigListValues(cfg, "group_ids", "user_group_ids", "group_id", "user_group_id")
+}
+
+func (s *Source) discoverGroupMembers(ctx context.Context, cfg sourcecdk.Config, param string, values []string) ([]sourcecdk.URN, error) {
+	seen := map[sourcecdk.URN]struct{}{}
+	urns := []sourcecdk.URN{}
+	var cursor *cerebrov1.SourceCursor
+	for pages := 0; pages < groupMemberDiscoveryPageLimit; pages++ {
+		pull, err := s.inner.ReadPathParamValuesWithCheckpoint(ctx, cfg, cursor, nil, param, values)
+		if err != nil {
+			return nil, err
+		}
+		for _, event := range pull.Events {
+			attrs := event.GetAttributes()
+			groupID := jumpcloudapi.FirstNonEmpty(attrs["group_id"], sourcecdk.ConfigValue(cfg, "group_id"))
+			memberID := jumpcloudapi.FirstNonEmpty(attrs["member_user_id"], attrs["member_id"], attrs["resource_id"], attrs["source_event_id"])
+			if groupID == "" && memberID == "" {
+				memberID = event.GetId()
+			}
+			urn, err := sourcecdk.URNForEscaped(event.GetTenantId(), "jumpcloud_group_members", groupID, memberID)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := seen[urn]; ok {
+				continue
+			}
+			seen[urn] = struct{}{}
+			urns = append(urns, urn)
+		}
+		cursor = pull.NextCursor
+		if cursor == nil {
+			return urns, nil
 		}
 	}
-	return ""
+	return nil, fmt.Errorf("jumpcloud group member discovery exceeded %d pages", groupMemberDiscoveryPageLimit)
 }
 
 func (s *Source) allowLoopbackForTest() {

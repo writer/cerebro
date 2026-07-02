@@ -100,6 +100,9 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if hasProcedureCall(tokens) {
 		return validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden"), 0, nil
 	}
+	if hasVariableLengthRelationshipPattern(safeQuery) {
+		return validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden"), 0, nil
+	}
 	if hasForbiddenExpansion(tokens) {
 		return validatorRefusal("expansion_not_allowed", "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden"), 0, nil
 	}
@@ -441,6 +444,47 @@ func hasForbiddenExpansion(tokens []cypherToken) bool {
 		case "range", "collect":
 			return true
 		}
+	}
+	return false
+}
+
+func hasVariableLengthRelationshipPattern(query string) bool {
+	for i := 0; i < len(query); i++ {
+		if query[i] != '[' || !relationshipDashBefore(query, i) {
+			continue
+		}
+		closeIndex := strings.IndexByte(query[i+1:], ']')
+		if closeIndex < 0 {
+			return true
+		}
+		closeIndex += i + 1
+		if !relationshipDashAfter(query, closeIndex) {
+			continue
+		}
+		if strings.Contains(query[i+1:closeIndex], "*") {
+			return true
+		}
+		i = closeIndex
+	}
+	return false
+}
+
+func relationshipDashBefore(query string, index int) bool {
+	for i := index - 1; i >= 0; i-- {
+		if isWhitespace(query[i]) {
+			continue
+		}
+		return query[i] == '-'
+	}
+	return false
+}
+
+func relationshipDashAfter(query string, index int) bool {
+	for i := index + 1; i < len(query); i++ {
+		if isWhitespace(query[i]) {
+			continue
+		}
+		return query[i] == '-'
 	}
 	return false
 }

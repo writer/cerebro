@@ -66,7 +66,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `attackiq` | Attackiq source | attackiq.assets, attackiq.audit_events, attackiq.findings, attackiq.policies, attackiq.vulnerabilities |
 | `auditboard` | Auditboard source | auditboard.controls, auditboard.findings, auditboard.users |
 | `aurelius` | SaaS/business-operation export source | configured catalog families |
-| `auth0` | Auth0 Management API source | users, roles, audit events |
+| `auth0` | Auth0 Management API source | users, roles, audit events, organizations, organization members, clients, connections, resource servers, client grants, grants, user roles, user authentication methods, Guardian factors |
 | `authentik_cloud` | Authentik Cloud source | authentik_cloud.applications, authentik_cloud.audit_events, authentik_cloud.groups, authentik_cloud.roles, authentik_cloud.users |
 | `autotask` | Autotask source | autotask.entityinformation_field, autotask.excludedrole, autotask.field, autotask.userdefinedfield |
 | `avature` | Avature source | avature.accounts, avature.audit_events, avature.policies, avature.records, avature.users |
@@ -670,7 +670,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `skedda` | Skedda source | skedda.audit_events, skedda.documents, skedda.groups, skedda.users, skedda.workspaces |
 | `skillsoft_percipio` | Skillsoft Percipio source | skillsoft_percipio.accounts, skillsoft_percipio.audit_events, skillsoft_percipio.policies, skillsoft_percipio.records, skillsoft_percipio.users |
 | `slab` | Slab source | slab.audit_events, slab.documents, slab.groups, slab.users, slab.workspaces |
-| `slack` | Slack workspace source | teams, users, channels, user groups |
+| `slack` | Slack workspace, membership, and audit source | teams, users, channels, user groups, access logs, channel members, user group members, audit logs |
 | `slideroom` | Slideroom source | slideroom.attributes_name, slideroom.export, slideroom.name |
 | `slite` | Slite source | slite.audit_events, slite.documents, slite.groups, slite.users, slite.workspaces |
 | `smartrecruiters` | Smartrecruiters source | smartrecruiters.accounts, smartrecruiters.audit_events, smartrecruiters.policies, smartrecruiters.records, smartrecruiters.users |

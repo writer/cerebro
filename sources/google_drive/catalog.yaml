@@ -1,14 +1,34 @@
 id: google_drive
 name: "Google Drive"
-description: "Collects files, shared drives, and drive changes from Google Drive and projects them into the Cerebro graph as assets and audit events for workspace, document, message, and collaboration context."
+description: "Reads Google Drive file metadata and shared-drive metadata. Emits Drive change records when a provider page token is supplied, so document inventory and Drive activity can be projected into the graph."
 emitted_kinds:
   - google_drive.files
   - google_drive.shared_drives
   - google_drive.changes
 runtime_families:
-  - changes
   - files
   - shared_drives
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_authorization_code
+  base_url: https://www.googleapis.com/drive/v3
+  references:
+    - https://raw.githubusercontent.com/googleapis/google-api-go-client/main/drive/v3/drive-api.json
+    - https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list
+    - https://developers.google.com/workspace/drive/api/reference/rest/v3/drives/list
+    - https://developers.google.com/workspace/drive/api/reference/rest/v3/changes/list
+    - https://developers.google.com/workspace/drive/api/reference/rest/v3/changes/getStartPageToken
+  families:
+    - id: files
+      method: GET
+      path: /files
+    - id: shared_drives
+      method: GET
+      path: /drives
+    - id: changes
+      method: GET
+      path: /changes
 kind_lifecycle:
   - kind: google_drive.files
     status: active

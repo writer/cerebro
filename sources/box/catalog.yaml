@@ -1,14 +1,66 @@
 id: box
 name: "Box"
-description: "Box connector definition catalog entry for high-value security and operations resources."
+description: "Box enterprise content and access source covering managed users, groups, group memberships, root folder content items, and enterprise admin log events. The runtime reads Box Platform API v2 collections, preserves marker, offset, and stream cursors, and emits identity, membership, content asset, and audit event records for graph projection and review."
 emitted_kinds:
   - box.users
   - box.content_assets
+  - box.groups
+  - box.group_memberships
   - box.audit_events
+provider_api:
+  status: verified
+  transport: rest
+  auth: oauth_client_credentials
+  base_url: https://api.box.com/2.0
+  references:
+    - https://github.com/box/box-openapi
+    - https://raw.githubusercontent.com/box/box-openapi/main/openapi/openapi.json
+    - https://developer.box.com/guides/authentication/client-credentials/
+    - https://developer.box.com/reference/get-users/
+    - https://developer.box.com/reference/get-groups/
+    - https://developer.box.com/reference/get-groups-id-memberships/
+    - https://developer.box.com/reference/get-folders-id-items/
+    - https://developer.box.com/reference/get-events/
+  families:
+    - id: users
+      method: GET
+      path: /users
+      response: entries
+      pagination: marker
+    - id: content_assets
+      method: GET
+      path: /folders/0/items
+      response: entries
+      pagination: marker
+    - id: groups
+      method: GET
+      path: /groups
+      response: entries
+      pagination: offset
+    - id: group_memberships
+      method: GET
+      path: /groups/{group_id}/memberships
+      response: entries
+      pagination: offset
+    - id: audit_events
+      method: GET
+      path: /events
+      response: entries
+      pagination: stream_position
+runtime_families:
+  - users
+  - content_assets
+  - groups
+  - group_memberships
+  - audit_events
 kind_lifecycle:
   - kind: box.users
     status: active
   - kind: box.content_assets
+    status: active
+  - kind: box.groups
+    status: active
+  - kind: box.group_memberships
     status: active
   - kind: box.audit_events
     status: active
@@ -18,38 +70,63 @@ coverage_contract:
   dimensions:
     - id: users
       type: entity_family
-      title: "Users"
+      title: "Managed users"
       families: [users]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [identity_access, asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /users` with `usemarker=true`, `marker`, `limit`, and `next_marker` to preserve managed user ID, login email, display name, account status, and user resource URNs.
+    - id: groups
+      type: entity_family
+      title: "Groups"
+      families: [groups]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads `GET /groups` with offset pagination and preserves group ID, name, type, and group resource URNs for access review.
+    - id: group_memberships
+      type: entity_family
+      title: "Group memberships"
+      families: [group_memberships]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+      notes:
+        - Reads `GET /groups/{group_id}/memberships` across configured `group_ids` and projects Box user-to-group membership edges with membership role.
     - id: content_assets
       type: entity_family
-      title: "Content Assets"
+      title: "Root folder content"
       families: [content_assets]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
+      control_domains: [asset_inventory, data_governance]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /folders/0/items` with marker pagination to seed Box content inventory from the enterprise root folder and preserve file or folder ID, type, name, owner, and resource URN.
     - id: audit_events
       type: audit_event
-      title: "Audit Events"
+      title: "Enterprise events"
       families: [audit_events]
-      support: partial
+      support: supported
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Reads `GET /events` with `stream_type=admin_logs_streaming` and records event ID, actor, source item, event type, and stream position.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
-      support: planned
+      families: [users, content_assets, groups, group_memberships, audit_events]
+      support: supported
+      evidence_types: [source_sync_status]
+      control_domains: [source_operations]
+      notes:
+        - Uses Box `next_marker` for users and content, offset metadata for groups and group memberships, and `next_stream_position` for enterprise events.
 event_contracts:
   - kind: box.users
     schema_ref: box/users/v1
@@ -69,6 +146,25 @@ event_contracts:
       - resource_id
     required_payload_fields:
       - id
+  - kind: box.groups
+    schema_ref: box/groups/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - group_name
+    required_payload_fields:
+      - id
+  - kind: box.group_memberships
+    schema_ref: box/group_memberships/v1
+    required_attributes:
+      - tenant_id
+      - source_event_id
+      - group_id
+      - member_user_id
+    required_payload_fields:
+      - id
+      - user.id
   - kind: box.audit_events
     schema_ref: box/audit_events/v1
     required_attributes:
@@ -77,4 +173,4 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - event_id

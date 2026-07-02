@@ -22,7 +22,7 @@ Every entry must include a committed `classifier_output` and a normalized
 
 - auth model and reference-only credential fields
 - verification endpoint
-- 2-12 high-value resource families
+- at least 2 resource families and at most 12 high-value resource families
 - projection templates
 - coverage dimensions with evidence types and control domains for supported or partial high-value dimensions
 

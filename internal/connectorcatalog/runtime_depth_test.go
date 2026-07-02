@@ -13,6 +13,20 @@ id: github
 name: GitHub
 emitted_kinds: [github.audit, github.code.repository]
 runtime_families: [audit, repository]
+provider_api:
+  status: verified
+  transport: rest
+  auth: github_app
+  base_url: https://api.github.com
+  references:
+    - https://docs.github.com/rest
+  families:
+    - id: audit
+      method: GET
+      path: /orgs/{org}/audit-log
+    - id: repository
+      method: GET
+      path: /orgs/{org}/repos
 coverage_contract:
   dimensions:
     - id: audit
@@ -23,7 +37,7 @@ event_contracts:
   - kind: github.code.repository
     schema_ref: github/code_repository/v1
 `)
-	writeRuntimeDepthFile(t, root, "sources/github/source.go", "package github\n")
+	writeRuntimeDepthFile(t, root, "sources/github/source.go", "package github\n\nimport _ \"github.com/google/go-github/v66/github\"\n")
 	writeRuntimeDepthFile(t, root, "sources/github/source_test.go", "package github\n")
 	writeRuntimeDepthFile(t, root, "sources/github/deploy.yaml", "sourceId: github\n")
 	writeRuntimeDepthFile(t, root, "sources/github/testdata/discover_audit.json", "[]")
@@ -46,8 +60,11 @@ func TestProjectGitHubAudit(t *testing.T) {
 	if depth.Score != 100 {
 		t.Fatalf("runtime depth score = %d missing=%v, want 100", depth.Score, depth.Missing)
 	}
-	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
+	if !depth.HasSourcePackage || !depth.HasSourceCatalog || !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping || !depth.ProviderAPI.HasRuntimeTransport || !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.HasFixturePair || !depth.HasDeployManifest || !depth.HasProjectorTests {
 		t.Fatalf("runtime depth flags = %#v, want all reference-runtime flags", depth)
+	}
+	if depth.ProviderAPI.BaseURL != "https://api.github.com" || !containsString(depth.ProviderAPI.References, "https://docs.github.com/rest") || !containsString(depth.ProviderAPI.MappedFamilies, "repository") {
+		t.Fatalf("provider API details = %#v", depth.ProviderAPI)
 	}
 	if got := depth.PackagePath; got != "sources/github" {
 		t.Fatalf("package path = %q, want sources/github", got)
@@ -99,6 +116,8 @@ func TestProjectGitHubAudit(t *testing.T) {
 		t.Fatalf("runtime depth score = %d missing=%v, want below threshold", depth.Score, depth.Missing)
 	}
 	for _, want := range []string{
+		"runtime:provider_api_contract",
+		"runtime:provider_api_reference",
 		"runtime:fixture_pair",
 		"runtime:read_fixture:repository",
 		"runtime:discover_fixture:repository",
@@ -132,10 +151,67 @@ coverage_contract:
 	if depth.Score >= runtimeDepthReviewThreshold {
 		t.Fatalf("runtime depth score = %d missing=%v, want below threshold", depth.Score, depth.Missing)
 	}
-	for _, want := range []string{"runtime:catalog_contracts", "runtime:deploy_manifest", "runtime:fixture_pair", "runtime:projector_tests", "runtime:source_tests"} {
+	for _, want := range []string{"runtime:provider_api_contract", "runtime:provider_api_reference", "runtime:catalog_contracts", "runtime:deploy_manifest", "runtime:fixture_pair", "runtime:projector_tests", "runtime:source_tests"} {
 		if !containsString(depth.Missing, want) {
 			t.Fatalf("missing = %v, want %s", depth.Missing, want)
 		}
+	}
+}
+
+func TestDiscoverRuntimeDepthRejectsGraphQLProviderOnJSONRuntime(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeDepthFile(t, root, "sources/wiz/catalog.yaml", `
+id: wiz
+name: Wiz
+emitted_kinds: [wiz.assets]
+families:
+  - id: assets
+provider_api:
+  status: verified
+  transport: graphql
+  auth: oauth_client_credentials
+  endpoint: https://api.us1.app.wiz.io/graphql
+  references:
+    - https://docs.wiz.io
+  families:
+    - id: assets
+      operation: CloudResources
+coverage_contract:
+  dimensions:
+    - id: assets
+      type: entity_family
+event_contracts:
+  - kind: wiz.assets
+    schema_ref: wiz/assets/v1
+`)
+	writeRuntimeDepthFile(t, root, "sources/wiz/source.go", "package wiz\n\nimport _ \"github.com/writer/cerebro/sources/internal/jsonapi\"\n")
+	writeRuntimeDepthFile(t, root, "sources/wiz/source_test.go", "package wiz\n")
+	writeRuntimeDepthFile(t, root, "sources/wiz/deploy.yaml", "sourceId: wiz\n")
+	writeRuntimeDepthFile(t, root, "sources/wiz/testdata/discover_assets.json", "[]")
+	writeRuntimeDepthFile(t, root, "sources/wiz/testdata/read_assets.json", "[]")
+	writeRuntimeDepthFile(t, root, "internal/sourceprojection/wiz_test.go", `package sourceprojection
+
+func TestProjectWizAsset(t *testing.T) {
+	_ = struct{ SourceId, Kind string }{SourceId: "wiz", Kind: "wiz.assets"}
+}
+`)
+
+	inventory, err := DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth() error = %v", err)
+	}
+	depth := inventory["wiz"]
+	if depth.Score >= runtimeDepthReviewThreshold {
+		t.Fatalf("runtime depth score = %d missing=%v, want below threshold", depth.Score, depth.Missing)
+	}
+	if !depth.ProviderAPI.HasContract || !depth.ProviderAPI.HasMapping {
+		t.Fatalf("provider API flags = %#v, want contract and family mapping present", depth)
+	}
+	if depth.ProviderAPI.HasRuntimeTransport {
+		t.Fatalf("runtime transport match = true, want graphql/jsonapi mismatch")
+	}
+	if !containsString(depth.Missing, "runtime:provider_api_transport_mismatch") {
+		t.Fatalf("missing = %v, want provider API transport mismatch", depth.Missing)
 	}
 }
 

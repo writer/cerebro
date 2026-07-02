@@ -1,0 +1,29 @@
+[
+  {
+    "id": "auth0-guardian-factor-sms",
+    "tenant_id": "tenant",
+    "source_id": "auth0",
+    "kind": "auth0.guardian_factors",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "schema_ref": "auth0/guardian_factors/v1",
+    "payload": {
+      "name": "sms",
+      "enabled": true,
+      "trial_expired": false
+    },
+    "attributes": {
+      "credential_id": "sms",
+      "credential_name": "sms",
+      "credential_type": "sms",
+      "enabled": "true",
+      "resource_id": "sms",
+      "resource_name": "sms",
+      "resource_type": "guardian_factor",
+      "resource_urn": "urn:cerebro:tenant:runtime_guardian_factors:sms",
+      "source_event_id": "sms",
+      "status": "true",
+      "tenant_id": "tenant",
+      "trial_expired": "false"
+    }
+  }
+]

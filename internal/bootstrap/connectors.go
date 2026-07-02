@@ -41,6 +41,8 @@ const (
 	connectorStoreEnvironmentManaged  = "environment_managed"
 	connectorActivityDefaultLimit     = 500
 	connectorActivityMaxLimit         = 500
+	connectorLibraryPageDefaultLimit  = 200
+	connectorLibraryPageMaxLimit      = 200
 
 	connectorAuthMethodEncryptedSubmission = "encrypted_submission"
 	connectorAuthMethodAWSSSOProfile       = "aws_sso_profile"
@@ -69,7 +71,11 @@ const (
 	connectorReadinessStageCatalogReady        = "catalog_ready"
 	connectorReadinessStageAuthExtensionNeeded = "auth_extension_required"
 	connectorReadinessStageRuntimeNeeded       = "runtime_required"
+	connectorReadinessStageRuntimeBacked       = "runtime_backed"
 	connectorReadinessStageRuntimeUnknown      = "runtime_unknown"
+
+	connectorLibraryViewFull    = "full"
+	connectorLibraryViewSummary = "summary"
 )
 
 var errConnectorAccessRestricted = errors.New("connector access restricted")
@@ -143,6 +149,8 @@ type connectorLibraryResponse struct {
 	Connectors          []connectorCatalogEntry `json:"connectors"`
 	Counts              connectorLibraryCounts  `json:"counts"`
 	GeneratedAt         string                  `json:"generated_at"`
+	View                string                  `json:"view"`
+	Page                *connectorLibraryPage   `json:"page,omitempty"`
 	TenantID            string                  `json:"tenant_id,omitempty"`
 	RuntimeStore        string                  `json:"runtime_store"`
 	CatalogVersion      string                  `json:"catalog_version,omitempty"`
@@ -150,6 +158,50 @@ type connectorLibraryResponse struct {
 	CredentialTransport connectorTransportView  `json:"credential_transport"`
 	CredentialVault     connectorVaultView      `json:"credential_vault"`
 	CredentialStores    []connectorStoreView    `json:"credential_stores,omitempty"`
+}
+type connectorLibrarySummaryResponse struct {
+	Connectors          []connectorCatalogSummaryEntry `json:"connectors"`
+	Counts              connectorLibraryCounts         `json:"counts"`
+	GeneratedAt         string                         `json:"generated_at"`
+	View                string                         `json:"view"`
+	Page                *connectorLibraryPage          `json:"page,omitempty"`
+	TenantID            string                         `json:"tenant_id,omitempty"`
+	RuntimeStore        string                         `json:"runtime_store"`
+	CatalogVersion      string                         `json:"catalog_version,omitempty"`
+	CatalogSourceCommit string                         `json:"catalog_source_commit,omitempty"`
+}
+type connectorLibraryPage struct {
+	Total      int    `json:"total"`
+	Returned   int    `json:"returned"`
+	Limit      int    `json:"limit"`
+	HasMore    bool   `json:"has_more"`
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+type connectorCatalogSummaryEntry struct {
+	SourceID               string   `json:"source_id"`
+	DisplayName            string   `json:"display_name,omitempty"`
+	Status                 string   `json:"status,omitempty"`
+	ConfiguredRuntimes     int      `json:"configured_runtimes,omitempty"`
+	HealthyRuntimes        int      `json:"healthy_runtimes,omitempty"`
+	NeedsAttentionRuntimes int      `json:"needs_attention_runtimes,omitempty"`
+	CatalogStatus          string   `json:"catalog_status,omitempty"`
+	ClassifierOutput       string   `json:"classifier_output,omitempty"`
+	AuthModel              string   `json:"auth_model,omitempty"`
+	RuntimeExecutable      bool     `json:"runtime_executable,omitempty"`
+	CatalogCategories      []string `json:"catalog_categories,omitempty"`
+	DefinitionOrigin       string   `json:"definition_origin,omitempty"`
+	ReadinessStage         string   `json:"readiness_stage,omitempty"`
+	ValidationGrade        string   `json:"validation_grade,omitempty"`
+	Cataloged              bool     `json:"cataloged"`
+	Callable               bool     `json:"callable"`
+	AccessStatus           string   `json:"access_status,omitempty"`
+	SetupAllowed           bool     `json:"setup_allowed"`
+	Requestable            bool     `json:"requestable,omitempty"`
+	IntegrationLevel       string   `json:"integration_level,omitempty"`
+	IntegrationScore       int      `json:"integration_score,omitempty"`
+	ResourceFamilyCount    int      `json:"resource_family_count,omitempty"`
+	EmittedKindCount       int      `json:"emitted_kind_count,omitempty"`
+	ScopeOptionCount       int      `json:"scope_option_count,omitempty"`
 }
 type connectorLibraryCounts struct {
 	Total        int `json:"total"`
@@ -505,8 +557,155 @@ func (a *App) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 		writeConnectorError(w, err)
 		return
 	}
+	view, err := connectorLibraryView(r)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
+	pagination, err := connectorLibraryPaginationFromRequest(r)
+	if err != nil {
+		writeConnectorError(w, err)
+		return
+	}
 	response := a.connectorLibrary(r, tenantID)
+	response.Connectors, response.Page = pageConnectorLibraryEntries(response.Connectors, pagination)
+	if view == connectorLibraryViewSummary {
+		writeJSON(w, http.StatusOK, summarizeConnectorLibrary(response))
+		return
+	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func connectorLibraryView(r *http.Request) (string, error) {
+	if r == nil || r.URL == nil {
+		return connectorLibraryViewFull, nil
+	}
+	view := strings.TrimSpace(r.URL.Query().Get("view"))
+	if view == "" {
+		return connectorLibraryViewFull, nil
+	}
+	switch view {
+	case connectorLibraryViewFull, connectorLibraryViewSummary:
+		return view, nil
+	default:
+		return "", fmt.Errorf("%w: connector library view must be full or summary", connectorcredentials.ErrInvalidRequest)
+	}
+}
+
+func summarizeConnectorLibrary(response connectorLibraryResponse) connectorLibrarySummaryResponse {
+	summary := connectorLibrarySummaryResponse{
+		Connectors:          make([]connectorCatalogSummaryEntry, 0, len(response.Connectors)),
+		Counts:              response.Counts,
+		GeneratedAt:         response.GeneratedAt,
+		View:                connectorLibraryViewSummary,
+		Page:                response.Page,
+		TenantID:            response.TenantID,
+		RuntimeStore:        response.RuntimeStore,
+		CatalogVersion:      response.CatalogVersion,
+		CatalogSourceCommit: response.CatalogSourceCommit,
+	}
+	for _, entry := range response.Connectors {
+		summary.Connectors = append(summary.Connectors, summarizeConnectorCatalogEntry(entry))
+	}
+	return summary
+}
+
+type connectorLibraryPagination struct {
+	paged bool
+	start int
+	limit int
+}
+
+func connectorLibraryPaginationFromRequest(r *http.Request) (connectorLibraryPagination, error) {
+	pagination := connectorLibraryPagination{}
+	if r == nil || r.URL == nil {
+		return pagination, nil
+	}
+	query := r.URL.Query()
+	limitValue := strings.TrimSpace(query.Get("limit"))
+	cursorValue := strings.TrimSpace(query.Get("cursor"))
+	if limitValue != "" || cursorValue != "" {
+		pagination.paged = true
+		if pagination.limit == 0 {
+			pagination.limit = connectorLibraryPageDefaultLimit
+		}
+	}
+	if limitValue != "" {
+		parsed, err := strconv.Atoi(limitValue)
+		if err != nil || parsed < 1 {
+			return connectorLibraryPagination{}, fmt.Errorf("%w: connector catalog limit must be at least 1", connectorcredentials.ErrInvalidRequest)
+		}
+		if parsed > connectorLibraryPageMaxLimit {
+			parsed = connectorLibraryPageMaxLimit
+		}
+		pagination.limit = parsed
+	}
+	if cursorValue != "" {
+		parsed, err := strconv.Atoi(cursorValue)
+		if err != nil || parsed < 0 {
+			return connectorLibraryPagination{}, fmt.Errorf("%w: connector catalog cursor must be a non-negative offset", connectorcredentials.ErrInvalidRequest)
+		}
+		pagination.start = parsed
+	}
+	return pagination, nil
+}
+
+func pageConnectorLibraryEntries(entries []connectorCatalogEntry, pagination connectorLibraryPagination) ([]connectorCatalogEntry, *connectorLibraryPage) {
+	if !pagination.paged {
+		return entries, nil
+	}
+	total := len(entries)
+	start := pagination.start
+	if start > total {
+		start = total
+	}
+	limit := pagination.limit
+	if limit <= 0 || limit > connectorLibraryPageMaxLimit {
+		limit = connectorLibraryPageMaxLimit
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	page := &connectorLibraryPage{
+		Total:    total,
+		Returned: end - start,
+		Limit:    limit,
+	}
+	if end < total {
+		page.HasMore = true
+		page.NextCursor = strconv.Itoa(end)
+	}
+	return entries[start:end], page
+}
+
+func summarizeConnectorCatalogEntry(entry connectorCatalogEntry) connectorCatalogSummaryEntry {
+	return connectorCatalogSummaryEntry{
+		SourceID:               entry.SourceID,
+		DisplayName:            entry.DisplayName,
+		Status:                 entry.Status,
+		ConfiguredRuntimes:     entry.ConfiguredRuntimes,
+		HealthyRuntimes:        entry.HealthyRuntimes,
+		NeedsAttentionRuntimes: entry.NeedsAttentionRuntimes,
+		CatalogStatus:          entry.CatalogStatus,
+		ClassifierOutput:       entry.ClassifierOutput,
+		AuthModel:              entry.AuthModel,
+		RuntimeExecutable:      entry.RuntimeExecutable,
+		CatalogCategories:      append([]string{}, entry.CatalogCategories...),
+		DefinitionOrigin:       entry.DefinitionOrigin,
+		ReadinessStage:         entry.ReadinessStage,
+		ValidationGrade:        entry.ValidationGrade,
+		Cataloged:              entry.Cataloged,
+		Callable:               entry.Callable,
+		AccessStatus:           entry.AccessStatus,
+		SetupAllowed:           entry.SetupAllowed,
+		Requestable:            entry.Requestable,
+		IntegrationLevel:       entry.IntegrationDepth.Level,
+		IntegrationScore:       entry.IntegrationDepth.Score,
+		ResourceFamilyCount:    entry.IntegrationDepth.ResourceFamilies,
+		EmittedKindCount:       entry.IntegrationDepth.EmittedKinds,
+		ScopeOptionCount:       entry.IntegrationDepth.ScopeOptions,
+	}
 }
 
 func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibraryResponse {
@@ -654,13 +853,19 @@ func (a *App) connectorLibrary(r *http.Request, tenantID string) connectorLibrar
 		}
 		entries = append(entries, entry)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	sort.SliceStable(entries, func(i, j int) bool {
+		leftName := strings.ToLower(entries[i].Name)
+		rightName := strings.ToLower(entries[j].Name)
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return entries[i].SourceID < entries[j].SourceID
 	})
 	return connectorLibraryResponse{
 		Connectors:          entries,
 		Counts:              connectorLibraryCountsFor(entries),
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
+		View:                connectorLibraryViewFull,
 		TenantID:            tenantID,
 		RuntimeStore:        runtimeStoreStatus,
 		CatalogVersion:      connectordefinitions.SchemaVersionIntegrationV1,
@@ -1743,7 +1948,7 @@ func connectorSchemaForSource(sourceID string) (connectorSchema, bool) {
 		return schema, true
 	}
 	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
-	if err != nil || !ok || !entry.Generateable || entry.Status != connectorcatalog.StatusGenerateable {
+	if err != nil || !ok || !sourceregistry.EntryRuntimeExecutable(entry) {
 		return connectorSchema{}, false
 	}
 	return connectorSchemaFromDefinition(entry.Definition), true
@@ -1852,7 +2057,7 @@ func applyConnectorCatalogMetadata(entry *connectorCatalogEntry, catalogEntry co
 	entry.CatalogStatus = catalogEntry.Status
 	entry.ClassifierOutput = catalogEntry.ClassifierOutput
 	entry.AuthModel = catalogEntry.Definition.Auth.Model
-	entry.RuntimeExecutable = catalogEntry.Generateable
+	entry.RuntimeExecutable = sourceregistry.EntryRuntimeExecutable(catalogEntry)
 	entry.ValidationGrade = string(connectorvalidation.BuiltinValidationForSource(catalogEntry.Definition.SourceID).Grade)
 	entry.Cataloged = true
 	entry.CatalogSchemaVersion = catalogEntry.Definition.SchemaVersion
@@ -2007,6 +2212,8 @@ func connectorReadinessStage(entry connectorCatalogEntry) string {
 		return connectorReadinessStageSetupEnabled
 	case entry.AccessStatus == connectorAccessRestricted:
 		return connectorReadinessStageAPIRestricted
+	case entry.RuntimeExecutable && entry.CatalogStatus == connectorcatalog.StatusNeedsBespokeRuntime:
+		return connectorReadinessStageRuntimeBacked
 	case entry.CatalogStatus == connectorcatalog.StatusGenerateable:
 		return connectorReadinessStageSourcegenReady
 	case entry.CatalogStatus == connectorcatalog.StatusNeedsAuthExtension:

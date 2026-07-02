@@ -3,6 +3,8 @@ secretKeys:
   - AUTH0_DOMAIN
   - AUTH0_CLIENT_ID
   - AUTH0_CLIENT_SECRET
+  - AUTH0_ORGANIZATION_IDS
+  - AUTH0_USER_IDS
 runtimes:
   - localId: users
     config:
@@ -34,6 +36,120 @@ runtimes:
       health_path: /users
       expected_cadence_seconds: "3600"
       stale_after_seconds: "7200"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: organizations
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: organizations
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: organization-members
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: organization_members
+      organization_ids: env:AUTH0_ORGANIZATION_IDS
+      organization_member_fields: roles
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: clients
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: clients
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: connections
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: connections
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: resource-servers
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: resource_servers
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: client-grants
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: client_grants
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: grants
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: grants
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: user-roles
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: user_roles
+      user_ids: env:AUTH0_USER_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: user-authentication-methods
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: user_authentication_methods
+      user_ids: env:AUTH0_USER_IDS
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      client_id: env:AUTH0_CLIENT_ID
+      client_secret: env:AUTH0_CLIENT_SECRET
+  - localId: guardian-factors
+    config:
+      domain: env:AUTH0_DOMAIN
+      family: guardian_factors
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /users
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
       per_page: "100"
       client_id: env:AUTH0_CLIENT_ID
       client_secret: env:AUTH0_CLIENT_SECRET

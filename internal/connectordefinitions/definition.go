@@ -109,6 +109,7 @@ type Definition struct {
 	ConfigFields     []Field          `json:"config_fields,omitempty"`
 	Auth             AuthSpec         `json:"auth"`
 	Transport        *TransportSpec   `json:"transport,omitempty"`
+	ProviderAPI      *ProviderAPISpec `json:"provider_api,omitempty" yaml:"provider_api,omitempty"`
 	Ingest           IngestSpec       `json:"ingest,omitempty"`
 	ResourceFamilies []ResourceFamily `json:"resource_families,omitempty"`
 	ScopeOptions     []ScopeOption    `json:"scope_options,omitempty"`
@@ -171,6 +172,27 @@ type TransportSpec struct {
 	Body         map[string]any    `json:"body,omitempty"`
 	Verification *VerificationSpec `json:"verification,omitempty"`
 	Retry        *RetrySpec        `json:"retry,omitempty"`
+}
+
+// ProviderAPISpec records the provider-owned API source that backs a generated
+// or promoted connector definition.
+type ProviderAPISpec struct {
+	Status     string                  `json:"status,omitempty" yaml:"status,omitempty"`
+	Transport  string                  `json:"transport,omitempty" yaml:"transport,omitempty"`
+	Auth       string                  `json:"auth,omitempty" yaml:"auth,omitempty"`
+	BaseURL    string                  `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	Endpoint   string                  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	References []string                `json:"references,omitempty" yaml:"references,omitempty"`
+	Families   []ProviderAPIFamilySpec `json:"families,omitempty" yaml:"families,omitempty"`
+}
+
+// ProviderAPIFamilySpec maps one runtime family to a documented provider API
+// path or operation.
+type ProviderAPIFamilySpec struct {
+	ID        string `json:"id,omitempty" yaml:"id,omitempty"`
+	Method    string `json:"method,omitempty" yaml:"method,omitempty"`
+	Path      string `json:"path,omitempty" yaml:"path,omitempty"`
+	Operation string `json:"operation,omitempty" yaml:"operation,omitempty"`
 }
 
 // VerificationSpec describes the connection check request.
@@ -317,9 +339,11 @@ type ResourceReadSpec struct {
 
 // FamilyConfigSpec binds static and runtime config values into a resource-family request.
 type FamilyConfigSpec struct {
+	BaseURL          string            `json:"base_url,omitempty"`
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
+	IdentityKeys     []string          `json:"identity_keys,omitempty"`
 }
 
 // ScopeOption exposes a resource family as a selectable scope option in the UI.
@@ -427,6 +451,7 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.TokenParams = normalizeStringMap(definition.Auth.TokenParams)
 	definition.Auth.RefreshParams = normalizeStringMap(definition.Auth.RefreshParams)
 	definition.Transport = normalizeTransportSpec(definition.Transport)
+	definition.ProviderAPI = normalizeProviderAPISpec(definition.ProviderAPI)
 	definition.Ingest = normalizeIngestSpec(definition.Ingest)
 	definition.ConfigFields = normalizeFields(definition.ConfigFields)
 	definition.Auth.CredentialFields = normalizeFields(definition.Auth.CredentialFields)
@@ -514,6 +539,16 @@ func Validate(definition Definition) ValidationResult {
 		}
 		if strings.TrimSpace(family.IDField) == "" {
 			add(blocking("id_field_"+family.ID, "Resource identity", "Each resource family needs a stable id field."))
+		}
+		familyBaseURL := ""
+		if family.Config != nil {
+			familyBaseURL = family.Config.BaseURL
+		}
+		if familyBaseURL != "" && !safeTemplate(familyBaseURL, map[string]struct{}{"config": {}, "connection": {}, "credential": {}}) {
+			add(blocking("base_url_"+family.ID, "Resource base URL", "Resource family base URL templates may only reference config, connection, or credential fields."))
+		}
+		if strings.ContainsAny(familyBaseURL, "\r\n\t\\") {
+			add(blocking("base_url_chars_"+family.ID, "Resource base URL", "Resource family base URL must not contain control characters or backslashes."))
 		}
 		validateFamilyIntegrationFields(family, add)
 	}
@@ -828,6 +863,11 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 		validateFamilyConfigMap(family.ID, "static_query", family.Config.StaticQuery, add)
 		validateFamilyConfigMap(family.ID, "config_query", family.Config.ConfigQuery, add)
 		validateFamilyConfigMap(family.ID, "config_attributes", family.Config.ConfigAttributes, add)
+		for _, key := range family.Config.IdentityKeys {
+			if strings.TrimSpace(key) == "" {
+				add(blocking("identity_keys_"+family.ID, "Identity keys", "Identity keys must not contain empty values."))
+			}
+		}
 	}
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
@@ -1011,6 +1051,7 @@ func knownProjectionAttributes(family ResourceFamily) map[string]struct{} {
 		for key := range family.Config.ConfigAttributes {
 			addKnown(key)
 		}
+		addKnown(family.Config.IdentityKeys...)
 	}
 	switch strings.TrimSpace(family.Projection.Template) {
 	case "finding", "vulnerability":
@@ -1153,6 +1194,50 @@ func normalizeTransportSpec(transport *TransportSpec) *TransportSpec {
 	return &next
 }
 
+func normalizeProviderAPISpec(api *ProviderAPISpec) *ProviderAPISpec {
+	if api == nil {
+		return nil
+	}
+	next := *api
+	next.Status = strings.TrimSpace(next.Status)
+	next.Transport = strings.TrimSpace(next.Transport)
+	next.Auth = strings.TrimSpace(next.Auth)
+	next.BaseURL = strings.TrimSpace(next.BaseURL)
+	next.Endpoint = strings.TrimSpace(next.Endpoint)
+	next.References = normalizeStringList(next.References)
+	families := make([]ProviderAPIFamilySpec, 0, len(next.Families))
+	seen := map[string]struct{}{}
+	for _, family := range next.Families {
+		family.ID = normalizeIdentifier(family.ID)
+		family.Method = strings.ToUpper(strings.TrimSpace(family.Method))
+		family.Path = strings.TrimSpace(family.Path)
+		family.Operation = strings.TrimSpace(family.Operation)
+		if family.ID == "" {
+			continue
+		}
+		key := family.ID + "\x00" + family.Method + "\x00" + family.Path + "\x00" + family.Operation
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		families = append(families, family)
+	}
+	sort.SliceStable(families, func(i int, j int) bool {
+		if families[i].ID != families[j].ID {
+			return families[i].ID < families[j].ID
+		}
+		if families[i].Method != families[j].Method {
+			return families[i].Method < families[j].Method
+		}
+		if families[i].Path != families[j].Path {
+			return families[i].Path < families[j].Path
+		}
+		return families[i].Operation < families[j].Operation
+	})
+	next.Families = families
+	return &next
+}
+
 func normalizeIngestSpec(ingest IngestSpec) IngestSpec {
 	ingest.Mode = strings.ToLower(strings.TrimSpace(ingest.Mode))
 	if ingest.Mode == "" {
@@ -1221,10 +1306,12 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 		return nil
 	}
 	next := *config
+	next.BaseURL = strings.TrimSpace(next.BaseURL)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
-	if len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 {
+	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
+	if next.BaseURL == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next

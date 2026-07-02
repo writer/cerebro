@@ -1,6 +1,6 @@
 id: zuora
 name: "Zuora"
-description: "Collects event trigger, accounting code, callout, hostedpage, product, and accounting period from Zuora and projects them into the Cerebro graph as alerts, assets, audit events, and users for inventory, access review, audit, risk, and operational context."
+description: "Collects event triggers, billing configuration, notification history, catalog products, revenue events, and account payment methods from Zuora and projects them into the Cerebro graph as alerts, assets, audit events, and users for inventory, access review, audit, risk, and operational context."
 emitted_kinds:
   - zuora.event_trigger
   - zuora.accounting_code
@@ -64,8 +64,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List event triggers response under the top-level `data` key, including trigger ID, base object, JEXL condition, nested event type, and active state.
+      known_unsupported_fields:
+        - List event triggers does not return the user that last changed the trigger.
     - id: accounting_code
       type: entity_family
       title: "Accounting Code"
@@ -74,8 +79,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List all accounting codes response under `accountingCodes`, including GL account name, account number, category, type, status, and audit timestamps.
     - id: callout
       type: alert_state
       title: "Callout"
@@ -84,8 +92,13 @@ coverage_contract:
       high_value: true
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps notification callout history under `calloutHistories`, retaining attempted count, request URL, method, response code, event category, and notification name.
+      known_unsupported_fields:
+        - Request and response bodies are not collected by this source.
     - id: hostedpage
       type: entity_family
       title: "Hostedpage"
@@ -94,8 +107,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List hosted pages response under `hostedpages`, including page ID, payment page type, and page version.
     - id: product
       type: audit_event
       title: "Product"
@@ -104,8 +120,11 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List all products catalog response under `products`, including product ID, product number, SKU, category, effective dates, and rate-plan link.
     - id: accounting_period
       type: entity_family
       title: "Accounting Period"
@@ -114,18 +133,26 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List all accounting periods response under `accountingPeriods`, including period dates, status, fiscal year, fiscal quarter, trial-balance status, and report file IDs.
     - id: email
-      type: entity_family
+      type: audit_event
       title: "Email"
       families: [email]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps notification email history under `emailHistories`, retaining result, event category, notification name, subject, recipients, sender, reply-to, and send time.
+      known_unsupported_fields:
+        - Email bodies and attachment contents are not collected.
     - id: email_template
       type: entity_family
       title: "Email Template"
@@ -134,8 +161,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List email templates response under `data`, including template ID, event type, name, description, subject, sender settings, and active state.
     - id: notification_definition
       type: alert_state
       title: "Notification Definition"
@@ -144,8 +174,11 @@ coverage_contract:
       high_value: true
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List notification definitions response under `data`, including notification ID, event type, name, description, subject, delivery addressing mode, and active state.
     - id: revenue_event
       type: audit_event
       title: "Revenue Event"
@@ -154,8 +187,13 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps revenue item responses under `revenueItems` for a configured revenue event number.
+      known_unsupported_fields:
+        - The current public Swagger does not expose this revenue route; shape is held as a provider-like inert replay until the revenue API OpenAPI is published with this path.
     - id: revenue_schedule
       type: audit_event
       title: "Revenue Schedule"
@@ -164,18 +202,28 @@ coverage_contract:
       high_value: true
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps revenue event detail responses under `revenueEventDetails` for a configured revenue schedule number.
+      known_unsupported_fields:
+        - The current public Swagger does not expose this revenue route; shape is held as a provider-like inert replay until the revenue API OpenAPI is published with this path.
     - id: account
       type: entity_family
-      title: "Account"
+      title: "Account Payment Method"
       families: [account]
       support: partial
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Maps the official List payment methods of an account response for the configured account key, using the documented payment-method type arrays such as `creditcard`.
+      known_unsupported_fields:
+        - Full payment PAN, CVV, and decrypted payment credentials are intentionally not collected.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -189,7 +237,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
     required_payload_fields:
       - id
   - kind: zuora.accounting_code
@@ -197,7 +245,8 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - user_id
+      - provider_id
+      - status
     required_payload_fields:
       - id
   - kind: zuora.callout
@@ -206,7 +255,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_status
     required_payload_fields:
       - attemptedNum
   - kind: zuora.hostedpage
@@ -224,8 +273,8 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - event_type
-      - actor_id
+      - resource_id
+      - resource_name
     required_payload_fields:
       - id
   - kind: zuora.accounting_period
@@ -233,7 +282,8 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - user_id
+      - provider_id
+      - status
     required_payload_fields:
       - id
   - kind: zuora.email
@@ -241,15 +291,17 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - user_id
+      - provider_id
+      - resource_name
     required_payload_fields:
-      - bcc
+      - accountId
   - kind: zuora.email_template
     schema_ref: zuora/email_template/v1
     required_attributes:
       - tenant_id
       - source_event_id
-      - user_id
+      - provider_id
+      - resource_name
     required_payload_fields:
       - id
   - kind: zuora.notification_definition
@@ -258,7 +310,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - alert_id
-      - alert_severity
+      - alert_status
     required_payload_fields:
       - id
   - kind: zuora.revenue_event
@@ -267,7 +319,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
     required_payload_fields:
       - accountingPeriodEndDate
   - kind: zuora.revenue_schedule
@@ -276,7 +328,7 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
+      - resource_id
     required_payload_fields:
       - accountId
   - kind: zuora.account
@@ -284,6 +336,7 @@ event_contracts:
     required_attributes:
       - tenant_id
       - source_event_id
-      - user_id
+      - provider_id
+      - resource_id
     required_payload_fields:
       - id

@@ -53,11 +53,116 @@ func TestRecordIdentityIncludesFanoutScope(t *testing.T) {
 	}
 }
 
+func TestRecordFromRawUsesIDTemplate(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate:   "${created}-${event}",
+			IdentityKeys: []string{"content.user_id"},
+		},
+	}, json.RawMessage(`{"created":"2026-06-01T00:00:00Z","event":"org.project.create","content":{"user_id":"user-1"}}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	if record.ID != "2026-06-01T00:00:00Z-org.project.create" {
+		t.Fatalf("record.ID = %q, want templated id", record.ID)
+	}
+	if got := firstValueString(record.Values, "_record_id"); got != record.ID {
+		t.Fatalf("_record_id = %q, want record id %q", got, record.ID)
+	}
+	if record.Identity == record.ID || !strings.HasPrefix(record.Identity, record.ID+"-") {
+		t.Fatalf("record.Identity = %q, want scoped templated identity", record.Identity)
+	}
+}
+
+func TestAttributesForBoolStatusAttributes(t *testing.T) {
+	record, err := recordFromRaw(Family{
+		Name:   "notifications",
+		IDKeys: []string{"id"},
+	}, json.RawMessage(`{"id":"notification-1","active":false}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	attrs := attributesFor("jsonapi", settings{tenantID: "tenant"}, Family{
+		Name:       "notifications",
+		Attributes: map[string]string{"alert_status": "status"},
+		Config: FamilyConfig{
+			BoolStatusAttributes: map[string]string{"alert_status": "active"},
+		},
+	}, record)
+	if got := attrs["alert_status"]; got != "inactive" {
+		t.Fatalf("alert_status = %q, want inactive; attrs=%#v", got, attrs)
+	}
+}
+
+func TestMergedRecordOmitsSyntheticRecordIDFromRawPayload(t *testing.T) {
+	family := Family{
+		Name:   "audit_logs",
+		IDKeys: []string{"created"},
+		Config: FamilyConfig{
+			IDTemplate: "${created}-${event}",
+		},
+	}
+	original, err := recordFromRaw(family, json.RawMessage(`{"created":"2026-06-01T00:00:00Z","event":"org.project.create","summary":"list"}`))
+	if err != nil {
+		t.Fatalf("recordFromRaw() error = %v", err)
+	}
+	merged, err := mergedRecord(family, original, json.RawMessage(`{"summary":"detail","actor":"user-1"}`))
+	if err != nil {
+		t.Fatalf("mergedRecord() error = %v", err)
+	}
+	if strings.Contains(string(merged.Raw), "_record_id") {
+		t.Fatalf("merged raw payload leaked synthetic _record_id: %s", string(merged.Raw))
+	}
+	if got := firstValueString(merged.Values, "_record_id"); got != original.ID {
+		t.Fatalf("_record_id = %q, want original id %q", got, original.ID)
+	}
+	if got := firstValueString(merged.Values, "summary"); got != "detail" {
+		t.Fatalf("summary = %q, want detail", got)
+	}
+}
+
+func TestBoundedSliceCapacityAvoidsOverflow(t *testing.T) {
+	if got := boundedSliceCapacity(8, 3, 4); got != 15 {
+		t.Fatalf("boundedSliceCapacity() = %d, want 15", got)
+	}
+	if got := boundedSliceCapacity(8, maxInt); got != 0 {
+		t.Fatalf("boundedSliceCapacity() = %d, want zero-capacity overflow fallback", got)
+	}
+}
+
+func TestParseTimeAcceptsProviderTimestampWithoutTimezone(t *testing.T) {
+	got, ok := parseTime("2026-06-01T03:33:51")
+	if !ok {
+		t.Fatal("parseTime() ok = false, want true")
+	}
+	want := time.Date(2026, 6, 1, 3, 33, 51, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTime() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
 func TestRecordIdentityRetainsDeviceScopeByDefault(t *testing.T) {
 	first := recordIdentity("install-1", map[string]any{"device_id": "device-a"}, nil)
 	second := recordIdentity("install-1", map[string]any{"device_id": "device-b"}, nil)
 	if first == second {
 		t.Fatalf("recordIdentity() collapsed device scopes: %q", first)
+	}
+}
+
+func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
+	values := map[string]any{
+		"results": []any{
+			map[string]any{"input_tokens": json.Number("1200")},
+			map[string]any{"input_tokens": json.Number("340")},
+		},
+	}
+	if got := firstValueString(values, "results.__count"); got != "2" {
+		t.Fatalf("results.__count = %q, want 2", got)
+	}
+	if got := firstValueString(values, "results.input_tokens.__sum"); got != "1540" {
+		t.Fatalf("results.input_tokens.__sum = %q, want 1540", got)
 	}
 }
 
@@ -450,6 +555,108 @@ func TestReadSynthesizesStartAtOffsetCursorForFullPages(t *testing.T) {
 	}
 	if got := requests[1].URL.Query().Get("startAt"); got != "2" {
 		t.Fatalf("second startAt query = %q, want 2", got)
+	}
+}
+
+func TestReadUsesSkipOffsetCursorFromResponseMetadata(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit query = %q, want 2", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("skip") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":    []map[string]any{{"id": "user-1"}, {"id": "user-2"}},
+				"skip":       0,
+				"limit":      2,
+				"totalCount": 4,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":    []map[string]any{{"id": "user-3"}, {"id": "user-4"}},
+				"skip":       2,
+				"limit":      2,
+				"totalCount": 4,
+			})
+		default:
+			t.Fatalf("unexpected skip %q", r.URL.Query().Get("skip"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "users",
+		Path:            "/systemusers",
+		CursorParam:     "skip",
+		PageSizeParams:  []string{"limit"},
+		PageFirstCursor: "0",
+		URNKind:         "test_user",
+		IDKeys:          []string{"id"},
+		ListKeys:        []string{"results"},
+		Config:          FamilyConfig{OffsetCursor: true, TotalKeys: []string{"totalCount"}},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	})
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if got := requests[0].URL.Query().Get("skip"); got != "0" {
+		t.Fatalf("first skip query = %q, want 0", got)
+	}
+	if got := requests[1].URL.Query().Get("skip"); got != "2" {
+		t.Fatalf("second skip query = %q, want 2", got)
+	}
+}
+
+func TestReadTreatsSkipAsPageCursorWithoutOffsetConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit query = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("skip"); got != "0" {
+			t.Fatalf("skip query = %q, want 0", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "item-1"}, {"id": "item-2"}})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "items",
+		Path:            "/items",
+		CursorParam:     "skip",
+		PageSizeParams:  []string{"limit"},
+		PageFirstCursor: "0",
+		URNKind:         "test_item",
+		IDKeys:          []string{"id"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.NextCursor.GetOpaque() != "1" {
+		t.Fatalf("NextCursor = %q, want page-style skip cursor 1", pull.NextCursor.GetOpaque())
 	}
 }
 
@@ -861,6 +1068,57 @@ func TestReadUsesConfiguredListKeys(t *testing.T) {
 	}
 }
 
+func TestReadWrapsScalarListItemsWithIDKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("channel"); got != "C1" {
+			t.Fatalf("channel query = %q, want C1", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"members": []string{"U1"},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:     "channel_member",
+		Path:     "/conversations.members",
+		URNKind:  "test_channel_member",
+		IDKeys:   []string{"user_id"},
+		ListKeys: []string{"members"},
+		Config: FamilyConfig{
+			ConfigQuery: map[string]string{"channel": "channel_id"},
+		},
+		PathParams: []string{"channel_id"},
+		Attributes: map[string]string{
+			"channel_id": "channel_id",
+			"user_id":    "user_id",
+		},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":  "writer",
+		"family":     "channel_member",
+		"token":      "token-1",
+		"channel_id": "C1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if attrs["user_id"] != "U1" || attrs["channel_id"] != "C1" {
+		t.Fatalf("attributes = %#v, want scalar member with channel context", attrs)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(pull.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["user_id"] != "U1" || payload["channel_id"] != "C1" {
+		t.Fatalf("payload = %#v, want scalar member with channel context", payload)
+	}
+}
+
 func TestReadSplitsBracketConfigQueryValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()["tags[]"]
@@ -1084,6 +1342,60 @@ func TestReadUsesFamilyCursorKeysAndHasMore(t *testing.T) {
 	}
 }
 
+func TestReadUsesLastItemCursorForBareArray(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("take"); got != "2" {
+			t.Fatalf("take = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("from") {
+		case "":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"log_id": "log-1"}, {"log_id": "log-2"}})
+		case "log-2":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"log_id": "log-3"}})
+		default:
+			t.Fatalf("from = %q, want empty or log-2", r.URL.Query().Get("from"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:           "log",
+		Path:           "/logs",
+		CursorParam:    "from",
+		Config:         FamilyConfig{LastItemCursorKeys: []string{"log_id"}},
+		URNKind:        "log",
+		IDKeys:         []string{"log_id"},
+		PageSizeParams: []string{"take"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if got := sourcecdk.CursorToken(first.NextCursor); got != "log-2" {
+		t.Fatalf("first NextCursor token = %q, want log-2", got)
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[1].URL.Query().Get("from") != "log-2" {
+		t.Fatalf("requests = %#v, want second request with from=log-2", requests)
+	}
+}
+
 func TestReadUsesOffsetCursorWithHasMoreWithoutTotal(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1190,6 +1502,70 @@ func TestReadUsesOffsetTotalZeroBeforeHasMore(t *testing.T) {
 	}
 	if len(requests) != 1 {
 		t.Fatalf("requests = %d, want 1", len(requests))
+	}
+}
+
+func TestReadUsesOneIndexedPageCursorWithOffsetMetadata(t *testing.T) {
+	requests := make([]*http.Request, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Clone(r.Context()))
+		if got := r.URL.Query().Get("per_page"); got != "2" {
+			t.Fatalf("per_page = %q, want 2", got)
+		}
+		switch r.URL.Query().Get("page") {
+		case "1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-1"}, {"id": "item-2"}},
+				"limit":  2,
+				"offset": 0,
+				"total":  3,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":   []map[string]any{{"id": "item-3"}},
+				"limit":  2,
+				"offset": 2,
+				"total":  3,
+			})
+		default:
+			t.Fatalf("page = %q, want 1 or 2", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:            "item",
+		Path:            "/items",
+		CursorParam:     "page",
+		PageFirstCursor: "1",
+		URNKind:         "item",
+		IDKeys:          []string{"id"},
+		PageSizeParams:  []string{"per_page"},
+	})
+	first, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if first.NextCursor.GetOpaque() != "2" {
+		t.Fatalf("first NextCursor = %q, want 2", first.NextCursor.GetOpaque())
+	}
+	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+		"per_page":  "2",
+	}), first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if len(requests) != 2 || requests[0].URL.Query().Get("page") != "1" || requests[1].URL.Query().Get("page") != "2" {
+		t.Fatalf("requests = %#v, want page 1 then page 2", requests)
 	}
 }
 
@@ -1840,7 +2216,7 @@ func TestReadAppliesConfigHeaders(t *testing.T) {
 
 func TestReadRejectsMalformedRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"data":["not-an-object"]}`))
+		_, _ = w.Write([]byte(`{"data":[[]]}`))
 	}))
 	defer server.Close()
 

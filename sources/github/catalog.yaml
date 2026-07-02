@@ -9,6 +9,53 @@ emitted_kinds:
   - github.org_member
   - github.pull_request
   - github.secret_scanning_alert
+provider_api:
+  status: verified
+  transport: rest
+  auth: token_or_github_app
+  base_url: https://api.github.com
+  references:
+    - https://docs.github.com/en/enterprise-cloud@latest/rest/orgs/orgs?apiVersion=2022-11-28#get-the-audit-log-for-an-organization
+    - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-organization-repositories
+    - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repositories-for-a-user
+    - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#get-a-repository
+    - https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests
+    - https://docs.github.com/en/rest/dependabot/alerts?apiVersion=2022-11-28#list-dependabot-alerts-for-a-repository
+    - https://docs.github.com/en/rest/secret-scanning/secret-scanning?apiVersion=2022-11-28#list-secret-scanning-alerts-for-an-organization
+    - https://docs.github.com/en/rest/orgs/members?apiVersion=2022-11-28#list-organization-members
+    - https://docs.github.com/en/rest/orgs/outside-collaborators?apiVersion=2022-11-28#list-outside-collaborators-for-an-organization
+    - https://docs.github.com/en/rest/apps/installations?apiVersion=2022-11-28#list-app-installations-for-an-organization
+  families:
+    - id: audit
+      method: GET
+      path: /orgs/{org}/audit-log
+    - id: dependabot_alert
+      method: GET
+      path: /repos/{owner}/{repo}/dependabot/alerts
+    - id: org_inventory
+      method: GET
+      path: /orgs/{org}/members
+    - id: org_inventory
+      method: GET
+      path: /orgs/{org}/outside_collaborators
+    - id: org_inventory
+      method: GET
+      path: /orgs/{org}/installations
+    - id: pull_request
+      method: GET
+      path: /repos/{owner}/{repo}/pulls
+    - id: repository
+      method: GET
+      path: /orgs/{org}/repos
+    - id: repository
+      method: GET
+      path: /users/{username}/repos
+    - id: repository
+      method: GET
+      path: /repos/{owner}/{repo}
+    - id: secret_scanning_alert
+      method: GET
+      path: /orgs/{org}/secret-scanning/alerts
 families:
   - id: audit
     incremental: cursor
