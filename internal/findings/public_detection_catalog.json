@@ -477,6 +477,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -566,6 +588,28 @@
           "high_value": true,
           "families": [
             "finding"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -712,6 +756,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
         {
           "source_id": "sentinelone",
           "dimension_id": "applications",
@@ -3630,6 +3696,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -6261,6 +6349,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -6420,6 +6530,28 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -7125,6 +7257,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -7339,6 +7493,28 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -10550,6 +10726,28 @@
           "high_value": true,
           "families": [
             "applications"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -19837,6 +20035,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -20043,6 +20263,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -20258,6 +20500,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -20465,6 +20729,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -20708,6 +20994,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -20915,6 +21223,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -21153,6 +21483,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -21360,6 +21712,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -21602,6 +21976,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -21813,6 +22209,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -22020,6 +22438,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -22236,6 +22676,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -22444,6 +22906,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -22678,6 +23162,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -22937,6 +23443,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -24773,6 +25301,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -35200,6 +35750,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -35222,6 +35794,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -67427,6 +68021,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "sentinelone",
           "dimension_id": "applications",
           "dimension_type": "entity_family",
@@ -71197,6 +71813,28 @@
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
@@ -78927,6 +79565,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -78949,6 +79609,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -80573,6 +81255,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -80744,6 +81448,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -81964,6 +82690,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "checks",
           "dimension_type": "lifecycle_state",
@@ -82455,6 +83203,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -82625,6 +83395,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -82813,6 +83605,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -82984,6 +83798,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -83105,6 +83945,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -83232,6 +84098,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -83254,6 +84142,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -83609,6 +84519,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "checks",
           "dimension_type": "lifecycle_state",
@@ -83825,6 +84757,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "checks",
           "dimension_type": "lifecycle_state",
@@ -84026,6 +84980,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -84196,6 +85172,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -84389,6 +85387,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -85093,6 +86113,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -86969,6 +88011,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -86991,6 +88055,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -87069,6 +88155,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -87091,6 +88199,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -87197,6 +88327,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -87244,6 +88396,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -87350,6 +88524,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -87397,6 +88593,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -87536,6 +88754,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -87558,6 +88798,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -87690,6 +88952,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -87737,6 +89021,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -89709,6 +91015,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -89731,6 +91059,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -90378,6 +91728,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "1"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "audit_events",
           "dimension_type": "audit_event",
@@ -90621,6 +91997,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
         {
           "source_id": "kolide",
           "dimension_id": "devices",
@@ -91745,6 +93143,28 @@
               "control_id": "CC7.3"
             }
           ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "1"
+            }
+          ]
         }
       ]
     },
@@ -92152,6 +93572,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
         {
           "source_id": "kolide",
           "dimension_id": "devices",
@@ -98021,6 +99463,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -98091,6 +99559,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -98203,6 +99697,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -98273,6 +99793,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -98374,6 +99920,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -98532,6 +100100,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -101871,6 +103461,28 @@
               "framework_name": "PCI DSS v4.0.1",
               "control_id": "3.5"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -113668,6 +115280,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -113977,6 +115611,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -114664,6 +116320,50 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -114896,6 +116596,50 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -115099,6 +116843,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -115320,6 +117086,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -115517,6 +117305,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -115543,6 +117357,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -115728,6 +117564,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -116023,6 +117881,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -116049,6 +117933,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -116317,6 +118223,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -116343,6 +118275,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -116528,6 +118482,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -117701,6 +119677,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -117914,6 +119912,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -118117,6 +120137,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -128732,6 +130774,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "sentinelone",
           "dimension_id": "applications",
           "dimension_type": "entity_family",
@@ -133199,6 +135263,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -135349,6 +137435,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -136173,6 +138281,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -136721,6 +138851,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -137017,6 +139169,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -137598,6 +139772,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -138431,6 +140627,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -138979,6 +141197,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -139275,6 +141515,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -139856,6 +142118,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -140689,6 +142973,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -141237,6 +143543,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -141533,6 +143861,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -142114,6 +144464,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -142947,6 +145319,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -143495,6 +145889,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -143791,6 +146207,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -144372,6 +146810,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -145205,6 +147665,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -145753,6 +148235,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -146049,6 +148553,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -146630,6 +149156,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -147463,6 +150011,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -148011,6 +150581,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -148307,6 +150899,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -148888,6 +151502,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -149721,6 +152357,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -150269,6 +152927,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -150565,6 +153245,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -151146,6 +153848,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -151979,6 +154703,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -152527,6 +155273,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -152823,6 +155591,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -153404,6 +156194,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -154237,6 +157049,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -154785,6 +157619,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -155081,6 +157937,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -155662,6 +158540,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -156495,6 +159395,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -157043,6 +159965,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -157339,6 +160283,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -157920,6 +160886,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -158753,6 +161741,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -159301,6 +162311,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -159597,6 +162629,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -160178,6 +163232,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -161011,6 +164087,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -161559,6 +164657,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -161855,6 +164975,28 @@
           ],
           "control_domains": [
             "logging_monitoring"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -194246,6 +197388,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -194649,6 +197813,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -194968,6 +198154,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -194994,6 +198206,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -256187,6 +259425,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "applications",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "application"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "sentinelone",
           "dimension_id": "applications",
           "dimension_type": "entity_family",
@@ -256843,6 +260103,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -256865,6 +260147,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -256971,6 +260275,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -257018,6 +260344,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -261470,6 +264818,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -261492,6 +264862,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -264037,6 +267429,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -264059,6 +267473,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -266731,6 +270167,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -266801,6 +270263,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -279542,6 +283030,32 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -279612,6 +283126,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -292893,6 +296433,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -292915,6 +296477,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -293019,6 +296603,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -293041,6 +296647,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -293230,6 +296858,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -293252,6 +296902,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -294767,6 +298439,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -294789,6 +298483,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -294978,6 +298694,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -295000,6 +298738,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -295132,6 +298892,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -295179,6 +298961,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -295709,6 +299513,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -295731,6 +299557,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -296256,6 +300104,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -296278,6 +300148,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -296466,6 +300358,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -296488,6 +300402,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -296709,6 +300645,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -296731,6 +300689,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -296968,6 +300948,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -296990,6 +300992,28 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "RA-5"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
             }
           ]
         }
@@ -297771,6 +301795,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -297841,6 +301891,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -298031,6 +302107,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
@@ -298276,6 +302374,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -298513,6 +302633,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
@@ -298758,6 +302900,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -298999,6 +303163,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -299132,6 +303318,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -299202,6 +303414,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -299288,6 +303526,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -299358,6 +303622,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -299548,6 +303838,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
@@ -299793,6 +304105,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -299926,6 +304260,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -299996,6 +304356,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -300186,6 +304572,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
@@ -300431,6 +304839,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "policy_rules",
           "dimension_type": "entity_family",
@@ -300565,6 +304995,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -300635,6 +305091,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -300721,6 +305203,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -300791,6 +305299,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -300917,6 +305451,32 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -301012,6 +305572,32 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "remediation_state",
+          "dimension_type": "remediation_state",
+          "support_level": "partial",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "remediation_state"
+          ],
+          "control_domains": [
+            "remediation"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "CIS Controls v8",
+              "control_id": "7"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.5"
             }
           ]
         }
@@ -301202,6 +305788,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },
@@ -303060,6 +307668,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "devices",
           "dimension_type": "entity_family",
@@ -303140,6 +307770,28 @@
       ],
       "source_coverage_refs": [
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -303219,6 +307871,28 @@
         }
       ],
       "source_coverage_refs": [
+        {
+          "source_id": "kandji",
+          "dimension_id": "devices",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "device"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
         {
           "source_id": "kolide",
           "dimension_id": "devices",
@@ -303416,6 +308090,28 @@
           ]
         },
         {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
           "source_id": "kolide",
           "dimension_id": "vulnerabilities",
           "dimension_type": "entity_family",
@@ -303578,6 +308274,28 @@
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.8"
+            }
+          ]
+        },
+        {
+          "source_id": "kandji",
+          "dimension_id": "vulnerabilities",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vulnerability"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.1"
             }
           ]
         },

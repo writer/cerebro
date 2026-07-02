@@ -77,6 +77,100 @@ func TestFirstValueStringReadsArrayCountAndSum(t *testing.T) {
 	}
 }
 
+func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps" {
+			t.Fatalf("request path = %q, want /apps", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"device_id": "device:1", "bundle_id": "com.example.app", "name": "Example App"},
+				{"device_id": "device", "bundle_id": "1:com.example.app", "name": "Example App"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "app",
+		Path:    "/apps",
+		URNKind: "test_app",
+		IDKeys:  []string{"id", "device_id+bundle_id"},
+	})
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "app",
+		"token":     "token-1",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 2 {
+		t.Fatalf("len(URNs) = %d, want per-device app installations", len(urns))
+	}
+	want := map[sourcecdk.URN]struct{}{
+		"urn:cerebro:writer:test_app:device%3A1/com.example.app": {},
+		"urn:cerebro:writer:test_app:device/1%3Acom.example.app": {},
+	}
+	for _, urn := range urns {
+		if _, ok := want[urn]; !ok {
+			t.Fatalf("unexpected URN %q, want %#v", urn, want)
+		}
+	}
+}
+
+func TestDiscoverDoesNotDoubleEncodeCompositeIDKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apps" {
+			t.Fatalf("request path = %q, want /apps", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"device_id": "device:1", "bundle_id": "role/Admin+Owner"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:    "app",
+		Path:    "/apps",
+		URNKind: "test_app",
+		IDKeys:  []string{"device_id+bundle_id"},
+		Config:  FamilyConfig{EncodeURNID: true},
+	})
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "app",
+		"token":     "token-1",
+	}))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_app:device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("URNs = %#v, want composite ID without second encoding pass", urns)
+	}
+}
+
+func TestRawScalarRecordSkipsCompositeIDKeys(t *testing.T) {
+	raw, err := rawRecordWithIDKey(Family{
+		IDKeys: []string{"device_id+bundle_id", "id"},
+	}, json.RawMessage(`"app-install-1"`))
+	if err != nil {
+		t.Fatalf("rawRecordWithIDKey() error = %v", err)
+	}
+	var record map[string]string
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatalf("decode wrapped scalar record: %v", err)
+	}
+	if _, ok := record["device_id+bundle_id"]; ok {
+		t.Fatalf("wrapped scalar used composite key: %#v", record)
+	}
+	if got := record["id"]; got != "app-install-1" {
+		t.Fatalf("id = %q, want scalar wrapped with simple ID key", got)
+	}
+}
+
 func TestReadPagesJSONAPIRecords(t *testing.T) {
 	requests := make([]*http.Request, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1011,6 +1105,51 @@ func TestReadSynthesizesEncodedResourceURNAttributeWhenConfigured(t *testing.T) 
 	}
 	if got := attrs["resource_urn"]; got != "urn:cerebro:writer:test_device:auth0%7Cuser-1" {
 		t.Fatalf("resource_urn = %q, want encoded runtime URN", got)
+	}
+}
+
+func TestReadDoesNotDoubleEncodeCompositeResourceURNAttribute(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"apps": []map[string]any{{
+				"id":        "install-1",
+				"device_id": "device:1",
+				"bundle_id": "role/Admin+Owner",
+				"name":      "Example App",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source := newCustomTestSource(t, server.URL, Family{
+		Name:     "application",
+		Path:     "/api/v1/apps",
+		URNKind:  "test_application",
+		IDKeys:   []string{"id"},
+		ListKeys: []string{"apps"},
+		Attributes: map[string]string{
+			"resource_id":   "device_id+bundle_id",
+			"resource_name": "name",
+		},
+		Config: FamilyConfig{EncodeURNID: true, ResourceURNKind: "test_application"},
+	})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"family":    "application",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["resource_id"]; got != "device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("resource_id = %q, want encoded composite resource ID", got)
+	}
+	if got := attrs["resource_urn"]; got != "urn:cerebro:writer:test_application:device%3A1/role%2FAdmin+Owner" {
+		t.Fatalf("resource_urn = %q, want composite URN without second encoding pass", got)
 	}
 }
 

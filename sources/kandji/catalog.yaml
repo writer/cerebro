@@ -34,6 +34,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "1"
     - id: applications
       type: entity_family
       title: Installed applications
@@ -42,6 +47,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
+        - framework_name: "CIS Controls v8"
+          control_id: "2"
     - id: vulnerabilities
       type: entity_family
       title: Endpoint application vulnerabilities
@@ -50,6 +60,11 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.1
+        - framework_name: "CIS Controls v8"
+          control_id: "7"
     - id: remediation_state
       type: remediation_state
       title: Vulnerability remediation lifecycle state
@@ -58,6 +73,11 @@ coverage_contract:
       high_value: true
       evidence_types: [remediation_state]
       control_domains: [remediation]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.5
+        - framework_name: "CIS Controls v8"
+          control_id: "7"
       known_unsupported_fields:
         - Cerebro remediation workflow assignment, exception, SLA, and approval state
       notes:
