@@ -109,13 +109,32 @@ func TestDiscoverUsesCompositeIDKeys(t *testing.T) {
 		t.Fatalf("len(URNs) = %d, want per-device app installations", len(urns))
 	}
 	want := map[sourcecdk.URN]struct{}{
-		"urn:cerebro:writer:test_app:device%3A1:com.example.app": {},
-		"urn:cerebro:writer:test_app:device:1%3Acom.example.app": {},
+		"urn:cerebro:writer:test_app:device%3A1/com.example.app": {},
+		"urn:cerebro:writer:test_app:device/1%3Acom.example.app": {},
 	}
 	for _, urn := range urns {
 		if _, ok := want[urn]; !ok {
 			t.Fatalf("unexpected URN %q, want %#v", urn, want)
 		}
+	}
+}
+
+func TestRawScalarRecordSkipsCompositeIDKeys(t *testing.T) {
+	raw, err := rawRecordWithIDKey(Family{
+		IDKeys: []string{"device_id+bundle_id", "id"},
+	}, json.RawMessage(`"app-install-1"`))
+	if err != nil {
+		t.Fatalf("rawRecordWithIDKey() error = %v", err)
+	}
+	var record map[string]string
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatalf("decode wrapped scalar record: %v", err)
+	}
+	if _, ok := record["device_id+bundle_id"]; ok {
+		t.Fatalf("wrapped scalar used composite key: %#v", record)
+	}
+	if got := record["id"]; got != "app-install-1" {
+		t.Fatalf("id = %q, want scalar wrapped with simple ID key", got)
 	}
 }
 

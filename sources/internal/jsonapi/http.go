@@ -453,7 +453,7 @@ func rawRecordWithIDKey(family Family, raw json.RawMessage) (json.RawMessage, er
 func scalarRecordIDKey(family Family) string {
 	for _, key := range family.IDKeys {
 		key = strings.TrimSpace(key)
-		if key == "" || strings.ContainsAny(key, ".|") {
+		if key == "" || strings.ContainsAny(key, ".|+") {
 			continue
 		}
 		return key
@@ -1360,7 +1360,7 @@ func valueStringForPath(values map[string]any, path string) string {
 		}
 		valuesForParts = append(valuesForParts, cerebrourn.EncodeSegment(value))
 	}
-	return strings.Join(valuesForParts, ":")
+	return strings.Join(valuesForParts, "/")
 }
 
 func attributePaths(path string) []string {
