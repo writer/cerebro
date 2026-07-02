@@ -305,6 +305,50 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "privileged_users",
           "dimension_type": "app_entitlement",
@@ -329,67 +373,6 @@
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "dormant_user",
-            "employee_record",
-            "last_seen",
-            "never_logged_in",
-            "personal_email",
-            "privileged_user",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             }
           ]
         }
@@ -2785,6 +2768,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -2891,32 +2896,6 @@
           ],
           "control_domains": [
             "asset_inventory"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "external_accounts",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "external_user",
-            "personal_email",
-            "third_party_access",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
           ],
           "matched_control_refs": [
             {
@@ -5348,6 +5327,36 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.15"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "pagination",
+          "dimension_type": "incremental_sync",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "escalation_policy",
+            "integration",
+            "schedule",
+            "service",
+            "team",
+            "user",
+            "vendor"
+          ],
+          "evidence_types": [
+            "source_sync_status"
+          ],
+          "control_domains": [
+            "source_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -12158,6 +12167,50 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "privileged_users",
           "dimension_type": "app_entitlement",
@@ -12182,67 +12235,6 @@
             {
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.2"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "user_lifecycle",
-          "dimension_type": "lifecycle_state",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "dormant_user",
-            "employee_record",
-            "last_seen",
-            "never_logged_in",
-            "personal_email",
-            "privileged_user",
-            "stale_login",
-            "terminated_account",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "tailscale",
-          "dimension_id": "users",
-          "dimension_type": "entity_family",
-          "support_level": "supported",
-          "high_value": true,
-          "families": [
-            "account",
-            "active_account",
-            "personal_email",
-            "user"
-          ],
-          "evidence_types": [
-            "access_review",
-            "identity_configuration",
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory",
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             }
           ]
         }
@@ -20357,6 +20349,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -21710,6 +21724,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "okta",
           "dimension_id": "app_access",
           "dimension_type": "app_entitlement",
@@ -21896,6 +21932,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -34353,6 +34411,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -34826,6 +34906,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -35021,6 +35123,28 @@
           "high_value": true,
           "families": [
             "group"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
           ],
           "evidence_types": [
             "source_snapshot"
@@ -38347,6 +38471,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "group",
           "dimension_type": "entity_family",
@@ -40415,6 +40561,34 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.3"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "pagination",
+          "dimension_type": "incremental_sync",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "escalation_policy",
+            "integration",
+            "schedule",
+            "service",
+            "team",
+            "user",
+            "vendor"
+          ],
+          "evidence_types": [
+            "source_sync_status"
+          ],
+          "control_domains": [
+            "source_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
             }
           ]
         }
@@ -45683,6 +45857,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -48853,6 +49049,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -56492,6 +56710,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -64955,6 +65195,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -67386,6 +67648,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -67525,6 +67809,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -75845,6 +76151,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -76808,6 +77136,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -78401,6 +78751,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -88987,6 +89359,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -90894,6 +91288,34 @@
               "control_id": "CC7.3"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "pagination",
+          "dimension_type": "incremental_sync",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "escalation_policy",
+            "integration",
+            "schedule",
+            "service",
+            "team",
+            "user",
+            "vendor"
+          ],
+          "evidence_types": [
+            "source_sync_status"
+          ],
+          "control_domains": [
+            "source_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -91928,6 +92350,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -92714,6 +93158,28 @@
               "framework_name": "CIS Controls v8",
               "control_id": "6"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -101812,6 +102278,28 @@
               "control_id": "CC6.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -106540,6 +107028,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -110077,6 +110587,28 @@
           "control_domains": [
             "asset_inventory",
             "secure_delivery"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -122389,6 +122921,28 @@
               "control_id": "CC7.1"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -122508,6 +123062,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -127963,6 +128539,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC7.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -238699,6 +239297,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -240589,6 +241209,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -247134,6 +247776,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "privileged_users",
           "dimension_type": "app_entitlement",
@@ -247520,6 +248184,28 @@
               "control_id": "CC6.2"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -247754,6 +248440,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -247860,6 +248568,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -248634,6 +249364,28 @@
           ],
           "control_domains": [
             "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
@@ -250543,6 +251295,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "files_com",
           "dimension_id": "user",
           "dimension_type": "entity_family",
@@ -250983,6 +251757,28 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.5.17"
             },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"
@@ -263469,6 +264265,34 @@
               "control_id": "CC7.3"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "pagination",
+          "dimension_type": "incremental_sync",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "escalation_policy",
+            "integration",
+            "schedule",
+            "service",
+            "team",
+            "user",
+            "vendor"
+          ],
+          "evidence_types": [
+            "source_sync_status"
+          ],
+          "control_domains": [
+            "source_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC7.2"
+            }
+          ]
         }
       ]
     },
@@ -266854,30 +267678,24 @@
           ]
         },
         {
-          "source_id": "tailscale",
-          "dimension_id": "privileged_users",
-          "dimension_type": "app_entitlement",
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
           "support_level": "supported",
           "high_value": true,
           "families": [
-            "admin",
-            "owner",
-            "privileged",
-            "privileged_user",
-            "role",
             "user"
           ],
           "evidence_types": [
-            "access_review",
-            "identity_configuration"
+            "source_snapshot"
           ],
           "control_domains": [
-            "identity_access"
+            "asset_inventory"
           ],
           "matched_control_refs": [
             {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         }
@@ -267904,6 +268722,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "privileged_users",
           "dimension_type": "app_entitlement",
@@ -267928,37 +268768,6 @@
             {
               "framework_name": "NIST 800-53 r5",
               "control_id": "AC-6"
-            }
-          ]
-        },
-        {
-          "source_id": "okta",
-          "dimension_id": "dormant_account_reviews",
-          "dimension_type": "relationship",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "dormant_user",
-            "last_login",
-            "never_logged_in",
-            "reviewer_decision",
-            "stale_login"
-          ],
-          "evidence_types": [
-            "access_review",
-            "reviewer_attestation"
-          ],
-          "control_domains": [
-            "identity_access"
-          ],
-          "matched_control_refs": [
-            {
-              "framework_name": "NIST 800-53 r5",
-              "control_id": "AC-6"
-            },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
             }
           ]
         }
@@ -270581,6 +271390,28 @@
               "control_id": "CC6.6"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -270990,6 +271821,50 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.6"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -279971,6 +280846,28 @@
               "control_id": "8.4"
             }
           ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "vendors",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "vendor"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
         }
       ]
     },
@@ -280617,6 +281514,28 @@
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.2"
+            }
+          ]
+        },
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "services",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "service"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
             }
           ]
         },
@@ -290106,6 +291025,30 @@
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.36"
         }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "pagerduty",
+          "dimension_id": "integrations",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "integration"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        }
       ]
     },
     {
@@ -291217,6 +292160,28 @@
           ]
         },
         {
+          "source_id": "pagerduty",
+          "dimension_id": "users",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "user"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "asset_inventory"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.1"
+            }
+          ]
+        },
+        {
           "source_id": "tailscale",
           "dimension_id": "user_lifecycle",
           "dimension_type": "lifecycle_state",
@@ -291303,28 +292268,6 @@
               "framework_name": "ISO 27001:2022",
               "control_id": "A.8.5"
             },
-            {
-              "framework_name": "SOC 2",
-              "control_id": "CC6.1"
-            }
-          ]
-        },
-        {
-          "source_id": "files_com",
-          "dimension_id": "user",
-          "dimension_type": "entity_family",
-          "support_level": "partial",
-          "high_value": true,
-          "families": [
-            "user"
-          ],
-          "evidence_types": [
-            "source_snapshot"
-          ],
-          "control_domains": [
-            "asset_inventory"
-          ],
-          "matched_control_refs": [
             {
               "framework_name": "SOC 2",
               "control_id": "CC6.1"

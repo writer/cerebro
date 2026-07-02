@@ -182,7 +182,9 @@ func TestReadUsesPagerDutyOffsetPagination(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Clone(r.Context()))
 		if got := r.URL.Query().Get(pagerDutyPageSizeParam); got != "2" {
-			t.Fatalf("limit = %q, want 2", got)
+			t.Errorf("limit = %q, want 2", got)
+			http.Error(w, "unexpected limit", http.StatusInternalServerError)
+			return
 		}
 		switch r.URL.Query().Get(pagerDutyCursorParam) {
 		case "":
@@ -203,7 +205,8 @@ func TestReadUsesPagerDutyOffsetPagination(t *testing.T) {
 				"more":   false,
 			})
 		default:
-			t.Fatalf("offset = %q, want empty or 2", r.URL.Query().Get(pagerDutyCursorParam))
+			t.Errorf("offset = %q, want empty or 2", r.URL.Query().Get(pagerDutyCursorParam))
+			http.Error(w, "unexpected offset", http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
@@ -244,7 +247,9 @@ func TestReadWithCheckpointPreservesPagerDutyOffsetCursor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Clone(r.Context()))
 		if got := r.URL.Query().Get(pagerDutyPageSizeParam); got != "2" {
-			t.Fatalf("limit = %q, want 2", got)
+			t.Errorf("limit = %q, want 2", got)
+			http.Error(w, "unexpected limit", http.StatusInternalServerError)
+			return
 		}
 		switch r.URL.Query().Get(pagerDutyCursorParam) {
 		case "":
@@ -265,7 +270,8 @@ func TestReadWithCheckpointPreservesPagerDutyOffsetCursor(t *testing.T) {
 				"more":   false,
 			})
 		default:
-			t.Fatalf("offset = %q, want empty or 2", r.URL.Query().Get(pagerDutyCursorParam))
+			t.Errorf("offset = %q, want empty or 2", r.URL.Query().Get(pagerDutyCursorParam))
+			http.Error(w, "unexpected offset", http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
