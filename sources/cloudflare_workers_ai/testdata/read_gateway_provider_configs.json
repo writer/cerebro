@@ -8,7 +8,6 @@
       "resource_id": "provider-config-1",
       "resource_name": "openai-production",
       "resource_type": "gateway_provider_config",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_workers_ai_gateway_provider_configs:provider-config-1",
       "schema": "gateway_provider_configs",
       "secret_id": "provider-config-1",
       "secret_name": "openai-production",

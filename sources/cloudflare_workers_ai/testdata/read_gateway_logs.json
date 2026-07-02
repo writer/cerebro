@@ -12,7 +12,6 @@
       "resource_id": "gateway-1",
       "resource_name": "production-gateway",
       "resource_type": "ai_gateway",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_workers_ai_gateway_logs:gateway-1",
       "schema": "gateway_logs",
       "source_event_id": "gateway-log-1",
       "source_provider": "cloudflare_workers_ai",
