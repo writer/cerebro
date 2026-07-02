@@ -387,10 +387,14 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "ApiToken "+fixtureToken {
-			t.Fatalf("Authorization = %q, want ApiToken token", got)
+			t.Errorf("Authorization = %q, want ApiToken token", got)
+			http.Error(w, "unexpected auth", http.StatusInternalServerError)
+			return
 		}
 		if r.URL.Path != "/web/api/v2.1/agents" {
-			t.Fatalf("path = %q, want /web/api/v2.1/agents", r.URL.Path)
+			t.Errorf("path = %q, want /web/api/v2.1/agents", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusInternalServerError)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
