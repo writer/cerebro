@@ -23,7 +23,6 @@ const (
 	familyUsers            = "users"
 	familyProjects         = "projects"
 	familyAuditEvents      = "audit_events"
-	workspaceGIDConfig     = "workspace_gid"
 )
 
 var templateKeys = []string{"token"}
