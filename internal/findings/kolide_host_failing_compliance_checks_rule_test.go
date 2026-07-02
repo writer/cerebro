@@ -139,7 +139,7 @@ func TestKolideHostFailingComplianceChecksDeprovisionResolves(t *testing.T) {
 }
 
 func TestKolideHostDeprovisioningUsesLifecycleStatusNotAuthState(t *testing.T) {
-	if kolideHostDeprovisioned(map[string]string{"auth_state": "Blocked"}) {
+	if kolideHostDeprovisioned(map[string]string{"auth_state": "inactive"}) {
 		t.Fatal("auth_state should not be treated as lifecycle deprovisioning status")
 	}
 	if !kolideHostDeprovisioned(map[string]string{"status": "inactive"}) {
