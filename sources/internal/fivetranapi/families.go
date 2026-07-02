@@ -468,9 +468,10 @@ func fivetranScopedMembershipFamily(name string, path string, scopeParam string,
 		},
 		StaticAttributes: staticAttributes,
 		Config: fivetranFamilyConfig(jsonapi.FamilyConfig{
-			ConfigAttributes: map[string]string{scopeParam: scopeParam},
-			IdentityKeys:     []string{scopeParam},
-			ResourceURNKind:  "fivetran_" + name,
+			ConfigAttributes:   map[string]string{scopeParam: scopeParam},
+			IdentityKeys:       []string{scopeParam},
+			IdentityResourceID: true,
+			ResourceURNKind:    "fivetran_" + name,
 		}),
 	})
 }

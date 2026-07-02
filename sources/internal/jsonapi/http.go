@@ -1085,6 +1085,12 @@ func attributesFor(sourceID string, settings settings, family Family, record rec
 	for attr, path := range family.Attributes {
 		addAttribute(attrs, attr, firstValueString(record.Values, path))
 	}
+	if family.Config.IdentityResourceID {
+		if identity := strings.TrimSpace(record.Identity); identity != "" {
+			addAttribute(attrs, "resource_id", identity)
+			addAttribute(attrs, "source_event_id", identity)
+		}
+	}
 	if strings.TrimSpace(attrs["resource_urn"]) == "" {
 		addAttribute(attrs, "resource_urn", resourceURNFor(settings, family, attrs, record))
 	}

@@ -549,6 +549,23 @@ func TestBuiltinFivetranV2FamiliesCarryAcceptHeader(t *testing.T) {
 	}
 }
 
+func TestBuiltinFivetranServiceAccountProjectionDoesNotReadCredentialAsResourceType(t *testing.T) {
+	entry, ok, err := BuiltinEntry("fivetran")
+	if err != nil {
+		t.Fatalf("BuiltinEntry() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
+	}
+	family := catalogFamily(t, entry.Definition.ResourceFamilies, "group_service_accounts")
+	if family.Projection == nil {
+		t.Fatal("group_service_accounts projection missing")
+	}
+	if got := family.Projection.Fields["resource_type"]; got != "credential_type|type" {
+		t.Fatalf("group_service_accounts resource_type projection = %q, want credential_type|type", got)
+	}
+}
+
 func assertCatalogFamily(t *testing.T, families []connectordefinitions.ResourceFamily, id string, path string, idField string) {
 	t.Helper()
 	for _, family := range families {

@@ -605,7 +605,7 @@ entries:
               group_id: group_id
               resource_id: group_id
               resource_name: group_id
-              resource_type: service_account
+              resource_type: credential_type|type
               scope_type: group
               source_event_id: group_id
             template: asset

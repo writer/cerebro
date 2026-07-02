@@ -589,10 +589,14 @@ func TestSourceReadsConnectionTableColumns(t *testing.T) {
 
 func TestSourceReadsScopedMembershipsWithFanout(t *testing.T) {
 	source := newTestSource(t)
+	requestedPaths := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireFivetranHeaders(t, r, "application/json")
-		if r.URL.Path != "/v1/groups/group-1/users" {
-			t.Fatalf("path = %q, want /v1/groups/group-1/users", r.URL.Path)
+		requestedPaths = append(requestedPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/groups/group-1/users", "/v1/groups/group-2/users":
+		default:
+			t.Fatalf("path = %q, want scoped group users path", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("limit"); got != "2" {
 			t.Fatalf("limit = %q, want 2", got)
@@ -608,18 +612,52 @@ func TestSourceReadsScopedMembershipsWithFanout(t *testing.T) {
 
 	pull, err := source.Read(context.Background(), fivetranConfig(server.URL, map[string]string{
 		"family":    fivetranapi.FamilyGroupUsers,
-		"group_ids": "group-1",
+		"group_ids": "group-1,group-2",
 		"per_page":  "2",
 	}), nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(pull.Events))
+	if len(pull.Events) != 1 || pull.NextCursor == nil {
+		t.Fatalf("first pull events=%d cursor=%v, want one event and cursor", len(pull.Events), pull.NextCursor)
 	}
-	attrs := pull.Events[0].Attributes
+	next, err := source.Read(context.Background(), fivetranConfig(server.URL, map[string]string{
+		"family":    fivetranapi.FamilyGroupUsers,
+		"group_ids": "group-1,group-2",
+		"per_page":  "2",
+	}), pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(next) error = %v", err)
+	}
+	if len(next.Events) != 1 || next.NextCursor != nil {
+		t.Fatalf("next pull events=%d cursor=%v, want one event and no cursor", len(next.Events), next.NextCursor)
+	}
+	byGroup := map[string]map[string]string{}
+	for _, event := range pull.Events {
+		byGroup[event.Attributes["group_id"]] = event.Attributes
+	}
+	for _, event := range next.Events {
+		byGroup[event.Attributes["group_id"]] = event.Attributes
+	}
+	attrs := byGroup["group-1"]
 	if attrs["group_id"] != "group-1" || attrs["member_id"] != "user-1" || attrs["member_type"] != "user" || attrs["role"] != "Destination Reviewer" || attrs["email"] != "user@example.test" {
 		t.Fatalf("attributes = %#v, want scoped membership", attrs)
+	}
+	otherAttrs := byGroup["group-2"]
+	if otherAttrs["group_id"] != "group-2" || otherAttrs["member_id"] != "user-1" {
+		t.Fatalf("second attributes = %#v, want second scoped membership", otherAttrs)
+	}
+	if attrs["resource_id"] == "user-1" || otherAttrs["resource_id"] == "user-1" || attrs["resource_id"] == otherAttrs["resource_id"] {
+		t.Fatalf("resource_id values should include scope identity, got %q and %q", attrs["resource_id"], otherAttrs["resource_id"])
+	}
+	if attrs["source_event_id"] != attrs["resource_id"] || otherAttrs["source_event_id"] != otherAttrs["resource_id"] {
+		t.Fatalf("source_event_id should match scoped resource_id, got %#v and %#v", attrs, otherAttrs)
+	}
+	if attrs["resource_urn"] == "urn:cerebro:tenant:fivetran_group_users:user-1" || attrs["resource_urn"] == otherAttrs["resource_urn"] {
+		t.Fatalf("resource_urn values should be scoped, got %q and %q", attrs["resource_urn"], otherAttrs["resource_urn"])
+	}
+	if strings.Join(requestedPaths, ",") != "/v1/groups/group-1/users,/v1/groups/group-2/users" {
+		t.Fatalf("requested paths = %#v, want both scoped reads", requestedPaths)
 	}
 }
 

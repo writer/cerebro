@@ -55,6 +55,7 @@ type FamilyConfig struct {
 	RedactPayloadKeys  []string
 	EncodeURNID        bool
 	IdentityKeys       []string
+	IdentityResourceID bool
 	OffsetCursor       bool
 	RequireDetail      bool
 	ResourceURNKind    string
