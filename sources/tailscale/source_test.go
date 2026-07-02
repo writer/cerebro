@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -17,6 +20,72 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 	if got := source.Spec().GetId(); got != "tailscale" {
 		t.Fatalf("Spec().Id = %q, want tailscale", got)
+	}
+}
+
+func TestCatalogDeclaresVerifiedTailscaleProviderAPI(t *testing.T) {
+	payload, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	var catalog struct {
+		Description     string   `yaml:"description"`
+		RuntimeFamilies []string `yaml:"runtime_families"`
+		ProviderAPI     struct {
+			Status     string   `yaml:"status"`
+			Transport  string   `yaml:"transport"`
+			Auth       string   `yaml:"auth"`
+			BaseURL    string   `yaml:"base_url"`
+			References []string `yaml:"references"`
+			Families   []struct {
+				ID     string `yaml:"id"`
+				Method string `yaml:"method"`
+				Path   string `yaml:"path"`
+			} `yaml:"families"`
+		} `yaml:"provider_api"`
+	}
+	if err := yaml.Unmarshal(payload, &catalog); err != nil {
+		t.Fatalf("unmarshal catalog: %v", err)
+	}
+	for _, text := range []string{"tailnet settings", "user inventory", "device inventory", "ACL groups", "tag ownership", "Services inventory", "policy grants"} {
+		if !strings.Contains(catalog.Description, text) {
+			t.Fatalf("description = %q, want source-specific text %q", catalog.Description, text)
+		}
+	}
+	assertStringSet(t, catalog.RuntimeFamilies, []string{"device", "grant", "group", "service", "tag", "tailnet", "user"})
+	if catalog.ProviderAPI.Status != "verified" || catalog.ProviderAPI.Transport != "rest" || catalog.ProviderAPI.Auth != "bearer_token" || catalog.ProviderAPI.BaseURL != "https://api.tailscale.com/api/v2" {
+		t.Fatalf("provider_api = %#v, want verified REST bearer-token API", catalog.ProviderAPI)
+	}
+	for _, ref := range []string{
+		"https://tailscale.com/docs/reference/tailscale-api",
+		"https://tailscale.com/docs/reference/trust-credentials",
+		"https://tailscale.com/docs/features/tailscale-services",
+		"https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/internal/client/tailscale/vip_service.go",
+	} {
+		if !hasString(catalog.ProviderAPI.References, ref) {
+			t.Fatalf("provider references = %v, want %s", catalog.ProviderAPI.References, ref)
+		}
+	}
+	wantPaths := map[string]string{
+		"device":  "/tailnet/{tailnet}/devices",
+		"grant":   "/tailnet/{tailnet}/acl",
+		"group":   "/tailnet/{tailnet}/acl",
+		"service": "/tailnet/{tailnet}/vip-services",
+		"tag":     "/tailnet/{tailnet}/acl",
+		"tailnet": "/tailnet/{tailnet}/settings",
+		"user":    "/tailnet/{tailnet}/users",
+	}
+	gotPaths := map[string]string{}
+	for _, family := range catalog.ProviderAPI.Families {
+		if family.Method != http.MethodGet {
+			t.Fatalf("provider family %s method = %q, want GET", family.ID, family.Method)
+		}
+		gotPaths[family.ID] = family.Path
+	}
+	for family, want := range wantPaths {
+		if got := gotPaths[family]; got != want {
+			t.Fatalf("provider path for %s = %q, want %q", family, got, want)
+		}
 	}
 }
 
@@ -62,9 +131,9 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 			name:     "service",
 			family:   "service",
 			kind:     "tailscale.service",
-			path:     "/tailnet/-/services",
-			response: map[string]any{"services": []map[string]any{{"id": "service-1", "name": "api", "tags": []string{"tag:prod"}}}},
-			want:     map[string]string{"service_id": "service-1", "name": "api", "tags": "tag:prod"},
+			path:     "/tailnet/-/vip-services",
+			response: map[string]any{"vipServices": []map[string]any{{"name": "svc:api", "addrs": []string{"100.64.0.10", "fd7a:115c:a1e0::10"}, "ports": []string{"443"}, "tags": []string{"tag:prod"}, "comment": "Production API"}}},
+			want:     map[string]string{"service_id": "svc:api", "name": "svc:api", "addresses": "100.64.0.10,fd7a:115c:a1e0::10", "ports": "443", "tags": "tag:prod", "comment": "Production API"},
 		},
 		{
 			name:     "group",
@@ -124,6 +193,68 @@ func TestReadTailscaleCoreInventoryKinds(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"service unavailable"}`, http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.inner.AllowLoopbackBaseURL = true
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":  server.URL,
+		"family":    "user",
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err == nil {
+		t.Fatal("Read() error = nil, want provider error")
+	}
+	if got := err.Error(); !strings.Contains(got, "tailscale API returned 503") {
+		t.Fatalf("Read() error = %q, want provider status", got)
+	}
+}
+
+func TestNewFixtureReplaysTailscaleFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	familyConfigs := map[string]sourcecdk.Config{}
+	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
+		familyConfigs[family] = sourcecdk.NewConfig(map[string]string{
+			"family":    family,
+			"tenant_id": "tenant",
+		})
+	}
+	sourcecdk.RunFixtureSuite(t, context.Background(), sourcecdk.FixtureSuiteOptions{
+		Source:          source,
+		FamilyConfigs:   familyConfigs,
+		RequireDiscover: true,
+	})
+}
+
+func assertStringSet(t *testing.T, got []string, want []string) {
+	t.Helper()
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("strings = %v, want %v", got, want)
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestReadTailscaleTailnetSettingsFallsBackToTenantID(t *testing.T) {

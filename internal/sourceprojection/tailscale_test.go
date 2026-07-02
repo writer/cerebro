@@ -123,6 +123,79 @@ func TestRegistryRoutesTailscaleCoreKinds(t *testing.T) {
 	}
 }
 
+func TestRegistryRoutesTailscaleRuntimeDepthKinds(t *testing.T) {
+	occurredAt := timestamppb.New(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC))
+	cases := []*cerebrov1.EventEnvelope{
+		{
+			Id:         "ts-tailnet-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.tailnet",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"tailnet": "writer.com"},
+		},
+		{
+			Id:         "ts-user-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.user",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"user_id": "user-1", "login_name": "alice@writer.com"},
+		},
+		{
+			Id:         "ts-device-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.device",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"device_id": "device-1", "authorized": "true"},
+		},
+		{
+			Id:         "ts-group-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.group",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"group_id": "group:eng", "members": "alice@writer.com"},
+		},
+		{
+			Id:         "ts-tag-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.tag",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"tag_id": "tag:prod", "owners": "group:eng"},
+		},
+		{
+			Id:         "ts-service-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.service",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"service_id": "svc:api", "name": "svc:api", "tags": "tag:prod"},
+		},
+		{
+			Id:         "ts-grant-depth",
+			TenantId:   "writer",
+			SourceId:   "tailscale",
+			Kind:       "tailscale.grant",
+			OccurredAt: occurredAt,
+			Attributes: map[string]string{"grant_id": "grant-1", "sources": "group:eng", "destinations": "tag:prod:443"},
+		},
+	}
+	for _, event := range cases {
+		t.Run(event.GetKind(), func(t *testing.T) {
+			entities, _, err := BuiltinRegistry().Project(event)
+			if err != nil {
+				t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+			}
+			if len(entities) == 0 {
+				t.Fatalf("Project(%s) produced no entities", event.GetKind())
+			}
+		})
+	}
+}
+
 func TestProjectTailscaleDeviceOwnerStubKeepsUserIDTyped(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

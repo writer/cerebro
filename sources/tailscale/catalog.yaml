@@ -1,6 +1,43 @@
 id: tailscale
 name: Tailscale
-description: Tailscale tailnet, user, device, group, tag, service, and grant source.
+description: Tailscale source for tailnet settings, user inventory, device inventory, ACL groups, tag ownership, Services inventory, and policy grants.
+provider_api:
+  status: verified
+  transport: rest
+  auth: bearer_token
+  base_url: https://api.tailscale.com/api/v2
+  references:
+    - https://tailscale.com/docs/reference/tailscale-api
+    - https://tailscale.com/api
+    - https://tailscale.com/docs/reference/trust-credentials
+    - https://tailscale.com/docs/features/oauth-clients
+    - https://tailscale.com/docs/reference/syntax/policy-file
+    - https://tailscale.com/docs/features/tailscale-services
+    - https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/client/tailscale/devices.go
+    - https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/client/tailscale/acl.go
+    - https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/internal/client/tailscale/vip_service.go
+  families:
+    - id: device
+      method: GET
+      path: /tailnet/{tailnet}/devices
+    - id: grant
+      method: GET
+      path: /tailnet/{tailnet}/acl
+    - id: group
+      method: GET
+      path: /tailnet/{tailnet}/acl
+    - id: service
+      method: GET
+      path: /tailnet/{tailnet}/vip-services
+    - id: tag
+      method: GET
+      path: /tailnet/{tailnet}/acl
+    - id: tailnet
+      method: GET
+      path: /tailnet/{tailnet}/settings
+    - id: user
+      method: GET
+      path: /tailnet/{tailnet}/users
 emitted_kinds:
   - tailscale.tailnet
   - tailscale.user
