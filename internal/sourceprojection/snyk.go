@@ -254,16 +254,6 @@ func snykAssetRelationshipProjections(event *cerebrov1.EventEnvelope, relatedIDK
 	relatedURN := projectionURN(tenantID, relatedURNKind, relatedID)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	if assetID != "" {
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        assetURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "snyk.assets",
-			Label:      firstNonEmpty(attributes["asset_name"], assetID),
-			Attributes: map[string]string{"asset_id": assetID},
-		})
-	}
 	if relatedID != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        relatedURN,
