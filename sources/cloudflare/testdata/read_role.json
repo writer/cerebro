@@ -6,7 +6,6 @@
       "external_id": "role-admin",
       "family": "role",
       "name": "Administrator",
-      "observed_at": "2026-06-01T00:00:00Z",
       "permission_groups": "[{\"id\":\"pg-account\",\"name\":\"Account Settings Read\"}]",
       "permissions": "[{\"id\":\"com.cloudflare.api.account.read\"}]",
       "resource_id": "role-admin",

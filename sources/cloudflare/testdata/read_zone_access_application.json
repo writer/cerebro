@@ -8,7 +8,6 @@
       "external_id": "zone-app-1",
       "family": "zone_access_application",
       "name": "Zone Admin",
-      "observed_at": "2026-06-01T00:00:00Z",
       "policies": "[{\"id\":\"zone-policy-1\",\"decision\":\"allow\"}]",
       "resource_id": "zone-app-1",
       "resource_name": "Zone Admin",

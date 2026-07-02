@@ -5,7 +5,6 @@
       "external_id": "zone-1",
       "family": "zone",
       "name": "example.com",
-      "observed_at": "2026-06-01T00:00:00Z",
       "paused": "false",
       "resource_id": "zone-1",
       "resource_name": "example.com",

@@ -8,7 +8,6 @@
       "family": "load_balancer",
       "load_balancer_id": "lb-1",
       "name": "www-lb",
-      "observed_at": "2026-06-01T00:00:00Z",
       "proxied": "true",
       "resource_id": "lb-1",
       "resource_name": "www-lb",

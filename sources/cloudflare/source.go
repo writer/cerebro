@@ -57,6 +57,12 @@ func cloudflareFamilies() []jsonapi.Family {
 	for i := range families {
 		families[i].CursorParam = "page"
 		families[i].PageSizeParams = []string{"per_page"}
+		families[i].Attributes = cloudflareEventAttributes(families[i])
+		families[i].StaticAttributes = cloudflareEventStaticAttributes(families[i])
+		families[i].Config.ConfigAttributes = cloudflareConfigAttributes(families[i].Config.ConfigAttributes)
+		if families[i].Config.ResourceURNKind == "" {
+			families[i].Config.ResourceURNKind = families[i].URNKind
+		}
 	}
 	return families
 }
@@ -67,4 +73,43 @@ func cloudflareResultListKeys() []string {
 
 func cloudflareStaticAttributes() map[string]string {
 	return map[string]string{"source_product": "cloudflare"}
+}
+
+func cloudflareEventAttributes(family jsonapi.Family) map[string]string {
+	attrs := map[string]string{
+		"observed_at":     "modified_on|updated_at|updatedAt|last_updated|lastUpdated|created_on|created_at|when|timestamp",
+		"resource_id":     "id",
+		"resource_name":   "name|display_name|domain|user.name|action.type",
+		"source_event_id": "id",
+	}
+	for key, value := range family.Attributes {
+		attrs[key] = value
+	}
+	return attrs
+}
+
+func cloudflareEventStaticAttributes(family jsonapi.Family) map[string]string {
+	attrs := map[string]string{
+		"resource_type": cloudflareResourceType(family.Name),
+		"source_system": sourceID,
+	}
+	for key, value := range family.StaticAttributes {
+		attrs[key] = value
+	}
+	return attrs
+}
+
+func cloudflareResourceType(family string) string {
+	if family == "member" {
+		return "identity_user"
+	}
+	return family
+}
+
+func cloudflareConfigAttributes(attrs map[string]string) map[string]string {
+	merged := map[string]string{"tenant_id": "tenant_id"}
+	for key, value := range attrs {
+		merged[key] = value
+	}
+	return merged
 }

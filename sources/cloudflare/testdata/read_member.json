@@ -6,7 +6,6 @@
       "external_id": "member-1",
       "family": "member",
       "member_id": "member-1",
-      "observed_at": "2026-06-01T00:00:00Z",
       "resource_id": "member-1",
       "resource_name": "Alice Example",
       "resource_type": "identity_user",

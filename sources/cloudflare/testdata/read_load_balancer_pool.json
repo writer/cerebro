@@ -8,7 +8,6 @@
       "family": "load_balancer_pool",
       "minimum_origins": "1",
       "name": "primary-pool",
-      "observed_at": "2026-06-01T00:00:00Z",
       "origins": "[{\"name\":\"origin-1\",\"address\":\"203.0.113.20\"}]",
       "pool_id": "pool-1",
       "resource_id": "pool-1",

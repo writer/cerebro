@@ -8,7 +8,6 @@
       "family": "gateway_rule",
       "filters": "[\"dns\"]",
       "name": "Block malware",
-      "observed_at": "2026-06-01T00:00:00Z",
       "precedence": "1000",
       "resource_id": "gateway-rule-1",
       "resource_name": "Block malware",

@@ -10,7 +10,6 @@
       "external_id": "app-1",
       "family": "access_application",
       "name": "Admin Console",
-      "observed_at": "2026-06-01T00:00:00Z",
       "policies": "[{\"id\":\"policy-1\",\"decision\":\"allow\"}]",
       "resource_id": "app-1",
       "resource_name": "Admin Console",

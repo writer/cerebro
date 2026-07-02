@@ -5,7 +5,6 @@
       "external_id": "dns-1",
       "family": "dns_record",
       "name": "www.example.com",
-      "observed_at": "2026-06-01T00:00:00Z",
       "proxied": "true",
       "record_id": "dns-1",
       "resource_id": "dns-1",

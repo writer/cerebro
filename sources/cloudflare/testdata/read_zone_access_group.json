@@ -7,7 +7,6 @@
       "group_id": "zone-group-1",
       "include": "[{\"email_domain\":{\"domain\":\"example.com\"}}]",
       "name": "Zone Employees",
-      "observed_at": "2026-06-01T00:00:00Z",
       "require": "[{\"group\":{\"id\":\"idp-group-1\"}}]",
       "resource_id": "zone-group-1",
       "resource_name": "Zone Employees",
