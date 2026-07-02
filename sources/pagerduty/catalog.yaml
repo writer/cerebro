@@ -75,6 +75,9 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.3
       notes:
         - Escalation policies emit policy IDs, names, loop counts, team references, and schedule/user targets so the graph can resolve responder coverage for services.
     - id: integrations
@@ -85,6 +88,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
         - Integrations fan out across service_ids, fall back to service_id for single-service deployments, and retain each service ID plus vendor reference for service-to-tool dependency projection.
     - id: schedules
@@ -95,6 +101,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.3
       notes:
         - Schedules emit schedule IDs, names, summaries, and time zones for escalation target nodes.
     - id: services
@@ -105,6 +114,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
         - Services emit status and escalation policy references so graph projection can flag services with or without active escalation coverage.
     - id: teams
@@ -115,6 +127,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
         - Teams provide organizational context for escalation policy ownership.
     - id: users
@@ -125,6 +140,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
         - Users emit email, role, time zone, and job title for identity resolution and responder review.
     - id: vendors
@@ -135,6 +153,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC6.1
       notes:
         - Vendors provide third-party integration context for services.
     - id: pagination
@@ -145,6 +166,9 @@ coverage_contract:
       high_value: true
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
+      control_refs:
+        - framework_name: SOC 2
+          control_id: CC7.2
       notes:
         - PagerDuty limit/offset responses are preserved through Source CDK cursors and use the provider more flag when total counts are omitted.
 event_contracts:
