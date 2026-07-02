@@ -1,6 +1,7 @@
 package jsonapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
@@ -1188,6 +1189,7 @@ func TestReadRedactsConfiguredPayloadKeys(t *testing.T) {
 				"name":   "automation-key",
 				"key":    "public-material",
 				"secret": "secret-material",
+				"serial": int64(9223372036854775807),
 				"nested": map[string]any{"secret": "nested-secret", "status": "active"},
 			}},
 		})
@@ -1234,6 +1236,15 @@ func TestReadRedactsConfiguredPayloadKeys(t *testing.T) {
 	}
 	if pull.Events[0].Attributes["status"] != "active" {
 		t.Fatalf("status attribute = %q, want active", pull.Events[0].Attributes["status"])
+	}
+	var precisePayload map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(pull.Events[0].Payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&precisePayload); err != nil {
+		t.Fatalf("decode precise payload: %v", err)
+	}
+	if got := precisePayload["serial"].(json.Number).String(); got != "9223372036854775807" {
+		t.Fatalf("serial = %q, want exact large integer", got)
 	}
 }
 

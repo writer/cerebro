@@ -1000,7 +1000,9 @@ func payloadForRecord(family Family, raw json.RawMessage) json.RawMessage {
 		return cloneRaw(raw)
 	}
 	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&object); err != nil {
 		return cloneRaw(raw)
 	}
 	redactedFields := make([]string, 0, len(family.Config.RedactPayloadKeys))
