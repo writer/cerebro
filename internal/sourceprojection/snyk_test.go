@@ -97,17 +97,32 @@ func TestSnykServiceAccountProjectionLinksRole(t *testing.T) {
 	}
 }
 
-func TestSnykAuditProjectionLinksActorToResource(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.audit_logs", Attributes: map[string]string{"actor_id": "user-1", "actor_email": "alice@example.test", "resource_id": "project-1", "resource_type": "project", "event_type": "org.project.create"}}
-	entities, links, err := snykAuditLogsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, "snyk.projects") {
-		t.Fatalf("expected audit actor and resource entities; entities=%#v", entities)
-	}
-	if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", "snyk_projects", "project-1")) {
-		t.Fatalf("expected acted_on link; links=%#v", links)
+func TestSnykAuditProjectionLinksActorToInventoryResource(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		resourceID       string
+		resourceType     string
+		wantResourceType string
+		wantURNKind      string
+	}{
+		{name: "project", resourceID: "project-1", resourceType: "project", wantResourceType: "snyk.projects", wantURNKind: "snyk_projects"},
+		{name: "collection", resourceID: "collection-1", resourceType: "collection", wantResourceType: "snyk.collections", wantURNKind: "snyk_collections"},
+		{name: "cloud environment", resourceID: "environment-1", resourceType: "cloud_environment", wantResourceType: "snyk.cloud_environments", wantURNKind: "snyk_cloud_environments"},
+		{name: "cloud scan", resourceID: "scan-1", resourceType: "cloud_scan", wantResourceType: "snyk.cloud_scans", wantURNKind: "snyk_cloud_scans"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "snyk", Kind: "snyk.audit_logs", Attributes: map[string]string{"actor_id": "user-1", "actor_email": "alice@example.test", "resource_id": tt.resourceID, "resource_type": tt.resourceType, "event_type": "org.resource.update"}}
+			entities, links, err := snykAuditLogsProjections(event)
+			if err != nil {
+				t.Fatalf("projection error = %v", err)
+			}
+			if !hasProjectedEntityType(entities, "snyk.user") || !hasProjectedEntityType(entities, tt.wantResourceType) {
+				t.Fatalf("expected audit actor and %s entities; entities=%#v", tt.wantResourceType, entities)
+			}
+			if !hasSnykProjectedLink(links, identityUserURN("tenant", "snyk", "user-1", "alice@example.test"), relationActedOn, projectionURN("tenant", tt.wantURNKind, tt.resourceID)) {
+				t.Fatalf("expected acted_on link to %s; links=%#v", tt.wantURNKind, links)
+			}
+		})
 	}
 }
 
