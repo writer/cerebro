@@ -3,6 +3,7 @@ package datadog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -167,8 +168,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want provider error")
 	}
-	if !strings.Contains(err.Error(), "datadog API returned 503") {
-		t.Fatalf("Read() error = %v, want datadog API returned 503", err)
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("Read() error = %v, want provider status %d", err, http.StatusServiceUnavailable)
 	}
 }
 
