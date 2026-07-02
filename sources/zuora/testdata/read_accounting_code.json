@@ -4,7 +4,7 @@
       "display_name": "Subscription Revenue",
       "name": "Subscription Revenue",
       "provider_id": "8a8081ae547aac1e01547efb61f20140",
-      "record_class": "identity_user",
+      "record_class": "asset",
       "resource_id": "8a8081ae547aac1e01547efb61f20140",
       "resource_name": "Subscription Revenue",
       "resource_type": "accounting_code",

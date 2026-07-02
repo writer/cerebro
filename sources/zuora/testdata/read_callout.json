@@ -1,24 +1,24 @@
 [
   {
     "attributes": {
-      "alert_id": "3",
+      "alert_id": "New Subscription Created-3",
       "alert_name": "New Subscription Created",
       "alert_source": "https://callback.example.test/zuora",
       "alert_status": "405",
       "alert_type": "1210",
       "observed_at": "2026-06-01T03:33:51",
-      "provider_id": "3",
+      "provider_id": "New Subscription Created-3",
       "record_class": "alert",
-      "resource_id": "3",
+      "resource_id": "New Subscription Created-3",
       "resource_name": "New Subscription Created",
       "resource_type": "callout_history",
-      "resource_urn": "urn:cerebro:tenant:zuora_callout:3",
+      "resource_urn": "urn:cerebro:tenant:zuora_callout:New%20Subscription%20Created-3",
       "schema": "callout",
-      "source_event_id": "3",
+      "source_event_id": "New Subscription Created-3",
       "source_system": "zuora",
       "tenant_id": "tenant"
     },
-    "id": "zuora-callout-3-observed",
+    "id": "zuora-callout-New-Subscription-Created-3-observed",
     "kind": "zuora.callout",
     "occurred_at": "2026-06-01T03:33:51Z",
     "payload": {

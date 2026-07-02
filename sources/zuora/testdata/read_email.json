@@ -8,7 +8,7 @@
       "observed_at": "2026-06-01T03:31:43",
       "primary_email": "billing@example.test",
       "provider_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created",
-      "record_class": "identity_user",
+      "record_class": "audit_event",
       "resource_id": "2c9e8084769a87be0176f0cfa138001e-2026-06-01T03:31:43-1210-New Subscription Created",
       "resource_name": "New subscription was created",
       "resource_type": "email_history",

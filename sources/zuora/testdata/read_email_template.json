@@ -6,7 +6,7 @@
       "name": "Account Edit Email",
       "observed_at": "2026-06-02T07:36:19.798Z",
       "provider_id": "6e569e1e05f040eda51a927b140c0ac2",
-      "record_class": "identity_user",
+      "record_class": "asset",
       "resource_id": "6e569e1e05f040eda51a927b140c0ac2",
       "resource_name": "Account Edit Email",
       "resource_type": "email_template",
