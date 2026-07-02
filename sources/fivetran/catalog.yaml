@@ -1,6 +1,6 @@
 id: fivetran
 name: "Fivetran"
-description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secret manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for account, group credential, connection schema, connection state, log service, connector metadata, and transformation package detail routes, expands nested object maps for connection table columns, applies v2 Accept headers only to connection and destination list routes, redacts destination config, connection config, and system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, schema columns, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
+description: "Fivetran account, access, pipeline, destination, trust, logging, private connectivity, external secret manager, connector metadata, system key, and transformation source. The runtime reads the Fivetran REST API with Basic API key authentication, follows `data.items` cursor pagination, unwraps singleton `data` records for account, group credential, connection schema, connection state, log service, connector metadata, and transformation package detail routes, expands nested object maps for connection table columns, applies v2 Accept headers only to connection and destination list routes, redacts destination config, connection config, external logging config, and system key material from raw event payloads, and emits graph-ready users, groups, roles, memberships, pipeline assets, schema columns, network trust controls, logging targets, credentials, external secret manager assignments, connector packages, and transformation records."
 emitted_kinds:
   - fivetran.account_info
   - fivetran.users
@@ -214,11 +214,13 @@ provider_api:
       method: GET
       path: /v1/external-logging/account
       response: data
+      payload_redaction: [config]
     - id: log_services
       method: GET
       path: /v1/external-logging
       response: data.items
       pagination: cursor
+      payload_redaction: [config]
     - id: webhooks
       method: GET
       path: /v1/webhooks

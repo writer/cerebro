@@ -1021,6 +1021,8 @@ entries:
           method: GET
           name_field: service
           path: /v1/external-logging/account
+          sensitive_payload_paths:
+            - $.config
           projection:
             fields:
               enabled: enabled
@@ -1057,6 +1059,8 @@ entries:
           name_field: service
           pagination: *fivetran_cursor_pagination
           path: /v1/external-logging
+          sensitive_payload_paths:
+            - $.config
           projection:
             fields:
               resource_id: id|name|service

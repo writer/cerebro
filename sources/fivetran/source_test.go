@@ -265,7 +265,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			family:    fivetranapi.FamilyAccountLogService,
 			path:      "/v1/external-logging/account",
 			accept:    "application/json",
-			item:      map[string]any{"id": "log-1", "service": "datadog_log", "enabled": true},
+			item:      map[string]any{"id": "log-1", "service": "datadog_log", "enabled": true, "config": map[string]any{"api_key": "datadog-secret"}},
 			kind:      "fivetran.account_log_service",
 			attrKey:   "resource_id",
 			attrValue: "log-1",
@@ -277,7 +277,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 			family:    fivetranapi.FamilyLogServices,
 			path:      "/v1/external-logging",
 			accept:    "application/json",
-			item:      map[string]any{"id": "log-1", "service": "splunk", "enabled": true},
+			item:      map[string]any{"id": "log-1", "service": "splunk", "enabled": true, "config": map[string]any{"hec_token": "splunk-secret"}},
 			kind:      "fivetran.log_services",
 			attrKey:   "resource_id",
 			attrValue: "log-1",
@@ -544,7 +544,7 @@ func TestSourceReadsProviderFamilies(t *testing.T) {
 					t.Fatalf("source_event_id should match scoped resource_id, got %#v", event.Attributes)
 				}
 			}
-			if tt.family == fivetranapi.FamilyDestinations || tt.family == fivetranapi.FamilyConnections {
+			if tt.family == fivetranapi.FamilyDestinations || tt.family == fivetranapi.FamilyConnections || tt.family == fivetranapi.FamilyAccountLogService || tt.family == fivetranapi.FamilyLogServices {
 				var payload map[string]any
 				if err := json.Unmarshal(event.Payload, &payload); err != nil {
 					t.Fatalf("decode config-bearing payload: %v", err)
@@ -607,6 +607,15 @@ func TestSourceReadsConnectionTableColumns(t *testing.T) {
 	attrs := event.Attributes
 	if attrs["connection_id"] != "connection-1" || attrs["schema_name"] != "public" || attrs["table_name"] != "users" || attrs["column_name"] != "EMAIL" || attrs["enabled"] != "true" {
 		t.Fatalf("attributes = %#v, want table column attributes", attrs)
+	}
+	if got := attrs["resource_id"]; got == "" || got == "EMAIL" || !strings.HasPrefix(got, "EMAIL-") {
+		t.Fatalf("resource_id = %q, want scoped table column identity in %#v", got, attrs)
+	}
+	if attrs["source_event_id"] != attrs["resource_id"] {
+		t.Fatalf("source_event_id should match scoped table column resource_id, got %#v", attrs)
+	}
+	if got := attrs["resource_urn"]; got == "urn:cerebro:tenant:fivetran_connection_table_columns:EMAIL" || !strings.Contains(got, attrs["resource_id"]) {
+		t.Fatalf("resource_urn = %q, want scoped table column URN for %#v", got, attrs)
 	}
 }
 

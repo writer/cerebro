@@ -18,7 +18,7 @@ Source Runtime SDK support for Fivetran account access, pipeline inventory, conn
 - Adapter package: `sources/fivetran`
 - Health endpoint: `/source-runtimes/health?source_id=fivetran`
 - Source health receipt: `sources/fivetran/source_health_receipt.json`
-- Sensitive payload redaction: system keys `key` and `secret`; group service accounts `service_account`; webhooks `signing_key`; destinations and connections `config`
+- Sensitive payload redaction: system keys `key` and `secret`; group service accounts `service_account`; webhooks `signing_key`; destinations, connections, account log service, and log services `config`
 
 ## Families
 

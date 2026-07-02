@@ -319,8 +319,9 @@ func connectionTableColumnsFamily() jsonapi.Family {
 				"schema_name":   "schema_name",
 				"table_name":    "table_name",
 			},
-			IdentityKeys:    []string{"connection_id", "schema_name", "table_name"},
-			ResourceURNKind: "fivetran_connection_table_columns",
+			IdentityKeys:       []string{"connection_id", "schema_name", "table_name"},
+			IdentityResourceID: true,
+			ResourceURNKind:    "fivetran_connection_table_columns",
 		}),
 	})
 	return family
@@ -347,11 +348,14 @@ func accountLogServiceFamily() jsonapi.Family {
 	family.Attributes["service"] = "service"
 	family.Attributes["source_event_id"] = "id|service"
 	family.Attributes["status"] = "enabled"
+	family.Config.RedactPayloadKeys = []string{"config"}
 	return family
 }
 
 func logServicesFamily() jsonapi.Family {
-	return fivetranAssetFamily(FamilyLogServices, "/v1/external-logging", "log_service", "log_service")
+	family := fivetranAssetFamily(FamilyLogServices, "/v1/external-logging", "log_service", "log_service")
+	family.Config.RedactPayloadKeys = []string{"config"}
+	return family
 }
 
 func webhooksFamily() jsonapi.Family {

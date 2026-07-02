@@ -557,7 +557,7 @@ func TestBuiltinFivetranConfigPayloadsAreSensitive(t *testing.T) {
 	if !ok {
 		t.Fatal("BuiltinEntry(fivetran) ok = false, want true")
 	}
-	for _, familyID := range []string{"destinations", "connections"} {
+	for _, familyID := range []string{"destinations", "connections", "account_log_service", "log_services"} {
 		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
 		if !stringsContain(family.SensitivePayloadPaths, "$.config") {
 			t.Fatalf("%s sensitive_payload_paths = %#v, want $.config", familyID, family.SensitivePayloadPaths)
