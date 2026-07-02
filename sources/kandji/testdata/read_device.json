@@ -35,7 +35,7 @@
     },
     "id": "kandji-device-03f81208-2b6a-4a77-81f5-cf1633bcfb95-event-1",
     "kind": "kandji.device",
-    "occurred_at": "2024-07-23T14:11:37Z",
+    "occurred_at": "2024-07-23T14:11:37.150080Z",
     "payload": {
       "agent_installed": true,
       "agent_version": "4.5.9 (5160)",
